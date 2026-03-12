@@ -18,6 +18,7 @@ const INPUT_SECTION_ROWS = 3;
 const STATUS_BAR_ROWS = 1;
 const PROGRESS_ROWS = 1;
 const DISCONNECTED_HINT_ROWS = 1;
+const OUTPUT_INPUT_GAP_ROWS = 1;
 
 export function App({ connection, pipeName }: AppProps) {
 	const { exit } = useApp();
@@ -71,6 +72,7 @@ export function App({ connection, pipeName }: AppProps) {
 	const columns = Math.max(1, stdout.columns || 80);
 	const rows = Math.max(6, stdout.rows || 24);
 	const reservedRows =
+		OUTPUT_INPUT_GAP_ROWS +
 		INPUT_SECTION_ROWS +
 		STATUS_BAR_ROWS +
 		(commandPending ? PROGRESS_ROWS : 0) +
@@ -133,6 +135,11 @@ export function App({ connection, pipeName }: AppProps) {
 			{commandPending && (
 				<Progress message={progressMessage} value={progressValue} width={columns} />
 			)}
+			<Box width={columns} backgroundColor={MONOKAI.background}>
+				<Text color={MONOKAI.background} backgroundColor={MONOKAI.background}>
+					{" ".repeat(columns)}
+				</Text>
+			</Box>
 			<Box width={columns} backgroundColor={MONOKAI.backgroundRaised}>
 				<Text color={MONOKAI.comment} backgroundColor={MONOKAI.backgroundRaised}>
 					{" ".repeat(columns)}

@@ -38,7 +38,7 @@ export function Input({
 	return (
 		<Box width={width} paddingX={2} backgroundColor={MONOKAI.backgroundRaised}>
 			<Text color={MONOKAI.orange} backgroundColor={MONOKAI.backgroundRaised}>
-				&gt; 
+				{"> "}
 			</Text>
 			<TextInput
 				value={value}
