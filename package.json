@@ -1,0 +1,21 @@
+{
+  "name": "@hise/cli",
+  "version": "0.1.0",
+  "description": "Interactive CLI client for HISE's named pipe REPL server",
+  "type": "module",
+  "bin": {
+    "hise-cli": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}
