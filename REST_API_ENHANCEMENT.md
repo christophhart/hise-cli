@@ -236,11 +236,78 @@ Clone a module (deep copy including children and parameters).
 
 ---
 
+### POST /api/builder/move
+
+Move a module to a different position in the tree.
+
+**JSON Body**:
+
+| Field      | Required | Description                                     |
+|------------|----------|-------------------------------------------------|
+| `name`     | Yes      | Name of the module to move                      |
+| `parent`   | Yes      | Target parent module name                       |
+| `chain`    | Yes      | Target chain: `"direct"`, `"gain"`, etc.        |
+| `index`    | No       | Position within the chain (default: end)        |
+| `validate` | No       | Validate without executing                      |
+
+---
+
 ### POST /api/builder/flush
 
 Apply pending UI updates after builder operations.
 
 **JSON Body**: `{}` (empty)
+
+---
+
+## Settings
+
+### GET /api/settings/get
+
+Get HISE settings values.
+
+**Query Parameters**:
+
+| Parameter | Required | Description                                     |
+|-----------|----------|-------------------------------------------------|
+| `key`     | No       | Specific setting key. If omitted, returns all.  |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "settings": {
+      "HISE_PATH": "D:/Development/HISE",
+      "USE_IPP": true,
+      "CUSTOM_NODE_PATH": ""
+    }
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/settings/set
+
+Set a HISE settings value.
+
+**JSON Body**:
+
+| Field   | Required | Description                  |
+|---------|----------|------------------------------|
+| `key`   | Yes      | Setting key                  |
+| `value` | Yes      | New value                    |
+
+**Request**:
+```json
+{
+  "key": "HISE_PATH",
+  "value": "D:/Development/HISE"
+}
+```
 
 ---
 
@@ -1081,19 +1148,51 @@ Get all modulation connections.
 
 ## Compile
 
-### POST /api/compile/start
+### POST /api/compile/plugin
 
-Start compiling a plugin target.
+Export as a plugin target.
 
 **JSON Body**:
 
-| Field    | Required | Description                                      |
-|----------|----------|--------------------------------------------------|
-| `target` | Yes      | `"vst3"`, `"au"`, `"standalone"`, `"aax"`, `"dll"` |
-| `config` | No       | `"debug"` or `"release"` (default: `"debug"`)    |
+| Field    | Required | Description                                       |
+|----------|----------|---------------------------------------------------|
+| `type`   | Yes      | `"instrument"`, `"effect"`, `"midifx"`            |
+| `config` | No       | `"debug"` or `"release"` (default: `"debug"`)     |
 
 This is a long-running operation. The response arrives when compilation
-completes or fails.
+completes or fails. Progress can be monitored via SSE (`GET /api/events`).
+
+---
+
+### POST /api/compile/standalone
+
+Export as standalone application.
+
+**JSON Body**:
+
+| Field    | Required | Description                                       |
+|----------|----------|---------------------------------------------------|
+| `config` | No       | `"debug"` or `"release"` (default: `"debug"`)     |
+
+---
+
+### POST /api/compile/dsp_dll
+
+Compile DSP networks as a DLL.
+
+**JSON Body**:
+
+| Field    | Required | Description                                       |
+|----------|----------|---------------------------------------------------|
+| `config` | No       | `"debug"` or `"release"` (default: `"debug"`)     |
+
+---
+
+### POST /api/compile/clean
+
+Clean the build directory.
+
+**JSON Body**: `{}` (empty)
 
 ---
 
@@ -1445,4 +1544,239 @@ Returns scripting API namespaces and their method signatures.
   "logs": [],
   "errors": []
 }
+```
+
+---
+
+## Project
+
+### POST /api/project/save
+
+Save the current preset as XML.
+
+**JSON Body**: `{}` (empty)
+
+---
+
+### POST /api/project/validate/samplemaps
+
+Validate all sample maps for issues.
+
+**JSON Body**: `{}` (empty)
+
+---
+
+### POST /api/project/validate/parameters
+
+Validate plugin parameters for sanity.
+
+**JSON Body**: `{}` (empty)
+
+---
+
+### POST /api/project/validate/presets
+
+Validate all user presets.
+
+**JSON Body**: `{}` (empty)
+
+---
+
+### GET /api/project/unused_images
+
+Find images not referenced by the project.
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "images": ["bg_unused.png", "old_knob.png"]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/project/export_snippet
+
+Export the current project as a HISE snippet string.
+
+**JSON Body**: `{}` (empty)
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "snippet": "HiseSnippet 1234.abc..."
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/project/import_snippet
+
+Import a HISE snippet.
+
+**JSON Body**:
+
+| Field     | Required | Description              |
+|-----------|----------|--------------------------|
+| `snippet` | Yes      | HISE snippet string      |
+
+---
+
+## Tools
+
+### POST /api/tools/sfz_to_samplemap
+
+Batch convert SFZ files to HISE sample maps.
+
+**JSON Body**:
+
+| Field   | Required | Description             |
+|---------|----------|-------------------------|
+| `files` | Yes      | Array of SFZ file paths |
+
+---
+
+### POST /api/tools/create_rsa_keys
+
+Generate an RSA key pair for the license system.
+
+**JSON Body**: `{}` (empty)
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "publicKey": "...",
+    "privateKey": "..."
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/tools/render_audio
+
+Render HISE audio output to a file.
+
+**JSON Body**:
+
+| Field      | Required | Description                              |
+|------------|----------|------------------------------------------|
+| `duration` | No       | Duration in seconds (default: 1.0)      |
+| `path`     | No       | Output file path                         |
+
+---
+
+### GET /api/tools/dsp_dll_info
+
+Get information about the loaded DSP network DLL.
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "loaded": true,
+    "path": "D:/Projects/MyPlugin/Binaries/dll/MyPlugin.dll",
+    "networks": ["MyDSP", "MyEffect"]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/tools/wavetable_create
+
+Create wavetable banks from sample maps.
+
+**JSON Body**:
+
+| Field     | Required | Description                              |
+|-----------|----------|------------------------------------------|
+| `map`     | Yes      | Sample map name                          |
+
+---
+
+### POST /api/tools/check_latency
+
+Analyze and report signal chain latency.
+
+**JSON Body**: `{}` (empty)
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "totalLatencySamples": 512,
+    "totalLatencyMs": 11.6,
+    "chain": [
+      {"module": "Convolution1", "samples": 512}
+    ]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+## Server-Sent Events (SSE)
+
+### GET /api/events
+
+Subscribe to push events from HISE. Uses the standard SSE protocol
+(`text/event-stream` content type). The connection is **modal** - while
+active, no other REST requests are processed.
+
+**Event format**:
+```
+event: progress
+data: {"operation": "monolith", "percent": 45, "message": "Compressing Piano_C4.wav"}
+
+event: console
+data: {"message": "Compilation successful", "level": "info"}
+
+event: cpu
+data: {"usage": 12.3, "voices": 8}
+
+event: midi
+data: {"type": "noteOn", "note": 60, "velocity": 100, "channel": 1}
+```
+
+**Event types**:
+
+| Event      | When emitted                                         |
+|------------|------------------------------------------------------|
+| `progress` | Long-running operations (monolith, export, compile)  |
+| `console`  | Console output from HISE                             |
+| `cpu`      | CPU usage updates (periodic during monitoring)       |
+| `midi`     | MIDI activity (during monitoring)                    |
+| `complete` | Operation finished                                   |
+| `error`    | Operation failed                                     |
+
+**Client disconnection** is detected via `sink.is_writable()` in
+cpp-httplib, which cleanly ends the stream.
+
+**Implementation note**: cpp-httplib supports SSE natively via
+`Response::set_chunked_content_provider()`. The HISE `RestServer` wrapper
+needs a new streaming route handler type that gives the handler direct
+access to the chunked sink instead of returning a flat `Response` struct.
+The existing `requestSerializationLock` stays held for the duration of the
+stream (modal behavior).
 ```

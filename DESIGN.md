@@ -1,4 +1,4 @@
-# DESIGN.md — hise-cli REPL Architecture v2
+# DESIGN.md - hise-cli REPL Architecture v2
 
 > Comprehensive design document for the hise-cli modal REPL system.
 > Covers architecture, mode grammars, protocol specification, and design rationale.
@@ -13,15 +13,18 @@ hise-cli is a modal REPL and command-line interface for
 [HISE](https://hise.dev), an open-source framework for building audio
 plugins. It serves two audiences through two frontends sharing one engine:
 
-- **Humans** use the TUI (terminal UI) — an interactive Ink/React app with
+- **Humans** use the TUI (terminal UI) - an interactive Ink/React app with
   colored output, progress bars, tab completion, and keyboard navigation.
-- **LLMs and automation tools** use the CLI — non-interactive, argument-based
+- **LLMs and automation tools** use the CLI - non-interactive, argument-based
   invocation with structured JSON output.
 
-The app is a **thin client**: it parses commands, renders output, and provides
-tab completion from static datasets. HISE does the heavy lifting — validating
-operations, executing commands, and managing state. The CLI never replicates
-HISE's internal logic.
+The app is a **smart client**: it parses commands, renders output, provides
+tab completion, and performs type-level validation locally using shipped JSON
+datasets (`moduleList.json`, `scripting_api.json`). HISE handles execution,
+instance-level validation, and runtime state. The CLI never replicates
+HISE's execution logic, but it can catch type errors, invalid parameter
+names, out-of-range values, and wrong chain/module combinations instantly
+without a round-trip to HISE.
 
 ---
 
@@ -31,22 +34,23 @@ HISE's internal logic.
 
 ```
 src/
-  engine/          Shared core — zero UI dependencies
+  engine/          Shared core - zero UI dependencies
     commands/      Command registry, dispatcher, parsers
     modes/         Mode definitions (builder, script, dsp, sampler, ...)
     completion/    Tab completion engine
     plan/          Plan mode state + script generation
+    validation/    Local type-level validation (moduleList.json)
     result.ts      CommandResult types
     session.ts     Mode stack, history, session state
     hise.ts        HiseConnection interface + HTTP implementation
     data/          Static JSON datasets (module types, API methods, nodes)
 
-  tui/             TUI frontend — Ink/React
+  tui/             TUI frontend - Ink/React
     app.tsx        Main TUI app
     components/    Output, Input (with completion popup), Progress, Header
     hooks/         React hooks wrapping engine
 
-  cli/             CLI frontend — pure Node.js
+  cli/             CLI frontend - pure Node.js
     index.ts       Argument parsing, dispatch, JSON output
 ```
 
@@ -55,31 +59,136 @@ The engine has **no dependency** on Ink, React, or any terminal UI library.
 ### Data Flow
 
 ```
-                    ┌───────────────────────────────┐
-  TUI (human)       │         Command Engine        │       HISE
-  ─────────────     │                               │     ─────────
-  Ink/React    ───> │  parse ──> dispatch ──> send  │ ──> HTTP REST API
-  keyboard input    │                               │     localhost:1900
-  colored output <──│  format <── result <── recv   │ <── JSON responses
-                    │                               │
-  CLI (LLM)         │  Modes, completion, plan      │
-  ─────────────     │  state — all shared           │
-  args + flags ───> │                               │
-  JSON output  <──  └───────────────────────────────┘
+                    +-------------------------------+
+  TUI (human)       |         Command Engine        |       HISE
+  -------------     |                               |     ---------
+  Ink/React    ---> |  parse --> validate --> send   | --> HTTP REST API
+  keyboard input    |  (local)   (local+HISE)       |     localhost:1900
+  colored output <--|  format <-- result <-- recv    | <-- JSON responses
+                    |                               |
+  CLI (LLM)         |  Modes, completion, plan,     |     SSE endpoint
+  -------------     |  module tree tracking         |     (push events)
+  args + flags ---> |                               |
+  JSON output  <--  +-------------------------------+
 ```
 
-### Thin Client Responsibility Split
+### Smart Client Responsibility Split
 
-| Concern                       | Owner | How                                        |
-|-------------------------------|-------|--------------------------------------------|
-| Parsing commands              | CLI   | Mode-specific grammar parsers              |
-| Tab completion                | CLI   | Static JSON datasets shipped with the app  |
-| Tracking plan step references | CLI   | Simple string bookkeeping (not tree logic)  |
-| Generating HiseScript         | CLI   | Template-based, using static type mappings  |
-| Validating operations         | HISE  | Same API with `validate: true` flag         |
-| Executing operations          | HISE  | Builder, DspNetwork, Sampler APIs          |
-| Determining module types      | HISE  | Responds with type info on queries          |
-| Managing module tree state    | HISE  | Full ownership of runtime state             |
+| Concern                           | Owner     | How                                              |
+|-----------------------------------|-----------|--------------------------------------------------|
+| Parsing commands                  | CLI       | Mode-specific grammar parsers                    |
+| Tab completion                    | CLI       | Static JSON datasets shipped with the app        |
+| Type-level validation             | CLI       | `moduleList.json` - type exists, chain accepts type, parameter name valid, value in range |
+| Instance-level validation         | CLI+HISE  | CLI tracks module tree after initial fetch from `GET /api/builder/tree`; HISE confirms on execution |
+| Module tree tracking              | CLI+HISE  | Fetched once on builder mode entry, updated locally as commands execute |
+| Plan step reference tracking      | CLI       | Simple string bookkeeping (not tree logic)        |
+| Generating HiseScript             | CLI       | Template-based, using `builderPath` from JSON     |
+| Executing operations              | HISE      | Builder, DspNetwork, Sampler APIs                |
+| Dynamic module parameters         | HISE      | 12 modules with runtime-defined params (ScriptProcessor, HardcodedSynth, etc.) |
+| Live monitoring                   | HISE      | SSE push events for progress, console, metrics   |
+
+---
+
+## Communication with HISE
+
+### Transport: HTTP REST API + Server-Sent Events
+
+The CLI communicates with HISE via its existing **HTTP REST API** on
+`localhost:1900`, powered by cpp-httplib (vendored header-only library).
+This API is already used by the HISE MCP server and provides a
+self-documenting discovery endpoint at `GET /`.
+
+**Request/response** uses standard HTTP: `GET` for reads, `POST` for
+mutations, JSON bodies, `{success, result, logs, errors}` response format.
+
+**Push events** use a **Server-Sent Events** (SSE) endpoint at
+`GET /api/events`. This provides streaming data for long-running operations
+(monolith compression progress, compile status, render progress) and live
+monitoring (CPU, MIDI activity). The SSE connection is **modal** - while
+streaming, other requests are blocked, which is correct behavior since these
+operations are inherently exclusive.
+
+cpp-httplib already supports SSE natively via
+`Response::set_chunked_content_provider()` with `text/event-stream` content
+type. The HISE `RestServer` wrapper needs a streaming route handler path
+alongside its existing one-shot response path.
+
+**Multiple simultaneous clients** (e.g., MCP server + CLI) are supported
+naturally by HTTP. Each request is independent. The SSE endpoint serves one
+client at a time (modal).
+
+### Named Pipe: Retired
+
+The original REPL used JUCE `NamedPipe` for communication. This has been
+retired in favor of HTTP. The C++ REPL server code (`ReplServer.h/.cpp`) is
+removed by reverting commit `28267c18a877fcf848f496b24b663941d183b240`.
+The Node.js pipe client (`pipe.ts`, `usePipe.ts`) is removed from hise-cli.
+
+Rationale: The REST API already exists and is battle-tested, HTTP gives free
+request-response correlation and standard tooling, SSE covers push use cases,
+and HTTP naturally supports multiple simultaneous clients.
+
+### Transport Abstraction
+
+The engine layer talks to HISE through a `HiseConnection` interface:
+
+```ts
+interface HiseConnection {
+  request(endpoint: string, params?: object): Promise<HiseResponse>;
+  destroy(): void;
+}
+```
+
+The default (and only) implementation is `HttpHiseConnection` using `fetch()`.
+
+### Existing Endpoints Used by TUI
+
+| CLI mode      | Existing endpoint               | Use case                   |
+|---------------|---------------------------------|----------------------------|
+| Script mode   | `POST /api/repl`                | Evaluate HiseScript expression |
+| Script mode   | `POST /api/recompile`           | Recompile after file edits |
+| Inspect mode  | `GET /api/status`               | Project + processor info   |
+| Inspect mode  | `GET /api/list_components`      | Component tree             |
+| Inspect mode  | `GET /api/screenshot`           | Visual verification        |
+| Inspect mode  | `POST /api/profile`             | Performance profiling      |
+| Project mode  | `GET /api/status`               | Project info               |
+| Project mode  | `POST /api/parse_css`           | CSS diagnostics            |
+| Any mode      | `POST /api/shutdown`            | Quit HISE                  |
+
+Note: The TUI does **not** use `POST /api/set_script` or
+`GET /api/get_script`. Script mode evaluates expressions via `/api/repl`.
+External file edits are handled by the user's editor, then `/api/recompile`
+is called to apply changes. The `set_script`/`get_script` endpoints are for
+the MCP server / AI agent workflow (programmatic script editing).
+
+### New Endpoints
+
+New endpoints follow the same conventions as the existing API.
+Categories: `builder`, `sampler`, `dsp`, `workspace`, `inspect`, `compile`,
+`project`, `settings`, `packages`, `tools`, `meta`.
+
+The `validate` flag on builder and dsp endpoints enables dry-run validation
+through the same code path (same pattern as `compile: false` on `set_script`).
+
+Full endpoint specification: [REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md)
+and [Issue #12](https://github.com/christoph-hart/hise-cli/issues/12)
+
+### REST API Spec Drift
+
+The spec at `guidelines/api/rest-api.md` has drifted from the implementation.
+Key discrepancies (the implementation is the source of truth):
+
+| Endpoint | Spec says | Code actually does |
+|----------|-----------|--------------------|
+| `GET /api/get_script` | Returns `{script, callback}` strings | Returns `{callbacks: {name: code}}` object |
+| `POST /api/set_script` | Accepts `{script, callback}` | Accepts `{callbacks: {name: code}}` |
+| `POST /api/recompile` | No `profile` param | Has `profile` + `durationMs` params |
+| `GET /api/list_components` | No `laf` field | Includes `laf` info per component |
+
+Five undocumented endpoints exist in code: `/api/repl`, `/api/profile`,
+`/api/simulate_interactions`, `/api/parse_css`, `/api/shutdown`.
+
+The CLI is coded against the **actual implementation**, not the spec doc.
 
 ---
 
@@ -115,7 +224,7 @@ everything as HiseScript. The sampler mode has selection-based workflows.
 | `/import`                  | Enter import mode                                 |
 | `/inspect`                 | Enter inspect mode                                |
 
-`/workspace` is the **primary navigation command** — it tells HISE to switch
+`/workspace` is the **primary navigation command** - it tells HISE to switch
 its IDE view to the appropriate workspace (Scripting, Sampler, or Scriptnode)
 and puts the CLI into the matching mode. The mode is inferred from the module
 type:
@@ -126,7 +235,7 @@ type:
 | StreamingSampler                     | Sampler       | `[sampler:Name]`     |
 | HardcodedSynth / ScriptFX with DSP  | Scriptnode    | `[dsp:NetworkName]`  |
 
-DSP mode is **only** reachable via `/workspace` — there is no `/dsp` command
+DSP mode is **only** reachable via `/workspace` - there is no `/dsp` command
 because a network context is always required.
 
 ### Slash Commands
@@ -197,6 +306,9 @@ remove <name>
 clear
 clear <target>.<chain>
 
+# Moving
+move <name> to <parent>.<chain> [at <index>]
+
 # Parameters
 set <target> <param> [to] <value> [<param2> [to] <value2> ...]
 
@@ -223,16 +335,59 @@ flush
 brace expansion (`{2..10}`) is always explicit. `{n}` is a 1-indexed template
 placeholder.
 
+#### Builder Mode Validation
+
+The builder mode uses a **hybrid validation model**:
+
+**Local validation** (instant, no HISE round-trip):
+- Module type exists (79 types in `moduleList.json`)
+- Module subtype can go in the target chain (constrainer matching)
+- Parameter name is valid for the module type
+- Parameter value is in range (min/max/stepSize)
+- ComboBox values match the `items` list
+- Parent module has the specified chain type
+- Builder API path lookup (`builderPath` field)
+
+**Instance validation** (needs live module tree):
+- Module instance name exists (tracked locally after initial fetch)
+- Module instance name uniqueness
+- Dynamic module parameters (12 modules with `metadataType: "dynamic"`)
+
+On entering builder mode, the CLI calls `GET /api/builder/tree` once to
+get the current module tree. From then on, it tracks the tree locally as
+commands are executed, allowing instance-level validation without further
+round-trips. The tree can be re-synced if the user edits in the HISE IDE.
+
+#### Module Data (`moduleList.json`)
+
+79 modules with rich metadata:
+
+| Field | Purpose |
+|-------|---------|
+| `id` | Short type name used in commands (e.g., `"AHDSR"`) |
+| `type` / `subtype` | Classification: `SoundGenerator`, `Effect`, `MidiProcessor`, `Modulator` with subtypes like `EnvelopeModulator`, `MasterEffect`, `VoiceStartModulator` |
+| `builderPath` | Builder API constant (e.g., `"b.Modulators.AHDSR"`) |
+| `hasChildren` | Can contain child SoundGenerators |
+| `hasFX` / `fx_constrainer` | Has FX chain + which effect subtypes are allowed |
+| `parameters[]` | Full parameter definitions with `range`, `type`, `items`, `mode`, `unit` |
+| `modulation[]` | Modulation chain definitions with `chainIndex`, `constrainer`, `modulationMode` |
+
+Standard chain mapping for SoundGenerators:
+`midi`=0, `gain`=1, `pitch`=2, `fx`=3 (implicit from structure).
+
+Constrainer syntax: `"*"` (any), `"VoiceStartModulator"` (exact subtype),
+`"MasterEffect|!RouteEffect|!SlotFX"` (subtype + exclusion list).
+
 ### Plan Submode
 
-Enter with `plan` from builder mode. Commands are validated by HISE (via the
-`validate` flag on the existing API) and recorded. Strict validation: invalid
-commands are rejected immediately.
+Enter with `plan` from builder mode. Commands are validated locally first
+(type-level), then by HISE (via the `validate` flag on the API) and recorded.
+Strict validation: invalid commands are rejected immediately.
 
 ```
 [builder] > plan
 [builder:plan] > add StreamingSampler as "Sampler 1"
-  ✓ [1] add StreamingSampler as "Sampler 1"
+  ok [1] add StreamingSampler as "Sampler 1"
 [builder:plan] > /execute          # run the plan
 [builder:plan] > /export plan.js   # generate HiseScript
 [builder:plan] > /show             # display the plan
@@ -246,12 +401,12 @@ step N+1 can reference modules from step N.
 
 **CLI-side reference tracking**: the CLI tracks which plan steps introduce
 which names (simple string bookkeeping). When a step is removed, dependent
-steps are flagged — no HISE roundtrip needed for that.
+steps are flagged - no HISE roundtrip needed for that.
 
 **CLI-side script generation**: the CLI generates HiseScript from validated
-plan steps using the static dataset to map short type names to full builder
-constants (`SimpleGain` -> `builder.Effects.SimpleGain`). Clone steps emit
-for-loops.
+plan steps using the `builderPath` field from `moduleList.json` to map short
+type names to full builder constants (`SimpleGain` -> `b.Effects.SimpleGain`).
+Clone steps emit for-loops.
 
 ### DSP (Scriptnode) Mode
 
@@ -270,13 +425,14 @@ show graph | show <node> | show factories | show <factory>
 undo | clear
 ```
 
-12 node factories, ~177 nodes: container, core, math, envelope, routing,
-analyse, fx, control, dynamics, filters, jdsp, template.
+12 node factories, 194 nodes (see `data/scriptnodeList.json`): container,
+core, math, envelope, routing, analyse, fx, control, dynamics, filters,
+jdsp, template.
 
 ### Script Mode
 
 HiseScript REPL. Defaults to Interface processor. Everything typed is sent
-to HISE's script evaluator.
+to HISE's expression evaluator via `POST /api/repl`.
 
 ```
 [script:Interface] > Engine.getSampleRate()
@@ -288,6 +444,9 @@ hello
 - **Multi-line**: unclosed brackets continue on next line
 - **Last result**: `_` stores the last evaluated result
 - **`/api Namespace.method`**: inline API reference from static data
+
+Uses `POST /api/repl` (not `set_script`). For external file edits, the user
+edits in their editor and calls `/recompile` from the TUI.
 
 ### Sampler Mode
 
@@ -349,11 +508,18 @@ fadeout <layer> <group> <ms>
 
 ### Inspect Mode
 
-Runtime introspection. One-shot snapshots + subscriptions for live monitoring.
+Runtime introspection. One-shot snapshots + SSE subscriptions for live
+monitoring.
 
 ```
 cpu | memory | voices | modules | <name> | connections | routing | midi
+latency
 ```
+
+Live monitoring (cpu, midi) uses `GET /api/events` (SSE). While a live
+monitoring session is active, the SSE connection is modal - no other requests
+are processed. This is acceptable because monitoring is an explicit user
+action.
 
 ### Project Mode
 
@@ -376,7 +542,7 @@ packages init | packages test
 ### Compile Mode
 
 ```
-vst3|au|standalone|aax [debug|release] | dll | all [debug|release]
+vst3|au|standalone|aax [debug|release] | dsp-dll | all [debug|release]
 status | cancel | log | clean
 export samples | export resources
 ```
@@ -391,102 +557,84 @@ monolith <map> | wavetable <path>
 
 ---
 
-## Communication with HISE
+## Static Data
 
-The CLI communicates with HISE via its existing **HTTP REST API** on
-`localhost:1900`. This API is already used by the HISE MCP server and other
-consumers, has a proven threading model, and provides a self-documenting
-discovery endpoint at `GET /`.
+Three JSON datasets ship with the CLI in `data/` and serve triple duty: tab
+completion, local validation, and inline help.
 
-### Transport Abstraction
+### `data/moduleList.json` (provided)
 
-The engine layer talks to HISE through a `HiseConnection` interface:
+79 modules, 15 categories. Covers all HISE module types with:
+- Type metadata (`id`, `type`, `subtype`, `builderPath`, `category`)
+- Structure (`hasChildren`, `hasFX`, `fx_constrainer`, `constrainer`)
+- Parameters with full range/type/items data
+- Modulation chains with constrainer and mode info
 
-```ts
-interface HiseConnection {
-  request(endpoint: string, params?: object): Promise<HiseResponse>;
-  destroy(): void;
-}
-```
+See "Builder Mode Validation" section for details.
 
-The default implementation uses HTTP (`HttpHiseConnection`). A named pipe
-implementation (`PipeHiseConnection`) can be added later as a drop-in
-replacement — same interface, different transport. The engine, modes, and
-frontends never know which transport is in use.
+### `data/scriptnodeList.json` (provided)
 
-```bash
-hise-cli --port 1900           # default: HTTP on port 1900
-hise-cli --pipe /tmp/hise      # future: named pipe transport
-```
+194 nodes, 12 factories (`container`, `control`, `core`, `math`, `envelope`,
+`routing`, `analyse`, `fx`, `dynamics`, `filters`, `jdsp`, `template`).
+Same structure as `moduleList.json`:
+- Node metadata (`id`, `description`, `type` polyphonic/monophonic)
+- Structure (`hasChildren`, `hasFX`, `fx_constrainer`, `constrainer`)
+- Parameters with full range/type/items data (79 ComboBox params decoded)
+- Modulation outputs with constrainer type (`Normalised`/`Unnormalised`)
+- Properties (`Mode`, `Connection`, `Code`, `NumParameters`, `LocalId`, etc.)
+- Interfaces (`TableProcessor`, `SliderPackProcessor`, `AudioSampleProcessor`,
+  `DisplayBufferSource`)
 
-### Response Format
+### `data/scripting_api.json` (provided, 26% enriched)
 
-All responses follow the existing REST API convention:
+89 classes, 1,789 methods. Covers the full HiseScript API:
+- Base data on all classes: `name`, `description`, `category`, `methods[]`
+- Each method: `name`, `returnType`, `description`, `parameters[]` (name+type)
+- Enriched classes (23/89) add: `commonMistakes`, `llmRef`, `obtainedVia`,
+  and per-method `callScope`, `crossReferences`, `pitfalls`, `examples`
 
-```json
-{
-  "success": true,
-  "result": { ... },
-  "logs": ["console output"],
-  "errors": [{"errorMessage": "...", "callstack": [...]}]
-}
-```
+Key classes per mode:
 
-### Existing Endpoints Reused
+| CLI Mode  | Key classes |
+|-----------|-------------|
+| Builder   | `Builder` (8), `Synth` (59) |
+| Script    | All 89 - this is the REPL |
+| Sampler   | `Sampler` (57), `Sample` (11), `ComplexGroupManager` (16) |
+| DSP       | `DspNetwork` (12), `Node` (15), `Connection` (6), `Parameter` (8) |
+| Inspect   | `Engine` (147) |
+| Project   | `Settings` (36), `ExpansionHandler` (18) |
 
-Several CLI modes use existing REST API endpoints directly:
+### Future datasets (not yet provided)
 
-| CLI mode      | Existing endpoint                     | Use case                 |
-|---------------|---------------------------------------|--------------------------|
-| Script mode   | `POST /api/set_script`                | Evaluate HiseScript      |
-| Script mode   | `GET /api/get_script`                 | Read current script      |
-| Inspect mode  | `GET /api/status`                     | Project + processor info |
-| Inspect mode  | `GET /api/list_components`            | Component tree           |
-| Inspect mode  | `GET /api/screenshot`                 | Visual verification      |
-| Project mode  | `GET /api/status`                     | Project info             |
+| Dataset | Purpose |
+|---------|---------|
+| Sample property indexes | Sampler mode select/set |
 
-### New Endpoints
-
-New endpoints follow the same conventions as the existing API:
-- `GET` for reads, `POST` for mutations
-- Query params for GET, JSON body for POST
-- `{success, result, logs, errors}` response format
-- Self-documenting via `GET /` discovery
-
-Categories: `builder`, `sampler`, `dsp`, `workspace`, `inspect`, `compile`,
-`packages`, `meta`.
-
-The `validate` flag on builder and dsp endpoints enables dry-run validation
-through the same code path (same pattern as `compile: false` on `set_script`).
-The `meta` endpoints provide ground-truth data dumps for bootstrapping CLI
-autocomplete datasets.
-
-Full endpoint specification: [REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md)
-and [Issue #12](https://github.com/christoph-hart/hise-cli/issues/12)
-
-### Live Monitoring (Future)
-
-For continuous monitoring (CPU, MIDI, voices), the transport approach is TBD.
-Options include polling, Server-Sent Events, or a dedicated pipe channel.
-This will be decided when inspect mode is implemented.
+These can be fetched at runtime from `GET /api/meta/*` endpoints or provided
+as additional JSON files.
 
 ---
 
 ## Key Design Decisions
 
-### 1. Thin client — why not replicate HISE logic in CLI
+### 1. Smart client - local type validation + HISE instance validation
 
-**Decision**: The CLI never validates module types, chain constraints, or tree
-structure. HISE does all validation.
+**Decision**: The CLI validates type-level constraints locally using
+`moduleList.json` (module type exists, chain accepts subtype, parameter
+name valid, value in range). Instance-level constraints (does "Sampler1"
+exist in the live tree?) are tracked locally after an initial fetch from
+`GET /api/builder/tree` on mode entry.
 
-**Rationale**: Replicating HISE's module tree logic in TypeScript would be
-fragile (breaks when HISE adds modules or changes rules), duplicative, and
-inconsistent with the goal of a lightweight CLI. Sending a validation request
-to HISE and displaying the result is simpler and always correct.
+**Rationale**: The module list JSON is rich enough (79 modules with full
+parameter definitions, modulation chain constrainers, FX chain rules) to
+catch the vast majority of user errors instantly. Only 12 modules have
+dynamic parameters that the JSON cannot describe. This gives instant
+feedback for typos and structural mistakes without waiting for HISE, while
+HISE remains the authority for execution.
 
-**Exception**: Tab completion uses static JSON datasets for responsiveness.
-If a dataset is stale, a new module just won't appear in autocomplete — but
-the command still works if typed manually.
+**Previous decision**: The original design called for a pure "thin client"
+where all validation was done by HISE. Analysis of `moduleList.json` showed
+this was unnecessarily conservative.
 
 ### 2. HISE-side validation with `--validate` flag
 
@@ -500,22 +648,22 @@ operation.
 ### 3. CLI-side script generation
 
 **Decision**: The CLI generates HiseScript from validated plan steps using
-static type mappings.
+the `builderPath` field from `moduleList.json`.
 
 **Alternative rejected**: HISE-side code generation would require building a
 string-based code generator in statically compiled C++, which is the wrong
 tool for template-based string manipulation. TypeScript with template literals
 is far more natural for this.
 
-### 4. Static autocomplete data
+### 4. Static autocomplete + validation data
 
-**Decision**: Tab completion data (module types, scriptnode nodes, API methods)
-ships as static JSON files with the CLI.
+**Decision**: Module types, API methods, and node factories ship as static
+JSON files with the CLI. These serve both tab completion and validation.
 
 **Alternative rejected**: Querying HISE at runtime for completions adds latency
 on every Tab press and requires a live connection. Static data works offline,
-is instant, and covers 99% of cases. The `meta.*` protocol endpoints exist for
-validation or refreshing the static data.
+is instant, and covers 99% of cases. The `meta.*` REST endpoints exist for
+runtime refresh if the static data is stale.
 
 ### 5. Dot notation for parent.chain
 
@@ -525,13 +673,13 @@ validation or refreshing the static data.
 with filesystem paths used elsewhere (script connections, sample imports).
 Dots mirror HiseScript conventions and read naturally as "property of."
 
-### 6. Hybrid clone syntax — no trailing number inference
+### 6. Hybrid clone syntax - no trailing number inference
 
 **Decision**: Clone count is always explicit (`x4`) or uses brace expansion
 (`{2..10}`). No automatic trailing-number detection.
 
 **Rationale**: Trailing number extraction is fragile. `"My Sampler V2"`,
-`"Bass_12_Layer"`, `"Pad 1A"` — all break trailing-number inference in
+`"Bass_12_Layer"`, `"Pad 1A"` - all break trailing-number inference in
 different ways. Explicit count/range is unambiguous.
 
 ### 7. Workspace = HISE IDE workspaces
@@ -542,31 +690,35 @@ Sampler, Scriptnode), not project directories.
 **Rationale**: The original brainstorm confused "workspace" with "project
 directory management." In HISE, workspaces are IDE views. `/workspace
 MySampler` switches the HISE IDE to the Sampler workspace AND enters the
-CLI's sampler mode — one command does both. This is more useful than managing
-directories.
+CLI's sampler mode - one command does both.
 
-### 8. HTTP REST API over custom protocol
+### 8. HTTP + SSE over named pipe
 
-**Decision**: Use HISE's existing HTTP REST API (`localhost:1900`) instead of
-designing a custom pipe-based protocol.
+**Decision**: Use HISE's existing HTTP REST API (`localhost:1900`) for
+request/response and Server-Sent Events for push. The named pipe REPL
+server is retired.
 
-**Rationale**: The REST API is already built, battle-tested (used by the MCP
-server), has a proven threading model, and is self-documenting. HTTP gives
-free request-response correlation (no custom message IDs), standard tooling
-(curl, fetch), and stateless operation. The transport is abstracted behind a
-`HiseConnection` interface so a named pipe transport can be added later as a
-drop-in replacement if needed (lower latency, no port allocation, offline
-scenarios).
+**Rationale**: The REST API is battle-tested (MCP server uses it daily),
+HTTP naturally supports multiple simultaneous clients (MCP + CLI), and
+SSE covers push use cases (progress, monitoring) without a custom protocol.
+cpp-httplib already supports SSE natively. The SSE endpoint is modal
+(blocks other requests while streaming), which is correct for the
+long-running operations it serves (compression, export, render).
 
-**Alternative rejected**: A custom newline-delimited JSON pipe protocol with
-request IDs, message type discrimination, and subscription management. This
-would duplicate work already done in the REST API and add protocol design
-complexity with no benefit.
+**Multi-client requirement**: The typical workflow has a terminal with
+Claude Code / opencode (using the MCP server via HTTP) and a second terminal
+with hise-cli (also using HTTP). Both connect simultaneously. Named pipes
+(JUCE `NamedPipe` is single-client) cannot support this without complex
+multiplexing.
+
+**Alternative rejected**: Named pipe as sole transport - cannot handle
+multiple simultaneous clients. Named pipe as sidecar for push events -
+adds complexity with two transports to maintain.
 
 ### 9. Tests as API contract
 
 **Decision**: MockHiseConnection-based tests serve as the living specification
-for HISE's C++ REPL endpoints.
+for HISE's C++ REST endpoints.
 
 **Rationale**: The mock responses document exactly what request format HISE
 needs to accept and what response format it should return. When implementing
@@ -583,32 +735,23 @@ retrofitting structured output, non-interactive invocation, and JSON
 formatting onto a TUI-only codebase. Building both from the start means every
 command naturally has both a human-readable and machine-readable representation.
 
----
+### 11. REPL via /api/repl, not /api/set_script
 
-## Data Dependencies
+**Decision**: The TUI's script mode uses `POST /api/repl` for expression
+evaluation, not `POST /api/set_script`.
 
-Before implementation begins, these JSON datasets are needed from HISE (to be
-provided by the maintainer):
-
-| Dataset                | Purpose                                      |
-|------------------------|----------------------------------------------|
-| Module types by category | Builder constants, autocomplete, validation |
-| Chain indexes + constraints | Which categories go in which chains      |
-| Module parameters      | Builder `set`, inspect mode                   |
-| Scriptnode factories + nodes | DSP mode autocomplete                   |
-| Scripting API namespaces + methods | Script mode autocomplete           |
-| Sample property indexes + names | Sampler mode select/set               |
-| Complex group layer types + defaults | Sampler groups commands           |
-
-These serve as both static CLI autocomplete data and expected values in test
-assertions.
+**Rationale**: The script mode is a REPL - evaluate an expression, see the
+result. `set_script` wholesale replaces callback code, which is the MCP
+server's job (AI agents editing scripts programmatically). The TUI never
+needs to replace script content. For external file changes, the user edits
+in their editor and calls `POST /api/recompile` from the TUI.
 
 ---
 
 ## Implementation Phases
 
-Critical path: **1 -> 2 -> 3 -> 4 -> 5**. Phase 12 (HISE protocol) is
-independent C++ work that can proceed in parallel.
+Critical path: **1 -> 2 -> 3 -> 4 -> 5**. Phase 12 (HISE C++ side) is
+independent work that can proceed in parallel.
 
 | Phase | Issue | Title                                              |
 |-------|-------|----------------------------------------------------|
@@ -623,5 +766,5 @@ independent C++ work that can proceed in parallel.
 | 9     | [#9](https://github.com/christoph-hart/hise-cli/issues/9)   | Project, Compile, Import Modes           |
 | 10    | [#11](https://github.com/christoph-hart/hise-cli/issues/11) | Workspace Navigation + Sampler Mode      |
 | 11    | [#10](https://github.com/christoph-hart/hise-cli/issues/10) | Command Palette (Ctrl+Space)             |
-| 12    | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | HISE REST API Extensions (C++ side)      |
-| —     | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Future: Wave Editing + Sample Analysis   |
+| 12    | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | HISE REST API Extensions + SSE (C++ side) |
+| -     | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Future: Wave Editing + Sample Analysis   |
