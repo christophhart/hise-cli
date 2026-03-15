@@ -1144,6 +1144,96 @@ Get all modulation connections.
 }
 ```
 
+### GET /api/inspect/watch_variables
+
+Get live variable state from a script processor's debug information.
+Replicates the data shown by the HISE IDE's ScriptWatchTable.
+
+The underlying C++ data source is `HiseSpecialData::getDebugInformation()`
+which provides the `DebugInformationBase` entries used by the IDE's watch
+table (see `ScriptWatchTable.cpp:194-227` for the equivalent desktop code).
+
+**Query Parameters**:
+
+| Parameter  | Required | Description                                        |
+|------------|----------|----------------------------------------------------|
+| `moduleId` | Yes      | Script processor ID (e.g., `"Interface"`)          |
+| `filter`   | No       | Glob pattern for variable names (e.g., `"my*"`)    |
+| `types`    | No       | Comma-separated type filter: `register`, `variable`, `constant`, `inlineFunction`, `globals`, `callback`, `apiClass`, `namespace` |
+| `depth`    | No       | Max nesting depth for children (default: `1`). `0` = no children. |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "moduleId": "Interface",
+    "variables": [
+      {
+        "type": "register",
+        "dataType": "int",
+        "name": "reg myCounter",
+        "value": "42",
+        "children": []
+      },
+      {
+        "type": "variable",
+        "dataType": "Array",
+        "name": "myArray",
+        "value": "[1, 2, 3]",
+        "children": [
+          { "type": "variable", "dataType": "int", "name": "myArray[0]", "value": "1", "children": [] },
+          { "type": "variable", "dataType": "int", "name": "myArray[1]", "value": "2", "children": [] },
+          { "type": "variable", "dataType": "int", "name": "myArray[2]", "value": "3", "children": [] }
+        ]
+      },
+      {
+        "type": "constant",
+        "dataType": "ScriptSlider",
+        "name": "Knob1",
+        "value": "ScriptSlider [0.5]",
+        "children": []
+      },
+      {
+        "type": "namespace",
+        "dataType": "Namespace",
+        "name": "Config",
+        "value": "",
+        "children": [
+          { "type": "constant", "dataType": "double", "name": "Config.sampleRate", "value": "44100.0", "children": [] }
+        ]
+      }
+    ]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Implementation notes**:
+
+The handler iterates `getNumDebugObjects()` / `getDebugInformation(i)` on
+the processor's `HiseJavascriptEngine`, calling `getTextForName()`,
+`getTextForDataType()`, `getTextForValue()`, `getType()`, and recursively
+`getNumChildElements()` / `getChildElement(i)` up to the requested depth.
+
+The `type` field maps from the `DebugInformation::Type` enum:
+`RegisterVariable`→`"register"`, `Variables`→`"variable"`,
+`Constant`→`"constant"`, `InlineFunction`→`"inlineFunction"`,
+`Globals`→`"globals"`, `Callback`→`"callback"`, `ApiClass`→`"apiClass"`,
+`ExternalFunction`→`"externalFunction"`, `Namespace`→`"namespace"`.
+
+The `filter` and `types` parameters are applied server-side to reduce
+payload size. Variable names are matched case-insensitively against the
+glob pattern. If both `filter` and `types` are omitted, all watchable
+variables are returned.
+
+Performance: the HISE IDE polls this data at 500ms intervals. The REST
+endpoint should be comparably lightweight. The debug information list
+itself only changes on recompilation — between recompilations, only
+`getTextForValue()` is re-evaluated (via the `ValueFunction` lambdas that
+capture weak references to the data source).
+
 ---
 
 ## Compile

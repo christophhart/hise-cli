@@ -64,6 +64,49 @@ src/
 
 The engine has **no dependency** on Ink, React, or any terminal UI library.
 
+### Isomorphic Engine
+
+The engine layer must be **isomorphic** — it runs in both Node.js and
+browser environments. This enables a web frontend (see below) alongside
+the terminal TUI and CLI, all sharing the same command engine.
+
+**Constraints on `src/engine/`:**
+
+1. **No `node:` imports** — no `node:fs`, `node:path`, `node:child_process`,
+   `node:os`, or any other Node.js builtins. This extends the existing rule
+   of no Ink/React imports.
+
+2. **`DataLoader` interface** for static dataset access:
+   ```ts
+   interface DataLoader {
+     loadModuleList(): Promise<ModuleList>;
+     loadScriptingApi(): Promise<ScriptingApi>;
+     loadScriptnodeList(): Promise<ScriptnodeList>;
+   }
+   ```
+   - Node.js implementation: reads from `data/*.json` via `fs.readFileSync()`
+     (lives in `src/tui/` or `src/cli/`, not in engine)
+   - Browser implementation: `import` from bundled JSON or `fetch()` from URL
+
+3. **`PhaseExecutor` interface** for pipeline phase execution:
+   ```ts
+   interface PhaseExecutor {
+     execute(script: string, options: PhaseOptions): Promise<PhaseResult>;
+   }
+   ```
+   - Node.js implementation: `child_process.spawn()` (lives in `src/tui/`
+     or `src/cli/`)
+   - Browser: pipeline steps are disabled (shell scripts can't run in a
+     browser). The web frontend skips pipeline wizards or delegates
+     execution to a backend.
+
+4. **`HiseConnection` uses `fetch()`** — works identically in Node.js 18+
+   and browsers. No change needed.
+
+5. **Theme as data** — color values are hex strings in the engine. Terminal
+   escape codes are TUI-specific. CSS custom properties are web-specific.
+   Both derive from the same hex values defined in the engine.
+
 ### Data Flow
 
 ```
@@ -77,7 +120,51 @@ The engine has **no dependency** on Ink, React, or any terminal UI library.
   CLI (LLM)         |  Modes, completion, plan,     |     SSE endpoint
   -------------     |  module tree tracking         |     (push events)
   args + flags ---> |                               |
-  JSON output  <--  +-------------------------------+
+  JSON output  <--  |                               |
+                    |                               |
+  Web (future)      |                               |
+  -------------     |                               |
+  React DOM    ---> |                               |
+  browser input     |                               |
+  HTML/CSS     <--  +-------------------------------+
+```
+
+### Web Frontend (Future)
+
+A browser-based frontend consuming the same engine layer. Three use cases,
+in order of priority:
+
+**Demo / playground** (no HISE needed): A hosted website that demonstrates
+the hise-cli interface with `MockHiseConnection` and bundled static datasets.
+Interactive command entry, tab completion, wizard walkthrough, module type
+browsing — all with fake data. Deployable to GitHub Pages or Vercel. Serves
+as documentation, training tool, and marketing asset.
+
+**Local companion** (same machine as HISE): A browser UI at
+`localhost:3000` connecting to HISE at `localhost:1900`. Same data flow as
+the TUI, richer rendering: proper tables, resizable panes, syntax-highlighted
+code editor, drag-and-drop module tree. No CORS issues (same origin or
+simple header).
+
+**Remote access** (different machine): Access HISE over the network from a
+tablet or laptop. Requires HISE to bind to `0.0.0.0` (currently hardcoded to
+`127.0.0.1`), authentication (the REST API has no auth — `/api/repl` can
+execute arbitrary code), and WebSocket/SSE for efficient push over WAN. The
+`HiseConnection` already accepts arbitrary `host:port`.
+
+**Terminal aesthetic in the browser**: The TUI's monospace grid, Monokai
+colors, box-drawing characters, and mode prompts are replicated via CSS:
+monospace font, hex colors as CSS custom properties, Unicode box-drawing
+characters rendered natively. The result looks like a terminal but has web
+superpowers: hover tooltips, clickable elements, smooth scrolling, resizable
+panels, responsive layout.
+
+```
+src/
+  engine/      ← shared, isomorphic (zero platform deps)
+  tui/         ← Ink/React terminal (Node.js only)
+  cli/         ← JSON output (Node.js only)
+  web/         ← React DOM (browser only, future)
 ```
 
 ### Smart Client Responsibility Split
@@ -511,6 +598,42 @@ hello
 
 Uses `POST /api/repl` (not `set_script`). For external file edits, the user
 edits in their editor and calls `/recompile` from the TUI.
+
+#### Variable Watch
+
+A live variable watch replicating the HISE IDE's ScriptWatchTable. Shows all
+script variables with their current values, updated by polling
+`GET /api/watch_variables` (new endpoint, see
+[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md)).
+
+```
+[script:Interface] > /watch                    # toggle watch panel
+[script:Interface] > /watch myVar*             # filter by glob pattern
+[script:Interface] > /watch --type var,const    # filter by variable type
+```
+
+**Data per entry** (matches `DebugInformationBase` in C++ source):
+
+| Field | Description |
+|-------|-------------|
+| `type` | Category: `register`, `variable`, `constant`, `inlineFunction`, `globals`, `callback`, `apiClass`, `namespace` |
+| `dataType` | HiseScript type: `int`, `double`, `String`, `Array`, `Object`, `ScriptButton`, etc. |
+| `name` | Variable name, possibly namespaced (`MyNamespace.myConst`) |
+| `value` | Current value as string |
+| `children` | Nested properties/elements for objects and arrays (hierarchical) |
+
+**TUI rendering**: sidebar panel
+([docs/TUI_STYLE.md — Section 3.8](docs/TUI_STYLE.md)) or toggled view
+that splits the output area. Type badges use color-coded single letters
+(R=register, V=variable, C=constant, etc.) matching the HISE IDE.
+
+**Filter**: glob patterns on variable names (`my*`, `*.value`, `Namespace.*`).
+Type filter restricts which categories are shown. Both filters are applied
+client-side on the full dataset from HISE.
+
+**Refresh**: configurable polling interval, default 500ms (matching the HISE
+IDE's default ScriptWatchTable refresh rate). The variable list itself only
+rebuilds on recompilation — between recompilations, only values are polled.
 
 ### Sampler Mode
 
@@ -1371,6 +1494,30 @@ becomes a shared building block rather than being locked inside one flow.
 **Alternative rejected**: Separate TUI overlays and CLI commands per operation.
 This duplicates validation logic, option definitions, and help text across two
 codepaths. The wizard framework ensures a single source of truth.
+
+### 13. Isomorphic engine for web compatibility
+
+**Decision**: The engine layer (`src/engine/`) must contain zero `node:`
+imports and use two platform abstraction interfaces (`DataLoader` for static
+dataset access, `PhaseExecutor` for shell execution) so it runs unmodified
+in both Node.js and browser environments.
+
+**Rationale**: A browser-based frontend is a high-value target — from a
+hosted demo playground (marketing, documentation, training) to a local
+companion app with richer rendering than a terminal. The engine is already
+UI-agnostic (no Ink/React imports); extending this to platform-agnostic
+costs two small interfaces and one rule (`no node:` imports). The `fetch()`
+API used by `HiseConnection` works in both environments natively.
+
+**Cost**: Two interfaces (`DataLoader`, `PhaseExecutor`) with
+platform-specific implementations in the frontend layers. All static
+datasets (`moduleList.json`, etc.) need to be loaded through `DataLoader`
+rather than direct filesystem access. Pipeline wizard phases (shell scripts)
+are Node.js-only and disabled in the browser frontend.
+
+**Alternative rejected**: Making the engine Node.js-only would be simpler
+today but would require a full rewrite of the engine to add a web frontend
+later. The abstraction cost now is trivial compared to the retrofit cost.
 
 ---
 

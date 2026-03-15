@@ -46,6 +46,8 @@ Tracks [#1](https://github.com/christoph-hart/hise-cli/issues/1) (engine core).
 src/engine/
   hise.ts              HiseConnection interface + HttpHiseConnection
   hise.test.ts         Tests with MockHiseConnection
+  data.ts              DataLoader interface (isomorphic static dataset access)
+  data.test.ts
   session.ts           Session state (mode stack, history, connection)
   session.test.ts
   result.ts            CommandResult types
@@ -59,6 +61,18 @@ src/engine/
     root.ts            Root mode (slash commands only)
     root.test.ts
 ```
+
+**Isomorphic constraint** (see
+[DESIGN.md — Decision #13](DESIGN.md#13-isomorphic-engine-for-web-compatibility)):
+the engine layer must contain zero `node:` imports. Platform-specific
+operations use two interfaces:
+
+- `DataLoader` — loads `moduleList.json`, `scriptnodeList.json`,
+  `scripting_api.json`. Node.js implementation reads from filesystem
+  (lives in `src/tui/` or `src/cli/`). Browser implementation bundles
+  the JSON or fetches from URL (lives in `src/web/`).
+- `PhaseExecutor` — runs shell scripts for pipeline phases. Node.js only
+  (`child_process.spawn`). Disabled in browser.
 
 ### 0.3 `HiseConnection` — interface + HTTP implementation
 
@@ -618,6 +632,19 @@ Tracks [#8](https://github.com/christoph-hart/hise-cli/issues/8).
 Multi-line support (unclosed brackets), `_` for last result, `/api`
 inline help, syntax highlighting in input field.
 
+**Variable watch** (see
+[DESIGN.md — Script Mode / Variable Watch](DESIGN.md#variable-watch)):
+
+- Engine: `src/engine/modes/script-watch.ts` — polls
+  `GET /api/watch_variables`, parses hierarchical debug info, applies
+  glob/type filters client-side
+- TUI: sidebar panel or toggled split view with live-updating table.
+  Type badges (R/V/C/G/N) in color. Expandable object/array children.
+  `/watch [glob]` to toggle and filter.
+- Configurable polling interval (default 500ms, matching HISE IDE)
+- Depends on `GET /api/watch_variables` — new endpoint in
+  [#12](https://github.com/christoph-hart/hise-cli/issues/12)
+
 ### 6.3 Inspect mode — full implementation
 
 Tracks [#7](https://github.com/christoph-hart/hise-cli/issues/7).
@@ -662,6 +689,65 @@ Depends on [#12](https://github.com/christoph-hart/hise-cli/issues/12).
 
 ---
 
+## Phase 8 — Web Frontend
+
+**Goal**: browser-based frontend sharing the engine layer. Terminal aesthetic
+via monospace CSS. Three targets, implemented incrementally.
+
+See [DESIGN.md — Web Frontend](DESIGN.md#web-frontend-future) and
+[DESIGN.md — Decision #13](DESIGN.md#13-isomorphic-engine-for-web-compatibility).
+
+### 8.1 Web shell
+
+Directory: `src/web/`
+
+React DOM app (Vite) that renders engine `Session` state in the browser.
+Monospace CSS replicating the TUI aesthetic:
+
+- Monospace font (`JetBrains Mono` / `Fira Code` / system fallback)
+- All 4 color layers as CSS custom properties (same hex values as TUI)
+- Layout regions (TopBar, Output, Input, StatusBar) as flexbox divs
+- Box-drawing characters (`─`, `│`, `├`, `└`, `▎`) rendered natively
+- Mode-colored prompts, type badges, tree connectors — all CSS
+- Cursor blinking via CSS animation
+
+Web superpowers beyond what the TUI can do:
+- Hover tooltips on module types, API methods
+- Clickable elements (expand trees, navigate to definitions)
+- Resizable panes (sidebar, output split)
+- Smooth scrolling
+- Copy-to-clipboard buttons on code blocks
+- Syntax highlighting via CodeMirror or custom tokenizer
+
+### 8.2 Mock playground
+
+The demo/playground — a standalone web app with `MockHiseConnection` and
+bundled static datasets. No HISE instance needed.
+
+- Interactive command entry with tab completion
+- Mode switching, wizard walkthrough
+- Module type browser (79 modules with parameters)
+- API reference browser (89 classes, 1789 methods)
+- Scriptnode node browser (194 nodes, 12 factories)
+- Deployable to GitHub Pages, Vercel, or similar static hosting
+
+### 8.3 Live companion
+
+Connect to a real HISE instance at configurable `host:port`. Uses
+`HttpHiseConnection` (same `fetch()` API, works in browser).
+
+- Full REPL functionality against live HISE
+- Variable watch with live updates
+- Module tree visualization
+- Requires HISE on same machine (localhost) or network-accessible
+
+### Future: Remote access
+
+Requires C++ changes (HISE binding to `0.0.0.0`, authentication) and
+SSE/WebSocket for efficient push. Not in current scope.
+
+---
+
 ## Dependencies on HISE C++ work
 
 [#12](https://github.com/christoph-hart/hise-cli/issues/12) tracks all new
@@ -678,6 +764,7 @@ REST API endpoints. This work proceeds in parallel on the HISE side.
 | Builder execution | `POST /api/builder/add`, `/remove`, `/move`, `/set` | Phase 4 |
 | Plan validation | `POST /api/builder/add` with `validate: true` | Phase 4 |
 | Module tree fetch | `GET /api/builder/tree` | Phase 4 |
+| Variable watch | `GET /api/watch_variables` (new) | Phase 6 |
 | DSP mode | `POST /api/dsp/*` | Phase 6 |
 | Sampler mode | `POST /api/sampler/*` | Phase 6 |
 | SSE events | `GET /api/events` (not yet implemented in C++) | Phase 6-7 |
