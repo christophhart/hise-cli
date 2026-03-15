@@ -58,6 +58,15 @@ heading, and the left-border `▎` on command echo lines in the output.
 | Compile  | Magenta  | `#f92672` |
 | Import   | Teal     | `#2de0a5` |
 
+**Wizard accent** (not a mode — a UI chrome color for the wizard overlay):
+
+| Context  | Name     | Hex       |
+|----------|----------|-----------|
+| Wizard   | Copper   | `#e8a060` |
+
+Used for: wizard overlay border, step indicator highlight, header title, confirm
+highlights, selected item markers. See Section 3.10 for full specification.
+
 On light themes (`scheme.light === true`), accents with poor contrast (yellow, green,
 cyan) are automatically darkened by ~20% for readability.
 
@@ -522,6 +531,117 @@ Continuously updating metrics driven by SSE push events from `GET /api/events`.
 | MIDI dots `●`  | SIGNAL_COLOUR (active), `foreground.muted` (inactive) |
 | MIDI log       | `foreground.muted`       |
 
+### 3.10 Wizard Overlay
+
+Centered floating panel for multi-step guided workflows. Triggered by `/wizard <id>`
+or `wizard <id>` in a mode that registers the wizard. See [DESIGN.md](../DESIGN.md)
+"Wizard Framework" for the engine-layer architecture and type definitions.
+
+**Dimensions**: fixed 60 chars wide × 20 lines tall. Centered horizontally and
+vertically over the REPL content. The REPL remains visible behind the overlay
+(dimmed by the overlay background).
+
+**Background**: `backgrounds.overlay`. **Border**: single-line box drawing characters
+(`┌─┐│└─┘`) in wizard copper accent `#e8a060`.
+
+**Layout** (inside border: 58 usable columns × 18 usable rows):
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Step 2/5 — Select Sources                [Esc] Back     │  ← header
+│──────────────────────────────────────────────────────────│  ← separator
+│                                                          │
+│  Which event sources should this broadcaster             │  ← description
+│  listen to?                                              │
+│                                                          │
+│    ● Component property changes                          │  ← options
+│      Module parameter changes                            │
+│      Script variable changes                             │
+│      MIDI messages                                       │
+│      Routing matrix changes                              │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│──────────────────────────────────────────────────────────│  ← separator
+│                                         [Enter] Select   │  ← footer
+└──────────────────────────────────────────────────────────┘
+```
+
+**Header row** (row 1):
+- Left: "Step N/M" in `foreground.muted`, "— Step Title" in wizard copper (`#e8a060`), bold
+- Right: "[Esc] Back" in `foreground.muted` (or "[Esc] Cancel" when on step 1)
+
+**Content area** (rows 3–16, 14 usable lines): Renders the current step type.
+
+**Footer row** (row 18): Right-aligned keybind hints in `foreground.muted`. Content
+changes per step type.
+
+#### Step Type Rendering
+
+**Select** — single selection from a list:
+- Arrow-navigable vertical list
+- Selected item: `●` marker in wizard copper, label in `foreground.bright`
+- Unselected items: 2-space indent (no marker), label in `foreground.default`
+- Option descriptions (if present): shown below label in `foreground.muted`, indented
+- Scrollable if >12 items: `▲`/`▼` indicators at top/bottom in `foreground.muted`
+- Footer: `[Enter] Select`
+
+**Multi-select** — multiple selections with checkboxes:
+- `[✓]` in wizard copper for selected, `[ ]` in `foreground.muted` for unselected
+- `Space` toggles individual items, `a` selects all, `n` selects none
+- Footer: `3 selected  [Space] Toggle  [a] All  [n] None  [Enter] Confirm`
+
+**Text** — free-form text input:
+- Single-line text input rendered on a `backgrounds.raised` stripe (1 row tall)
+- Placeholder text in `foreground.muted` when empty
+- Cursor visible, text in `foreground.bright`
+- Validation error (if any): shown below input in `HISE_ERROR_COLOUR`
+- Footer: `[Enter] Confirm`
+
+**Toggle** — boolean yes/no choice:
+- Two options rendered as radio buttons: `● Yes  ○ No` (or custom labels)
+- `←`/`→` arrow keys to switch between options
+- Selected option: `●` in wizard copper, label in `foreground.bright`
+- Unselected option: `○` in `foreground.muted`, label in `foreground.default`
+- Footer: `[Enter] Confirm`
+
+**Form** — multiple fields on one page:
+- Vertical field list with labels left-aligned in `foreground.muted`
+- `Tab` cycles between fields, `Shift+Tab` cycles backwards
+- Current field highlighted: label gets copper underline, value area gets
+  `backgrounds.raised` background
+- Required fields marked with `*` in wizard copper after the label
+- Each field renders inline according to its type:
+  - Text: cursor-editable input
+  - Select: shows current value, `↑`/`↓` to change inline (compact, no dropdown)
+  - Toggle: `● Yes  ○ No`, `←`/`→` to switch
+- Field-level validation errors shown below the field in `HISE_ERROR_COLOUR`
+- Footer: `[Tab] Next field  [Enter] Confirm all`
+
+**Repeat group** — repeatable set of steps:
+- After completing the group's inner steps, shows a prompt:
+  `Add another [label]? [Y/n]` with count: "2 listeners configured"
+- `Y`/`Enter` starts another iteration, `N`/`Escape` advances past the group
+- Iteration count shown in header: "Step 3/5 — Add Listener (2 of 4)"
+
+**Preview** — generated output with syntax highlighting:
+- Code block rendered with Layer 3 syntax colors (Section 1.4)
+- Scrollable with `↑`/`↓` if content exceeds the 14-line content area
+- Scroll position indicator on right edge in `foreground.muted`
+- Footer: `[Enter] Accept  [c] Copy  [Esc] Reject`
+
+#### Help Text
+
+Each step can have a description that appears below the title. When the
+description exceeds 2 lines, it is truncated with `…`. Press `?` to expand
+the full help text in a scrollable area (replaces the option list temporarily;
+press `?` again or `Escape` to return to the step).
+
+Help text in `foreground.default`. Inline code in help text uses syntax
+highlighting color `ScopedStatement` (`#88bec5`).
+
 ---
 
 ## 4. Interaction Patterns
@@ -566,14 +686,36 @@ Slash commands are always available in every mode. They are never recorded in pl
 4. Selecting a mode enters it (equivalent to typing the slash command)
 5. Palette closes on selection or Escape
 
-### 4.5 Mode Stack
+### 4.5 Wizard Keyboard Map
+
+When a wizard overlay is active, it captures all keyboard input. The standard
+REPL shortcuts (`Ctrl+Space`, `Ctrl+B`, etc.) are inactive while the overlay
+is open.
+
+| Key              | Action                                      | Step types       |
+|------------------|---------------------------------------------|------------------|
+| `↑` / `↓`       | Navigate options                            | select, multi-select |
+| `←` / `→`       | Switch toggle value                         | toggle           |
+| `Enter`          | Confirm step and advance                    | all              |
+| `Escape`         | Go back one step (cancel if step 1)         | all              |
+| `Space`          | Toggle item selection                       | multi-select     |
+| `a`              | Select all items                            | multi-select     |
+| `n`              | Select none                                 | multi-select     |
+| `Tab`            | Next field                                  | form             |
+| `Shift+Tab`      | Previous field                              | form             |
+| `c`              | Copy to clipboard                           | preview          |
+| `?`              | Expand/collapse full help text              | all              |
+| `Y`              | Add another iteration                       | repeat prompt    |
+| `N`              | Finish repeating, advance                   | repeat prompt    |
+
+### 4.6 Mode Stack
 
 - Modes nest: `builder` → `builder:plan`. Top bar and prompt update on each change.
 - `/exit` pops one level. If at root, `/exit` is a no-op (use `Ctrl+C` to quit).
 - `Ctrl+C` always exits the application entirely, regardless of nesting depth.
 - Entering a new top-level mode (e.g., `/script` while in builder) replaces the stack.
 
-### 4.6 Scroll Behavior
+### 4.7 Scroll Behavior
 
 - New output auto-scrolls to bottom (live mode)
 - `PageUp`/`PageDown` scroll by 80% of output viewport height

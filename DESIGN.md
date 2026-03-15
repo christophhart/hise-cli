@@ -40,6 +40,7 @@ src/
     completion/    Tab completion engine
     plan/          Plan mode state + script generation
     validation/    Local type-level validation (moduleList.json)
+    wizard/        Wizard definitions, runner, executor, registry
     result.ts      CommandResult types
     session.ts     Mode stack, history, session state
     hise.ts        HiseConnection interface + HTTP implementation
@@ -255,6 +256,7 @@ HISE, never recorded in plan mode.
 | `/project`           | Enter project mode                                  |
 | `/import`            | Enter import mode                                   |
 | `/inspect`           | Enter inspect mode                                  |
+| `/wizard [id]`       | Open wizard (or list available wizards)              |
 | `/clear`             | Clear output                                        |
 | `/history`           | Show command history                                |
 | `/export [path]`     | Export plan as HiseScript (in plan submode)          |
@@ -615,6 +617,260 @@ as additional JSON files.
 
 ---
 
+## Wizard Framework
+
+Wizards are declarative multi-step guided workflows for complex operations that
+require multiple coordinated inputs — broadcaster configuration, asset payload
+creation, monolith encoding, project scaffolding, etc. HISE already has C++
+multipage dialogs for many of these tasks; the wizard framework provides a
+better UX in the TUI and a structured single-shot interface for the CLI.
+
+### Dual Interface — Same Definition
+
+A wizard definition lives in the engine layer and serves both frontends:
+
+| Aspect           | TUI (human)                          | CLI (LLM / automation)                |
+|------------------|--------------------------------------|---------------------------------------|
+| Invocation       | `/wizard broadcaster`                | `hise-cli wizard broadcaster --answers '{...}'` |
+| Interaction      | Step-by-step overlay, one page at a time | Single-shot: all answers supplied upfront |
+| Validation       | Per-step, inline error display       | All-at-once, returns error array      |
+| Dynamic data     | Resolved lazily per step             | Resolved during validation            |
+| Output           | Preview → accept/copy/reject         | JSON result with generated content    |
+| Schema discovery | The wizard guides you                | `--schema` dumps definition as JSON   |
+
+This is a key architectural benefit: complex multi-parameter operations (like
+monolith encoding with sample map selection, format options, and target paths)
+get a single unified interface rather than requiring the LLM to know the raw
+REST API endpoints, their parameter formats, and their sequencing.
+
+### Engine Types (`src/engine/wizard/`)
+
+```ts
+interface WizardDefinition {
+  id: string;                    // e.g. "broadcaster"
+  name: string;                  // "Broadcaster Wizard"
+  description: string;
+  modes: string[];               // which modes can invoke this (empty = global only)
+  steps: WizardStep[];
+  output: WizardOutput;
+}
+
+type WizardStep =
+  | SelectStep
+  | MultiSelectStep
+  | TextStep
+  | ToggleStep
+  | FormStep
+  | RepeatGroup
+  | PreviewStep;
+
+// --- Step types ---
+
+interface SelectStep {
+  type: "select";
+  id: string;
+  title: string;
+  description?: string;
+  options?: SelectOption[];           // static options
+  resolve?: ResolverFn;              // or dynamic options from HISE
+  showIf?: (answers: Answers) => boolean;
+}
+
+interface MultiSelectStep {
+  type: "multi-select";
+  id: string;
+  title: string;
+  description?: string;
+  options?: SelectOption[];
+  resolve?: ResolverFn;
+  showIf?: (answers: Answers) => boolean;
+}
+
+interface TextStep {
+  type: "text";
+  id: string;
+  title: string;
+  description?: string;
+  placeholder?: string;
+  validate?: (value: string) => string | null;  // error message or null
+  showIf?: (answers: Answers) => boolean;
+}
+
+interface ToggleStep {
+  type: "toggle";
+  id: string;
+  title: string;
+  description?: string;
+  default?: boolean;
+  showIf?: (answers: Answers) => boolean;
+}
+
+interface FormStep {
+  type: "form";
+  id: string;
+  title: string;
+  description?: string;
+  fields: FormField[];
+  showIf?: (answers: Answers) => boolean;
+}
+
+interface RepeatGroup {
+  type: "repeat";
+  id: string;
+  title: string;
+  addLabel?: string;                  // "Add another listener?"
+  maxCount?: number;
+  steps: WizardStep[];                // nested steps to repeat
+  showIf?: (answers: Answers) => boolean;
+}
+
+interface PreviewStep {
+  type: "preview";
+  id: string;
+  title: string;
+  generate: (answers: Answers) => PreviewResult;
+}
+
+// --- Supporting types ---
+
+interface SelectOption {
+  label: string;
+  value: string;
+  description?: string;
+}
+
+type FormField = {
+  id: string;
+  label: string;
+  required?: boolean;
+  description?: string;
+  showIf?: (answers: Answers) => boolean;
+} & (
+  | { type: "text"; placeholder?: string; validate?: (v: string) => string | null }
+  | { type: "select"; options?: SelectOption[]; resolve?: ResolverFn }
+  | { type: "toggle"; default?: boolean }
+);
+
+interface PreviewResult {
+  content: string;
+  language?: string;               // for syntax highlighting ("hisescript", "json")
+  actions: ("accept" | "reject" | "copy")[];
+}
+
+type WizardOutput =
+  | { type: "clipboard"; generate: (answers: Answers) => string }
+  | { type: "apply"; execute: (answers: Answers, hise: HiseConnection) => Promise<CommandResult> }
+  | { type: "preview-then-decide" };  // uses the PreviewStep's actions
+
+type Answers = Record<string, unknown>;
+type ResolverFn = (answers: Answers, hise?: HiseConnection) => Promise<SelectOption[]>;
+```
+
+**FormStep** renders multiple fields on a single page. This matches the
+existing HISE wizard layout where one page often has 2–5 related inputs
+(e.g., the broadcaster's ComplexData branch needs DataType, EventType,
+ModuleIDs, SlotIndex, and Metadata on one page).
+
+**RepeatGroup** clones its inner steps for each iteration, appending `_0`,
+`_1`, etc. to field IDs in the answers map. After completing the group's
+steps, a "Add another?" prompt appears. `maxCount` caps repetitions.
+
+### State Machines
+
+Two entry points into the same definition:
+
+**WizardRunner** (TUI path — step-by-step):
+
+```ts
+class WizardRunner {
+  definition: WizardDefinition;
+  answers: Answers;
+  currentStepIndex: number;
+  repeatCounts: Record<string, number>;
+
+  visibleSteps(): WizardStep[];       // filters by showIf, expands repeats
+  currentStep(): WizardStep;
+  advance(answer: unknown): void;     // validate, store, move forward
+  back(): void;                       // restore previous, move back
+  canGoBack(): boolean;
+  isComplete(): boolean;
+  generateOutput(): Promise<string | CommandResult>;
+}
+```
+
+Answers are preserved when navigating back. Changing an answer that affects
+`showIf` conditions does not reset later answers — they are re-evaluated on
+each advance, and hidden steps retain their stored values silently.
+
+**WizardExecutor** (CLI path — single-shot):
+
+```ts
+class WizardExecutor {
+  definition: WizardDefinition;
+
+  execute(answers: Answers, hise?: HiseConnection): Promise<{
+    result: string | CommandResult;
+    errors?: { field: string; message: string }[];
+  }>;
+
+  validate(answers: Answers): ValidationResult;
+
+  schema(): WizardSchema;             // JSON-serializable definition for --schema
+}
+```
+
+The `validate` method evaluates `showIf` predicates to determine which fields
+are required given the supplied answers, checks required fields, validates
+values against options/validators, and resolves dynamic options to validate
+against them. The `schema` method returns a JSON-serializable representation
+of the wizard definition (steps, options, types, descriptions) that LLMs can
+use to discover what parameters are needed.
+
+### Registration & Invocation
+
+Wizards are registered in a `WizardRegistry` (engine layer):
+
+| Invocation | Syntax | Effect |
+|------------|--------|--------|
+| Global     | `/wizard <id>` | Opens wizard from any mode or root |
+| Global     | `/wizard` (no args) | Selection list of available wizards, filtered by current mode |
+| Mode-specific | `wizard <id>` (no slash) | Available when current mode is in the wizard's `modes[]` |
+| CLI        | `hise-cli wizard <id> --answers '<json>'` | Single-shot execution |
+| CLI        | `hise-cli wizard <id> --schema` | Dump wizard parameter schema as JSON |
+| CLI        | `hise-cli wizard list` | List available wizards |
+
+Tab completion works on wizard IDs in both `/wizard` and mode-specific `wizard`
+contexts. The `--schema` flag is particularly valuable for LLMs — they can
+query the wizard's parameter schema, see all options and help text, and
+construct the right answers without step-by-step interaction.
+
+### Lifecycle
+
+**TUI:**
+1. User invokes wizard → engine creates `WizardRunner` → TUI opens overlay
+2. Each step: engine resolves options if needed → TUI renders step → user
+   answers → engine validates and advances
+3. On complete: engine generates output → TUI shows preview or executes action
+4. On cancel (`Escape` from step 1): engine discards runner → TUI closes overlay
+
+**CLI:**
+1. Tool invokes `hise-cli wizard <id> --answers '{...}'`
+2. Engine creates `WizardExecutor`, validates all answers at once
+3. If valid: resolves dynamic data, generates output, returns JSON result
+4. If invalid: returns error array with field-level messages
+
+### Source Data
+
+Wizard definitions are hand-written TypeScript in `src/engine/wizard/`.
+The existing C++ multipage dialog JSON files in `data/wizards/` serve as
+design reference material — they contain page layouts, component types,
+option lists, help text, and branching logic from the HISE desktop dialogs.
+These are not parsed at runtime. See
+[docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md) for the conversion
+process from C++ dialog JSON to TypeScript `WizardDefinition`.
+
+---
+
 ## Key Design Decisions
 
 ### 1. Smart client - local type validation + HISE instance validation
@@ -746,6 +1002,26 @@ server's job (AI agents editing scripts programmatically). The TUI never
 needs to replace script content. For external file changes, the user edits
 in their editor and calls `POST /api/recompile` from the TUI.
 
+### 12. Wizards as unified interface for complex operations
+
+**Decision**: Complex multi-parameter operations (broadcaster setup, monolith
+encoding, asset payload creation, project scaffolding) are modeled as
+declarative wizard definitions in the engine layer, with the TUI rendering
+them as interactive step-by-step overlays and the CLI exposing them as
+single-shot parameterized commands.
+
+**Rationale**: HISE already has C++ multipage dialogs for many of these tasks,
+but their UX is poor. More importantly, the raw REST API endpoints for these
+operations require the caller to know endpoint URLs, parameter formats, valid
+option sets, and sequencing. A wizard definition captures all of this in one
+place — the TUI gets a guided experience, the CLI gets a self-documenting
+command with built-in validation, and LLMs get a `--schema` flag to discover
+parameters. One definition serves three audiences.
+
+**Alternative rejected**: Separate TUI overlays and CLI commands per operation.
+This duplicates validation logic, option definitions, and help text across two
+codepaths. The wizard framework ensures a single source of truth.
+
 ---
 
 ## Implementation Phases
@@ -767,4 +1043,5 @@ independent work that can proceed in parallel.
 | 10    | [#11](https://github.com/christoph-hart/hise-cli/issues/11) | Workspace Navigation + Sampler Mode      |
 | 11    | [#10](https://github.com/christoph-hart/hise-cli/issues/10) | Command Palette (Ctrl+Space)             |
 | 12    | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | HISE REST API Extensions + SSE (C++ side) |
+| 13    | -     | Wizard Framework + First Wizard Definitions                  |
 | -     | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Future: Wave Editing + Sample Analysis   |
