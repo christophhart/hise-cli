@@ -632,6 +632,93 @@ changes per step type.
 - Scroll position indicator on right edge in `foreground.muted`
 - Footer: `[Enter] Accept  [c] Copy  [Esc] Reject`
 
+**Pipeline** — sequential task execution with live output:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  Step 4/5 — Build                         [Ctrl+C] Abort │
+│──────────────────────────────────────────────────────────│
+│  ✓ Clone repository              12s                     │
+│  ✓ Install build dependencies     3s                     │
+│  ⠋ Compile HISE                                          │
+│  — Verify build                                          │
+│  — Configure & test                                      │
+│──────────────────────────────────────────────────────────│
+│  [ configuring release build...                          │
+│  [ -- Building for x86_64                                │
+│  [ compiling juce_audio_basics.cpp                       │
+│  [ compiling juce_audio_devices.cpp                      │
+│  [ compiling juce_audio_formats.cpp                      │
+│                                                          │
+│──────────────────────────────────────────────────────────│
+│                                 [l] Expand log           │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **Phase list** (top section): one line per phase, scrolls if >6 phases
+  - `✓` in `HISE_OK_COLOUR` — completed, duration in `foreground.muted` right-aligned
+  - `⠋` spinner in wizard copper — active (cycles through braille dots `⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`)
+  - `✗` in `HISE_ERROR_COLOUR` — failed
+  - `—` in `foreground.muted` — pending
+  - `⊘` in `foreground.muted` — skipped
+  - Phase name in `foreground.default` (active phase in `foreground.bright`)
+- **Separator** between phase list and log pane: `─` in `foreground.muted`
+- **Log pane** (bottom section): streaming output from active phase
+  - Lines prefixed with `[` in `foreground.muted` (visual bracket, not literal)
+  - Log text in `foreground.muted`
+  - Last 8 lines visible in compact mode
+  - Press `l` to toggle expanded log: fills entire content area, phase list
+    collapses to single line showing current phase name + spinner
+- **Progress bar** (if phase reports numeric progress): appears on the active
+  phase's line, replacing the spinner. Same style as Section 3.5.
+- On failure: phase shows `✗`, log pane shows last error output,
+  footer: `[r] Retry  [Esc] Back`
+- On all phases complete: footer: `[Enter] Continue`
+
+**Display field** (in form steps) — read-only computed content:
+- Rendered in `foreground.muted` on `backgrounds.standard` (no raised stripe)
+- Not focusable — `Tab` skips display fields
+- Multi-line content wraps within field width, max 4 visible lines, truncated
+  with `…` if longer
+- Label in `foreground.muted` (same as other form field labels)
+- No cursor, no border, no interaction
+
+#### Validation Error Rendering
+
+When the user presses Enter to advance and validation fails (sync or async):
+
+- Error message appears **below the failing field**, one line, in
+  `HISE_ERROR_COLOUR` (`#BB3434`)
+- In form steps with multiple errors: all error messages shown simultaneously,
+  cursor jumps to the first error field
+- Error text truncated with `…` if it exceeds the field width
+- Errors **persist until the next Enter press** — not cleared on keystroke
+- During async validation: brief blocking pause (no spinner). If validation
+  takes >2 seconds, `Validating...` appears in the footer in `foreground.muted`
+
+```
+│  Module IDs *                                            │
+│  [Sampler1, FooModule                               ]    │
+│  Unknown module: FooModule                               │  ← HISE_ERROR_COLOUR
+│                                                          │
+│  Parameters *                                            │
+│  [Gain, Attack                                      ]    │
+│  Unknown parameter "Attack" for SimpleGain               │  ← HISE_ERROR_COLOUR
+```
+
+#### Standalone Mode
+
+Wizards with `standalone: true` (setup, update, migrate, nuke) run without a
+REPL session. The overlay renders identically but on a bare background:
+
+- Terminal filled with `backgrounds.standard`
+- Wizard panel centered at the same 60×20 fixed size
+- Top-left corner of terminal: `HISE` in `SIGNAL_COLOUR` (`#90FFB1`), bold
+- No top bar, no bottom bar, no sidebar — just the branded background and
+  the wizard panel
+- All other rendering (border, header, content, footer) is identical to the
+  REPL overlay mode
+
 #### Help Text
 
 Each step can have a description that appears below the title. When the
@@ -707,6 +794,9 @@ is open.
 | `?`              | Expand/collapse full help text              | all              |
 | `Y`              | Add another iteration                       | repeat prompt    |
 | `N`              | Finish repeating, advance                   | repeat prompt    |
+| `l`              | Toggle compact/expanded log                 | pipeline         |
+| `r`              | Retry from failed phase                     | pipeline (on failure) |
+| `Ctrl+C`         | Abort pipeline (sends abort signal)         | pipeline (while running) |
 
 ### 4.6 Mode Stack
 

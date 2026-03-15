@@ -48,18 +48,18 @@ These are all the component types found across existing wizard JSONs:
 | `Choice`             | Dropdown selector                        | `select` field/step   |
 | `TagList`            | Multi-selection tag buttons              | `multi-select` step   |
 | `MarkdownText`       | Static descriptive text                  | Step `description`    |
-| `SimpleText`         | Plain label text                         | Step `description` or label |
+| `SimpleText`         | Plain label text (or dynamic display if has `ID`) | Step `description`, label, or `display` field |
 | `Branch`             | Conditional page selection               | `showIf` on steps     |
 | `List`               | Vertical layout container (= page/group) | `form` step or step grouping |
 | `Column`             | Horizontal layout with width ratios      | Layout hint (discard) |
 | `FileSelector`       | File/directory picker                    | `text` field with resolver |
 | `ColourChooser`      | Color picker                             | `text` field with hex validation |
 | `JavascriptFunction` | Inline or bound code                     | Resolver or discard   |
-| `LambdaTask`         | C++ function call on submit              | `WizardOutput.execute` TODO |
+| `LambdaTask`         | C++ function call on submit              | `WizardOutput.execute` TODO or `pipeline` phase |
 | `CoallascatedTask`   | Sequential task chain                    | Multi-step output TODO |
 | `DownloadTask`       | URL download                             | Resolver or output TODO |
 | `Skip`               | Empty placeholder in branch              | `showIf: () => false` |
-| `Placeholder`        | Special content area                     | `preview` step        |
+| `Placeholder`        | Special content area                     | `preview` step or `pipeline` step |
 
 ### Key Component Properties
 
@@ -319,9 +319,11 @@ provide path completion (listing directory contents as suggestions).
 - Inline `Code` → read to understand behavior, discard the code itself
 - `EventTrigger: "OnSubmit"` → likely maps to wizard output logic
 
-### 11. LambdaTask / CoallascatedTask → WizardOutput
+### 11. LambdaTask / CoallascatedTask → WizardOutput or Pipeline
 
-These represent the final action when the wizard completes:
+These can map to two different things depending on context:
+
+**As wizard output** (final action, e.g., creating a project):
 
 ```ts
 output: {
@@ -332,6 +334,23 @@ output: {
   },
 }
 ```
+
+**As pipeline phase** (when paired with a Logger placeholder — see rule 13):
+
+```ts
+{
+  id: "compileTask",
+  name: "Compile",
+  execute: async (answers, { onLog, onProgress, signal }) => {
+    // TODO: implement — invokes shared compile phase
+    // Original C++ function: "compileTask"
+  },
+}
+```
+
+Distinguish by context: if the page containing the `LambdaTask` also has
+a `Placeholder` with `ContentType: "Logger"`, it's a pipeline step. If
+it's a standalone task on a final page, it's wizard output.
 
 ### 12. Placeholder with CustomResultPage → Preview Step
 
@@ -350,6 +369,129 @@ output: {
   },
 }
 ```
+
+### 13. Placeholder with Logger + LambdaTask → Pipeline Step
+
+A page containing a `Placeholder` with `ContentType: "Logger"` paired with
+a `LambdaTask` represents a compilation/execution page with streaming output.
+This is the most common pattern for heavyweight operations. Found in:
+`plugin_export.json`, `compile_networks.json`.
+
+```json
+{
+  "Type": "Placeholder",
+  "ID": "CompileOutput",
+  "ContentType": "Logger"
+},
+{
+  "Type": "LambdaTask",
+  "ID": "compileTask",
+  "Function": "compileTask"
+}
+```
+
+Becomes:
+
+```ts
+{
+  type: "pipeline",
+  id: "compilation",
+  title: "Compilation",
+  phases: [
+    {
+      id: "compile",
+      name: "Compile",
+      execute: async (answers, { onLog, signal }) => {
+        // TODO: use shared compile phase from src/engine/wizard/phases/compile.ts
+        // Original C++ function: "compileTask"
+      },
+    },
+  ],
+}
+```
+
+Any "Copy to clipboard" `Button` adjacent to the Logger on the same page
+can be discarded — the pipeline step handles log display natively.
+
+### 14. SimpleText / MarkdownText with ID → Display Field
+
+When a `SimpleText` or `MarkdownText` has an `ID` attribute, it represents
+dynamically populated read-only content (not static descriptive text).
+Examples: output file path preview (`OutputFile`), network file lists
+(`nodeList`, `cppList`, `faustList`).
+
+```json
+{
+  "Type": "SimpleText",
+  "Text": "C:\\Development\\Funky.exe",
+  "ID": "OutputFile"
+}
+```
+
+Becomes a display field in a form step:
+
+```ts
+{
+  type: "display",
+  id: "outputFile",
+  label: "Output File",
+  resolve: async (answers) => {
+    // TODO: compute output path from answers (exportType, projectType, pluginType)
+    return "/path/to/output";
+  },
+}
+```
+
+If the element is a `MarkdownText` with an `ID` displaying a list (e.g.,
+network names as `- \`Noice.xml\`\n- \`ScriptFX1.xml\``), the display
+field's resolver should return a plain comma-separated or newline-separated
+list — TUI cannot render markdown.
+
+### 15. Per-Node TagList → Multi-Select with Dynamic Items
+
+The `compile_networks.json` wizard uses TagLists where the items are node
+names and selecting them applies a boolean property to those nodes. The
+TagList items are populated dynamically (the JSON shows placeholder names).
+
+```json
+{
+  "Type": "Button",
+  "Text": "IsPolyphonic",
+  "ID": "toggleIsPolyphonic",
+  "Class": "property-button"
+},
+{
+  "Type": "TagList",
+  "ID": "IsPolyphonic",
+  "Items": "noice 1\nnoice 2\n..."
+}
+```
+
+Becomes a toggle + conditional multi-select:
+
+```ts
+{
+  type: "toggle",
+  id: "hasPolyphonicNodes",
+  label: "Set IsPolyphonic",
+  description: "Select which C++ nodes require the polyphonic template",
+  default: false,
+},
+{
+  type: "multi-select",
+  id: "isPolyphonicNodes",
+  label: "IsPolyphonic Nodes",
+  showIf: (answers) => answers.hasPolyphonicNodes === true,
+  resolve: async (answers, hise) => {
+    // TODO: resolve from detected C++ node list
+    return [];
+  },
+}
+```
+
+Or, if the toggle and TagList should be part of a form step, use a
+`FormField` with `type: "select"` (multi-select is not a form field type,
+so this pattern may require a standalone `multi-select` step with `showIf`).
 
 ---
 
@@ -392,6 +534,10 @@ provides the data:
 | Script properties     | hardcode common list: `text`, `enabled`, `visible`, `x`, `y`, `width`, `height`, `colour`, etc. |
 | Complex data types    | hardcode: `Table`, `SliderPack`, `AudioFile` |
 | EQ event types        | hardcode: `BandAdded`, `BandRemoved`, `BandSelected`, `FFTEnabled` |
+| DSP network files     | `GET /api/dsp/graph` or scan `DspNetworks/` directory | network XML files |
+| C++ node names        | scan `DspNetworks/ThirdParty/` or resolve from project | `.cpp` files |
+| Faust files           | scan `DspNetworks/CodeLibrary/faust/` | `.dsp` files |
+| HISE installations    | scan `DEFAULT_INSTALL_PATHS` + PATH lookup (standalone wizards) | directories containing HISE binary |
 
 Write the resolver function signature with a TODO body:
 
@@ -455,3 +601,7 @@ After converting a wizard JSON, verify:
 - [ ] `Skip` elements in branches are omitted (no empty steps)
 - [ ] The `modes` array is set correctly (which CLI modes can invoke this)
 - [ ] No `StyleData`, `LayoutData`, CSS, or ARGB color values remain
+- [ ] Logger `Placeholder` + `LambdaTask` pages are converted to `pipeline` steps
+- [ ] `SimpleText`/`MarkdownText` with `ID` are converted to `display` fields
+- [ ] Fields with `validateAsync` TODOs specify which HISE endpoint to validate against
+- [ ] Per-node `TagList` patterns are converted to `multi-select` with dynamic resolvers

@@ -20,10 +20,11 @@ push events. The legacy named pipe transport (`pipe.ts`, `usePipe.ts`) is being 
 local validation, and inline help.
 
 **Wizard framework**: Declarative multi-step workflows for complex operations (broadcaster
-setup, asset payloads, monolith encoding). Same definition serves TUI (step-by-step
-overlay) and CLI (single-shot with `--answers` JSON). Source wizard JSONs from HISE's C++
-multipage dialogs live in `data/wizards/`. Conversion guide:
-[docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md).
+setup, asset payloads, monolith encoding, plugin export, HISE installation). Same
+definition serves TUI (step-by-step overlay) and CLI (single-shot with `--answers` JSON).
+Standalone wizards (setup, update, migrate, nuke) replace the current `src/setup/` and
+`src/menu/` code. Source wizard JSONs from HISE's C++ multipage dialogs live in
+`data/wizards/`. Conversion guide: [docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md).
 
 ## Build & Verify
 
@@ -45,9 +46,9 @@ src/                   # TypeScript source (esbuild bundles to dist/)
   theme.ts             # Color constants
   components/          # Shared UI components
   hooks/               # React hooks
-  menu/                # Main menu TUI
-  setup/               # Setup wizard (build-from-source)
-  setup-core/          # Shared setup types + GitHub helpers
+  menu/                # LEGACY — replaced by wizard framework auto-detect entry
+  setup/               # LEGACY — replaced by standalone setup wizard
+  setup-core/          # LEGACY — types + GitHub helpers moving to engine/wizard/
 data/                  # Static JSON datasets (not in src/)
   wizards/             # HISE C++ multipage dialog JSONs (conversion source)
 scripts/build.mjs      # esbuild config

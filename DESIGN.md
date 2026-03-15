@@ -40,7 +40,14 @@ src/
     completion/    Tab completion engine
     plan/          Plan mode state + script generation
     validation/    Local type-level validation (moduleList.json)
-    wizard/        Wizard definitions, runner, executor, registry
+    wizard/        Wizard framework
+      definitions/ Wizard definitions (setup, broadcaster, export, ...)
+      phases/      Shared pipeline phases (compile, verify, git-ops, ...)
+      types.ts     WizardDefinition, WizardStep, etc.
+      runner.ts    WizardRunner (TUI step-by-step)
+      executor.ts  WizardExecutor (CLI single-shot)
+      pipeline.ts  PipelineExecutor (phase sequencing, abort, retry)
+      registry.ts  WizardRegistry
     result.ts      CommandResult types
     session.ts     Mode stack, history, session state
     hise.ts        HiseConnection interface + HTTP implementation
@@ -651,6 +658,7 @@ interface WizardDefinition {
   name: string;                  // "Broadcaster Wizard"
   description: string;
   modes: string[];               // which modes can invoke this (empty = global only)
+  standalone?: boolean;          // runs without REPL session or HISE connection
   steps: WizardStep[];
   output: WizardOutput;
 }
@@ -662,7 +670,8 @@ type WizardStep =
   | ToggleStep
   | FormStep
   | RepeatGroup
-  | PreviewStep;
+  | PreviewStep
+  | PipelineStep;
 
 // --- Step types ---
 
@@ -692,7 +701,8 @@ interface TextStep {
   title: string;
   description?: string;
   placeholder?: string;
-  validate?: (value: string) => string | null;  // error message or null
+  validate?: (value: string) => string | null;  // sync format check
+  validateAsync?: ValidateAsyncFn;              // async instance-level check
   showIf?: (answers: Answers) => boolean;
 }
 
@@ -711,6 +721,7 @@ interface FormStep {
   title: string;
   description?: string;
   fields: FormField[];
+  validateAsync?: ValidateAsyncFn;              // step-level async validation
   showIf?: (answers: Answers) => boolean;
 }
 
@@ -731,6 +742,33 @@ interface PreviewStep {
   generate: (answers: Answers) => PreviewResult;
 }
 
+interface PipelineStep {
+  type: "pipeline";
+  id: string;
+  title: string;
+  phases: PipelinePhase[];
+  showIf?: (answers: Answers) => boolean;
+}
+
+interface PipelinePhase {
+  id: string;
+  name: string;
+  shouldSkip?: (answers: Answers) => boolean;
+  execute: (answers: Answers, callbacks: PipelineCallbacks) => Promise<PhaseResult>;
+}
+
+interface PipelineCallbacks {
+  onLog: (line: string) => void;
+  onProgress: (fraction: number) => void;
+  signal: AbortSignal;
+}
+
+interface PhaseResult {
+  success: boolean;
+  error?: string;
+  duration: number;
+}
+
 // --- Supporting types ---
 
 interface SelectOption {
@@ -746,9 +784,10 @@ type FormField = {
   description?: string;
   showIf?: (answers: Answers) => boolean;
 } & (
-  | { type: "text"; placeholder?: string; validate?: (v: string) => string | null }
+  | { type: "text"; placeholder?: string; validate?: (v: string) => string | null; validateAsync?: ValidateAsyncFn }
   | { type: "select"; options?: SelectOption[]; resolve?: ResolverFn }
   | { type: "toggle"; default?: boolean }
+  | { type: "display"; resolve: (answers: Answers, hise?: HiseConnection) => Promise<string> }
 );
 
 interface PreviewResult {
@@ -764,6 +803,7 @@ type WizardOutput =
 
 type Answers = Record<string, unknown>;
 type ResolverFn = (answers: Answers, hise?: HiseConnection) => Promise<SelectOption[]>;
+type ValidateAsyncFn = (value: unknown, answers: Answers, hise?: HiseConnection) => Promise<string | null>;
 ```
 
 **FormStep** renders multiple fields on a single page. This matches the
@@ -774,6 +814,81 @@ ModuleIDs, SlotIndex, and Metadata on one page).
 **RepeatGroup** clones its inner steps for each iteration, appending `_0`,
 `_1`, etc. to field IDs in the answers map. After completing the group's
 steps, a "Add another?" prompt appears. `maxCount` caps repetitions.
+
+**PipelineStep** executes a sequence of phases with streaming log output,
+progress tracking, and abort capability. Used for heavyweight operations:
+compiling HISE from source (setup wizard), building plugins (export wizard),
+compiling DLL networks, removing installations. On failure, the wizard stays
+on the pipeline step — the user can retry from the failed phase or go back
+to the previous configuration step. Back navigation from a pipeline step
+returns to the last configuration step, not mid-pipeline.
+
+In CLI mode, pipeline phases run non-interactively. Progress and logs are
+emitted as structured JSON lines (`{phase, status, log?, progress?}`). On
+failure, the result includes the failed phase ID and error message.
+
+**FormField `display` type** is a read-only computed text shown in a form
+step. The `resolve` function runs when the step is entered and its result is
+shown as non-editable context. Used for: output file path preview (export
+wizard), detected network/file lists (compile-networks wizard), platform
+detection results (setup wizard).
+
+### Step Validation
+
+Each step supports two levels of validation that run when the user presses
+Enter to advance:
+
+```ts
+// Sync — format checks (on TextStep and FormField type:"text")
+validate?: (value: string) => string | null;
+
+// Async — instance-level checks, may round-trip to HISE
+validateAsync?: (value: unknown, answers: Answers, hise?: HiseConnection) => Promise<string | null>;
+```
+
+**Validation lifecycle (TUI):**
+
+1. User presses Enter to advance
+2. All sync `validate` functions run on the current step's fields
+3. If any sync error → stop, show errors inline, jump cursor to first error field
+4. If all sync pass → run all `validateAsync` functions (parallel where independent)
+5. If any async error → stop, show errors inline, jump cursor to first error field
+6. If all pass → advance to next step
+
+During async validation the UI blocks briefly (no spinner). If validation
+takes >2 seconds, a `Validating...` hint appears in the footer.
+
+**Error display:** errors appear below the failing field in
+`HISE_ERROR_COLOUR`. In form steps with multiple failing fields, all error
+messages are shown simultaneously and the cursor jumps to the first error
+field. Errors persist until the next Enter press — they are not cleared on
+keystroke.
+
+**Validation lifecycle (CLI):** `WizardExecutor.validate()` runs all sync
+and async validators at once. Returns `{ field: string; message: string }[]`
+for all failures.
+
+**Example — broadcaster component ID validation:**
+
+```ts
+{
+  type: "text",
+  id: "componentIds",
+  label: "Component IDs",
+  placeholder: "Enter component IDs...",
+  required: true,
+  validate: (v) => v.trim() === "" ? "Required" : null,
+  validateAsync: async (v, _answers, hise) => {
+    const ids = String(v).split(",").map(s => s.trim());
+    const components = await hise?.request("GET", "/api/list_components");
+    const known = new Set(components?.map((c: any) => c.id));
+    const unknown = ids.filter(id => !known.has(id));
+    return unknown.length > 0
+      ? `Unknown component(s): ${unknown.join(", ")}`
+      : null;
+  },
+}
+```
 
 ### State Machines
 
@@ -838,6 +953,7 @@ Wizards are registered in a `WizardRegistry` (engine layer):
 | CLI        | `hise-cli wizard <id> --answers '<json>'` | Single-shot execution |
 | CLI        | `hise-cli wizard <id> --schema` | Dump wizard parameter schema as JSON |
 | CLI        | `hise-cli wizard list` | List available wizards |
+| Alias      | `hise-cli setup` | Shorthand for `hise-cli wizard setup` (also: `update`, `migrate`, `nuke`) |
 
 Tab completion works on wizard IDs in both `/wizard` and mode-specific `wizard`
 contexts. The `--schema` flag is particularly valuable for LLMs — they can
@@ -859,15 +975,185 @@ construct the right answers without step-by-step interaction.
 3. If valid: resolves dynamic data, generates output, returns JSON result
 4. If invalid: returns error array with field-level messages
 
+### Standalone Mode
+
+Wizards with `standalone: true` run without a REPL session or HISE
+connection. This covers operations that must work before HISE exists (setup),
+on installations that may be broken (update, migrate), or that destroy
+installations (nuke). In standalone mode:
+
+- The wizard overlay renders at the same 60×20 fixed size, centered on a
+  plain `backgrounds.standard` fill (no REPL content behind it)
+- The entry point is `hise-cli wizard <id>` or a subcommand alias
+  (e.g., `hise-cli setup` → `hise-cli wizard setup`)
+- Resolver functions receive no `HiseConnection` — they use local
+  filesystem scanning, GitHub API calls, or static data instead
+
+### Shared Pipeline Phases
+
+Pipeline phases are composable building blocks in `src/engine/wizard/phases/`.
+Multiple wizard definitions reuse the same phase implementations:
+
+```
+src/engine/wizard/phases/
+  compile.ts      # Projucer resave + MSBuild/xcodebuild/make
+  verify.ts       # Binary existence + size + build flag check
+  sdk-check.ts    # Verify SDKs are extracted
+  git-ops.ts      # Clone, fetch, checkout, submodule update
+  cleanup.ts      # Directory removal, PATH cleanup, settings removal
+```
+
+| Phase          | Used by                            |
+|----------------|------------------------------------|
+| `compile`      | setup, update, export, compile-networks |
+| `verify`       | setup, update, export              |
+| `sdk-check`    | setup, export, compile-networks    |
+| `git-ops`      | setup, update, migrate             |
+| `cleanup`      | nuke                               |
+
+The `compile` phase encapsulates the entire platform-aware C++ compilation
+pipeline from the current `src/setup/phases.ts` — Projucer project resave,
+MSBuild (Windows) / xcodebuild (macOS) / make (Linux) invocation, build
+configuration selection. The same logic that builds HISE from source also
+builds plugins and DLL networks. Only the build target and configuration
+parameters differ, and those come from the wizard's answers.
+
+### Subcommand Aliases & Entry Point
+
+Lifecycle subcommands are aliases for wizard invocations:
+
+| Subcommand         | Equivalent                     |
+|--------------------|--------------------------------|
+| `hise-cli setup`   | `hise-cli wizard setup`        |
+| `hise-cli update`  | `hise-cli wizard update`       |
+| `hise-cli migrate` | `hise-cli wizard migrate`      |
+| `hise-cli nuke`    | `hise-cli wizard nuke`         |
+
+When `hise-cli` runs with **no arguments**:
+
+1. Probe `localhost:1900` for a running HISE instance
+2. If reachable → launch the REPL
+3. If not → show a selection menu of standalone wizards (setup, update,
+   migrate, nuke) plus "Launch REPL anyway"
+
+This replaces the current custom menu in `src/menu/App.tsx`.
+
+### Planned Wizards
+
+Eight wizard definitions are planned. Four are standalone lifecycle wizards
+(no HISE connection required), four operate on a running HISE project.
+
+#### Standalone Lifecycle Wizards
+
+**Setup** (`id: "setup"`, standalone, replaces `src/setup/`):
+
+| Step | Type     | Content |
+|------|----------|---------|
+| 1    | form     | Platform detection results (display fields: OS, arch, git, compiler, Faust, IPP — auto-populated by resolvers) |
+| 2    | form     | Prerequisites (showIf: missing required prereqs). Actionable remediation list with URLs and commands |
+| 3    | form     | Configuration: install path (text), include Faust (toggle), include IPP (toggle, showIf: Windows) |
+| 4    | pipeline | Build: 9 phases — git clone, build deps, Faust install, SDK extraction, compile, add to PATH, verify, test. Each phase has `shouldSkip` |
+| 5    | preview  | Completion: success/failure summary, install path, build time, next steps, log file path |
+
+Output: `preview-then-decide` (accept exits, reject goes back to config).
+
+**Update** (`id: "update"`, standalone):
+
+| Step | Type     | Content |
+|------|----------|---------|
+| 1    | select   | Detected HISE installations (resolver: scan `DEFAULT_INSTALL_PATHS` + PATH) |
+| 2    | form     | Update options: target commit (text, default: latest CI passing), update Faust (toggle) |
+| 3    | pipeline | Phases: git fetch, checkout target, submodule update, optional Faust update, recompile (shared `compile` phase), verify (shared `verify` phase) |
+| 4    | preview  | Completion summary |
+
+Output: `preview-then-decide`.
+
+**Migrate** (`id: "migrate"`, standalone):
+
+| Step | Type     | Content |
+|------|----------|---------|
+| 1    | text     | Path to existing ZIP-based HISE installation (validateAsync: check directory exists and contains HISE) |
+| 2    | form     | Options: keep backup (toggle, default: true), target commit (text, default: latest CI passing) |
+| 3    | pipeline | Phases: backup existing, init git repo, add remote, fetch, checkout target, submodule init, verify |
+| 4    | preview  | Completion summary |
+
+Output: `preview-then-decide`.
+
+**Nuke** (`id: "nuke"`, standalone):
+
+| Step | Type         | Content |
+|------|--------------|---------|
+| 1    | multi-select | Detected HISE installations to remove (resolver: scan filesystem + PATH) |
+| 2    | form         | Cleanup options: remove settings files (toggle), remove PATH entries (toggle) |
+| 3    | preview      | Confirm: show exactly what will be deleted. Explicit accept required. |
+| 4    | pipeline     | Phases: remove selected directories (shared `cleanup` phase), clean PATH entries, remove settings files |
+
+Output: `preview-then-decide`.
+
+#### HISE-Connected Wizards
+
+**Broadcaster** (`id: "broadcaster"`, modes: `["script"]`):
+
+| Step | Type   | Content |
+|------|--------|---------|
+| 1    | form   | Broadcaster ID (text, validateAsync: valid identifier + unique), comment (text), tags (text), colour (text) |
+| 2    | select | Attach type: None, ComplexData, ComponentProperties, ComponentValue, ComponentVisibility, ContextMenu, EqEvents, ModuleParameters, MouseEvents, ProcessingSpecs, RadioGroup, RoutingMatrix |
+| 3    | form   | Source configuration (showIf per attach type — 12 conditional forms with fields like moduleIds, componentIds, propertyType, slotIndex. Dynamic fields use validateAsync to check IDs against HISE) |
+| 4    | select | Target type: None, Callback, Callback (Delayed), ComponentProperty, ComponentRefresh, ComponentValue, ModuleParameter |
+| 5    | form   | Target configuration (showIf per target type — 7 conditional forms) |
+| 6    | preview | Generated HiseScript code with syntax highlighting |
+
+Output: `preview-then-decide` (accept copies to clipboard).
+Source: `data/wizards/broadcaster.json`.
+
+**Install Package** (`id: "install-package"`, modes: `["project"]`):
+
+| Step | Type   | Content |
+|------|--------|---------|
+| 1    | form   | Load existing settings (toggle), info text (text, multiline) |
+| 2    | form   | Wildcards: include patterns (text), exclude patterns (text) |
+| 3    | multi-select | File type filter (showIf: use filter toggle): Scripts, AdditionalSourceCode, Samples, Images, AudioFiles, SampleMaps, MidiFiles, DspNetworks |
+| 4    | multi-select | Preprocessors (showIf: use preprocessors toggle): resolved from `project_info.xml` |
+| 5    | form   | Clipboard content (showIf: use clipboard toggle): text to copy after install |
+| 6    | preview | Generated `install_package.json` content |
+
+Output: `apply` (writes `install_package.json` to project root).
+Source: `data/wizards/install_package_maker.json`.
+
+**Plugin Export** (`id: "export"`, modes: `["compile"]`):
+
+| Step | Type     | Content |
+|------|----------|---------|
+| 1    | form     | Export target (select: Plugin/Standalone), project type (select: Instrument/FX/MIDI), plugin type (select: VST/AU/AAX/All). Display field: computed output file path |
+| 2    | pipeline | Compilation: SDK check (shared), Projucer resave + compile (shared `compile` phase), verify (shared `verify` phase) |
+| 3    | preview  | Completion: binary path, size, build time |
+
+Output: `preview-then-decide` (accept shows file location).
+Source: `data/wizards/plugin_export.json`.
+
+**Compile Networks** (`id: "compile-networks"`, modes: `["dsp"]`):
+
+| Step | Type     | Content |
+|------|----------|---------|
+| 1    | form     | Display fields: detected networks, C++ files, Faust files (resolved from project). Toggles: replace script FX modules, open DLL project in IDE |
+| 2    | form     | C++ node properties (showIf: has C++ nodes, foldable equivalent): IsPolyphonic (multi-select of node names), AllowPolyphonic (multi-select of node names). Items resolved dynamically. |
+| 3    | pipeline | Compilation: SDK check (shared), DLL compile (shared `compile` phase with DLL target) |
+
+Output: `apply` (DLL written to project, optionally opens IDE).
+Source: `data/wizards/compile_networks.json`.
+
 ### Source Data
 
-Wizard definitions are hand-written TypeScript in `src/engine/wizard/`.
-The existing C++ multipage dialog JSON files in `data/wizards/` serve as
-design reference material — they contain page layouts, component types,
-option lists, help text, and branching logic from the HISE desktop dialogs.
-These are not parsed at runtime. See
+Wizard definitions are hand-written TypeScript in
+`src/engine/wizard/definitions/`. The existing C++ multipage dialog JSON
+files in `data/wizards/` serve as design reference material — they contain
+page layouts, component types, option lists, help text, and branching logic
+from the HISE desktop dialogs. These are not parsed at runtime. See
 [docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md) for the conversion
 process from C++ dialog JSON to TypeScript `WizardDefinition`.
+
+Currently available source JSONs: `broadcaster.json`, `new_project.json`,
+`install_package_maker.json`, `plugin_export.json`, `compile_networks.json`.
 
 ---
 
@@ -1005,10 +1291,12 @@ in their editor and calls `POST /api/recompile` from the TUI.
 ### 12. Wizards as unified interface for complex operations
 
 **Decision**: Complex multi-parameter operations (broadcaster setup, monolith
-encoding, asset payload creation, project scaffolding) are modeled as
-declarative wizard definitions in the engine layer, with the TUI rendering
-them as interactive step-by-step overlays and the CLI exposing them as
-single-shot parameterized commands.
+encoding, asset payload creation, project scaffolding, plugin export, HISE
+installation) are modeled as declarative wizard definitions in the engine
+layer, with the TUI rendering them as interactive step-by-step overlays and
+the CLI exposing them as single-shot parameterized commands. This includes
+the setup/update/migrate/nuke lifecycle, which becomes standalone wizards
+replacing the current dedicated TUI flows.
 
 **Rationale**: HISE already has C++ multipage dialogs for many of these tasks,
 but their UX is poor. More importantly, the raw REST API endpoints for these
@@ -1017,6 +1305,13 @@ option sets, and sequencing. A wizard definition captures all of this in one
 place — the TUI gets a guided experience, the CLI gets a self-documenting
 command with built-in validation, and LLMs get a `--schema` flag to discover
 parameters. One definition serves three audiences.
+
+The `pipeline` step type enables code reuse across wizards that share
+heavyweight operations. The same `compile` phase (Projucer resave +
+MSBuild/xcodebuild/make) is used by the setup wizard (building HISE), the
+export wizard (building plugins), and the compile-networks wizard (building
+DLLs). Battle-tested platform-specific compilation logic from `src/setup/`
+becomes a shared building block rather than being locked inside one flow.
 
 **Alternative rejected**: Separate TUI overlays and CLI commands per operation.
 This duplicates validation logic, option definitions, and help text across two
