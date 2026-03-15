@@ -1,0 +1,58 @@
+// ── CommandResult — engine output contract ──────────────────────────
+
+// Pure data types that both TUI and CLI frontends consume.
+// TUI renders them visually; CLI serializes them as JSON.
+
+export interface TreeNode {
+	label: string;
+	type?: string;
+	children?: TreeNode[];
+}
+
+export type CommandResult =
+	| { type: "text"; content: string }
+	| { type: "error"; message: string; detail?: string }
+	| { type: "code"; content: string; language?: string }
+	| { type: "table"; headers: string[]; rows: string[][] }
+	| { type: "tree"; root: TreeNode }
+	| { type: "markdown"; content: string }
+	| { type: "empty" };
+
+// ── Result factory helpers ──────────────────────────────────────────
+
+export function textResult(content: string): CommandResult {
+	return { type: "text", content };
+}
+
+export function errorResult(
+	message: string,
+	detail?: string,
+): CommandResult {
+	return { type: "error", message, detail };
+}
+
+export function codeResult(
+	content: string,
+	language?: string,
+): CommandResult {
+	return { type: "code", content, language };
+}
+
+export function tableResult(
+	headers: string[],
+	rows: string[][],
+): CommandResult {
+	return { type: "table", headers, rows };
+}
+
+export function treeResult(root: TreeNode): CommandResult {
+	return { type: "tree", root };
+}
+
+export function markdownResult(content: string): CommandResult {
+	return { type: "markdown", content };
+}
+
+export function emptyResult(): CommandResult {
+	return { type: "empty" };
+}
