@@ -1,0 +1,357 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1400" font-family="'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace">
+  <title>hise-cli TUI Color Reference</title>
+
+  <defs>
+    <style>
+      text { font-size: 13px; }
+      .title { font-size: 22px; font-weight: bold; fill: #d0d0c8; }
+      .section { font-size: 16px; font-weight: bold; fill: #d0d0c8; }
+      .label { font-size: 12px; fill: #a0a09a; }
+      .hex { font-size: 11px; fill: #75715e; font-family: monospace; }
+      .usage { font-size: 11px; fill: #a0a09a; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="1400" fill="#1a1a1a" rx="8"/>
+
+  <!-- Title -->
+  <text x="40" y="45" class="title">hise-cli TUI Color Reference</text>
+  <line x1="40" y1="58" x2="1160" y2="58" stroke="#75715e" stroke-width="1"/>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 1: HISE Brand Colors                                     -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <text x="40" y="95" class="section">Layer 1 — HISE Brand Colors (hardcoded)</text>
+  <text x="40" y="112" class="usage">Fixed across all schemes. Matches the C++ macros in the HISE codebase.</text>
+
+  <!-- SIGNAL_COLOUR -->
+  <rect x="40" y="128" width="260" height="64" rx="6" fill="#90FFB1"/>
+  <text x="55" y="155" fill="#1a1a1a" font-weight="bold" font-size="14">SIGNAL_COLOUR</text>
+  <text x="55" y="175" fill="#1a1a1a" font-size="11">#90FFB1 — Branding, scrollbar, selection highlight</text>
+
+  <!-- HISE_OK_COLOUR -->
+  <rect x="320" y="128" width="260" height="64" rx="6" fill="#4E8E35"/>
+  <text x="335" y="155" fill="#ffffff" font-weight="bold" font-size="14">HISE_OK_COLOUR</text>
+  <text x="335" y="175" fill="#d0d0c8" font-size="11">#4E8E35 — Connected, ✓ plan OK</text>
+
+  <!-- HISE_WARNING_COLOUR -->
+  <rect x="600" y="128" width="260" height="64" rx="6" fill="#FFBA00"/>
+  <text x="615" y="155" fill="#1a1a1a" font-weight="bold" font-size="14">HISE_WARNING_COLOUR</text>
+  <text x="615" y="175" fill="#1a1a1a" font-size="11">#FFBA00 — Degraded, ⚠ warnings</text>
+
+  <!-- HISE_ERROR_COLOUR -->
+  <rect x="880" y="128" width="260" height="64" rx="6" fill="#BB3434"/>
+  <text x="895" y="155" fill="#ffffff" font-weight="bold" font-size="14">HISE_ERROR_COLOUR</text>
+  <text x="895" y="175" fill="#d0d0c8" font-size="11">#BB3434 — Failed, ✗ errors</text>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 2: Mode Accent Colors                                    -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <text x="40" y="240" class="section">Layer 2 — Mode Accent Colors (hardcoded)</text>
+  <text x="40" y="257" class="usage">Fixed across all schemes. Appear on: prompt >, top bar [mode], sidebar heading, output ▎ border.</text>
+
+  <!-- Row 1 -->
+  <!-- Builder -->
+  <rect x="40" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="40" y="273" width="130" height="4" rx="2" fill="#fd971f"/>
+  <circle cx="105" cy="305" r="16" fill="#fd971f"/>
+  <text x="55" y="340" fill="#fd971f" font-weight="bold" font-size="12">Builder</text>
+  <text x="55" y="354" class="hex">#fd971f</text>
+
+  <!-- Script -->
+  <rect x="185" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="185" y="273" width="130" height="4" rx="2" fill="#7aa2f7"/>
+  <circle cx="250" cy="305" r="16" fill="#7aa2f7"/>
+  <text x="200" y="340" fill="#7aa2f7" font-weight="bold" font-size="12">Script</text>
+  <text x="200" y="354" class="hex">#7aa2f7</text>
+
+  <!-- DSP -->
+  <rect x="330" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="330" y="273" width="130" height="4" rx="2" fill="#66d9ef"/>
+  <circle cx="395" cy="305" r="16" fill="#66d9ef"/>
+  <text x="345" y="340" fill="#66d9ef" font-weight="bold" font-size="12">DSP</text>
+  <text x="345" y="354" class="hex">#66d9ef</text>
+
+  <!-- Sampler -->
+  <rect x="475" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="475" y="273" width="130" height="4" rx="2" fill="#a6e22e"/>
+  <circle cx="540" cy="305" r="16" fill="#a6e22e"/>
+  <text x="490" y="340" fill="#a6e22e" font-weight="bold" font-size="12">Sampler</text>
+  <text x="490" y="354" class="hex">#a6e22e</text>
+
+  <!-- Inspect -->
+  <rect x="620" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="620" y="273" width="130" height="4" rx="2" fill="#ae81ff"/>
+  <circle cx="685" cy="305" r="16" fill="#ae81ff"/>
+  <text x="635" y="340" fill="#ae81ff" font-weight="bold" font-size="12">Inspect</text>
+  <text x="635" y="354" class="hex">#ae81ff</text>
+
+  <!-- Project -->
+  <rect x="765" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="765" y="273" width="130" height="4" rx="2" fill="#e6db74"/>
+  <circle cx="830" cy="305" r="16" fill="#e6db74"/>
+  <text x="780" y="340" fill="#e6db74" font-weight="bold" font-size="12">Project</text>
+  <text x="780" y="354" class="hex">#e6db74</text>
+
+  <!-- Compile -->
+  <rect x="910" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="910" y="273" width="130" height="4" rx="2" fill="#f92672"/>
+  <circle cx="975" cy="305" r="16" fill="#f92672"/>
+  <text x="925" y="340" fill="#f92672" font-weight="bold" font-size="12">Compile</text>
+  <text x="925" y="354" class="hex">#f92672</text>
+
+  <!-- Import -->
+  <rect x="1055" y="273" width="130" height="80" rx="6" fill="#272822"/>
+  <rect x="1055" y="273" width="130" height="4" rx="2" fill="#2de0a5"/>
+  <circle cx="1120" cy="305" r="16" fill="#2de0a5"/>
+  <text x="1070" y="340" fill="#2de0a5" font-weight="bold" font-size="12">Import</text>
+  <text x="1070" y="354" class="hex">#2de0a5</text>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 3: Syntax Highlighting                                   -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <text x="40" y="410" class="section">Layer 3 — Syntax Highlighting (hardcoded)</text>
+  <text x="40" y="427" class="usage">Matches the HISE code editor. Used for script mode input and partial highlighting in builder/DSP.</text>
+
+  <!-- Row 1 -->
+  <!-- Keyword -->
+  <rect x="40" y="443" width="220" height="50" rx="6" fill="#272822"/>
+  <text x="55" y="467" fill="#bbbbff" font-weight="bold" font-size="13">function</text>
+  <text x="145" y="467" class="hex">Keyword #bbbbff</text>
+
+  <!-- Identifier -->
+  <rect x="275" y="443" width="220" height="50" rx="6" fill="#272822"/>
+  <text x="290" y="467" fill="#DDDDFF" font-weight="bold" font-size="13">myVariable</text>
+  <text x="395" y="467" class="hex">Ident #DDDDFF</text>
+
+  <!-- ScopedStatement -->
+  <rect x="510" y="443" width="220" height="50" rx="6" fill="#272822"/>
+  <text x="525" y="467" fill="#88bec5" font-weight="bold" font-size="13">Engine</text>
+  <text x="600" y="467" class="hex">Scoped #88bec5</text>
+
+  <!-- Integer -->
+  <rect x="745" y="443" width="200" height="50" rx="6" fill="#272822"/>
+  <text x="760" y="467" fill="#DDAADD" font-weight="bold" font-size="13">42</text>
+  <text x="800" y="467" class="hex">Integer #DDAADD</text>
+
+  <!-- Float -->
+  <rect x="960" y="443" width="200" height="50" rx="6" fill="#272822"/>
+  <text x="975" y="467" fill="#EEAA00" font-weight="bold" font-size="13">3.14</text>
+  <text x="1025" y="467" class="hex">Float #EEAA00</text>
+
+  <!-- Row 2 -->
+  <!-- String -->
+  <rect x="40" y="503" width="220" height="50" rx="6" fill="#272822"/>
+  <text x="55" y="527" fill="#DDAAAA" font-weight="bold" font-size="13">"hello"</text>
+  <text x="135" y="527" class="hex">String #DDAAAA</text>
+
+  <!-- Comment -->
+  <rect x="275" y="503" width="220" height="50" rx="6" fill="#272822"/>
+  <text x="290" y="527" fill="#77CC77" font-weight="bold" font-size="13">// note</text>
+  <text x="380" y="527" class="hex">Comment #77CC77</text>
+
+  <!-- Operator -->
+  <rect x="510" y="503" width="220" height="50" rx="6" fill="#272822"/>
+  <text x="525" y="527" fill="#CCCCCC" font-weight="bold" font-size="13">== &amp;&amp; ||</text>
+  <text x="620" y="527" class="hex">Op #CCCCCC</text>
+
+  <!-- Bracket -->
+  <rect x="745" y="503" width="200" height="50" rx="6" fill="#272822"/>
+  <text x="760" y="527" fill="#FFFFFF" font-weight="bold" font-size="13">{ } ( )</text>
+  <text x="830" y="527" class="hex">Bracket #FFFFFF</text>
+
+  <!-- Punctuation -->
+  <rect x="960" y="503" width="200" height="50" rx="6" fill="#272822"/>
+  <text x="975" y="527" fill="#CCCCCC" font-weight="bold" font-size="13">. , ;</text>
+  <text x="1030" y="527" class="hex">Punct #CCCCCC</text>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- LAYER 4: Color Scheme (Monokai default)                        -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <text x="40" y="605" class="section">Layer 4 — Color Scheme: Monokai (default)</text>
+  <text x="40" y="622" class="usage">User-selectable via /theme. Each scheme defines 5 backgrounds + 3 foregrounds = 8 values.</text>
+
+  <!-- Background tiers -->
+  <text x="40" y="652" fill="#a0a09a" font-size="13" font-weight="bold">Background Tiers</text>
+
+  <!-- Darker -->
+  <rect x="40" y="668" width="1120" height="48" rx="6" fill="#1f201c"/>
+  <text x="55" y="690" fill="#a0a09a" font-weight="bold" font-size="13">darker</text>
+  <text x="55" y="706" class="hex">#1f201c</text>
+  <text x="200" y="698" fill="#75715e" font-size="11">Top bar, bottom bar, progress row, command echo background</text>
+
+  <!-- Standard -->
+  <rect x="40" y="724" width="1120" height="48" rx="6" fill="#272822"/>
+  <text x="55" y="746" fill="#a0a09a" font-weight="bold" font-size="13">standard</text>
+  <text x="55" y="762" class="hex">#272822</text>
+  <text x="200" y="754" fill="#75715e" font-size="11">Output area — main content background</text>
+
+  <!-- Sidebar -->
+  <rect x="40" y="780" width="1120" height="48" rx="6" fill="#2d2e28"/>
+  <text x="55" y="802" fill="#a0a09a" font-weight="bold" font-size="13">sidebar</text>
+  <text x="55" y="818" class="hex">#2d2e28</text>
+  <text x="200" y="810" fill="#75715e" font-size="11">Sidebar panel — between content and input in visual depth</text>
+
+  <!-- Raised -->
+  <rect x="40" y="836" width="1120" height="48" rx="6" fill="#32342d"/>
+  <text x="55" y="858" fill="#a0a09a" font-weight="bold" font-size="13">raised</text>
+  <text x="55" y="874" class="hex">#32342d</text>
+  <text x="200" y="866" fill="#75715e" font-size="11">Input area — visually "raised" above the output</text>
+
+  <!-- Overlay -->
+  <rect x="40" y="892" width="1120" height="48" rx="6" fill="#3e3f38"/>
+  <text x="55" y="914" fill="#a0a09a" font-weight="bold" font-size="13">overlay</text>
+  <text x="55" y="930" class="hex">#3e3f38</text>
+  <text x="200" y="922" fill="#75715e" font-size="11">Command palette, completion popup — floats above everything</text>
+
+  <!-- Foreground tiers -->
+  <text x="40" y="970" fill="#a0a09a" font-size="13" font-weight="bold">Foreground Tiers</text>
+
+  <!-- Muted -->
+  <rect x="40" y="986" width="360" height="64" rx="6" fill="#272822"/>
+  <text x="55" y="1014" fill="#75715e" font-size="16">Hints, secondary, disabled</text>
+  <text x="55" y="1036" fill="#75715e" font-weight="bold" font-size="12">muted</text>
+  <text x="130" y="1036" class="hex">#75715e</text>
+
+  <!-- Default -->
+  <rect x="420" y="986" width="360" height="64" rx="6" fill="#272822"/>
+  <text x="435" y="1014" fill="#a0a09a" font-size="16">Body text, standard output</text>
+  <text x="435" y="1036" fill="#a0a09a" font-weight="bold" font-size="12">default</text>
+  <text x="520" y="1036" class="hex">#a0a09a</text>
+
+  <!-- Bright -->
+  <rect x="800" y="986" width="360" height="64" rx="6" fill="#272822"/>
+  <text x="815" y="1014" fill="#d0d0c8" font-size="16">Result output, emphasis</text>
+  <text x="815" y="1036" fill="#d0d0c8" font-weight="bold" font-size="12">bright</text>
+  <text x="895" y="1036" class="hex">#d0d0c8</text>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <!-- Scheme Comparison                                              -->
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <text x="40" y="1100" class="section">Shipped Schemes — Background Comparison</text>
+  <text x="40" y="1117" class="usage">All 8 schemes showing their 5 background tiers side by side.</text>
+
+  <!-- Column headers -->
+  <text x="195" y="1142" class="hex" text-anchor="middle">darker</text>
+  <text x="305" y="1142" class="hex" text-anchor="middle">standard</text>
+  <text x="415" y="1142" class="hex" text-anchor="middle">sidebar</text>
+  <text x="525" y="1142" class="hex" text-anchor="middle">raised</text>
+  <text x="635" y="1142" class="hex" text-anchor="middle">overlay</text>
+  <text x="760" y="1142" class="hex" text-anchor="middle">muted</text>
+  <text x="870" y="1142" class="hex" text-anchor="middle">default</text>
+  <text x="980" y="1142" class="hex" text-anchor="middle">bright</text>
+
+  <!-- Monokai -->
+  <text x="40" y="1168" fill="#a0a09a" font-weight="bold" font-size="12">Monokai</text>
+  <rect x="160" y="1152" width="70" height="24" rx="3" fill="#1f201c"/>
+  <rect x="270" y="1152" width="70" height="24" rx="3" fill="#272822"/>
+  <rect x="380" y="1152" width="70" height="24" rx="3" fill="#2d2e28"/>
+  <rect x="490" y="1152" width="70" height="24" rx="3" fill="#32342d"/>
+  <rect x="600" y="1152" width="70" height="24" rx="3" fill="#3e3f38"/>
+  <rect x="720" y="1152" width="80" height="24" rx="3" fill="#272822"/>
+  <text x="732" y="1168" fill="#75715e" font-size="11">Aa</text>
+  <rect x="830" y="1152" width="80" height="24" rx="3" fill="#272822"/>
+  <text x="842" y="1168" fill="#a0a09a" font-size="11">Aa</text>
+  <rect x="940" y="1152" width="80" height="24" rx="3" fill="#272822"/>
+  <text x="952" y="1168" fill="#d0d0c8" font-size="11">Aa</text>
+
+  <!-- Dracula -->
+  <text x="40" y="1198" fill="#a0a09a" font-weight="bold" font-size="12">Dracula</text>
+  <rect x="160" y="1182" width="70" height="24" rx="3" fill="#21222c"/>
+  <rect x="270" y="1182" width="70" height="24" rx="3" fill="#282a36"/>
+  <rect x="380" y="1182" width="70" height="24" rx="3" fill="#2d2f3d"/>
+  <rect x="490" y="1182" width="70" height="24" rx="3" fill="#343746"/>
+  <rect x="600" y="1182" width="70" height="24" rx="3" fill="#414558"/>
+  <rect x="720" y="1182" width="80" height="24" rx="3" fill="#282a36"/>
+  <text x="732" y="1198" fill="#6272a4" font-size="11">Aa</text>
+  <rect x="830" y="1182" width="80" height="24" rx="3" fill="#282a36"/>
+  <text x="842" y="1198" fill="#a0a4b8" font-size="11">Aa</text>
+  <rect x="940" y="1182" width="80" height="24" rx="3" fill="#282a36"/>
+  <text x="952" y="1198" fill="#d4d6e4" font-size="11">Aa</text>
+
+  <!-- Nord -->
+  <text x="40" y="1228" fill="#a0a09a" font-weight="bold" font-size="12">Nord</text>
+  <rect x="160" y="1212" width="70" height="24" rx="3" fill="#242933"/>
+  <rect x="270" y="1212" width="70" height="24" rx="3" fill="#2e3440"/>
+  <rect x="380" y="1212" width="70" height="24" rx="3" fill="#333a47"/>
+  <rect x="490" y="1212" width="70" height="24" rx="3" fill="#3b4252"/>
+  <rect x="600" y="1212" width="70" height="24" rx="3" fill="#4c566a"/>
+  <rect x="720" y="1212" width="80" height="24" rx="3" fill="#2e3440"/>
+  <text x="732" y="1228" fill="#616e88" font-size="11">Aa</text>
+  <rect x="830" y="1212" width="80" height="24" rx="3" fill="#2e3440"/>
+  <text x="842" y="1228" fill="#9aa3b6" font-size="11">Aa</text>
+  <rect x="940" y="1212" width="80" height="24" rx="3" fill="#2e3440"/>
+  <text x="952" y="1228" fill="#d8dee9" font-size="11">Aa</text>
+
+  <!-- Tokyo Night -->
+  <text x="40" y="1258" fill="#a0a09a" font-weight="bold" font-size="12">Tokyo Night</text>
+  <rect x="160" y="1242" width="70" height="24" rx="3" fill="#16161e"/>
+  <rect x="270" y="1242" width="70" height="24" rx="3" fill="#1a1b26"/>
+  <rect x="380" y="1242" width="70" height="24" rx="3" fill="#1f202d"/>
+  <rect x="490" y="1242" width="70" height="24" rx="3" fill="#24283b"/>
+  <rect x="600" y="1242" width="70" height="24" rx="3" fill="#33375a"/>
+  <rect x="720" y="1242" width="80" height="24" rx="3" fill="#1a1b26"/>
+  <text x="732" y="1258" fill="#565f89" font-size="11">Aa</text>
+  <rect x="830" y="1242" width="80" height="24" rx="3" fill="#1a1b26"/>
+  <text x="842" y="1258" fill="#9098b8" font-size="11">Aa</text>
+  <rect x="940" y="1242" width="80" height="24" rx="3" fill="#1a1b26"/>
+  <text x="952" y="1258" fill="#c0caf5" font-size="11">Aa</text>
+
+  <!-- One Dark -->
+  <text x="40" y="1288" fill="#a0a09a" font-weight="bold" font-size="12">One Dark</text>
+  <rect x="160" y="1272" width="70" height="24" rx="3" fill="#1e2127"/>
+  <rect x="270" y="1272" width="70" height="24" rx="3" fill="#282c34"/>
+  <rect x="380" y="1272" width="70" height="24" rx="3" fill="#2d313a"/>
+  <rect x="490" y="1272" width="70" height="24" rx="3" fill="#323842"/>
+  <rect x="600" y="1272" width="70" height="24" rx="3" fill="#3e4452"/>
+  <rect x="720" y="1272" width="80" height="24" rx="3" fill="#282c34"/>
+  <text x="732" y="1288" fill="#5c6370" font-size="11">Aa</text>
+  <rect x="830" y="1272" width="80" height="24" rx="3" fill="#282c34"/>
+  <text x="842" y="1288" fill="#9aa2b1" font-size="11">Aa</text>
+  <rect x="940" y="1272" width="80" height="24" rx="3" fill="#282c34"/>
+  <text x="952" y="1288" fill="#d4d8e0" font-size="11">Aa</text>
+
+  <!-- Catppuccin Mocha -->
+  <text x="40" y="1318" fill="#a0a09a" font-weight="bold" font-size="12">Ctp Mocha</text>
+  <rect x="160" y="1302" width="70" height="24" rx="3" fill="#181825"/>
+  <rect x="270" y="1302" width="70" height="24" rx="3" fill="#1e1e2e"/>
+  <rect x="380" y="1302" width="70" height="24" rx="3" fill="#232336"/>
+  <rect x="490" y="1302" width="70" height="24" rx="3" fill="#313244"/>
+  <rect x="600" y="1302" width="70" height="24" rx="3" fill="#45475a"/>
+  <rect x="720" y="1302" width="80" height="24" rx="3" fill="#1e1e2e"/>
+  <text x="732" y="1318" fill="#585b70" font-size="11">Aa</text>
+  <rect x="830" y="1302" width="80" height="24" rx="3" fill="#1e1e2e"/>
+  <text x="842" y="1318" fill="#9399b2" font-size="11">Aa</text>
+  <rect x="940" y="1302" width="80" height="24" rx="3" fill="#1e1e2e"/>
+  <text x="952" y="1318" fill="#cdd6f4" font-size="11">Aa</text>
+
+  <!-- Catppuccin Latte (light) -->
+  <text x="40" y="1348" fill="#a0a09a" font-weight="bold" font-size="12">Ctp Latte ☀</text>
+  <rect x="160" y="1332" width="70" height="24" rx="3" fill="#dce0e8" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="270" y="1332" width="70" height="24" rx="3" fill="#eff1f5" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="380" y="1332" width="70" height="24" rx="3" fill="#e6e9ef" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="490" y="1332" width="70" height="24" rx="3" fill="#ccd0da" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="600" y="1332" width="70" height="24" rx="3" fill="#bcc0cc" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="720" y="1332" width="80" height="24" rx="3" fill="#eff1f5" stroke="#a0a09a" stroke-width="0.5"/>
+  <text x="732" y="1348" fill="#8c8fa1" font-size="11">Aa</text>
+  <rect x="830" y="1332" width="80" height="24" rx="3" fill="#eff1f5" stroke="#a0a09a" stroke-width="0.5"/>
+  <text x="842" y="1348" fill="#5c5f77" font-size="11">Aa</text>
+  <rect x="940" y="1332" width="80" height="24" rx="3" fill="#eff1f5" stroke="#a0a09a" stroke-width="0.5"/>
+  <text x="952" y="1348" fill="#4c4f69" font-size="11">Aa</text>
+
+  <!-- Solarized Light -->
+  <text x="40" y="1378" fill="#a0a09a" font-weight="bold" font-size="12">Solar Light ☀</text>
+  <rect x="160" y="1362" width="70" height="24" rx="3" fill="#eee8d5" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="270" y="1362" width="70" height="24" rx="3" fill="#fdf6e3" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="380" y="1362" width="70" height="24" rx="3" fill="#f5eedb" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="490" y="1362" width="70" height="24" rx="3" fill="#e8e1ce" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="600" y="1362" width="70" height="24" rx="3" fill="#d6cfbc" stroke="#a0a09a" stroke-width="0.5"/>
+  <rect x="720" y="1362" width="80" height="24" rx="3" fill="#fdf6e3" stroke="#a0a09a" stroke-width="0.5"/>
+  <text x="732" y="1378" fill="#93a1a1" font-size="11">Aa</text>
+  <rect x="830" y="1362" width="80" height="24" rx="3" fill="#fdf6e3" stroke="#a0a09a" stroke-width="0.5"/>
+  <text x="842" y="1378" fill="#586e75" font-size="11">Aa</text>
+  <rect x="940" y="1362" width="80" height="24" rx="3" fill="#fdf6e3" stroke="#a0a09a" stroke-width="0.5"/>
+  <text x="952" y="1378" fill="#073642" font-size="11">Aa</text>
+
+</svg>
