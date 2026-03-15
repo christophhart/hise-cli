@@ -31,10 +31,15 @@ Standalone wizards (setup, update, migrate, nuke) replace the current `src/setup
 ```bash
 npm run build          # esbuild bundle → dist/index.js
 npm run typecheck      # tsc --noEmit
+npm run test           # vitest run
 npm run dev            # build + start
 ```
 
-No test runner or linter configured. `npm run build` is the verification step.
+All three must pass. Implementation roadmap: [ROADMAP.md](ROADMAP.md).
+
+**HISE source reference**: Clone `https://github.com/christoph-hart/HISE` (without
+`--recurse-submodules`) into `hise-source/` for C++ source inspection. This directory
+is gitignored — it is a local reference, not tracked.
 
 ## Project Structure
 

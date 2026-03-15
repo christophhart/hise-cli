@@ -194,9 +194,64 @@ Key discrepancies (the implementation is the source of truth):
 | `GET /api/list_components` | No `laf` field | Includes `laf` info per component |
 
 Five undocumented endpoints exist in code: `/api/repl`, `/api/profile`,
-`/api/simulate_interactions`, `/api/parse_css`, `/api/shutdown`.
+`/api/simulate_interactions`, `/api/parse_css`, `/api/shutdown`. Two
+additional endpoints exist but were not in the original spec:
+`/api/diagnose_script` (shadow parse), `/api/get_included_files` (list
+external scripts).
 
 The CLI is coded against the **actual implementation**, not the spec doc.
+
+### Response Format Details
+
+Verified against `RestServer.cpp` and `RestHelpers.cpp` in the HISE source.
+
+**Success responses** use a handler-specific JSON body, with `logs` and
+`errors` arrays merged in by `AsyncRequest::mergeLogsIntoResponse()`:
+
+```json
+{
+  "success": true,
+  "result": "...",
+  "logs": [],
+  "errors": [{ "errorMessage": "...", "callstack": ["..."] }]
+}
+```
+
+**Error responses** (400, 404, 500) use a different shape:
+
+```json
+{
+  "error": true,
+  "message": "Error description"
+}
+```
+
+**`/api/repl` has a non-standard response** — the expression result is in
+`value`, not `result`:
+
+```json
+{
+  "success": true,
+  "moduleId": "Interface",
+  "result": "REPL Evaluation OK",
+  "value": 44100.0,
+  "logs": [],
+  "errors": []
+}
+```
+
+**`/api/status` serves as readiness probe** — it polls `isInitialised()`
+for up to 10 seconds, returning 503 if HISE is still loading. Use this
+endpoint (not `GET /`) for connection probing.
+
+### SSE Status
+
+SSE (Server-Sent Events) is **not yet implemented** in the HISE REST
+server. The `httplib.h` library bundled with HISE contains SSE *client*
+classes, but the `RestServer` only handles synchronous request/response.
+SSE server support must be added as part of
+[#12](https://github.com/christoph-hart/hise-cli/issues/12) before live
+monitoring (CPU, MIDI) or streaming pipeline progress can work.
 
 ---
 
@@ -1320,6 +1375,9 @@ codepaths. The wizard framework ensures a single source of truth.
 ---
 
 ## Implementation Phases
+
+Concrete deliverables, file paths, and dependencies are in
+[ROADMAP.md](ROADMAP.md). The table below maps phases to GitHub issues.
 
 Critical path: **1 -> 2 -> 3 -> 4 -> 5**. Phase 12 (HISE C++ side) is
 independent work that can proceed in parallel.

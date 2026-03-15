@@ -1,3 +1,6 @@
 node_modules/
-"dist/" 
 dist/
+
+# HISE source — clone without --recurse-submodules for C++ reference
+# git clone https://github.com/christoph-hart/HISE hise-source
+hise-source/
