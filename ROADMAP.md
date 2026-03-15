@@ -1,8 +1,28 @@
 # ROADMAP.md — hise-cli Implementation
 
-> Concrete implementation plan with deliverables, file paths, and dependencies.
+> De-facto implementation reference for hise-cli 1.0.
 > Architecture and type specifications live in [DESIGN.md](DESIGN.md).
 > Visual design system in [docs/TUI_STYLE.md](docs/TUI_STYLE.md).
+
+---
+
+## Issue Cross-Reference
+
+ROADMAP phases are canonical. GitHub issues use descriptive titles.
+
+| ROADMAP Phase | GitHub Issue | Scope |
+|---------------|-------------|-------|
+| Phase 0 — Foundation | [#1](https://github.com/christoph-hart/hise-cli/issues/1) | Engine core, test infra, directory structure |
+| Phase 1 — Session + Modes | [#1](https://github.com/christoph-hart/hise-cli/issues/1), [#2](https://github.com/christoph-hart/hise-cli/issues/2) | Mode system, slash commands, session |
+| Phase 2 — TUI v2 Shell | [#2](https://github.com/christoph-hart/hise-cli/issues/2) | TUI components, entry point rewire, screencasts |
+| Phase 3 — Tab Completion | [#3](https://github.com/christoph-hart/hise-cli/issues/3) | Completion engine + popup |
+| Phase 4 — Builder + Plan | [#5](https://github.com/christoph-hart/hise-cli/issues/5), [#4](https://github.com/christoph-hart/hise-cli/issues/4) | Full grammar, module tree, plan submode |
+| Phase 5 — Wizards | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard framework + setup wizard |
+| Phase 6 — Remaining Modes | [#6](https://github.com/christoph-hart/hise-cli/issues/6), [#8](https://github.com/christoph-hart/hise-cli/issues/8), [#7](https://github.com/christoph-hart/hise-cli/issues/7), [#11](https://github.com/christoph-hart/hise-cli/issues/11), [#9](https://github.com/christoph-hart/hise-cli/issues/9) | DSP, script (full), inspect, sampler, project/compile/import |
+| Phase 7 — Polish | [#10](https://github.com/christoph-hart/hise-cli/issues/10), [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Command palette, remaining wizards, CLI frontend |
+| HISE C++ (parallel) | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | New REST endpoints + SSE |
+| Post-1.0 — Web Frontend | — | Browser frontend, live screencast replay |
+| Future | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Wave editing + sample analysis |
 
 ---
 
@@ -19,6 +39,18 @@
   into `src/engine/`, `src/tui/`, `src/cli/`. Entry point (`src/index.ts`)
   is rewired in Phase 2.
 
+## Resolved Design Decisions
+
+These were open questions that are now settled:
+
+- **Test file placement**: colocated (`session.test.ts` next to `session.ts`)
+- **Session design**: class with thin methods delegating to pure functions
+- **HiseConnection interface**: explicit `get()` / `post()` methods (not a
+  single `request()` method). See Phase 0.3 for the interface definition.
+- **Phase 8 (Web Frontend)**: deferred to post-1.0. The 1.0 release ships
+  TUI + CLI only. The isomorphic engine constraint remains to keep the door
+  open.
+
 ---
 
 ## Phase 0 — Foundation
@@ -34,9 +66,6 @@ Tracks [#1](https://github.com/christoph-hart/hise-cli/issues/1) (engine core).
   because the project uses Node16 `.js` extension imports that Vite's resolver
   does not handle natively)
 - Add npm scripts: `"test": "vitest run"`, `"test:watch": "vitest"`
-- Add `hise-source/` to `.gitignore` with a comment explaining the convention:
-  clone HISE without `--recurse-submodules` for C++ source reference
-- Fix the stray `"dist/"` line in `.gitignore`
 - Install engine-layer dependencies (see
   [DESIGN.md — Third-party Dependencies](DESIGN.md#third-party-dependencies)):
   `@lezer/lr`, `@lezer/common`, `@lezer/highlight`, `chevrotain`, `marked`,
@@ -44,9 +73,10 @@ Tracks [#1](https://github.com/christoph-hart/hise-cli/issues/1) (engine core).
 - Install TUI-layer dependencies: `ink-select-input`, `ink-box`, `cli-table3`
 - Install test dependency: `ink-testing-library`
 
-**Verify**: `npm run build && npm run typecheck && npm test` all pass.
-
 ### 0.2 Engine directory structure
+
+Test files are colocated next to their source files (e.g., `hise.test.ts`
+next to `hise.ts`).
 
 ```
 src/engine/
@@ -54,7 +84,7 @@ src/engine/
   hise.test.ts         Tests with MockHiseConnection
   data.ts              DataLoader interface (isomorphic static dataset access)
   data.test.ts
-  session.ts           Session state (mode stack, history, connection)
+  session.ts           Session class (mode stack, history, connection)
   session.test.ts
   result.ts            CommandResult types (text, error, code, table, tree, markdown, empty)
   commands/
@@ -83,9 +113,10 @@ the engine layer must contain zero `node:` imports. Platform-specific
 operations use two interfaces:
 
 - `DataLoader` — loads `moduleList.json`, `scriptnodeList.json`,
-  `scripting_api.json`. Node.js implementation reads from filesystem
-  (lives in `src/tui/` or `src/cli/`). Browser implementation bundles
-  the JSON or fetches from URL (lives in `src/web/`).
+  `scripting_api.json`. Loaded once on session creation, cached for the
+  session lifetime. Node.js implementation reads from filesystem (lives
+  in `src/tui/` or `src/cli/`). Browser implementation bundles the JSON
+  or fetches from URL (lives in `src/web/`).
 - `PhaseExecutor` — runs shell scripts for pipeline phases. Node.js only
   (`child_process.spawn`). Disabled in browser.
 
@@ -94,36 +125,21 @@ operations use two interfaces:
 File: `src/engine/hise.ts`
 
 ```ts
-// Two response shapes (verified against RestServer.cpp):
-
-// Success (2xx) — handler-specific body + merged logs/errors
-interface HiseSuccessResponse {
-  success: boolean;
-  result?: unknown;
-  logs: string[];
-  errors: Array<{ errorMessage: string; callstack: string[] }>;
-  [key: string]: unknown;        // endpoint-specific fields (e.g. "value" for /api/repl)
+interface HiseConnection {
+  get(endpoint: string): Promise<HiseResponse>;
+  post(endpoint: string, body: object): Promise<HiseResponse>;
+  probe(): Promise<boolean>;     // GET /api/status, returns false on 503/refused
+  destroy(): void;
 }
-
-// Error (4xx/5xx) — different shape, no "success" field
-interface HiseErrorResponse {
-  error: true;
-  message: string;
-}
-
-type HiseResponse = HiseSuccessResponse | HiseErrorResponse;
 ```
+
+Response types (`HiseSuccessResponse`, `HiseErrorResponse`, `HiseResponse`)
+are defined in DESIGN.md — Response Format Details. Do not duplicate the
+type definitions here; import them from `src/engine/hise.ts`.
 
 `HttpHiseConnection` — `fetch()`-based, targets `localhost:1900`.
 `probe()` sends `GET /api/status` (doubles as readiness check — returns 503
 while HISE is still loading, verified in `RestHelpers.cpp:947-958`).
-
-**Response shapes** (verified against `RestServer.cpp`):
-- Success: `{ success: true, result: ..., logs: [], errors: [] }`
-- Error (400/404/500): `{ error: true, message: "..." }` — note: no
-  `success` field, uses `error` flag instead
-- `/api/repl` is special: evaluation result is in `value`, not `result`
-  (`result` is a fixed status string like "REPL Evaluation OK")
 
 `MockHiseConnection` — configurable per-endpoint responses for tests.
 Serves as the living API contract per
@@ -163,6 +179,13 @@ The existing `src/index.ts` entry point remains untouched — it still works
 and still imports the legacy code. New engine code is exercised only through
 tests at this stage.
 
+**Phase 0 gate — all must pass:**
+- `npm run build` produces `dist/index.js` (legacy app still works)
+- `npm run typecheck` passes with zero errors
+- `npm test` passes with tests for: `HiseConnection` (probe, get, post,
+  mock responses), `DataLoader` (loads all three datasets), `CommandResult`
+  (type discrimination), tape parser (VHS commands + extensions)
+
 ---
 
 ## Phase 1 — Session + Mode System
@@ -200,13 +223,14 @@ inspect `#ae81ff`, project `#e6db74`, compile `#f92672`, import `#2de0a5`.
 
 File: `src/engine/session.ts`
 
-The core state container that both TUI and CLI frontends consume:
+The core state container that both TUI and CLI frontends consume. Class
+with thin methods delegating to pure functions for testability:
 
 ```ts
 class Session {
-  modeStack: Mode[];
-  history: string[];
-  connection: HiseConnection | null;
+  readonly modeStack: Mode[];
+  readonly history: string[];
+  readonly connection: HiseConnection | null;
   projectName: string | null;
 
   currentMode(): Mode;
@@ -221,7 +245,9 @@ class Session {
 - Anything else → `currentMode().parse()`
 
 This is the single function the TUI calls on submit and the CLI calls per
-invocation.
+invocation. Internal logic (routing, validation) is extracted to pure
+functions that the class methods delegate to, making them individually
+testable without constructing a full Session.
 
 Tests: mode push/pop, slash command routing, input dispatch to current mode,
 history tracking, connection state.
@@ -291,7 +317,8 @@ Tests (with `MockHiseConnection`):
 - Processor ID forwarded correctly in request body
 - `undefined` result normalized to string `"undefined"` by HISE
 
-Live test (with running HISE): `Engine.getSampleRate()` → `44100.0`.
+Manual verification (with running HISE): `Engine.getSampleRate()` → `44100.0`.
+This is not an automated gate — `MockHiseConnection` tests are the gate.
 
 ### 1.6 Inspect mode stub
 
@@ -341,6 +368,16 @@ Tests:
 - Wrong chain for subtype → error explaining the constraint
 - Parameter out of range → error with valid range
 - `show types` returns table of module types
+
+**Phase 1 gate — all must pass:**
+- `npm test` passes with tests for: Session (mode push/pop, input dispatch,
+  slash command routing, history), CommandRegistry (each handler, unknown
+  command fallback), root mode (rejects non-slash input), script mode (mock
+  REPL round-trip, reads `response.value`, error handling), inspect mode
+  (mock status parsing), builder mode (parser accepts valid commands, rejects
+  invalid types with "Did you mean?" suggestion, validates chain constraints
+  and parameter ranges)
+- `npm run build && npm run typecheck` still pass
 
 ---
 
@@ -549,6 +586,14 @@ Each subsequent phase adds screencast scripts for its new features:
 - **Phase 4**: builder workflow (add, show tree, plan, execute, export)
 - **Phase 5**: wizard walkthrough (setup wizard step by step)
 
+**Phase 2 gate — all must pass:**
+- `npm run build` produces working `dist/index.js` with the new TUI
+- `npm run typecheck` passes
+- `npm test` passes including: ink-testing-library tests for TopBar,
+  Output, Input, StatusBar components; at least 3 `.tape` screencast
+  tests run as vitest tests (mode-switching, script-repl, builder-validation)
+- Manual verification with live HISE completes the Phase 2.8 scenario
+
 ---
 
 ## Phase 3 — Tab Completion
@@ -588,6 +633,12 @@ and ghost text rendering are custom.
 Wire `Mode.complete()` to the completion engine. The Input component triggers
 completion on Tab press and renders the popup.
 
+**Phase 3 gate — all must pass:**
+- `npm test` passes with: completion engine returns correct candidates for
+  all modes (unit tests), CompletionPopup renders in ink-testing-library,
+  `.tape` screencast for tab completion UX
+- `npm run build && npm run typecheck` pass
+
 ---
 
 ## Phase 4 — Builder Mode + Plan Submode
@@ -621,6 +672,18 @@ the plan. `/remove N` edits it. `/discard` returns to live mode.
 
 HISE-side plan validation via `validate: true` flag requires
 [#12](https://github.com/christoph-hart/hise-cli/issues/12).
+
+Phase 4 can be completed with `MockHiseConnection`. Live HISE execution
+of builder commands requires [#12](https://github.com/christoph-hart/hise-cli/issues/12)
+to be implemented on the C++ side.
+
+**Phase 4 gate — all must pass:**
+- `npm test` passes with: full Chevrotain parser for all documented grammar
+  forms (`add`, `clone`, `remove`, `clear`, `move`, `set`, `connect`, `show`,
+  `select`, `bypass`/`enable`, `flush`), plan submode records/shows/removes/
+  exports commands, module tree tracking validates against mocked
+  `builder/tree` response, `.tape` screencast for builder workflow
+- `npm run build && npm run typecheck` pass
 
 ---
 
@@ -673,11 +736,15 @@ from failed phase.
 
 Directory: `src/engine/wizard/phases/`
 
-Reusable building blocks extracted from `src/setup/phases.ts`:
-- `compile.ts` — Projucer + platform compiler
-- `verify.ts` — binary check
-- `git-ops.ts` — clone, fetch, checkout
-- `cleanup.ts` — directory + PATH removal
+Reusable building blocks extracted from `src/setup/phases.ts`. The
+extraction must remove all TUI dependencies (Ink components, React hooks)
+from the phase logic. Prerequisite for Phase 5.7.
+
+Specific exports to extract from `src/setup/phases.ts`:
+- `compile.ts` — Projucer + platform compiler (`runProjucer`, `runBuild`)
+- `verify.ts` — binary check (`verifyBinary`, `checkBuildFlags`)
+- `git-ops.ts` — clone, fetch, checkout (`gitClone`, `gitFetch`, `gitCheckout`)
+- `cleanup.ts` — directory + PATH removal (`removeDirectory`, `cleanPath`)
 
 ### 5.7 Setup wizard definition
 
@@ -693,6 +760,15 @@ via shared pipeline phases. Source reference: `data/wizards/new_project.json`.
 `hise-cli wizard <id> --schema` — dump parameter schema.
 `hise-cli wizard list` — list available wizards.
 Subcommand aliases: `hise-cli setup` → `hise-cli wizard setup`.
+
+**Phase 5 gate — all must pass:**
+- `npm test` passes with: WizardRunner step navigation (advance, back,
+  showIf, repeat groups), WizardExecutor single-shot validation + execution,
+  pipeline phase sequencing with abort, setup wizard definition renders in
+  ink-testing-library overlay, CLI `--answers` and `--schema` work,
+  `.tape` screencast for setup wizard walkthrough
+- `npm run build && npm run typecheck` pass
+- Manual: `hise-cli setup` opens standalone wizard overlay
 
 ---
 
@@ -719,20 +795,23 @@ chalk-colored `<Text>` spans in custom input component).
 [DESIGN.md — Script Mode / Variable Watch](DESIGN.md#variable-watch)):
 
 - Engine: `src/engine/modes/script-watch.ts` — polls
-  `GET /api/watch_variables`, parses hierarchical debug info, applies
-  glob/type filters client-side (glob matching via `picomatch`)
+  `GET /api/inspect/watch_variables`, parses hierarchical debug info,
+  applies glob/type filters client-side (glob matching via `picomatch`)
 - TUI: sidebar panel or toggled split view with live-updating table.
   Type badges (R/V/C/G/N) in color. Expandable object/array children.
   `/watch [glob]` to toggle and filter.
 - Configurable polling interval (default 500ms, matching HISE IDE)
-- Depends on `GET /api/watch_variables` — new endpoint in
+- Depends on `GET /api/inspect/watch_variables` — new endpoint in
   [#12](https://github.com/christoph-hart/hise-cli/issues/12)
 
 ### 6.3 Inspect mode — full implementation
 
 Tracks [#7](https://github.com/christoph-hart/hise-cli/issues/7).
-SSE subscriptions for live monitoring (cpu, midi). Requires SSE endpoint
-from [#12](https://github.com/christoph-hart/hise-cli/issues/12).
+Live monitoring (cpu, midi) via SSE subscriptions when available, with
+polling `GET /api/inspect/cpu` at 500ms intervals as fallback (SSE is
+not yet implemented in HISE C++ — see DESIGN.md SSE Status). The polling
+fallback ships in 1.0; SSE upgrade is transparent when
+[#12](https://github.com/christoph-hart/hise-cli/issues/12) delivers it.
 
 ### 6.4 Sampler mode
 
@@ -743,6 +822,14 @@ Requires [#12](https://github.com/christoph-hart/hise-cli/issues/12).
 ### 6.5 Project, Compile, Import modes
 
 Tracks [#9](https://github.com/christoph-hart/hise-cli/issues/9).
+
+**Phase 6 gate — all must pass:**
+- `npm test` passes with: DSP mode Chevrotain grammar, script mode
+  multi-line detection + `/api` help + watch polling, inspect mode polling
+  fallback, sampler mode grammar + selection commands, project/compile/import
+  mode parsers
+- All modes have at least one `.tape` screencast test
+- `npm run build && npm run typecheck` pass
 
 ---
 
@@ -767,12 +854,26 @@ Uses the same `Session` and `Mode` infrastructure.
 
 ### 7.4 SSE event streaming
 
-Live monitoring in inspect mode, pipeline progress in wizards.
-Depends on [#12](https://github.com/christoph-hart/hise-cli/issues/12).
+Upgrade inspect mode and wizard pipelines from polling to SSE push when
+available. Non-blocking — 1.0 ships with polling fallback. SSE is an
+enhancement when [#12](https://github.com/christoph-hart/hise-cli/issues/12)
+delivers the `GET /api/events` endpoint.
+
+**Phase 7 gate (1.0 release gate) — all must pass:**
+- `npm run build && npm run typecheck && npm test` all pass
+- All modes have tests and at least one `.tape` screencast
+- Command palette opens and filters correctly
+- CLI frontend `src/cli/index.ts` produces structured JSON output
+- Remaining wizards (broadcaster, export, compile-networks) render and
+  execute in both TUI and CLI modes
+- Manual: full end-to-end walkthrough with live HISE covering all modes
 
 ---
 
-## Phase 8 — Web Frontend
+## Post-1.0 — Web Frontend
+
+> Deferred from the 1.0 release. The isomorphic engine constraint (Phase 0)
+> keeps the door open. This section is included for architectural context.
 
 **Goal**: browser-based frontend sharing the engine layer. Terminal aesthetic
 via monospace CSS. Three targets, implemented incrementally.
@@ -864,7 +965,7 @@ REST API endpoints. This work proceeds in parallel on the HISE side.
 | Builder execution | `POST /api/builder/add`, `/remove`, `/move`, `/set` | Phase 4 |
 | Plan validation | `POST /api/builder/add` with `validate: true` | Phase 4 |
 | Module tree fetch | `GET /api/builder/tree` | Phase 4 |
-| Variable watch | `GET /api/watch_variables` (new) | Phase 6 |
+| Variable watch | `GET /api/inspect/watch_variables` (new) | Phase 6 |
 | DSP mode | `POST /api/dsp/*` | Phase 6 |
 | Sampler mode | `POST /api/sampler/*` | Phase 6 |
 | SSE events | `GET /api/events` (not yet implemented in C++) | Phase 6-7 |
@@ -889,20 +990,4 @@ or local validation against static datasets.
 | `src/setup/*` | Reference | Pipeline phases reused in Phase 5.6 |
 | `src/setup-core/*` | Reference | Types + GitHub helpers reused |
 
----
-
-## Open questions
-
-1. **Test file placement**: colocated (`session.test.ts` next to `session.ts`)
-   vs. separate `tests/` directory. Proposing colocated — simpler for this
-   project size.
-
-2. **Session as class vs. plain functions + state object**: class is more
-   natural for the TUI hook pattern (`useSession` wrapping a class instance).
-   Plain functions are more testable. Leaning toward class with thin methods
-   that delegate to pure functions.
-
-3. **Builder mode first "live" mode**: builder can demonstrate local validation
-   (no HISE needed) but can't execute. Script mode can execute against live
-   HISE immediately. Phase 1 implements both — script for live feedback,
-   builder for smart-client validation.
+<!-- All design questions resolved — see "Resolved Design Decisions" at top -->

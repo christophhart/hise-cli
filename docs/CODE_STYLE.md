@@ -45,7 +45,9 @@
 - Use `interface` for object shapes; `type` for unions and aliases
 - Use string literal unions instead of TypeScript `enum`
 - Use `as const` assertions for constant objects/arrays
-- Shared types live in `setup-core/types.ts`; co-locate types when only used by one module
+- In the v2 architecture, shared types live in `src/engine/` modules
+  (`result.ts`, `session.ts`, `hise.ts`). Legacy shared types are in
+  `setup-core/types.ts`. Co-locate types when only used by one module
 - Return types are inferred — don't annotate unless the signature is ambiguous
 
 ## React / Ink Patterns

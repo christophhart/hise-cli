@@ -3,7 +3,7 @@
 > Comprehensive design document for the hise-cli modal REPL system.
 > Covers architecture, mode grammars, protocol specification, and design rationale.
 >
-> Implementation tracked in [Milestone: REPL Architecture v2](https://github.com/christoph-hart/hise-cli/milestone/1)
+> Implementation tracked in [Milestone: 1.0.0](https://github.com/christoph-hart/hise-cli/milestone/2)
 
 ---
 
@@ -51,8 +51,6 @@ src/
     result.ts      CommandResult types
     session.ts     Mode stack, history, session state
     hise.ts        HiseConnection interface + HTTP implementation
-    data/          Static JSON datasets (module types, API methods, nodes)
-
   tui/             TUI frontend - Ink/React
     app.tsx        Main TUI app
     components/    Output, Input (with completion popup), Progress, Header
@@ -88,12 +86,22 @@ the terminal TUI and CLI, all sharing the same command engine.
      (lives in `src/tui/` or `src/cli/`, not in engine)
    - Browser implementation: `import` from bundled JSON or `fetch()` from URL
 
-3. **`PhaseExecutor` interface** for pipeline phase execution:
+3. **`PhaseExecutor` interface** for shell command execution:
    ```ts
    interface PhaseExecutor {
-     execute(script: string, options: PhaseOptions): Promise<PhaseResult>;
+     spawn(command: string, args: string[], options: {
+       cwd?: string;
+       env?: Record<string, string>;
+       onLog?: (line: string) => void;
+       signal?: AbortSignal;
+     }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
    }
    ```
+   This is the low-level process spawner. Wizard `PipelinePhase.execute()`
+   functions use `PhaseExecutor` internally to run shell commands (git,
+   compilers, etc.). The relationship: `PipelinePhase` is the high-level
+   wizard abstraction, `PhaseExecutor` is the platform-specific shell
+   access it delegates to.
    - Node.js implementation: `child_process.spawn()` (lives in `src/tui/`
      or `src/cli/`)
    - Browser: pipeline steps are disabled (shell scripts can't run in a
@@ -212,12 +220,14 @@ alongside its existing one-shot response path.
 naturally by HTTP. Each request is independent. The SSE endpoint serves one
 client at a time (modal).
 
-### Named Pipe: Retired
+### Named Pipe: Scheduled for Removal
 
-The original REPL used JUCE `NamedPipe` for communication. This has been
-retired in favor of HTTP. The C++ REPL server code (`ReplServer.h/.cpp`) is
-removed by reverting commit `28267c18a877fcf848f496b24b663941d183b240`.
-The Node.js pipe client (`pipe.ts`, `usePipe.ts`) is removed from hise-cli.
+The original REPL used JUCE `NamedPipe` for communication. The pipe
+transport is replaced by HTTP in the v2 architecture. The C++ REPL server
+code will be removed by reverting commit `28267c18a877`. The Node.js pipe
+client (`pipe.ts`, `usePipe.ts`) remains in the codebase as legacy code
+until Phase 2 rewires the entry point, at which point it is no longer
+imported.
 
 Rationale: The REST API already exists and is battle-tested, HTTP gives free
 request-response correlation and standard tooling, SSE covers push use cases,
@@ -229,7 +239,9 @@ The engine layer talks to HISE through a `HiseConnection` interface:
 
 ```ts
 interface HiseConnection {
-  request(endpoint: string, params?: object): Promise<HiseResponse>;
+  get(endpoint: string): Promise<HiseResponse>;
+  post(endpoint: string, body: object): Promise<HiseResponse>;
+  probe(): Promise<boolean>;     // GET /api/status, returns false on 503/refused
   destroy(): void;
 }
 ```
@@ -270,8 +282,9 @@ and [Issue #12](https://github.com/christoph-hart/hise-cli/issues/12)
 
 ### REST API Spec Drift
 
-The spec at `guidelines/api/rest-api.md` has drifted from the implementation.
-Key discrepancies (the implementation is the source of truth):
+The original API spec (previously at `guidelines/api/rest-api.md` in the
+HISE repo) has drifted from the implementation. Key discrepancies (the
+C++ implementation is the source of truth):
 
 | Endpoint | Spec says | Code actually does |
 |----------|-----------|--------------------|
@@ -337,8 +350,13 @@ SSE (Server-Sent Events) is **not yet implemented** in the HISE REST
 server. The `httplib.h` library bundled with HISE contains SSE *client*
 classes, but the `RestServer` only handles synchronous request/response.
 SSE server support must be added as part of
-[#12](https://github.com/christoph-hart/hise-cli/issues/12) before live
-monitoring (CPU, MIDI) or streaming pipeline progress can work.
+[#12](https://github.com/christoph-hart/hise-cli/issues/12).
+
+**Polling fallback for 1.0**: Until SSE is available, live monitoring
+(inspect mode CPU/voices/MIDI) uses polling at 500ms intervals against
+`GET /api/inspect/cpu`. This matches the HISE IDE's default refresh rate.
+The polling implementation is transparent — when SSE becomes available,
+the connection upgrades without user-facing changes.
 
 ---
 
@@ -603,7 +621,7 @@ edits in their editor and calls `/recompile` from the TUI.
 
 A live variable watch replicating the HISE IDE's ScriptWatchTable. Shows all
 script variables with their current values, updated by polling
-`GET /api/watch_variables` (new endpoint, see
+`GET /api/inspect/watch_variables` (new endpoint, see
 [REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md)).
 
 ```
@@ -1360,7 +1378,7 @@ for all failures.
   validate: (v) => v.trim() === "" ? "Required" : null,
   validateAsync: async (v, _answers, hise) => {
     const ids = String(v).split(",").map(s => s.trim());
-    const components = await hise?.request("GET", "/api/list_components");
+    const components = await hise?.get("/api/list_components");
     const known = new Set(components?.map((c: any) => c.id));
     const unknown = ids.filter(id => !known.has(id));
     return unknown.length > 0
@@ -1718,7 +1736,7 @@ CLI's sampler mode - one command does both.
 
 **Decision**: Use HISE's existing HTTP REST API (`localhost:1900`) for
 request/response and Server-Sent Events for push. The named pipe REPL
-server is retired.
+server is scheduled for removal.
 
 **Rationale**: The REST API is battle-tested (MCP server uses it daily),
 HTTP naturally supports multiple simultaneous clients (MCP + CLI), and
@@ -1855,27 +1873,14 @@ a separate mechanism, duplicating the action sequences.
 
 ---
 
-## Implementation Phases
+## Implementation
 
-Concrete deliverables, file paths, and dependencies are in
-[ROADMAP.md](ROADMAP.md). The table below maps phases to GitHub issues.
+Concrete deliverables, file paths, dependencies, phase gate criteria, and
+test requirements are in [ROADMAP.md](ROADMAP.md). That document is the
+canonical implementation reference — phases, issue cross-references, and
+ordering are defined there.
 
-Critical path: **1 -> 2 -> 3 -> 4 -> 5**. Phase 12 (HISE C++ side) is
-independent work that can proceed in parallel.
-
-| Phase | Issue | Title                                              |
-|-------|-------|----------------------------------------------------|
-| 1     | [#1](https://github.com/christoph-hart/hise-cli/issues/1)   | Command Engine Core + TDD setup          |
-| 2     | [#2](https://github.com/christoph-hart/hise-cli/issues/2)   | Mode System + Slash Commands             |
-| 3     | [#3](https://github.com/christoph-hart/hise-cli/issues/3)   | Tab Completion Engine                    |
-| 4     | [#5](https://github.com/christoph-hart/hise-cli/issues/5)   | Builder Mode                             |
-| 5     | [#4](https://github.com/christoph-hart/hise-cli/issues/4)   | Plan Submode + Script Generation         |
-| 6     | [#6](https://github.com/christoph-hart/hise-cli/issues/6)   | DSP (Scriptnode) Mode                    |
-| 7     | [#8](https://github.com/christoph-hart/hise-cli/issues/8)   | Script Mode                              |
-| 8     | [#7](https://github.com/christoph-hart/hise-cli/issues/7)   | Inspect Mode                             |
-| 9     | [#9](https://github.com/christoph-hart/hise-cli/issues/9)   | Project, Compile, Import Modes           |
-| 10    | [#11](https://github.com/christoph-hart/hise-cli/issues/11) | Workspace Navigation + Sampler Mode      |
-| 11    | [#10](https://github.com/christoph-hart/hise-cli/issues/10) | Command Palette (Ctrl+Space)             |
-| 12    | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | HISE REST API Extensions + SSE (C++ side) |
-| 13    | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard Framework + Wizard Definitions                        |
-| -     | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Future: Wave Editing + Sample Analysis   |
+Critical path: **Phase 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7** (1.0 release).
+[#12](https://github.com/christoph-hart/hise-cli/issues/12) (HISE C++ REST
+endpoints) is independent work that proceeds in parallel. Web frontend is
+deferred to post-1.0.
