@@ -37,6 +37,12 @@ Tracks [#1](https://github.com/christoph-hart/hise-cli/issues/1) (engine core).
 - Add `hise-source/` to `.gitignore` with a comment explaining the convention:
   clone HISE without `--recurse-submodules` for C++ source reference
 - Fix the stray `"dist/"` line in `.gitignore`
+- Install engine-layer dependencies (see
+  [DESIGN.md — Third-party Dependencies](DESIGN.md#third-party-dependencies)):
+  `@lezer/lr`, `@lezer/common`, `@lezer/highlight`, `chevrotain`, `marked`,
+  `picomatch`, `brace-expansion`, `fastest-levenshtein`
+- Install TUI-layer dependencies: `ink-select-input`, `ink-box`, `cli-table3`
+- Install test dependency: `ink-testing-library`
 
 **Verify**: `npm run build && npm run typecheck && npm test` all pass.
 
@@ -50,12 +56,17 @@ src/engine/
   data.test.ts
   session.ts           Session state (mode stack, history, connection)
   session.test.ts
-  result.ts            CommandResult types
+  result.ts            CommandResult types (text, error, code, table, tree, markdown, empty)
   commands/
     registry.ts        CommandRegistry — slash command → handler map
     registry.test.ts
     slash.ts           Built-in slash command handlers
     slash.test.ts
+  highlight/
+    hisescript.grammar Lezer grammar for HiseScript (forked from JS, simplified)
+    hisescript.ts      Generated parser + tokenize() wrapper
+    xml.ts             Minimal XML regex tokenizer (~30 lines)
+    tokens.ts          Shared token type definitions + color mapping
   modes/
     mode.ts            Mode interface + ModeId type
     root.ts            Root mode (slash commands only)
@@ -128,11 +139,14 @@ type CommandResult =
   | { type: "code"; content: string; language?: string }
   | { type: "table"; headers: string[]; rows: string[][] }
   | { type: "tree"; root: TreeNode }
+  | { type: "markdown"; content: string }
   | { type: "empty" }
 ```
 
 Pure data — the engine's output contract. TUI renders them visually, CLI
-serializes them as JSON.
+serializes them as JSON. The `markdown` variant is parsed by `marked` in
+the engine and rendered by a custom chalk + cli-table3 renderer in the TUI
+(see [DESIGN.md — Third-party Dependencies](DESIGN.md#third-party-dependencies)).
 
 ### 0.5 Build verification
 
@@ -294,13 +308,21 @@ Tracks [#5](https://github.com/christoph-hart/hise-cli/issues/5) (builder mode)
 — parser + validation only, no HISE execution (builder endpoints are new and
 tracked in [#12](https://github.com/christoph-hart/hise-cli/issues/12)).
 
+**Parser**: built with Chevrotain (see
+[DESIGN.md — Third-party Dependencies](DESIGN.md#third-party-dependencies)).
+Shared token types (quoted strings, dot-paths, identifiers, numbers) are
+defined once in `src/engine/modes/tokens.ts` and reused by builder, DSP,
+and sampler mode grammars. Each grammar rule is a class method, individually
+testable.
+
 Parser skeleton recognizing:
 - `add <type> [as "<name>"] [to <parent>.<chain>]`
 - `show tree` / `show types`
 - `set <target> <param> [to] <value>`
 
 Local validation against `data/moduleList.json`:
-- Module type exists (79 types)
+- Module type exists (79 types) — typos caught with `fastest-levenshtein`
+  ("Did you mean 'AHDSR'?")
 - Chain accepts module subtype (constrainer matching)
 - Parameter name valid for module type
 - Parameter value in range
@@ -311,7 +333,7 @@ the engine catches type errors locally without a HISE round-trip.
 
 Tests:
 - Valid `add` commands parse correctly
-- Invalid module type → error with suggestion
+- Invalid module type → error with suggestion (levenshtein)
 - Wrong chain for subtype → error explaining the constraint
 - Parameter out of range → error with valid range
 - `show types` returns table of module types
@@ -391,10 +413,18 @@ Renders an array of `CommandResult` entries with type-appropriate formatting:
 |-------------|-----------|
 | `text` | `foreground.default` |
 | `error` | `brand.error` with `✗` prefix |
-| `code` | Monospace block (syntax highlighting deferred) |
-| `table` | Column-aligned with header row |
+| `code` | Lezer-highlighted HiseScript or plain monospace |
+| `table` | `cli-table3` box-drawn table with Unicode borders |
 | `tree` | Indented with `├──` / `└──` connectors |
+| `markdown` | Custom `marked` renderer: headings bold + SIGNAL_COLOUR, `**bold**`, `[links](url)` clickable, tables via cli-table3, code blocks via Lezer (HiseScript) or regex (XML), other languages plain |
 | `empty` | Clears the output buffer |
+
+The markdown renderer (`src/tui/markdown.ts`, ~150 lines) is a custom
+`marked` renderer extension that uses chalk for formatting, cli-table3 for
+tables, and our Lezer tokenizer for HiseScript code blocks. XML code blocks
+use a ~30-line regex tokenizer. Other languages render without highlighting.
+This replaces the `marked-terminal` → `cli-highlight` → `highlight.js`
+chain (~7MB) with ~150 lines of code using libraries we already have.
 
 Command echo lines get a left-border `▎` in the current mode's accent color
 per [docs/TUI_STYLE.md — Section 3.2](docs/TUI_STYLE.md#32-output).
@@ -503,7 +533,8 @@ File: `src/tui/components/CompletionPopup.tsx`
 Per [docs/TUI_STYLE.md — Section 3.5](docs/TUI_STYLE.md#35-completionpopup):
 floating box above the input field, max 8 items visible, arrow keys to
 navigate, Tab to accept, Escape to dismiss. Selected item highlighted in
-SIGNAL_COLOUR.
+SIGNAL_COLOUR. Uses `ink-select-input` for list selection logic; positioning
+and ghost text rendering are custom.
 
 ### 3.3 Integration
 
@@ -522,10 +553,11 @@ and [#4](https://github.com/christoph-hart/hise-cli/issues/4) (plan submode).
 
 ### 4.1 Builder parser
 
-Full grammar from
+Full Chevrotain grammar from
 [DESIGN.md — Builder Mode](DESIGN.md#builder-mode):
 `add`, `clone`, `remove`, `clear`, `move`, `set`, `connect`, `show`, `select`,
-`bypass`/`enable`, `flush`.
+`bypass`/`enable`, `flush`. Clone commands use `brace-expansion` for
+`{2..10}` patterns.
 
 ### 4.2 Module tree tracking
 
@@ -622,22 +654,26 @@ Subcommand aliases: `hise-cli setup` → `hise-cli wizard setup`.
 ### 6.1 DSP (Scriptnode) mode
 
 Tracks [#6](https://github.com/christoph-hart/hise-cli/issues/6).
-Graph editing grammar, 194 nodes from `scriptnodeList.json`.
-Requires [#12](https://github.com/christoph-hart/hise-cli/issues/12)
+Chevrotain grammar for graph editing, 194 nodes from `scriptnodeList.json`.
+Shares token types with builder mode grammar (quoted strings, dot-paths,
+identifiers, numbers). Requires
+[#12](https://github.com/christoph-hart/hise-cli/issues/12)
 for new dsp endpoints.
 
 ### 6.2 Script mode — full implementation
 
 Tracks [#8](https://github.com/christoph-hart/hise-cli/issues/8).
-Multi-line support (unclosed brackets), `_` for last result, `/api`
-inline help, syntax highlighting in input field.
+Multi-line support (unclosed brackets — detected via Lezer parse tree),
+`_` for last result, `/api` inline help (rendered as `markdown`
+CommandResult), syntax highlighting in input field (Lezer tokenizer →
+chalk-colored `<Text>` spans in custom input component).
 
 **Variable watch** (see
 [DESIGN.md — Script Mode / Variable Watch](DESIGN.md#variable-watch)):
 
 - Engine: `src/engine/modes/script-watch.ts` — polls
   `GET /api/watch_variables`, parses hierarchical debug info, applies
-  glob/type filters client-side
+  glob/type filters client-side (glob matching via `picomatch`)
 - TUI: sidebar panel or toggled split view with live-updating table.
   Type badges (R/V/C/G/N) in color. Expandable object/array children.
   `/watch [glob]` to toggle and filter.
@@ -717,7 +753,10 @@ Web superpowers beyond what the TUI can do:
 - Resizable panes (sidebar, output split)
 - Smooth scrolling
 - Copy-to-clipboard buttons on code blocks
-- Syntax highlighting via CodeMirror or custom tokenizer
+- Syntax highlighting via CodeMirror 6 using the same Lezer HiseScript
+  grammar from the engine — zero additional parser work
+- Markdown rendering via `react-markdown` or similar, consuming the same
+  `marked` AST from the engine
 
 ### 8.2 Mock playground
 

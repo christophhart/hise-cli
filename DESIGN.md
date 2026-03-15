@@ -802,6 +802,124 @@ as additional JSON files.
 
 ---
 
+## Third-party Dependencies
+
+Libraries are selected for focused functionality, isomorphic compatibility
+(engine layer must run in both Node.js and browsers), and avoiding
+reimplementation of hard problems. Bundle size is not a significant
+concern for a CLI tool (current bundle: 2.6MB, Node.js itself: ~40MB).
+
+### Engine Layer (isomorphic — zero `node:` imports)
+
+| Library | Unpacked | Bundled (est.) | Purpose |
+|---------|----------|----------------|---------|
+| `@lezer/lr` + `@lezer/common` + `@lezer/highlight` | 499KB | ~120KB | HiseScript parsing, tokenization, bracket balancing, syntax highlighting |
+| `chevrotain` (+ 5 internal pkgs) | 1,491KB | ~250KB | Builder, DSP, sampler command grammars with error recovery |
+| `marked` | 434KB | ~90KB | Markdown parsing to AST |
+| `picomatch` | 83KB | ~8KB | Glob matching (variable watch filters, import paths) |
+| `brace-expansion` | 50KB | ~4KB | `{2..10}` brace patterns in clone commands |
+| `fastest-levenshtein` | 20KB | ~2KB | "Did you mean?" suggestions on typos |
+| **Engine total** | **~2,577KB** | **~474KB** | |
+
+### TUI Layer (Node.js terminal — may use `node:` imports)
+
+| Library | Size | Purpose |
+|---------|------|---------|
+| `ink` + `chalk` + `ink-text-input` + `ink-spinner` | Existing | Core TUI framework |
+| `ink-select-input` | 17KB | Selection list logic (CompletionPopup, CommandPalette) |
+| `ink-box` | 5KB | Styled borders (wizard overlay, panels) |
+| `cli-table3` | 45KB | Unicode box-drawn table rendering (markdown tables + CommandResult tables) |
+| `ink-testing-library` (devDep) | 10KB | Ink component testing in vitest |
+
+### Rationale
+
+**Lezer** (`@lezer/lr`, `@lezer/common`, `@lezer/highlight`): The parser
+system behind CodeMirror 6. Incremental parsing (fast on keystroke input),
+custom grammar DSL, and the same grammar serves both TUI tokenization and
+future web frontend CodeMirror integration. HiseScript is syntactically
+close to JavaScript — we fork the Lezer JS grammar and simplify (remove
+JSX, modules, classes, async/await; add `reg`, `inline`, `namespace`,
+`local` keywords). Also provides bracket balancing (multi-line detection
+in script mode) and error recovery as byproducts of the parse tree.
+
+**Chevrotain**: TypeScript-native parser toolkit with no code generation
+step. Produces excellent context-aware error messages out of the box —
+critical for a REPL where users type commands interactively. Builder mode,
+DSP mode, and sampler mode each have distinct but structurally similar
+grammars (verb-first with optional clauses, quoted strings, dot-paths,
+keyword markers). Chevrotain lets us define shared token types and reuse
+them across mode grammars. Each grammar rule is a method on a class,
+individually testable in vitest.
+
+**Lezer vs. Chevrotain — why both**: These handle different parsing domains.
+Lezer parses a *programming language* (HiseScript: expressions, statements,
+functions, recursive nesting, operator precedence). Chevrotain parses
+*imperative CLI commands* (fixed verb-first structure, optional clauses,
+keyword markers). Using Lezer for commands would be overkill; using
+Chevrotain for HiseScript tokenization would miss incremental parsing
+and CodeMirror integration.
+
+**marked**: Zero-dependency markdown parser. Produces an AST of tokens
+(headings, bold, links, code blocks, tables). The engine parses markdown
+into an AST; each frontend renders it with platform-appropriate formatting.
+TUI: custom `marked` renderer (~150 lines) using chalk + cli-table3 +
+Lezer for code blocks. Web: `react-markdown` or similar. This avoids the
+`marked-terminal` → `cli-highlight` → `highlight.js` dependency chain
+(~7MB) by using our own syntax highlighting for the two languages we
+support in code blocks: HiseScript (via Lezer) and XML (via a ~30-line
+regex tokenizer for `<tag attr="value">` patterns). Code blocks in other
+languages render without highlighting.
+
+**picomatch**: Zero-dependency glob matching. Used in variable watch
+filters (`/watch myVar*`), sampler import paths, and import mode. Simple
+`*`/`?` globbing is a 10-line function, but picomatch handles edge cases
+(brace expansion, character classes, negation) that would accumulate bugs.
+
+**brace-expansion**: Handles `{2..10}` numeric ranges in builder clone
+commands and HiseScript code generation. Tiny, well-tested, avoids
+reimplementing range expansion edge cases.
+
+**fastest-levenshtein**: Edit distance for "Did you mean?" suggestions
+when users mistype module names (79 types), API methods (1,789 methods),
+or node names (194 nodes). 20KB, zero deps.
+
+**cli-table3**: Unicode-aware terminal table rendering with box-drawing
+characters. Handles the hard problem of column alignment when cells contain
+ANSI escape codes (chalk-colored text). Used in two places: markdown table
+rendering and `CommandResult { type: "table" }` output.
+
+### Deliberately Skipped
+
+| Library | Why skipped |
+|---------|-------------|
+| `marked-terminal` (1.9MB) | Custom renderer using our color system + Lezer is lighter and consistent |
+| `ink-markdown` | Was a thin wrapper for `marked-terminal` |
+| `cli-highlight` / `highlight.js` (5MB+) | Only need HiseScript + XML highlighting, both covered by Lezer + 30-line regex |
+| `sugar-high` (42KB) | JS tokenizer, but Lezer is the better long-term choice — same grammar serves TUI and web CodeMirror |
+| `fuse.js` / `fzf-for-js` | Prefix matching on ~2,000 items is fast enough with sorted array + binary search |
+| `ink-autocomplete` | Dead (2017, Ink v1, v0.0.0) |
+| `prism-react-renderer` | Heavy, HTML-oriented, not needed when Lezer handles tokenization |
+
+### Custom Components (~500 lines total)
+
+| Component | Lines est. | Purpose |
+|-----------|-----------|---------|
+| Markdown terminal renderer | ~150 | `marked` AST → chalk + cli-table3 + Lezer code highlighting |
+| XML syntax highlighter | ~30 | Regex tokenizer for module tree XML output |
+| Highlighted input | ~100-150 | Lezer-tokenized input with ghost text completion |
+| CompletionPopup | ~100-150 | Floating popup with arrow key navigation, delegates to `ink-select-input` |
+| Color scheme context | ~50 | React context providing the 4-layer color system from TUI_STYLE.md |
+
+### Bundle Impact
+
+Adding all engine + TUI libraries increases the bundle from ~2.6MB to
+~3.1MB (~19% increase). This buys: proper HiseScript parsing with
+incremental highlighting, three mode command grammars with error recovery,
+markdown rendering with box-drawn tables, glob matching, edit distance
+suggestions, and brace expansion.
+
+---
+
 ## Wizard Framework
 
 Wizards are declarative multi-step guided workflows for complex operations that
