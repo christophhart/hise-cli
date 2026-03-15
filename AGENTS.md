@@ -56,6 +56,7 @@ src/                   # TypeScript source (esbuild bundles to dist/)
   setup-core/          # LEGACY — types + GitHub helpers moving to engine/wizard/
 data/                  # Static JSON datasets (not in src/)
   wizards/             # HISE C++ multipage dialog JSONs (conversion source)
+screencasts/           # VHS-derived .tape scripts (TUI tests + docs assets)
 scripts/build.mjs      # esbuild config
 ```
 

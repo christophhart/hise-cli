@@ -920,6 +920,190 @@ suggestions, and brace expansion.
 
 ---
 
+## Screencast Framework
+
+Scriptable terminal recordings that serve three purposes from one definition:
+TUI integration tests (vitest), documentation assets (asciicast files for the
+HISE docs site), and future interactive demos (live engine replay in the
+browser).
+
+### VHS-Derived `.tape` Format
+
+The definition format is derived from [VHS](https://github.com/charmbracelet/vhs)
+(Charm.sh, 19k stars), the gold standard for scripted terminal recording. We
+adopt VHS's command vocabulary verbatim and extend it with assertion and
+annotation commands for testing and documentation.
+
+**VHS commands adopted directly:**
+
+| Command | Description |
+|---------|-------------|
+| `Type "text"` | Simulate typing |
+| `Type@500ms "text"` | Typing with custom speed per character |
+| `Enter`, `Tab`, `Space`, `Backspace [count]` | Key presses |
+| `Up`, `Down`, `Left`, `Right` | Arrow keys |
+| `Ctrl+C`, `Ctrl+R`, etc. | Control sequences |
+| `Sleep 500ms` / `Sleep 2s` | Pause |
+| `Wait /regex/` | Wait for output matching regex |
+| `Hide` / `Show` | Stop/resume frame recording (setup/teardown) |
+| `Set Width 80`, `Set Height 24` | Terminal dimensions |
+| `Set TypingSpeed 50ms` | Default typing speed |
+| `Output path.cast` | Output file path |
+| `Screenshot name.png` | Capture frame as image |
+| `Source other.tape` | Include commands from another tape file |
+| `Env KEY "value"` | Set environment variables |
+
+**hise-cli extensions (additive — VHS ignores unknown commands):**
+
+| Command | Description |
+|---------|-------------|
+| `Expect "text"` | Assert screen contains text (test fails if not found) |
+| `ExpectMode "builder"` | Assert current mode |
+| `ExpectPrompt "[builder] >"` | Assert prompt text |
+| `Snapshot "name"` | Capture frame for snapshot testing (vitest snapshots) |
+| `Annotation "text"` | Caption for docs — not rendered in terminal, shown as overlay in web player |
+| `Set Connection "mock"` / `"live"` | Use MockHiseConnection or real HISE |
+| `Set MockResponse "/api/repl" {...}` | Configure mock endpoint responses |
+
+### Example `.tape` File
+
+```tape
+# screencasts/builder-intro.tape
+# Builder Mode Introduction — serves as integration test + docs screencast
+
+Output screencasts/builder-intro.cast
+Set Width 80
+Set Height 24
+Set TypingSpeed 50ms
+Set Connection "mock"
+
+# Launch and enter builder mode
+Annotation "Start hise-cli and enter builder mode"
+Sleep 500ms
+Type "/builder"
+Enter
+Sleep 300ms
+ExpectMode "builder"
+ExpectPrompt "[builder] >"
+
+# Add a module
+Annotation "Add a sampler to the module tree"
+Type "add StreamingSampler as "
+Type@100ms '"Sampler 1"'
+Sleep 200ms
+Enter
+Sleep 500ms
+Expect "ok — added StreamingSampler"
+
+# Tab completion
+Annotation "Tab completion shows matching module types"
+Type "add AH"
+Tab
+Sleep 300ms
+Expect "AHDSR"
+Snapshot "completion-popup"
+
+# Smart client validation
+Annotation "Smart client catches typos locally"
+Backspace 4
+Type "add FakeModule"
+Enter
+Sleep 300ms
+Expect "Unknown module type"
+Expect "Did you mean"
+
+# Show tree
+Type "show tree"
+Enter
+Sleep 500ms
+Snapshot "module-tree"
+
+# Exit
+Type "/exit"
+Enter
+ExpectPrompt ">"
+```
+
+### Execution Paths
+
+The same `.tape` file is consumed by four different runners:
+
+```
+                    ┌─── vitest ──────→ test pass/fail
+                    │    (Expect/Snapshot assertions checked)
+                    │
+builder-intro.tape ─┼─── asciicast ───→ .cast file for HISE docs site
+                    │    (frames captured with timestamps)
+                    │
+                    ├─── VHS ─────────→ GIF/MP4 (optional, unmodified VHS)
+                    │    (our extensions silently ignored)
+                    │
+                    └─── web replay ──→ interactive demo (Phase 8)
+                         (Annotations shown as overlays)
+```
+
+**vitest runner**: Parses the `.tape` file, creates a `Session` with
+`MockHiseConnection` (or real HISE for `Set Connection "live"`), renders
+the TUI in `ink-testing-library`'s virtual terminal, feeds keystrokes via
+`stdin.write()`, captures frames via `stdout.frames`, and checks `Expect` /
+`ExpectMode` / `Snapshot` assertions. Each `.tape` file is a vitest test.
+
+**asciicast writer**: Same execution as the vitest runner, but additionally
+collects timestamped frames and writes them to the
+[asciicast v2 format](https://docs.asciinema.org/manual/asciicast/v2/)
+(`.cast` file). The format is trivially simple — a JSON header line
+followed by `[timestamp, "o", "text_with_ansi"]` lines per frame. A
+30-second screencast is ~5-10KB.
+
+**VHS (optional)**: The `.tape` files are a superset of VHS syntax. Running
+`vhs builder-intro.tape` against a real `hise-cli` binary produces a
+GIF/MP4/WebM. Our extension commands (`Expect`, `Annotation`, etc.) are
+ignored by VHS. Useful when video format is needed (social media, README).
+
+**Web replay (Phase 8)**: The `.tape` file is parsed in the browser, and
+the commands drive the live engine `Session` with `MockHiseConnection`.
+Each `Type`/`Enter`/`Tab` action plays back against the real engine,
+producing real completions, real mode switches, real formatted output.
+`Annotation` commands render as overlay captions. The visitor can pause
+and optionally take over typing.
+
+### Architecture
+
+The `.tape` parser is isomorphic (pure string parsing, no `node:` imports)
+and lives in the engine layer. The runners are platform-specific:
+
+```
+src/engine/screencast/
+  tape-parser.ts          Parse .tape files into TapeCommand[]
+  tape-parser.test.ts     Parser tests
+  types.ts                TapeCommand type + extension commands
+
+src/tui/screencast/
+  runner.ts               Execute tape against ink-testing-library
+  writer.ts               Capture frames, write asciicast .cast files
+  tester.ts               Wrap runner with vitest assertions
+
+screencasts/              Tape files + generated .cast outputs
+  builder-intro.tape      Builder mode demo
+  builder-intro.cast      Generated asciicast (gitignored or committed)
+  script-repl.tape        Script mode REPL demo
+  ...
+```
+
+### Docs Integration
+
+The HISE documentation website (Nuxt.js) embeds screencasts using the
+[asciinema-player](https://docs.asciinema.org/manual/player/) web
+component (~50KB). A Vue wrapper loads `.cast` files and renders them
+in the HISE color theme. The `.cast` files are generated by CI on each
+release and published as artifacts or committed to the docs repo.
+
+In Phase 8 (web frontend), the asciinema-player is optionally replaced by
+the live engine replay — same `.tape` definition, but running the actual
+engine in the browser instead of playing back pre-recorded frames.
+
+---
+
 ## Wizard Framework
 
 Wizards are declarative multi-step guided workflows for complex operations that
@@ -1636,6 +1820,38 @@ are Node.js-only and disabled in the browser frontend.
 **Alternative rejected**: Making the engine Node.js-only would be simpler
 today but would require a full rewrite of the engine to add a web frontend
 later. The abstraction cost now is trivial compared to the retrofit cost.
+
+### 14. VHS-derived `.tape` format for screencasts and TUI testing
+
+**Decision**: Adopt the [VHS](https://github.com/charmbracelet/vhs) `.tape`
+command vocabulary as the base format for scripted terminal recordings.
+Extend it with assertion commands (`Expect`, `ExpectMode`, `Snapshot`) and
+documentation annotations. One `.tape` file serves as TUI integration test,
+asciicast generator, optional VHS input, and future web replay source.
+
+**Rationale**: VHS (19k stars) is the gold standard for scripted terminal
+recording. Its command set (`Type`, `Enter`, `Tab`, `Sleep`, `Wait`,
+`Hide`/`Show`, `Set`, `Source`, `Screenshot`) covers all terminal interaction
+primitives and is battle-tested across thousands of projects. Adopting it
+gives us a future-proof, familiar format for free, while our extensions
+(`Expect`, `Annotation`, `Set Connection`) add the testing and documentation
+capabilities VHS doesn't provide. The `.tape` files remain VHS-compatible —
+running them through VHS produces GIFs/videos, with our extension commands
+silently ignored.
+
+Unifying testing and documentation under one artifact means every TUI feature
+gets tested and documented simultaneously. When the UI changes, updating the
+`.tape` file re-runs the test and regenerates the screencast. No separate
+recording step, no stale demos.
+
+**Alternative rejected**: Custom TypeScript definition format
+(`ScreencastDefinition` as objects). Less readable, requires TypeScript
+knowledge to author, not compatible with VHS, and invents syntax for
+problems VHS already solved.
+
+**Alternative rejected**: Recording-only approach (VHS or asciinema without
+assertions). Produces documentation but not tests. Testing would require
+a separate mechanism, duplicating the action sequences.
 
 ---
 

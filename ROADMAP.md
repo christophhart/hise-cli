@@ -67,6 +67,10 @@ src/engine/
     hisescript.ts      Generated parser + tokenize() wrapper
     xml.ts             Minimal XML regex tokenizer (~30 lines)
     tokens.ts          Shared token type definitions + color mapping
+  screencast/
+    types.ts           TapeCommand type definitions (VHS commands + extensions)
+    tape-parser.ts     Parse .tape files into TapeCommand[]
+    tape-parser.test.ts
   modes/
     mode.ts            Mode interface + ModeId type
     root.ts            Root mode (slash commands only)
@@ -502,6 +506,49 @@ $ hise-cli
   → shows module tree from GET /api/status
 ```
 
+### 2.9 TUI integration testing + screencasts
+
+See [DESIGN.md — Screencast Framework](DESIGN.md#screencast-framework)
+and [DESIGN.md — Decision #14](DESIGN.md#14-vhs-derived-tape-format-for-screencasts-and-tui-testing).
+
+**Screencast runner infrastructure:**
+
+```
+src/tui/screencast/
+  runner.ts               Execute .tape against ink-testing-library
+  writer.ts               Capture frames, write asciicast .cast files
+  tester.ts               Wrap runner with vitest assertions
+
+screencasts/              Tape files + generated .cast outputs
+```
+
+The runner parses `.tape` files (via `src/engine/screencast/tape-parser.ts`),
+creates a `Session` with `MockHiseConnection`, renders the TUI in
+`ink-testing-library`'s virtual terminal, feeds keystrokes via
+`stdin.write()`, captures frames, and checks `Expect` / `Snapshot`
+assertions. Each `.tape` file becomes a vitest test.
+
+The writer captures timestamped frames from the same run and outputs
+asciicast v2 `.cast` files (~5-10KB per 30s screencast) for the HISE
+documentation site (Nuxt.js + asciinema-player).
+
+**First screencast scripts** (double as integration tests):
+
+```
+screencasts/
+  mode-switching.tape     Enter/exit modes, verify prompts and colors
+  script-repl.tape        Evaluate expressions, see results (mock HISE)
+  builder-validation.tape Type errors caught locally, "did you mean" suggestions
+```
+
+**npm script**: `"screencasts": "vitest run --project screencasts"` — runs
+all `.tape` files as tests AND generates `.cast` files.
+
+Each subsequent phase adds screencast scripts for its new features:
+- **Phase 3**: tab completion, ghost text, completion popup
+- **Phase 4**: builder workflow (add, show tree, plan, execute, export)
+- **Phase 5**: wizard walkthrough (setup wizard step by step)
+
 ---
 
 ## Phase 3 — Tab Completion
@@ -779,6 +826,20 @@ Connect to a real HISE instance at configurable `host:port`. Uses
 - Variable watch with live updates
 - Module tree visualization
 - Requires HISE on same machine (localhost) or network-accessible
+
+### 8.4 Screencast live replay
+
+Replace the asciinema-player on the HISE docs site with the live engine
+replay. The same `.tape` files from `screencasts/` now drive the actual
+engine `Session` with `MockHiseConnection` in the browser. Screencasts
+become interactive — visitors see real syntax highlighting, real
+completions, real mode transitions. `Annotation` commands render as
+overlay captions. Visitors can pause and optionally take over typing.
+
+This reuses the web shell (8.1) + mock playground (8.2) infrastructure.
+The tape parser is already in the engine layer (isomorphic). The only
+new code is the playback controller that feeds tape commands to the
+Session at the scripted timing.
 
 ### Future: Remote access
 
