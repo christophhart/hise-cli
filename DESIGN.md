@@ -1338,5 +1338,5 @@ independent work that can proceed in parallel.
 | 10    | [#11](https://github.com/christoph-hart/hise-cli/issues/11) | Workspace Navigation + Sampler Mode      |
 | 11    | [#10](https://github.com/christoph-hart/hise-cli/issues/10) | Command Palette (Ctrl+Space)             |
 | 12    | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | HISE REST API Extensions + SSE (C++ side) |
-| 13    | -     | Wizard Framework + First Wizard Definitions                  |
+| 13    | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard Framework + Wizard Definitions                        |
 | -     | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Future: Wave Editing + Sample Analysis   |
