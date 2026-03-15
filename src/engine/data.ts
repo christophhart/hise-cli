@@ -66,9 +66,9 @@ export interface ModuleDefinition {
 	hasChildren: boolean;
 	hasFX: boolean;
 	metadataType: string;
-	parameters?: ModuleParameter[];
-	modulation?: ModuleModulation[];
-	interfaces?: string[];
+	parameters: ModuleParameter[];
+	modulation: ModuleModulation[];
+	interfaces: string[];
 	constrainer?: string;
 	fx_constrainer?: string;
 	child_fx_constrainer?: string;
@@ -114,11 +114,11 @@ export interface ScriptnodeDefinition {
 	hasFX: boolean;
 	fx_constrainer?: string;
 	metadataType: string;
-	parameters?: ScriptnodeParameter[];
-	modulation?: ScriptnodeModulation[];
+	parameters: ScriptnodeParameter[];
+	modulation: ScriptnodeModulation[];
 	hasMidi: boolean;
 	properties: Record<string, unknown>;
-	interfaces?: string[];
+	interfaces: string[];
 	constrainer?: string;
 }
 

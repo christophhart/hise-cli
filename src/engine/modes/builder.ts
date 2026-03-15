@@ -279,9 +279,8 @@ export function validateSetCommand(
 	}
 
 	// Check parameter exists
-	const params = module.parameters ?? [];
-	const paramNames = params.map((p) => p.id);
-	const param = params.find((p) => p.id === cmd.param);
+	const paramNames = module.parameters.map((p) => p.id);
+	const param = module.parameters.find((p) => p.id === cmd.param);
 
 	if (!param) {
 		const suggestion = paramNames.length > 0

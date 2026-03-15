@@ -66,10 +66,9 @@ describe("DataLoader — moduleList", () => {
 			expect(mod.prettyName).toBeDefined();
 			expect(mod.type).toBeDefined();
 			expect(mod.subtype).toBeDefined();
-			// parameters is optional — some modules (e.g. ScriptProcessor) have none
-			if (mod.parameters !== undefined) {
-				expect(Array.isArray(mod.parameters)).toBe(true);
-			}
+			expect(Array.isArray(mod.parameters)).toBe(true);
+			expect(Array.isArray(mod.modulation)).toBe(true);
+			expect(Array.isArray(mod.interfaces)).toBe(true);
 		}
 	});
 
@@ -89,12 +88,12 @@ describe("DataLoader — moduleList", () => {
 	it("parameters have ranges", async () => {
 		const data = await nodeDataLoader.loadModuleList();
 		const withParams = data.modules.filter(
-			(m) => m.parameters && m.parameters.length > 0,
+			(m) => m.parameters.length > 0,
 		);
 		expect(withParams.length).toBeGreaterThan(0);
 
 		for (const mod of withParams) {
-			for (const param of mod.parameters!) {
+			for (const param of mod.parameters) {
 				expect(param.range).toBeDefined();
 				expect(typeof param.range.min).toBe("number");
 				expect(typeof param.range.max).toBe("number");
@@ -174,17 +173,15 @@ describe("DataLoader — scriptnodeList", () => {
 			expect(node.description).toBeDefined();
 			expect(typeof node.hasChildren).toBe("boolean");
 			expect(typeof node.hasFX).toBe("boolean");
-			// parameters is optional — some nodes have none
-			if (node.parameters !== undefined) {
-				expect(Array.isArray(node.parameters)).toBe(true);
-			}
+			expect(Array.isArray(node.parameters)).toBe(true);
+			expect(Array.isArray(node.modulation)).toBe(true);
+			expect(Array.isArray(node.interfaces)).toBe(true);
 		}
 	});
 
 	it("parameters have valid ranges", async () => {
 		const data = await nodeDataLoader.loadScriptnodeList();
 		for (const [, node] of Object.entries(data)) {
-			if (!node.parameters) continue;
 			for (const param of node.parameters) {
 				expect(param.range).toBeDefined();
 				expect(typeof param.range.min).toBe("number");
