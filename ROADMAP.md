@@ -179,12 +179,39 @@ The existing `src/index.ts` entry point remains untouched — it still works
 and still imports the legacy code. New engine code is exercised only through
 tests at this stage.
 
+### 0.6 Ink performance verification
+
+Pin `"ink": "6.8.0"` (exact version) in `package.json`. See
+[DESIGN.md — TUI Performance Constraints](DESIGN.md#tui-performance-constraints).
+
+**Memory leak smoke test** — verify that Ink 6.8 fixes
+[#869](https://github.com/vadimdemedes/ink/issues/869):
+
+File: `src/tui/ink-smoke.test.ts`
+
+Simple vitest test: render a component with a 100ms timer updating a
+counter, run for 10 seconds, sample `process.memoryUsage().heapUsed` at
+start and end. Assert heap growth is <20MB. If this fails, pin to `6.0.0`
+and file a note.
+
+**Scroll prototype** — build a minimal Ink component that renders 500
+pre-highlighted lines with virtual scrolling (visible slice only). Measure:
+- Render time per frame (should be <16ms for 20fps target)
+- Memory baseline with 500 lines in the history array
+- Scroll responsiveness (Up/Down key, Page Up/Down)
+
+This prototype becomes the seed for the Phase 2 Output component. If it
+shows problems, that's the signal to investigate before committing to the
+full TUI build.
+
 **Phase 0 gate — all must pass:**
 - `npm run build` produces `dist/index.js` (legacy app still works)
 - `npm run typecheck` passes with zero errors
 - `npm test` passes with tests for: `HiseConnection` (probe, get, post,
   mock responses), `DataLoader` (loads all three datasets), `CommandResult`
   (type discrimination), tape parser (VHS commands + extensions)
+- Ink memory leak smoke test passes
+- Scroll prototype renders 500 lines without perceptible lag
 
 ---
 
@@ -469,6 +496,24 @@ chain (~7MB) with ~150 lines of code using libraries we already have.
 
 Command echo lines get a left-border `▎` in the current mode's accent color
 per [docs/TUI_STYLE.md — Section 3.2](docs/TUI_STYLE.md#32-output).
+
+**Performance** (see
+[DESIGN.md — TUI Performance Constraints](DESIGN.md#tui-performance-constraints)):
+
+- Output uses **virtual scrolling** — Ink has no built-in scroll support.
+  Full output history is a plain `string[]` array (not React state). Only
+  the visible slice (`terminalHeight - topBar - input - statusBar` lines)
+  enters the React tree. Scroll offset is a `useRef` to avoid re-renders.
+- Use `<Static>` for command results that scroll above the visible viewport
+  permanently — Ink excludes these from the re-render cycle.
+- **Syntax highlighting is pre-computed**: when a `CommandResult` with
+  `type: "code"` is added to history, the Lezer tokenizer runs once and
+  the resulting ANSI string is cached. The Output component renders cached
+  strings, never calls the tokenizer in `render()`.
+- Wrap Output in `React.memo` — re-render only when the history array
+  reference or scroll offset changes.
+- Cap history at 10,000 lines. Oldest lines are trimmed on overflow.
+- The Phase 0.6 scroll prototype evolves into this component.
 
 Scrollbar logic reused from the existing `src/components/Output.tsx`.
 

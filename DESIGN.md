@@ -936,6 +936,63 @@ incremental highlighting, three mode command grammars with error recovery,
 markdown rendering with box-drawn tables, glob matching, edit distance
 suggestions, and brace expansion.
 
+### TUI Performance Constraints
+
+Ink uses a React reconciler → Yoga flexbox layout → string buffer → terminal
+output pipeline. Every render regenerates the entire output string (no
+incremental DOM patching). Known limitations and required mitigations:
+
+**Ink configuration** (set at `render()` call):
+
+| Option | Value | Rationale |
+|--------|-------|-----------|
+| `incrementalRendering` | `true` | Line-by-line terminal diff instead of full erase+rewrite. Eliminates most flicker. |
+| `alternateScreen` | `true` | Uses alternate screen buffer (like vim/htop). Clean terminal restore on exit. |
+| `maxFps` | `20` | A REPL doesn't need the default 30fps. 20fps (50ms/frame) is perceptually equivalent and reduces CPU. |
+
+**Pin Ink version**: Use `"ink": "6.8.0"` (exact, not caret range). Ink
+6.6-6.7 had a confirmed memory leak
+([#869](https://github.com/vadimdemedes/ink/issues/869)). Exact pinning
+prevents surprise regressions from patch releases.
+
+**No built-in scroll**: Ink does not implement `overflow: "scroll"`
+([#765](https://github.com/vadimdemedes/ink/issues/765)). The Output
+component must implement virtual scrolling:
+
+- Keep full output history in a plain array (not React state)
+- Compute visible slice: `history.slice(scrollOffset, scrollOffset + viewportHeight)`
+- Only the visible slice enters the React tree
+- Scroll offset is managed via `useRef` to avoid re-renders on scroll position changes
+- Cap history at 10,000 lines to bound memory growth
+
+**Memory management**: Ink stores dual output buffers internally
+([#826](https://github.com/vadimdemedes/ink/issues/826)). Mitigations:
+
+- Use `<Static>` for command results that scroll off-screen permanently —
+  Ink excludes `<Static>` content from the dynamic re-render cycle
+- Pre-compute and cache syntax-highlighted ANSI strings when output is
+  created (not on every render)
+- Trim output history beyond the 10,000-line cap
+
+**Render cost rules**:
+
+- `React.memo` on every panel component (TopBar, Output, Input, StatusBar,
+  WatchPanel, CompletionPopup) — prevents cascading re-renders when only
+  one panel changes
+- `useCallback` for input handlers and event callbacks — prevents
+  invalidating memoized children on every parent render
+- Never call syntax highlighting functions inside `render()` — pre-compute
+  highlighted strings when output lines are added to the history array
+- For the watch panel (500ms polling), compare new values against previous
+  via `useRef` — only call `setState` when values actually change
+
+**Escape hatch**: If Ink proves inadequate at Phase 2 (the first phase with
+a working TUI), the engine layer (`src/engine/`) is completely independent —
+zero Ink imports, zero terminal dependencies. Only `src/tui/` would need
+replacement. The most practical fallback is a lower-level Node.js terminal
+renderer (direct ANSI escape codes, no React reconciler) rather than a
+full-language rewrite.
+
 ---
 
 ## Screencast Framework
@@ -1870,6 +1927,37 @@ problems VHS already solved.
 **Alternative rejected**: Recording-only approach (VHS or asciinema without
 assertions). Produces documentation but not tests. Testing would require
 a separate mechanism, duplicating the action sequences.
+
+### 15. Ink with mitigations over native TUI rewrite
+
+**Decision**: Use Ink (React for terminals) as the TUI framework despite
+known performance limitations, applying specific mitigations from the start
+(see TUI Performance Constraints above). Phase 2 serves as a go/no-go
+checkpoint — if Ink proves inadequate with real content, the engine layer
+is decoupled and only `src/tui/` would need replacement.
+
+**Rationale**: ratatui (Rust) and bubbletea (Go) produce technically
+superior terminal UIs — native scrolling, immediate-mode rendering,
+near-zero latency, minimal memory. However, switching would cost:
+
+- **Web frontend target**: Rust/Go don't compile to usable browser apps.
+  The isomorphic engine constraint (Decision #13) becomes meaningless.
+- **TypeScript ecosystem**: Lezer (grammar toolkit), Chevrotain (parser
+  toolkit), marked (markdown) are all JS-native. Rust equivalents exist
+  but require porting all grammar/parser work.
+- **Development velocity**: Rust's 5-15 second incremental compile vs
+  TypeScript's ~100ms esbuild. For a project with extensive UI iteration
+  (8 modes, 8 wizards, tab completion, overlays), this compounds.
+- **Existing codebase**: Complete rewrite. Setup wizard pipeline phases,
+  GitHub API helpers, and command history logic are all TypeScript.
+
+The performance gap is manageable for a REPL-class application at 20fps.
+Claude Code (Anthropic) and Gemini CLI (Google) — both more complex Ink
+apps — ship successfully. Both teams actively contribute upstream fixes.
+
+**Escape hatch**: The engine layer has zero Ink imports. If Ink fails at
+Phase 2, the practical fallback is a lower-level Node.js terminal renderer
+(direct ANSI escape codes, no React reconciler), not a full Rust rewrite.
 
 ---
 
