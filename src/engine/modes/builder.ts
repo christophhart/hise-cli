@@ -367,7 +367,7 @@ export class BuilderMode implements Mode {
 		if (parts.length === 0 || (parts.length === 1 && !trailingSpace)) {
 			const prefix = parts[0] ?? "";
 			const items = this.completionEngine.completeBuilderKeyword(prefix);
-			return { items, from: leadingSpaces, to: input.length };
+			return { items, from: leadingSpaces, to: input.length, label: "Builder keywords" };
 		}
 
 		const keyword = parts[0].toLowerCase();
@@ -376,12 +376,12 @@ export class BuilderMode implements Mode {
 		if (keyword === "add") {
 			if (parts.length === 1 && trailingSpace) {
 				const items = this.completionEngine.completeModuleType("");
-				return { items, from: input.length, to: input.length };
+				return { items, from: input.length, to: input.length, label: "Module types" };
 			}
 			if (parts.length === 2 && !trailingSpace) {
 				const items = this.completionEngine.completeModuleType(parts[1]);
 				const from = input.lastIndexOf(parts[1]);
-				return { items, from, to: input.length };
+				return { items, from, to: input.length, label: "Module types" };
 			}
 		}
 
@@ -389,12 +389,12 @@ export class BuilderMode implements Mode {
 		if (keyword === "show") {
 			if (parts.length === 1 && trailingSpace) {
 				const items = this.completionEngine.completeBuilderShow("");
-				return { items, from: input.length, to: input.length };
+				return { items, from: input.length, to: input.length, label: "Show arguments" };
 			}
 			if (parts.length === 2 && !trailingSpace) {
 				const items = this.completionEngine.completeBuilderShow(parts[1]);
 				const from = input.lastIndexOf(parts[1]);
-				return { items, from, to: input.length };
+				return { items, from, to: input.length, label: "Show arguments" };
 			}
 		}
 
@@ -402,12 +402,12 @@ export class BuilderMode implements Mode {
 		if (keyword === "set") {
 			if (parts.length === 2 && trailingSpace) {
 				const items = this.completionEngine.completeModuleParam(parts[1], "");
-				return { items, from: input.length, to: input.length };
+				return { items, from: input.length, to: input.length, label: "Parameters" };
 			}
 			if (parts.length === 3 && !trailingSpace) {
 				const items = this.completionEngine.completeModuleParam(parts[1], parts[2]);
 				const from = input.lastIndexOf(parts[2]);
-				return { items, from, to: input.length };
+				return { items, from, to: input.length, label: "Parameters" };
 			}
 		}
 

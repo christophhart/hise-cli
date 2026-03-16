@@ -280,7 +280,7 @@ export class CompletionEngine {
 	completeSlash(input: string): CompletionResult {
 		const prefix = input.startsWith("/") ? input : `/${input}`;
 		const items = fuzzyFilter(prefix, this.slashItems);
-		return { items, from: 0, to: input.length };
+		return { items, from: 0, to: input.length, label: "Slash commands" };
 	}
 
 	/**
@@ -316,14 +316,14 @@ export class CompletionEngine {
 			const methods = this.datasets.apiMethodMap.get(ns);
 			if (methods) {
 				const items = fuzzyFilter(methodPrefix, methods);
-				return { items, from: dotIndex + 1, to: input.length };
+				return { items, from: dotIndex + 1, to: input.length, label: `${ns} methods` };
 			}
 			return { items: [], from: dotIndex + 1, to: input.length };
 		}
 
 		// Before dot — complete namespace names
 		const items = fuzzyFilter(input, this.datasets.apiNamespaceItems);
-		return { items, from: 0, to: input.length };
+		return { items, from: 0, to: input.length, label: "API namespaces" };
 	}
 
 	/**

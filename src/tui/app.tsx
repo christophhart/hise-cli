@@ -558,6 +558,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 						onDismiss={handleCompletionDismiss}
 						leftOffset={completionState.result.from + (modeLabel === "root" ? 4 : modeLabel.length + 7)}
 						scheme={scheme}
+						label={completionState.result.label}
 						rows={rows}
 						columns={columns}
 					/>

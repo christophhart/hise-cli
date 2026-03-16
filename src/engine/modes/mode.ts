@@ -36,6 +36,8 @@ export interface CompletionResult {
 	items: CompletionItem[];
 	from: number;
 	to: number;
+	/** Displayed as a header row in the completion popup (e.g. "Slash commands") */
+	label?: string;
 }
 
 // Minimal session interface that modes depend on.

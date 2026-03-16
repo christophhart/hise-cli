@@ -43,7 +43,7 @@ export class InspectMode implements Mode {
 		const trimmed = input.trimStart();
 		const leadingSpaces = input.length - trimmed.length;
 		const items = this.completionEngine.completeInspect(trimmed);
-		return { items, from: leadingSpaces, to: input.length };
+		return { items, from: leadingSpaces, to: input.length, label: "Inspect commands" };
 	}
 
 	async parse(

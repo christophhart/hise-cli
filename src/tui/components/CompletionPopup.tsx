@@ -30,6 +30,8 @@ export interface CompletionPopupProps {
 	leftOffset: number;
 	/** Color scheme */
 	scheme: ColorScheme;
+	/** Header label (e.g. "Slash commands", "Module types") */
+	label?: string;
 	/** Max visible items */
 	maxVisible?: number;
 	/** Total viewport rows (for absolute positioning) */
@@ -53,6 +55,7 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	onDismiss,
 	leftOffset,
 	scheme,
+	label,
 	maxVisible = DEFAULT_MAX_VISIBLE,
 	rows: viewportRows,
 	columns: viewportColumns,
@@ -114,10 +117,10 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	});
 
 	// Absolute positioning: sit just above the input area.
-	// Input section = 3 rows, statusbar = 1, gap = 1 → bottom anchor at rows - 5.
-	// +1 to nudge one line down per user request.
-	const popupHeight = visibleCount;
-	const BOTTOM_OFFSET = 4; // input(3) + statusbar (shifted down by 1 vs old value of 5)
+	// Input section = 3 rows, statusbar = 1 → bottom anchor offset.
+	const headerRows = label ? 1 : 0;
+	const popupHeight = visibleCount + headerRows;
+	const BOTTOM_OFFSET = 4; // input(3) + statusbar
 	const marginTop = viewportRows
 		? Math.max(0, viewportRows - BOTTOM_OFFSET - popupHeight)
 		: undefined;
@@ -131,19 +134,26 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 			flexDirection="column"
 			{...(viewportRows ? { position: "absolute" as const, marginLeft: 0, marginTop: marginTop } : {})}
 		>
+			{label ? (
+				<Text backgroundColor={bg}>
+					<Text backgroundColor={bg}>{" ".repeat(leftOffset)}</Text>
+					<Text color={scheme.foreground.muted}> {label}</Text>
+					<Text>{" ".repeat(Math.max(0, totalCols - leftOffset - label.length - 2))}</Text>
+				</Text>
+			) : null}
 			{visibleItems.map((item, i) => {
 				const actualIndex = scrollTop + i;
 				const isSelected = actualIndex === selectedIndex;
 				const fgName = isSelected ? brand.signal : scheme.foreground.default;
 				const fgDetail = isSelected ? scheme.foreground.bright : scheme.foreground.muted;
 
-				const label = item.label.padEnd(maxLabelWidth);
+				const paddedLabel = item.label.padEnd(maxLabelWidth);
 				const detail = item.detail
 					? "  " + (item.detail.length > innerWidth - maxLabelWidth - 4
 						? item.detail.slice(0, innerWidth - maxLabelWidth - 5) + "\u2026"
 						: item.detail)
 					: "";
-				const lineContent = " " + label + detail + " ";
+				const lineContent = " " + paddedLabel + detail + " ";
 				const scrollbarSpace = showScrollbar ? 1 : 0;
 				const rightPad = Math.max(0, totalCols - leftOffset - lineContent.length - scrollbarSpace);
 
@@ -155,7 +165,7 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 				return (
 					<Text key={actualIndex} backgroundColor={bg}>
 						<Text backgroundColor={bg}>{" ".repeat(leftOffset)}</Text>
-						<Text color={fgName}> {label}</Text>
+						<Text color={fgName}> {paddedLabel}</Text>
 						<Text color={fgDetail}>{detail} </Text>
 						<Text>{" ".repeat(rightPad)}</Text>
 						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}

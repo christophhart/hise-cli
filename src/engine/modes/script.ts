@@ -62,6 +62,7 @@ export class ScriptMode implements Mode {
 			items: result.items,
 			from: token.from + result.from,
 			to: input.length,
+			label: result.label,
 		};
 	}
 }
