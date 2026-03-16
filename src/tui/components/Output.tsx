@@ -13,6 +13,7 @@ import { Box, Text } from "ink";
 import type { CommandResult, TreeNode } from "../../engine/result.js";
 import { brand, darkenHex, type ColorScheme } from "../theme.js";
 import { useTheme } from "../theme-context.js";
+import { scrollbarChar } from "./scrollbar.js";
 
 // ── Output line model ───────────────────────────────────────────────
 
@@ -180,27 +181,6 @@ export function commandEchoLine(
 		borderColor: accent,
 		bgColor: scheme.backgrounds.darker,
 	};
-}
-
-// ── Scrollbar calculation ───────────────────────────────────────────
-
-function scrollbarChar(
-	row: number,
-	viewportHeight: number,
-	totalLines: number,
-	scrollOffset: number,
-	scheme: ColorScheme,
-): { char: string; color: string } | null {
-	if (totalLines <= viewportHeight) return null;
-
-	const thumbHeight = Math.max(1, Math.round((viewportHeight * viewportHeight) / totalLines));
-	const maxOffset = totalLines - viewportHeight;
-	const thumbPosition = Math.round((scrollOffset / maxOffset) * (viewportHeight - thumbHeight));
-
-	if (row >= thumbPosition && row < thumbPosition + thumbHeight) {
-		return { char: "\u2588", color: scheme.foreground.muted }; // █
-	}
-	return { char: "\u2502", color: scheme.foreground.muted }; // │
 }
 
 // ── Output component ────────────────────────────────────────────────

@@ -137,6 +137,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		selectedIndex: number;
 		visible: boolean;
 		ghostText?: string;
+		forValue?: string;
 	} | null>(null);
 	const outputRef = useRef<DOMElement>(null);
 
@@ -200,6 +201,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	// ── Mouse wheel scrolling ───────────────────────────────────────
 
 	useOnWheel(outputRef, (event) => {
+		if (overlayData || completionState?.visible) return;
 		if (event.button === "wheel-up") {
 			scrollBy(-SCROLL_WHEEL_LINES);
 		} else if (event.button === "wheel-down") {
@@ -454,6 +456,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				selectedIndex: 0,
 				visible: true,
 				ghostText,
+				forValue: value,
 			});
 		} else {
 			setCompletionState(null);
@@ -472,12 +475,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					// Single match — accept immediately
 					acceptCompletion(result.items[0], result);
 				} else {
-					const ghost = computeGhostText(value, result, 0);
-					setCompletionState({
+				const ghost = computeGhostText(value, result, 0);
+				setCompletionState({
 						result,
 						selectedIndex: 0,
 						visible: true,
 						ghostText: ghost,
+						forValue: value,
 					});
 				}
 			}
@@ -508,7 +512,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			if (!prev) return null;
 			const value = inputHandleRef.current?.getValue() ?? "";
 			const ghost = computeGhostText(value, prev.result, index);
-			return { ...prev, selectedIndex: index, ghostText: ghost };
+			return { ...prev, selectedIndex: index, ghostText: ghost, forValue: value };
 		});
 	}, [computeGhostText]);
 
@@ -564,10 +568,22 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					columns={columns}
 					disabled={disabled || overlayData !== null}
 					onSubmit={(v) => {
+						if (completionState?.visible) {
+							// Enter with popup visible: accept completion + submit
+							const item = completionState.result.items[completionState.selectedIndex];
+							if (item) {
+								const insertText = item.insertText ?? item.label;
+								const completed = v.slice(0, completionState.result.from) + insertText;
+								setCompletionState(null);
+								void handleSubmit(completed);
+								return;
+							}
+						}
 						setCompletionState(null);
 						void handleSubmit(v);
 					}}
 					ghostText={ghostText}
+					ghostForValue={completionState?.forValue}
 					onValueChange={handleInputValueChange}
 					onTab={handleTab}
 					completionVisible={completionState?.visible ?? false}

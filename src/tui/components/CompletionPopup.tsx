@@ -1,15 +1,17 @@
 // ── CompletionPopup — dropdown above input ──────────────────────────
 
 // Appears above the input line when tab completion is triggered.
-// Max 8 visible items, scrollable, arrow-key navigable.
+// Max 8 visible items, scrollable, arrow-key navigable, mouse-wheel support.
 // Tab/Enter accepts selected item, Escape dismisses.
 // No border — just a filled rectangle with overlay background.
 
-import React from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useRef } from "react";
+import { Box, Text, useInput, type DOMElement } from "ink";
+import { useOnWheel } from "@ink-tools/ink-mouse";
 import type { CompletionItem } from "../../engine/modes/mode.js";
 import type { ColorScheme } from "../theme.js";
 import { brand } from "../theme.js";
+import { scrollbarChar } from "./scrollbar.js";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ export interface CompletionPopupProps {
 // ── Constants ───────────────────────────────────────────────────────
 
 const DEFAULT_MAX_VISIBLE = 8;
+const WHEEL_LINES = 3;
 
 // ── Component ───────────────────────────────────────────────────────
 
@@ -66,6 +69,9 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	);
 	const visibleItems = items.slice(scrollTop, scrollTop + visibleCount);
 
+	// Scrollbar: only shown when items overflow
+	const showScrollbar = items.length > visibleCount;
+
 	// Calculate column widths
 	const maxLabelWidth = Math.max(
 		...items.map((i) => i.label.length),
@@ -78,7 +84,7 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	const contentWidth = maxLabelWidth + 2 + (maxDetailWidth > 0 ? maxDetailWidth + 2 : 0);
 	const innerWidth = Math.min(contentWidth, 50);
 
-	// Input handlers
+	// Keyboard input
 	useInput((_input, key) => {
 		if (key.escape) {
 			onDismiss();
@@ -95,6 +101,18 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 		}
 	});
 
+	// Mouse wheel scrolling
+	const boxRef = useRef<DOMElement>(null);
+	useOnWheel(boxRef, (event) => {
+		if (event.button === "wheel-up") {
+			const next = Math.max(0, selectedIndex - WHEEL_LINES);
+			onSelect(next);
+		} else if (event.button === "wheel-down") {
+			const next = Math.min(items.length - 1, selectedIndex + WHEEL_LINES);
+			onSelect(next);
+		}
+	});
+
 	// Absolute positioning: sit just above the input area.
 	// Input section = 3 rows, statusbar = 1, gap = 1 → bottom anchor at rows - 5.
 	// +1 to nudge one line down per user request.
@@ -106,17 +124,16 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 
 	const totalCols = viewportColumns ?? 80;
 	const bg = scheme.backgrounds.overlay;
-	const selectedBg = scheme.backgrounds.raised;
 
 	return (
 		<Box
+			ref={boxRef}
 			flexDirection="column"
 			{...(viewportRows ? { position: "absolute" as const, marginLeft: 0, marginTop: marginTop } : {})}
 		>
 			{visibleItems.map((item, i) => {
 				const actualIndex = scrollTop + i;
 				const isSelected = actualIndex === selectedIndex;
-				const rowBg = isSelected ? selectedBg : bg;
 				const fgName = isSelected ? brand.signal : scheme.foreground.default;
 				const fgDetail = isSelected ? scheme.foreground.bright : scheme.foreground.muted;
 
@@ -127,14 +144,21 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 						: item.detail)
 					: "";
 				const lineContent = " " + label + detail + " ";
-				const rightPad = Math.max(0, totalCols - leftOffset - lineContent.length);
+				const scrollbarSpace = showScrollbar ? 1 : 0;
+				const rightPad = Math.max(0, totalCols - leftOffset - lineContent.length - scrollbarSpace);
+
+				// Scrollbar character for this row
+				const sb = showScrollbar
+					? scrollbarChar(i, visibleCount, items.length, scrollTop, scheme)
+					: null;
 
 				return (
-					<Text key={actualIndex} backgroundColor={rowBg}>
-						<Text backgroundColor={rowBg}>{" ".repeat(leftOffset)}</Text>
+					<Text key={actualIndex} backgroundColor={bg}>
+						<Text backgroundColor={bg}>{" ".repeat(leftOffset)}</Text>
 						<Text color={fgName}> {label}</Text>
 						<Text color={fgDetail}>{detail} </Text>
 						<Text>{" ".repeat(rightPad)}</Text>
+						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 					</Text>
 				);
 			})}

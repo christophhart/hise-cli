@@ -192,6 +192,8 @@ export interface InputProps {
 	onSubmit: (value: string) => void;
 	/** Ghost text to show after cursor (muted color, top completion candidate) */
 	ghostText?: string;
+	/** The input value that ghostText was computed for (suppresses stale ghost on jitter) */
+	ghostForValue?: string;
 	/** Called when input value changes (for completion updates) */
 	onValueChange?: (value: string, cursorPos: number) => void;
 	/** Called when Tab is pressed (trigger/accept completion) */
@@ -215,6 +217,7 @@ export const Input = React.memo(function Input({
 	disabled = false,
 	onSubmit,
 	ghostText,
+	ghostForValue,
 	onValueChange,
 	onTab,
 	completionVisible = false,
@@ -410,9 +413,11 @@ export const Input = React.memo(function Input({
 	// Maximum characters available for value + cursor + ghost
 	const maxInputWidth = Math.max(0, columns - promptWidth - PAD.length * 2);
 
-	// Ghost text only shown when cursor is at end of input
+	// Ghost text only shown when cursor is at end of input AND the ghost
+	// was computed for the current value (prevents one-frame jitter on typing).
 	const atEnd = state.cursorOffset >= state.value.length;
-	const ghost = (atEnd && ghostText) ? ghostText : "";
+	const ghostValid = !ghostForValue || ghostForValue === state.value;
+	const ghost = (atEnd && ghostText && ghostValid) ? ghostText : "";
 
 	// ── Scroll window — keep cursor visible when value exceeds width ──
 	const totalChars = state.value.length + 1; // +1 for the cursor slot
@@ -443,7 +448,7 @@ export const Input = React.memo(function Input({
 	// Cursor colors
 	const cursorBg = lightenHex(scheme.backgrounds.raised, CURSOR_LIGHTEN);
 	const cursorTextColor = (atEnd && ghost.length > 0)
-		? scheme.foreground.muted     // ghost char under cursor
+		? scheme.foreground.default   // ghost char under cursor (brighter than muted for visibility)
 		: scheme.foreground.bright;   // real char or empty space
 
 	// Right padding to fill the row
