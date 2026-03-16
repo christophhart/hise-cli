@@ -23,6 +23,7 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
 | HISE C++ (parallel) | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | New REST endpoints + SSE |
 | Post-1.0 — Web Frontend | — | Browser frontend, live screencast replay |
 | Future | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Wave editing + sample analysis |
+| Future | — | Plugin UI testing via tape sessions |
 
 ---
 
@@ -991,6 +992,49 @@ Session at the scripted timing.
 
 Requires C++ changes (HISE binding to `0.0.0.0`, authentication) and
 SSE/WebSocket for efficient push. Not in current scope.
+
+### Future: Plugin UI testing via tape sessions
+
+The `.tape` screencast format can be extended to drive UI tests for HISE
+plugins. The same declarative structure that describes terminal interactions
+(type, wait, assert output) maps naturally to plugin-level UI testing:
+
+```tape
+# Test page switching
+Click "EffectsButton"
+Wait 100ms
+Assert Visible "EffectsPage"
+Assert Hidden "MainPage"
+
+Click "MainPageButton"
+Wait 100ms
+Assert Visible "MainPage"
+Assert Hidden "EffectsPage"
+
+# Test knob interaction
+Set "CutoffKnob" 0.75
+Assert Value "CutoffKnob" 0.75
+Assert Connected "CutoffKnob" "SimpleFilter.Frequency"
+```
+
+New tape commands for plugin testing:
+
+- `Click "<componentId>"` — simulate click on a UI component
+- `Set "<componentId>" <value>` — set a component's value
+- `Assert Visible "<componentId>"` — check component is visible
+- `Assert Hidden "<componentId>"` — check component is not visible
+- `Assert Value "<componentId>" <value>` — check component value
+- `Assert Connected "<componentId>" "<processorId>.<param>"` — verify parameter connection
+- `SendMidi NoteOn <note> <velocity>` — send MIDI into the plugin
+- `SendMidi NoteOff <note>` — release a note
+- `Wait <duration>` — already exists in the tape format
+
+The tape parser (`src/engine/screencast/tape-parser.ts`) is isomorphic and
+extensible. The execution backend would use the HISE runtime API
+(`set_component_value`, `get_component_properties`, `screenshot`) instead of
+terminal keystrokes, but the parser, test runner, and assertion framework
+are shared infrastructure. Plugin developers could ship `.tape` files as
+regression tests alongside their HISE projects.
 
 ---
 
