@@ -8,8 +8,9 @@ import React, {
 	useRef,
 	useState,
 } from "react";
-import { appendFileSync } from "node:fs";
-import { Box, Text, useInput } from "ink";
+// Note: useInput intentionally NOT imported — Input is fully controlled
+// by the central key dispatcher in app.tsx via imperative methods.
+import { Box, Text } from "ink";
 import { useTheme } from "../theme-context.js";
 import { lightenHex } from "../theme.js";
 import type { TokenSpan } from "../../engine/highlight/tokens.js";
@@ -180,11 +181,20 @@ export function useCommandHistory() {
 
 // ── Input component ─────────────────────────────────────────────────
 
-/** Imperative handle for controlling the Input from the parent */
+/** Imperative handle for controlling the Input from the parent.
+ *  All key handling is done by the central dispatcher in app.tsx
+ *  which calls these methods — Input has no useInput of its own. */
 export interface InputHandle {
 	getValue(): string;
 	setValue(value: string): void;
 	getCursorPos(): number;
+	insertChar(ch: string): void;
+	deleteBackward(): void;
+	deleteForward(): void;
+	moveCursor(direction: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight"): void;
+	submit(): void;
+	historyUp(): void;
+	historyDown(): void;
 }
 
 export interface InputProps {
@@ -201,21 +211,12 @@ export interface InputProps {
 	ghostForValue?: string;
 	/** Called when input value changes (for completion updates) */
 	onValueChange?: (value: string, cursorPos: number) => void;
-	/** Called when Tab is pressed (trigger/accept completion) */
-	onTab?: () => void;
-	/** Called when Escape is pressed (toggle completion popup) */
-	onEscape?: () => void;
-	/** When true, up/down arrows are reserved for popup navigation (skip history) */
-	completionVisible?: boolean;
 	/** Ref for imperative control */
 	inputRef?: React.Ref<InputHandle>;
 	/** Tokenizer for syntax highlighting. If provided, input text is rendered
 	 *  with per-token colors from TOKEN_COLORS. Falls back to flat foreground.bright. */
 	tokenize?: (value: string) => TokenSpan[];
 }
-
-/** Flip to true + rebuild to log every keypress to debug-keys.log. */
-const DEBUG_KEYS = false;
 
 /** Cursor background: lighten the input bar's raised bg by 30% */
 const CURSOR_LIGHTEN = 0.3;
@@ -230,9 +231,6 @@ export const Input = React.memo(function Input({
 	ghostText,
 	ghostForValue,
 	onValueChange,
-	onTab,
-	onEscape,
-	completionVisible = false,
 	inputRef,
 	tokenize,
 }: InputProps) {
@@ -258,164 +256,47 @@ export const Input = React.memo(function Input({
 		}
 	}, [state.value, state.cursorOffset, onValueChange]);
 
-	// Expose imperative handle for parent to read/set value
+	// Expose imperative handle for all key handling. The central
+	// dispatcher in app.tsx calls these methods — Input has no
+	// useInput of its own (single-action-per-keystroke by design).
 	useImperativeHandle(inputRef, () => ({
 		getValue: () => state.value,
 		setValue: (v: string) => dispatch({ type: "set-value", value: v }),
 		getCursorPos: () => state.cursorOffset,
-	}), [state.value, state.cursorOffset]);
-
-	const handleSubmit = useCallback(() => {
-		const trimmed = state.value.trim();
-		if (!trimmed || disabled) return;
-
-		addToHistory(trimmed);
-		onSubmit(trimmed);
-		dispatch({ type: "set-value", value: "", cursorOffset: 0 });
-	}, [state.value, disabled, addToHistory, onSubmit]);
-
-	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
-	// the leading \x1b from unrecognized CSI sequences, so mouse events
-	// arrive as input strings like "[<64;15;10M" or "[<0;15;10m".
-	const MOUSE_SEQ_RE = /^\[?<\d+;\d+;\d+[Mm]$/;
-
-	useInput((input, key) => {
-		// ── Key debug logging (flip DEBUG_KEYS to true + rebuild) ──
-		if (DEBUG_KEYS) {
-			const flags = Object.entries(key)
-				.filter(([, v]) => v === true)
-				.map(([k]) => k)
-				.join(" ");
-			const hex = [...input].map(c =>
-				"0x" + c.charCodeAt(0).toString(16).padStart(2, "0"),
-			).join(" ");
-			appendFileSync("debug-keys.log",
-				`${input || "·"} (${hex || "empty"}) ${flags}\n`);
-		}
-
-		if (disabled) return;
-
-		if (key.escape) {
-			onEscape?.();
-			return;
-		}
-
-		if (key.return) {
-			handleSubmit();
-			return;
-		}
-
-		// Shift+arrows are used for output scrolling in the App component
-		if (key.shift && (key.upArrow || key.downArrow)) {
-			return;
-		}
-
-		// ── Meta+Arrow — jump to start/end of line ─────────────
-		if (key.meta && key.leftArrow) {
-			dispatch({ type: "move-start" });
-			return;
-		}
-		if (key.meta && key.rightArrow) {
-			dispatch({ type: "move-end" });
-			return;
-		}
-
-		// ── Option+Left/Right — word boundary jump ─────────────
-		// macOS Terminal sends ESC+b / ESC+f for Option+Left/Right.
-		// Ink delivers these as key.meta=true with input "b" or "f".
-		if (key.meta && input === "b") {
-			dispatch({ type: "move-word-left" });
-			return;
-		}
-		if (key.meta && input === "f") {
-			dispatch({ type: "move-word-right" });
-			return;
-		}
-
-		// ── Ctrl+A / Ctrl+E — start/end of line (readline style) ──
-		// Ghostty sends Ctrl+A for fn+Left and Ctrl+E for fn+Right.
-		if (key.ctrl && input === "a") {
-			dispatch({ type: "move-start" });
-			return;
-		}
-		if (key.ctrl && input === "e") {
-			dispatch({ type: "move-end" });
-			return;
-		}
-
-		// ── Home / End — start/end of line ─────────────────────
-		if (key.home) {
-			dispatch({ type: "move-start" });
-			return;
-		}
-		if (key.end) {
-			dispatch({ type: "move-end" });
-			return;
-		}
-
-		// ── Up/Down — history navigation (gated by completion popup) ──
-		if (key.upArrow) {
-			if (!completionVisible) {
-				const prev = historyUp(state.value);
-				if (prev !== null) {
-					dispatch({ type: "set-value", value: prev });
-				}
+		insertChar: (ch: string) => dispatch({ type: "insert", text: ch }),
+		deleteBackward: () => dispatch({ type: "delete" }),
+		deleteForward: () => dispatch({ type: "delete-forward" }),
+		moveCursor: (dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight") => {
+			const actionMap = {
+				left: "move-left",
+				right: "move-right",
+				home: "move-start",
+				end: "move-end",
+				wordLeft: "move-word-left",
+				wordRight: "move-word-right",
+			} as const;
+			dispatch({ type: actionMap[dir] });
+		},
+		submit: () => {
+			const trimmed = state.value.trim();
+			if (!trimmed || disabled) return;
+			addToHistory(trimmed);
+			onSubmit(trimmed);
+			dispatch({ type: "set-value", value: "", cursorOffset: 0 });
+		},
+		historyUp: () => {
+			const prev = historyUp(state.value);
+			if (prev !== null) {
+				dispatch({ type: "set-value", value: prev });
 			}
-			return;
-		}
-		if (key.downArrow) {
-			if (!completionVisible) {
-				const next = historyDown();
-				if (next !== null) {
-					dispatch({ type: "set-value", value: next });
-				}
+		},
+		historyDown: () => {
+			const next = historyDown();
+			if (next !== null) {
+				dispatch({ type: "set-value", value: next });
 			}
-			return;
-		}
-
-		// ── Left/Right — single character cursor movement ──────
-		if (key.leftArrow) {
-			dispatch({ type: "move-left" });
-			return;
-		}
-		if (key.rightArrow) {
-			dispatch({ type: "move-right" });
-			return;
-		}
-
-		// ── Backspace / Delete — delete character before cursor ────
-		// Ink maps macOS Backspace (\x7f) to key.delete (not key.backspace).
-		// Ctrl+H (\x08) maps to key.backspace. Both should backward-delete.
-		// Forward-delete (fn+Backspace) also fires key.delete — Ink can't
-		// distinguish them, so we treat both as backward-delete.
-		if (key.backspace || key.delete) {
-			dispatch({ type: "delete" });
-			return;
-		}
-
-		// ── PgUp/PgDn — passed through to App for output scrolling ──
-		if (key.pageUp || key.pageDown) {
-			return;
-		}
-
-		// ── Tab — trigger completion ───────────────────────────
-		if (key.tab) {
-			if (onTab) onTab();
-			return;
-		}
-
-		// ── Regular character input — insert at cursor ─────────
-		if (input && !key.ctrl && !key.meta) {
-			// Reject control characters
-			const code = input.charCodeAt(0);
-			if (code < 0x20 || code === 0x7f) return;
-
-			// Filter mouse escape sequences
-			if (MOUSE_SEQ_RE.test(input)) return;
-
-			dispatch({ type: "insert", text: input });
-		}
-	});
+		},
+	}), [state.value, state.cursorOffset, disabled, addToHistory, onSubmit, historyUp, historyDown]);
 
 	// ── Rendering ──────────────────────────────────────────────────
 

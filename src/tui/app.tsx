@@ -184,10 +184,154 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		userScrolledRef.current = outputLines.length > outputHeight;
 	}, [outputLines.length, outputHeight]);
 
-	// ── Keyboard scrolling (disabled when overlay is visible) ──────
+	// ── Central key dispatcher — single useInput, priority chain ────
+	//
+	// Every keystroke goes through one handler chain. Each handler can
+	// consume the event (return true) or pass it to the next handler
+	// (return false). This guarantees exactly one action per keystroke.
+	//
+	// Priority: Overlay > CompletionPopup > Input > App (scroll)
 
-	useInput((_input, key) => {
-		if (overlayData) return; // overlay captures all input
+	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
+	// the leading \x1b from unrecognized CSI sequences, so mouse events
+	// arrive as input strings like "[<64;15;10M" or "[<0;15;10m".
+	const MOUSE_SEQ_RE = /^\[?<\d+;\d+;\d+[Mm]$/;
+
+	useInput((input, key) => {
+		// ── Priority 1: Overlay (consumes everything when visible) ──
+		if (overlayData) {
+			if (key.escape || key.return) {
+				handleOverlayClose();
+			}
+			return; // overlay eats all keys
+		}
+
+		if (disabled) return;
+
+		// ── Priority 2: Completion popup (when visible) ────────────
+		if (completionState?.visible) {
+			if (key.return || key.tab) {
+				const item = completionState.result.items[completionState.selectedIndex];
+				if (item) {
+					acceptCompletion(item, completionState.result);
+				}
+				return; // consumed
+			}
+			if (key.upArrow) {
+				const next = completionState.selectedIndex > 0
+					? completionState.selectedIndex - 1
+					: completionState.result.items.length - 1;
+				handleCompletionSelect(next);
+				return; // consumed
+			}
+			if (key.downArrow) {
+				const next = completionState.selectedIndex < completionState.result.items.length - 1
+					? completionState.selectedIndex + 1
+					: 0;
+				handleCompletionSelect(next);
+				return; // consumed
+			}
+			if (key.escape) {
+				setCompletionState(null);
+				return; // consumed
+			}
+			// All other keys fall through to Input
+		}
+
+		// ── Priority 3: Input ─────────────────────────────────────
+		const handle = inputHandleRef.current;
+		if (!handle) return;
+
+		if (key.return) {
+			setCompletionState(null);
+			handle.submit();
+			return;
+		}
+
+		if (key.escape) {
+			// Popup not visible — toggle open with all completions
+			handleEscape();
+			return;
+		}
+
+		// Shift+arrows → output scrolling (handled below in Priority 4)
+		if (key.shift && (key.upArrow || key.downArrow)) {
+			// fall through to scroll handler
+		}
+		// Meta+Arrow → jump to start/end of line
+		else if (key.meta && key.leftArrow) {
+			handle.moveCursor("home");
+			return;
+		}
+		else if (key.meta && key.rightArrow) {
+			handle.moveCursor("end");
+			return;
+		}
+		// Option+Left/Right — word boundary jump (macOS: ESC+b / ESC+f)
+		else if (key.meta && input === "b") {
+			handle.moveCursor("wordLeft");
+			return;
+		}
+		else if (key.meta && input === "f") {
+			handle.moveCursor("wordRight");
+			return;
+		}
+		// Ctrl+A / Ctrl+E — start/end of line (readline style)
+		else if (key.ctrl && input === "a") {
+			handle.moveCursor("home");
+			return;
+		}
+		else if (key.ctrl && input === "e") {
+			handle.moveCursor("end");
+			return;
+		}
+		// Home / End
+		else if (key.home) {
+			handle.moveCursor("home");
+			return;
+		}
+		else if (key.end) {
+			handle.moveCursor("end");
+			return;
+		}
+		// Up/Down — history navigation (only when popup not visible)
+		else if (key.upArrow) {
+			handle.historyUp();
+			return;
+		}
+		else if (key.downArrow) {
+			handle.historyDown();
+			return;
+		}
+		// Left/Right — cursor movement
+		else if (key.leftArrow) {
+			handle.moveCursor("left");
+			return;
+		}
+		else if (key.rightArrow) {
+			handle.moveCursor("right");
+			return;
+		}
+		// Backspace / Delete
+		else if (key.backspace || key.delete) {
+			handle.deleteBackward();
+			return;
+		}
+		// Tab — trigger/accept completion
+		else if (key.tab) {
+			handleTab();
+			return;
+		}
+		// Regular character input
+		else if (input && !key.ctrl && !key.meta) {
+			const code = input.charCodeAt(0);
+			if (code < 0x20 || code === 0x7f) return;
+			if (MOUSE_SEQ_RE.test(input)) return;
+			handle.insertChar(input);
+			return;
+		}
+
+		// ── Priority 4: App-level scroll (fallback) ───────────────
 		if (key.pageUp) {
 			scrollBy(-outputHeight);
 		} else if (key.pageDown) {
@@ -459,6 +603,17 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 
 		const result = session.complete(value, cursorPos);
 		if (result.items.length > 0) {
+			// Auto-close: if the only matching item exactly equals the
+			// typed token, dismiss the popup — Enter will submit normally.
+			if (result.items.length === 1) {
+				const token = value.slice(result.from);
+				const itemText = result.items[0]!.insertText ?? result.items[0]!.label;
+				if (token === itemText) {
+					setCompletionState(null);
+					return;
+				}
+			}
+
 			const ghostText = computeGhostText(value, result, 0);
 			setCompletionState({
 				result,
@@ -606,24 +761,12 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					columns={columns}
 					disabled={disabled || overlayData !== null}
 					onSubmit={(v) => {
-						if (completionState?.visible) {
-							// Enter with popup visible: accept completion only (fill input).
-							// User presses Enter again to submit with the completed text.
-							const item = completionState.result.items[completionState.selectedIndex];
-							if (item) {
-								acceptCompletion(item, completionState.result);
-								return;
-							}
-						}
 						setCompletionState(null);
 						void handleSubmit(v);
 					}}
 					ghostText={ghostText}
 					ghostForValue={completionState?.forValue}
 					onValueChange={handleInputValueChange}
-					onTab={handleTab}
-					onEscape={handleEscape}
-					completionVisible={completionState?.visible ?? false}
 					inputRef={inputHandleRef}
 					tokenize={modeTokenizer}
 				/>

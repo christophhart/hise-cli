@@ -75,56 +75,9 @@ describe("CompletionPopup", () => {
 		expect(onDismiss).not.toHaveBeenCalled();
 	});
 
-	it("calls onSelect on arrow down", () => {
-		const onSelect = vi.fn();
-		const { stdin } = render(w(
-			<CompletionPopup
-				items={items}
-				selectedIndex={0}
-				onSelect={onSelect}
-				onAccept={() => {}}
-				onDismiss={() => {}}
-				leftOffset={0}
-				scheme={scheme}
-			/>,
-		));
-		stdin.write("\x1b[B");
-		expect(onSelect).toHaveBeenCalledWith(1);
-	});
-
-	it("calls onSelect on arrow up (wraps to end)", () => {
-		const onSelect = vi.fn();
-		const { stdin } = render(w(
-			<CompletionPopup
-				items={items}
-				selectedIndex={0}
-				onSelect={onSelect}
-				onAccept={() => {}}
-				onDismiss={() => {}}
-				leftOffset={0}
-				scheme={scheme}
-			/>,
-		));
-		stdin.write("\x1b[A");
-		expect(onSelect).toHaveBeenCalledWith(4);
-	});
-
-	it("calls onAccept on Enter", () => {
-		const onAccept = vi.fn();
-		const { stdin } = render(w(
-			<CompletionPopup
-				items={items}
-				selectedIndex={2}
-				onSelect={() => {}}
-				onAccept={onAccept}
-				onDismiss={() => {}}
-				leftOffset={0}
-				scheme={scheme}
-			/>,
-		));
-		stdin.write("\r");
-		expect(onAccept).toHaveBeenCalledWith(items[2]);
-	});
+	// Note: keyboard navigation (arrows, Enter, Tab, Escape) is handled
+	// by the central key dispatcher in app.tsx, not by CompletionPopup.
+	// Those interactions are tested via the App component tests.
 
 	it("respects maxVisible", () => {
 		const { lastFrame } = render(w(

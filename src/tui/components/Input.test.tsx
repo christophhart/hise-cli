@@ -70,21 +70,26 @@ describe("Input component", () => {
 		instance.unmount();
 	});
 
-	it("accepts text input and submits on enter", async () => {
+	// Note: Input no longer has its own useInput — all key handling is
+	// done by the central dispatcher in app.tsx. These tests use the
+	// imperative InputHandle methods directly.
+
+	it("accepts text input and submits via imperative handle", async () => {
 		const submitted: string[] = [];
+		const ref = React.createRef<InputHandle>();
 		const instance = render(w(
-			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} />,
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} inputRef={ref} />,
 		));
 
 		for (const ch of "/help") {
-			instance.stdin.write(ch);
+			ref.current!.insertChar(ch);
 		}
 		await new Promise((r) => setTimeout(r, 50));
 
 		const frame = stripAnsi(instance.lastFrame() ?? "");
 		expect(frame).toContain("/help");
 
-		instance.stdin.write("\r");
+		ref.current!.submit();
 		await new Promise((r) => setTimeout(r, 50));
 		expect(submitted).toEqual(["/help"]);
 
@@ -92,26 +97,24 @@ describe("Input component", () => {
 	});
 
 	it("inserts characters at cursor position (mid-string)", async () => {
+		const ref = React.createRef<InputHandle>();
 		const instance = render(w(
-			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} />,
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
 		));
 
 		// Type "helo"
 		for (const ch of "helo") {
-			instance.stdin.write(ch);
+			ref.current!.insertChar(ch);
 		}
 		await new Promise((r) => setTimeout(r, 50));
 
-		// Move cursor left once (before 'o')
-		instance.stdin.write("\x1b[D");
-		await new Promise((r) => setTimeout(r, 50));
-
-		// Move cursor left again (before 'l')
-		instance.stdin.write("\x1b[D");
+		// Move cursor left twice (before 'l', then before 'o')
+		ref.current!.moveCursor("left");
+		ref.current!.moveCursor("left");
 		await new Promise((r) => setTimeout(r, 50));
 
 		// Insert 'l' at cursor
-		instance.stdin.write("l");
+		ref.current!.insertChar("l");
 		await new Promise((r) => setTimeout(r, 50));
 
 		const frame = stripAnsi(instance.lastFrame() ?? "");
@@ -120,30 +123,31 @@ describe("Input component", () => {
 		instance.unmount();
 	});
 
-	it("supports Home and End keys", async () => {
+	it("supports Home and End via imperative handle", async () => {
 		const submitted: string[] = [];
+		const ref = React.createRef<InputHandle>();
 		const instance = render(w(
-			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} />,
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} inputRef={ref} />,
 		));
 
 		// Type "world"
 		for (const ch of "world") {
-			instance.stdin.write(ch);
+			ref.current!.insertChar(ch);
 		}
 		await new Promise((r) => setTimeout(r, 50));
 
-		// Press Home (move to start)
-		instance.stdin.write("\x1b[H");
+		// Move to start
+		ref.current!.moveCursor("home");
 		await new Promise((r) => setTimeout(r, 50));
 
 		// Type "hello " at the start
 		for (const ch of "hello ") {
-			instance.stdin.write(ch);
+			ref.current!.insertChar(ch);
 		}
 		await new Promise((r) => setTimeout(r, 50));
 
 		// Submit
-		instance.stdin.write("\r");
+		ref.current!.submit();
 		await new Promise((r) => setTimeout(r, 50));
 		expect(submitted).toEqual(["hello world"]);
 
@@ -152,29 +156,29 @@ describe("Input component", () => {
 
 	it("backspace deletes character before cursor, not from end", async () => {
 		const submitted: string[] = [];
+		const ref = React.createRef<InputHandle>();
 		const instance = render(w(
-			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} />,
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} inputRef={ref} />,
 		));
 
 		// Type "helXlo"
 		for (const ch of "helXlo") {
-			instance.stdin.write(ch);
+			ref.current!.insertChar(ch);
 		}
-		await new Promise((r) => setTimeout(r, 100));
+		await new Promise((r) => setTimeout(r, 50));
 
 		// Move cursor left twice (before 'l', 'o')
-		instance.stdin.write("\x1b[D");
-		await new Promise((r) => setTimeout(r, 100));
-		instance.stdin.write("\x1b[D");
-		await new Promise((r) => setTimeout(r, 100));
+		ref.current!.moveCursor("left");
+		ref.current!.moveCursor("left");
+		await new Promise((r) => setTimeout(r, 50));
 
 		// Backspace removes 'X'
-		instance.stdin.write("\x7f");
-		await new Promise((r) => setTimeout(r, 100));
+		ref.current!.deleteBackward();
+		await new Promise((r) => setTimeout(r, 50));
 
 		// Submit
-		instance.stdin.write("\r");
-		await new Promise((r) => setTimeout(r, 100));
+		ref.current!.submit();
+		await new Promise((r) => setTimeout(r, 50));
 		expect(submitted).toEqual(["hello"]);
 
 		instance.unmount();
@@ -186,22 +190,23 @@ describe("Input component", () => {
 describe("useCommandHistory", () => {
 	it("tracks history via the Input component", async () => {
 		const submitted: string[] = [];
+		const ref = React.createRef<InputHandle>();
 		const instance = render(w(
-			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} />,
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} inputRef={ref} />,
 		));
 
 		for (const ch of "first") {
-			instance.stdin.write(ch);
+			ref.current!.insertChar(ch);
 		}
 		await new Promise((r) => setTimeout(r, 50));
-		instance.stdin.write("\r");
+		ref.current!.submit();
 		await new Promise((r) => setTimeout(r, 50));
 
 		for (const ch of "second") {
-			instance.stdin.write(ch);
+			ref.current!.insertChar(ch);
 		}
 		await new Promise((r) => setTimeout(r, 50));
-		instance.stdin.write("\r");
+		ref.current!.submit();
 		await new Promise((r) => setTimeout(r, 50));
 
 		expect(submitted).toEqual(["first", "second"]);

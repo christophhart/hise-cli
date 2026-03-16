@@ -6,7 +6,9 @@
 // No border — just a filled rectangle with overlay background.
 
 import React, { useRef } from "react";
-import { Box, Text, useInput, type DOMElement } from "ink";
+import { Box, Text, type DOMElement } from "ink";
+// Note: useInput intentionally NOT imported — CompletionPopup is fully
+// controlled by the central key dispatcher in app.tsx via callbacks.
 import { useOnWheel } from "@ink-tools/ink-mouse";
 import type { CompletionItem } from "../../engine/modes/mode.js";
 import type { ColorScheme } from "../theme.js";
@@ -87,21 +89,9 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	const contentWidth = maxLabelWidth + 2 + (maxDetailWidth > 0 ? maxDetailWidth + 2 : 0);
 	const innerWidth = Math.min(contentWidth, 50);
 
-	// Keyboard input
-	useInput((_input, key) => {
-		// Escape is handled centrally by the App (toggle open/close).
-		if (key.upArrow) {
-			const next = selectedIndex > 0 ? selectedIndex - 1 : items.length - 1;
-			onSelect(next);
-		} else if (key.downArrow) {
-			const next = selectedIndex < items.length - 1 ? selectedIndex + 1 : 0;
-			onSelect(next);
-		} else if (key.return || key.tab) {
-			if (items[selectedIndex]) {
-				onAccept(items[selectedIndex]);
-			}
-		}
-	});
+	// Note: keyboard input is handled by the central key dispatcher
+	// in app.tsx which calls onSelect/onAccept/onDismiss as needed.
+	// This component only handles mouse wheel scrolling.
 
 	// Mouse wheel scrolling
 	const boxRef = useRef<DOMElement>(null);
