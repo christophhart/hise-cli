@@ -21,9 +21,10 @@ Phase 2 when the entry point is rewired.
 `node:child_process`. Platform-specific operations use `DataLoader` (filesystem access)
 and `PhaseExecutor` (shell execution) interfaces. See [DESIGN.md](DESIGN.md) Decision #13.
 
-**Static datasets** in `data/`: `moduleList.json` (79 modules), `scriptnodeList.json`
-(194 nodes), `scripting_api.json` (89 classes, 1789 methods). Used for tab completion,
-local validation, and inline help.
+**Static datasets** in `data/`: `moduleList.json` (module types + parameters),
+`scriptnodeList.json` (scriptnode factories + nodes), `scripting_api.json` (HiseScript
+API classes + methods). Used for tab completion, local validation, and inline help.
+See `src/engine/data.ts` for type definitions.
 
 **Wizard framework**: Declarative multi-step workflows for complex operations (broadcaster
 setup, asset payloads, monolith encoding, plugin export, HISE installation). Same
@@ -67,21 +68,28 @@ data/                  # Static JSON datasets (not in src/)
 scripts/build.mjs      # esbuild config
 ```
 
-**Target** (v2 — not yet implemented, see [DESIGN.md](DESIGN.md)):
+**Target** (v2 — engine/ and tui/ implemented through Phase 3, cli/ pending):
 ```
 src/
   engine/              # Shared core — zero UI deps, zero node: imports
     commands/          # Command registry, dispatcher, parsers
-    modes/             # Mode definitions (builder, script, dsp, sampler, ...)
+    modes/             # Mode definitions (builder, script, inspect, root + tokens)
     completion/        # Tab completion engine
-    wizard/            # Wizard framework (types, runner, executor, pipeline)
+    wizard/            # Wizard framework (planned — Phase 5)
     highlight/         # Lezer HiseScript grammar, XML tokenizer
     screencast/        # .tape parser (isomorphic)
+    session.ts         # Mode stack, history, connection
+    result.ts          # CommandResult types
+    hise.ts            # HiseConnection interface + HttpHiseConnection + Mock
+    data.ts            # DataLoader interface
   tui/                 # TUI frontend — Ink/React
-    components/        # TopBar, Output, Input, CompletionPopup, StatusBar
-    screencast/        # Tape runner, asciicast writer, vitest tester
-  cli/                 # CLI frontend — JSON output
-screencasts/           # VHS-derived .tape scripts (TUI tests + docs assets)
+    components/        # TopBar, Output, Input, CompletionPopup, StatusBar, Overlay, scrollbar
+    theme.ts           # 4-layer color system, darkenHex, lightenHex, schemes
+    theme-context.tsx  # ThemeProvider, useTheme() hook
+    app.tsx            # Main TUI shell
+    screencast/        # Tape runner, asciicast writer, vitest tester (planned)
+  cli/                 # CLI frontend — JSON output (planned — Phase 7)
+screencasts/           # VHS-derived .tape scripts (planned)
 ```
 
 New code follows the `engine/` / `tui/` / `cli/` split.
@@ -96,5 +104,5 @@ see [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
 - **ESM only** — `.js` extensions on local imports, `node:` prefix on builtins
   (except in `src/engine/` where `node:` imports are forbidden)
 - **Test files**: colocated next to source (`session.test.ts` next to `session.ts`)
-- **Key input debugging**: flip `DEBUG_KEYS` in `src/tui/components/Input.tsx`,
-  rebuild, inspect `debug-keys.log`. See [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Debugging
+- **Key input debugging**: search for `const DEBUG_KEYS` in `src/tui/components/Input.tsx`,
+  flip to `true`, rebuild, inspect `debug-keys.log`. See [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Debugging

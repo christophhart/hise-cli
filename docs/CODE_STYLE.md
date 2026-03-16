@@ -57,7 +57,20 @@
 - **One component per file**
 - Props interfaces named `{ComponentName}Props`, defined immediately above the component
 - `useInput` (Ink hook) for keyboard handling
-- State is local `useState` only — no external state libraries
+- State is local `useState` or `useReducer` — no external state libraries
+- **`useReducer` for complex input state**: when multiple keystrokes can arrive before
+  React re-renders (stale closures), use `useReducer` with atomic actions instead of
+  `useState`. The Input component uses this pattern (see `InputAction` type in
+  `src/tui/components/Input.tsx`). Propagate value changes to parents via `useEffect`
+  on `state.value`, not inline in dispatch.
+- **`React.memo` on every panel component** — Output, Input, CompletionPopup, TopBar,
+  StatusBar, Overlay. Re-render only when props change.
+- **`useCallback` for handlers** passed as props to memoized children
+- **`useRef` for scroll offset** and other values that change without needing re-render
+- **Derived state anti-jitter**: when derived state (e.g., ghost text) depends on a value
+  that changes via `useEffect` (one frame late), store the source value alongside the
+  derived value (e.g., `ghostForValue`) and only display the derived value when it matches
+  the current source. This prevents one-frame stale renders.
 
 ## Engine Layer Patterns
 
@@ -69,6 +82,15 @@ by rendering output directly.
 - Mode-specific parsers in `engine/modes/`
 - Validation logic in `engine/validation/` using static JSON data
 - Tab completion in `engine/completion/` using static JSON data
+- `Mode.contextLabel` — optional dynamic string for path display in prompt (e.g.,
+  builder's `currentPath.join(".")`)
+
+## TUI Utility Functions
+
+- **Color manipulation** (`src/tui/theme.ts`): `darkenHex()`, `lightenHex()`,
+  `darkenScheme()`, `darkenBrand()` — used for overlay dimming and cursor highlight.
+- **Shared scrollbar** (`src/tui/components/scrollbar.ts`): `scrollbarChar()` —
+  used by Output, CompletionPopup, and any future scrollable panel.
 
 ## Error Handling
 
@@ -102,7 +124,8 @@ Terminal emulators vary in what escape sequences they send for key combos
 (e.g. Ghostty sends Ctrl+A/E for fn+Left/Right instead of Home/End). To
 diagnose key mapping issues:
 
-1. Set `DEBUG_KEYS = true` in `src/tui/components/Input.tsx` (~line 207)
+1. Set `DEBUG_KEYS = true` in `src/tui/components/Input.tsx` (search for
+   `const DEBUG_KEYS`)
 2. `npm run build`
 3. Run the app, press the keys in question, then quit
 4. Inspect `debug-keys.log` (project root, gitignored) — each line shows

@@ -50,13 +50,13 @@ heading, and the left-border `▎` on command echo lines in the output.
 |----------|----------|-----------|
 | (root)   | Default  | Uses `foreground.default` — neutral, no mode active |
 | Builder  | Orange   | `#fd971f` |
-| Script   | Blue     | `#7aa2f7` |
-| DSP      | Cyan     | `#66d9ef` |
+| Script   | Rust     | `#C65638` |
+| DSP      | Teal     | `#3a6666` |
 | Sampler  | Green    | `#a6e22e` |
 | Inspect  | Purple   | `#ae81ff` |
 | Project  | Yellow   | `#e6db74` |
 | Compile  | Magenta  | `#f92672` |
-| Import   | Teal     | `#2de0a5` |
+| Import   | Mint     | `#2de0a5` |
 
 **Wizard accent** (not a mode — a UI chrome color for the wizard overlay):
 
@@ -66,9 +66,6 @@ heading, and the left-border `▎` on command echo lines in the output.
 
 Used for: wizard overlay border, step indicator highlight, header title, confirm
 highlights, selected item markers. See Section 3.10 for full specification.
-
-On light themes (`scheme.light === true`), accents with poor contrast (yellow, green,
-cyan) are automatically darkened by ~20% for readability.
 
 ### 1.4 Syntax Highlighting (Layer 3 — Hardcoded)
 
@@ -107,62 +104,37 @@ per-token colors. The tokenizer handles cursor positioning and ghost-text overla
 ### 1.5 Color Schemes (Layer 4 — User-Selectable)
 
 A scheme defines 8 values: 5 background tiers and 3 foreground tiers.
-
-```ts
-interface ColorScheme {
-  name: string;
-  light?: boolean;      // if true, mode accents auto-darken for contrast
-  backgrounds: {
-    darker:   string;   // chrome: top bar, bottom bar, progress row
-    standard: string;   // content: output area
-    sidebar:  string;   // sidebar panel
-    raised:   string;   // input area
-    overlay:  string;   // command palette, completion dropdown
-  };
-  foreground: {
-    default: string;    // body text, unselected items
-    bright:  string;    // result output, emphasis (warm off-white, not stark white)
-    muted:   string;    // hints, secondary text, disabled, separators
-  };
-}
-```
+See `ColorScheme` interface in `src/tui/theme.ts` for the canonical type definition.
 
 **Background tiers** create visual depth:
 
-| Tier    | Name         | Purpose                             | Monokai (default) |
-|---------|--------------|-------------------------------------|--------------------|
-| 1       | `darker`     | Chrome: top bar, bottom bar, progress | `#1f201c`        |
-| 2       | `standard`   | Content: output area                | `#272822`          |
-| 3       | `sidebar`    | Sidebar panel                       | `#2d2e28`          |
-| 4       | `raised`     | Input area                          | `#32342d`          |
-| 5       | `overlay`    | Command palette, completion popup   | `#3e3f38`          |
+| Tier    | Name         | Purpose                              |
+|---------|--------------|--------------------------------------|
+| 1       | `darker`     | Chrome: top bar, bottom bar, progress |
+| 2       | `standard`   | Content: output area                 |
+| 3       | `sidebar`    | Sidebar panel                        |
+| 4       | `raised`     | Input area                           |
+| 5       | `overlay`    | Command palette, completion popup    |
 
 **Foreground tiers:**
 
-| Tier    | Purpose                                          | Monokai (default) |
-|---------|--------------------------------------------------|--------------------|
-| default | Body text, output info lines, unselected items   | `#a0a09a`          |
-| bright  | Result output lines, emphasized text              | `#d0d0c8`          |
-| muted   | Hints, secondary text, disabled, separators       | `#75715e`          |
+| Tier    | Purpose                                          |
+|---------|--------------------------------------------------|
+| default | Body text, output info lines, unselected items   |
+| bright  | Result output lines, emphasized text              |
+| muted   | Hints, secondary text, disabled, separators       |
 
 ### 1.6 Shipped Schemes
 
-Each scheme is just 8 color values + a name. Target: 6 dark + 2 light.
-
-| Scheme            | Type | Darker    | Standard  | Sidebar   | Raised    | Overlay   | Default   | Bright    | Muted     |
-|-------------------|------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|-----------|
-| Monokai (default) | dark | `#1f201c` | `#272822` | `#2d2e28` | `#32342d` | `#3e3f38` | `#a0a09a` | `#d0d0c8` | `#75715e` |
-| Dracula           | dark | `#21222c` | `#282a36` | `#2d2f3d` | `#343746` | `#414558` | `#a0a4b8` | `#d4d6e4` | `#6272a4` |
-| Nord              | dark | `#242933` | `#2e3440` | `#333a47` | `#3b4252` | `#4c566a` | `#9aa3b6` | `#d8dee9` | `#616e88` |
-| Tokyo Night       | dark | `#16161e` | `#1a1b26` | `#1f202d` | `#24283b` | `#33375a` | `#9098b8` | `#c0caf5` | `#565f89` |
-| One Dark          | dark | `#1e2127` | `#282c34` | `#2d313a` | `#323842` | `#3e4452` | `#9aa2b1` | `#d4d8e0` | `#5c6370` |
-| Catppuccin Mocha  | dark | `#181825` | `#1e1e2e` | `#232336` | `#313244` | `#45475a` | `#9399b2` | `#cdd6f4` | `#585b70` |
-| Catppuccin Latte  | light | `#dce0e8` | `#eff1f5` | `#e6e9ef` | `#ccd0da` | `#bcc0cc` | `#5c5f77` | `#4c4f69` | `#8c8fa1` |
-| Solarized Light   | light | `#eee8d5` | `#fdf6e3` | `#f5eedb` | `#e8e1ce` | `#d6cfbc` | `#586e75` | `#073642` | `#93a1a1` |
+8 schemes (6 dark + 2 light) shipped in `src/tui/theme.ts` (`schemes` object).
+Default is Monokai. Each scheme is 8 color values + a name.
 
 Scheme selection: `/theme` lists available schemes with a preview. `/theme <name>`
 switches and persists to config. The current scheme name is stored in the hise-cli
 config file.
+
+On light themes (`scheme.light === true`), mode accents with poor contrast
+(yellow, green, cyan) are automatically darkened for readability.
 
 ### 1.7 ThemeContext — Centralized Color Provider
 
@@ -172,19 +144,8 @@ dimming system: when a modal overlay opens, the backdrop re-renders the entire U
 inside a `ThemeProvider` with darkened values. Every component automatically gets
 dimmed colors without override props.
 
-```ts
-interface ThemeContextValue {
-  scheme: ColorScheme;             // current color scheme (or darkened)
-  brand: BrandColors;              // brand colors (or darkened)
-  statusColor: (status) => string; // status dot color resolver (or darkened)
-}
-```
-
-Components call `useTheme()` to access these values:
-
-```ts
-const { scheme, brand, statusColor } = useTheme();
-```
+See `src/tui/theme-context.tsx` for the `ThemeContextValue` interface. Components
+call `useTheme()` to access `scheme`, `brand`, and `statusColor`.
 
 **Rule**: Components must never import `brand` or `statusColor` directly from
 `theme.ts` for rendering purposes. Always use `useTheme()`. The only exception
@@ -203,8 +164,8 @@ component re-render with darkened colors, not a semi-transparent CSS overlay
 
 1. **Snapshot**: When the overlay opens, the current UI state is captured
    (output lines, scroll offset, mode label, accent, connection status, hints).
-2. **Darken**: All colors are darkened by a factor (`DIM_FACTOR = 0.65`, i.e.,
-   65% brightness). This applies to:
+2. **Darken**: All colors are darkened by `DIM_FACTOR` (see `src/tui/app.tsx`).
+   This applies to:
    - The entire `ColorScheme` via `darkenScheme(scheme, factor)`
    - Brand colors via `darkenBrand(factor)`
    - Status colors via a darkened resolver
@@ -217,8 +178,8 @@ component re-render with darkened colors, not a semi-transparent CSS overlay
 4. **Overlay on top**: The modal panel renders at full brightness on top of the
    dimmed backdrop.
 
-**`darkenHex(hex, factor)`**: Multiplies each RGB channel by the factor.
-Factor 1.0 = unchanged, 0.0 = black.
+Color manipulation utilities (`darkenHex`, `lightenHex`, `darkenScheme`, etc.)
+are in `src/tui/theme.ts`.
 
 **Future-proofing**: Any new component that uses `useTheme()` automatically
 participates in the dimming system. No override props needed. The only manual
@@ -358,10 +319,11 @@ produced them — creating a visual trail in scrollback of which mode generated 
 
 | Element | Character | Color                |
 |---------|-----------|----------------------|
-| Thumb   | `█`       | SIGNAL_COLOUR        |
+| Thumb   | `█`       | `foreground.muted`   |
 | Track   | `│`       | `foreground.muted`   |
 
-Thumb height is proportional: `max(1, round(visibleRows² / totalRows))`.
+Scrollbar rendering is shared across Output, CompletionPopup, and any future scrollable
+panel via `scrollbarChar()` in `src/tui/components/scrollbar.ts`.
 
 **Horizontal padding**: 2 characters on each side. Content width =
 `availableWidth - scrollbarWidth - horizontalPadding * 2`.
@@ -378,26 +340,49 @@ Three-row raised panel at the bottom of the main content area.
 
 ```
 │                                                                      │  ← top border (raised)
-│  [builder:plan] > add LFO to Sampler1.pitch_                        │  ← input row (raised)
+│  [builder] SineGenerator.pitch > add LFO_                           │  ← input row (raised)
 │                                                                      │  ← bottom border (raised)
 ```
+
+**State management**: The Input component uses a `useReducer` pattern (inspired by
+`@inkjs/ui`'s `useTextInputState`) to avoid stale-closure bugs when multiple keystrokes
+arrive before React re-renders. All editing operations dispatch actions to a reducer that
+atomically updates `{value, cursorOffset}`. See `InputAction` type in
+`src/tui/components/Input.tsx` for the full action list. Value changes propagate to the
+parent via `useEffect` on `state.value`, passing both `value` and `cursorOffset`.
 
 **Prompt format:**
 
 | State              | Prompt                         | Colors                              |
 |--------------------|--------------------------------|-------------------------------------|
 | Root (no mode)     | `> `                           | `>` in `foreground.default`         |
-| In a mode          | `[mode:context] > `            | Brackets and text in `foreground.muted`, `>` in mode accent |
+| In a mode          | `[mode] > `                    | Brackets and text in `foreground.muted`, `>` in mode accent |
+| Mode with context  | `[mode] context.path > `       | Context path in `foreground.default` |
 | Disabled (pending) | `waiting for response...`      | `foreground.muted`, no cursor       |
+
+The `contextLabel` (e.g., `SineGenerator.pitch` in builder mode) is a dynamic property
+on the `Mode` interface. It renders between the mode label and the `>` character when
+non-empty.
+
+**Cursor rendering**: The cursor is rendered as the character at the cursor position
+with a lightened background color (`lightenHex(scheme.backgrounds.raised, 0.3)`). No
+block character (`█`) — the actual glyph remains visible. At end of input with ghost
+text, the first ghost character appears under the cursor highlight in
+`foreground.default` (brighter than muted for visibility).
+
+**Ghost text completion**: The top completion candidate appears after the cursor in
+`foreground.muted`. Ghost text is only shown when the cursor is at the end of the input
+— when the cursor is mid-string, ghost text is suppressed entirely. A `ghostForValue`
+prop ensures ghost text is only displayed when it was computed for the current input
+value, preventing one-frame jitter from stale ghost text between render cycles.
+
+**Scroll window**: When the input text exceeds the display width, the visible portion
+scrolls horizontally to keep the cursor in view.
 
 **Syntax highlighting** (see Section 1.4): In script mode, the input text is tokenized
 and each token rendered with its HISE editor color. In builder/DSP mode, partial
 highlighting applies to strings, numbers, and known identifiers. Other modes render
 input as plain `foreground.default`.
-
-**Ghost text completion**: The top completion candidate appears after the cursor in
-`foreground.muted`. Typing characters that match the ghost text accepts it
-incrementally. Tab accepts the full ghost text.
 
 **Multi-line** (script mode): When brackets are unclosed, the prompt changes to a
 continuation indicator `...` aligned to the main prompt. The opening bracket is
@@ -407,12 +392,14 @@ Background: `backgrounds.raised` for all three rows. Horizontal padding: 2 chara
 
 ### 3.4 CompletionPopup
 
-Floating dropdown that appears above the input line when Tab is pressed. Uses
-absolute positioning (`position="absolute"`) to overlay the content without
-affecting layout. No border — solid filled rows spanning the full terminal width.
+Floating dropdown that appears above the input line **immediately as the user types**.
+No Tab-to-show step — the popup is always visible when candidates exist. Uses absolute
+positioning (`position="absolute"`) to overlay the content without affecting layout. No
+border — solid filled rows spanning the full terminal width.
 
 ```
-   AHDSR          EnvelopeModulator         ← selected: raised bg, signal text
+   Slash commands                           ← header row in foreground.muted
+   AHDSR          EnvelopeModulator         ← selected: signal text, bright detail
    TableEnvelope  EnvelopeModulator         ← overlay bg
    MPEModulator   EnvelopeModulator         ← overlay bg
    LFO            TimeVariantModulator      ← overlay bg
@@ -422,22 +409,31 @@ affecting layout. No border — solid filled rows spanning the full terminal wid
 | Element          | Color / Style                                      |
 |------------------|----------------------------------------------------|
 | Background       | `backgrounds.overlay` (full row, edge to edge)     |
+| Header row       | `foreground.muted` — label from `CompletionResult.label` (e.g., "Slash commands", "Module types") |
 | Item name        | `foreground.default`                               |
 | Item annotation  | `foreground.muted` (type, category, or signature)  |
-| Selected row bg  | `backgrounds.raised` (subtle highlight)            |
 | Selected name fg | SIGNAL_COLOUR (`brand.signal`)                     |
 | Selected detail  | `foreground.bright`                                |
+
+No selection background — the selected item is distinguished by text color only
+(signal-colored label + bright detail). This keeps the popup visually clean.
 
 - **Position**: absolute, directly above input, full terminal width per row.
   Left area before the popup content is filled with `backgrounds.overlay`.
 - **Width**: adapts to content, max 50 chars
-- **Height**: max 8 visible items, scrollable
-- **Dismiss**: Escape, submitting, or input diverging from all candidates
-- **Navigation**: Up/Down arrows (wrap around), Enter or Tab to accept
+- **Height**: scrollable with shared `scrollbarChar()` utility (max visible items
+  configured in `src/tui/components/CompletionPopup.tsx`)
+- **Mousewheel**: `useOnWheel` from `@ink-tools/ink-mouse` scrolls the popup. Output
+  wheel scrolling is gated when popup is visible.
+- **Dismiss**: Input diverging from all candidates auto-dismisses.
+- **Escape**: Toggles the popup — close if open, open with all items for current
+  context if closed (useful for discovery).
+- **Navigation**: Up/Down arrows (wrap around)
+- **Tab**: Accepts the selected completion item
+- **Enter**: Accepts the selected completion AND submits the command (execute)
 
 Ghost text inline in the input shows the top candidate in `foreground.muted`.
-The dropdown shows alternatives. Tab toggles between ghost-only and popup-visible
-states.
+The dropdown shows alternatives.
 
 ### 3.5 Progress
 
@@ -801,18 +797,22 @@ highlighting color `ScopedStatement` (`#88bec5`).
 
 ### 4.1 Keyboard Shortcuts
 
-| Key            | Action                                    | Scope        |
-|----------------|-------------------------------------------|--------------|
-| `Enter`        | Submit command / accept palette selection  | Always       |
-| `Ctrl+C`       | Exit entirely                             | Always       |
-| `Ctrl+L`       | Clear output, reset scroll                | Always       |
-| `Ctrl+B`       | Toggle sidebar                            | Always       |
-| `Ctrl+Space`   | Open command palette                      | Always       |
-| `Escape`       | Dismiss overlay (palette / completion)    | When overlay visible |
-| `Up` / `Down`  | History navigation (no overlay) or navigate overlay items | Context-dependent |
-| `PageUp`       | Scroll output up by 80% of viewport      | Always       |
-| `PageDown`     | Scroll output down by 80% of viewport    | Always       |
-| `Tab`          | Accept ghost text / open completion popup | Input focused |
+| Key              | Action                                    | Scope        |
+|------------------|-------------------------------------------|--------------|
+| `Enter`          | Submit command; accepts completion + submits when popup visible | Always |
+| `Ctrl+C`         | Exit entirely                             | Always       |
+| `Ctrl+L`         | Clear output, reset scroll                | Always       |
+| `Ctrl+B`         | Toggle sidebar                            | Always       |
+| `Ctrl+Space`     | Open command palette                      | Always       |
+| `Escape`         | Toggle completion popup (close if open, open with all items if closed); dismiss overlay | Context-dependent |
+| `Up` / `Down`    | Navigate completion popup when visible; history navigation otherwise | Context-dependent |
+| `PageUp`         | Scroll output up by 80% of viewport      | Always       |
+| `PageDown`       | Scroll output down by 80% of viewport    | Always       |
+| `Home` / `End`   | Move cursor to start / end of input       | Input focused |
+| `Ctrl+A` / `Ctrl+E` | Move cursor to start / end (fn+Left/Right on macOS Ghostty) | Input focused |
+| `Option+Left`    | Move cursor to previous word boundary     | Input focused |
+| `Option+Right`   | Move cursor to next word boundary         | Input focused |
+| `Tab`            | Accept selected completion item           | Input focused |
 
 ### 4.2 Input Routing
 
@@ -825,11 +825,17 @@ Slash commands are always available in every mode. They are never recorded in pl
 
 ### 4.3 Tab Completion Lifecycle
 
-1. User types 2+ characters → engine generates candidates from static JSON data
-2. Top candidate appears as **ghost text** in `foreground.muted` after the cursor
-3. `Tab` press: if ghost text visible, accepts it; if no ghost text, opens dropdown
-4. Dropdown open: `Up`/`Down` navigate, `Enter`/`Tab` accept, `Escape` dismisses
-5. Continuing to type narrows candidates; input diverging from all candidates dismisses
+1. User types any character → engine generates candidates from static JSON data
+2. Completion popup appears **immediately** with matching candidates; top candidate
+   also appears as **ghost text** in `foreground.muted` after the cursor
+3. Ghost text is only shown when cursor is at end of input — mid-string editing
+   suppresses ghost text entirely
+4. `Up`/`Down` navigate the popup, `Tab` accepts the selected item, `Enter` accepts
+   and submits
+5. `Escape` toggles: close popup if open, re-open with all candidates if closed
+   (discovery mode)
+6. Continuing to type narrows candidates; input diverging from all candidates
+   auto-dismisses the popup
 
 ### 4.4 Command Palette Lifecycle
 
@@ -893,15 +899,16 @@ The prompt appears in both the **Top Bar** (mode label) and the **Input** (befor
 |-------------------|----------------------|--------------------------------|------------|
 | Root              | *(none)*             | `> `                           | `foreground.default` |
 | Builder           | `[builder]`          | `[builder] > `                 | Orange     |
+| Builder (context) | `[builder]`          | `[builder] SineGen.pitch > `   | Orange     |
 | Builder:Plan      | `[builder:plan]`     | `[builder:plan] > `            | Orange     |
-| Script            | `[script:Interface]` | `[script:Interface] > `        | Blue       |
-| Script (named)    | `[script:MyProc]`    | `[script:MyProc] > `           | Blue       |
-| DSP               | `[dsp:MyNetwork]`    | `[dsp:MyNetwork] > `           | Cyan       |
+| Script            | `[script:Interface]` | `[script:Interface] > `        | Rust       |
+| Script (named)    | `[script:MyProc]`    | `[script:MyProc] > `           | Rust       |
+| DSP               | `[dsp:MyNetwork]`    | `[dsp:MyNetwork] > `           | Teal       |
 | Sampler           | `[sampler:MySampler]`| `[sampler:MySampler] > `       | Green      |
 | Inspect           | `[inspect]`          | `[inspect] > `                 | Purple     |
 | Project           | `[project]`          | `[project] > `                 | Yellow     |
 | Compile           | `[compile]`          | `[compile] > `                 | Magenta    |
-| Import            | `[import]`           | `[import] > `                  | Teal       |
+| Import            | `[import]`           | `[import] > `                  | Mint       |
 
 In the Input, brackets and mode text are `foreground.muted`. The `>` character uses the
 mode accent color. In the Top Bar, the entire `[mode:context]` label uses the mode accent

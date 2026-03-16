@@ -192,7 +192,7 @@ src/
 | Plan step reference tracking      | CLI       | Simple string bookkeeping (not tree logic)        |
 | Generating HiseScript             | CLI       | Template-based, using `builderPath` from JSON     |
 | Executing operations              | HISE      | Builder, DspNetwork, Sampler APIs                |
-| Dynamic module parameters         | HISE      | 12 modules with runtime-defined params (ScriptProcessor, HardcodedSynth, etc.) |
+| Dynamic module parameters         | HISE      | Modules with `metadataType: "dynamic"` have runtime-defined params (ScriptProcessor, HardcodedSynth, etc.) |
 | Live monitoring                   | HISE      | SSE push events for progress, console, metrics   |
 
 ---
@@ -240,18 +240,12 @@ and HTTP naturally supports multiple simultaneous clients.
 
 ### Transport Abstraction
 
-The engine layer talks to HISE through a `HiseConnection` interface:
+The engine layer talks to HISE through a `HiseConnection` interface
+(see `src/engine/hise.ts` for the canonical definition). Methods: `get()`,
+`post()`, `probe()` (readiness check via `GET /api/status`), `destroy()`.
 
-```ts
-interface HiseConnection {
-  get(endpoint: string): Promise<HiseResponse>;
-  post(endpoint: string, body: object): Promise<HiseResponse>;
-  probe(): Promise<boolean>;     // GET /api/status, returns false on 503/refused
-  destroy(): void;
-}
-```
-
-The default (and only) implementation is `HttpHiseConnection` using `fetch()`.
+`HttpHiseConnection` is the production implementation using `fetch()`.
+`MockHiseConnection` provides configurable per-endpoint responses for tests.
 
 ### Existing Endpoints Used by TUI
 
@@ -416,6 +410,9 @@ because a network context is always required.
 Slash commands are always available in every mode. They are never forwarded to
 HISE, never recorded in plan mode.
 
+> **Note**: The currently registered commands are in `src/engine/commands/slash.ts`.
+> This table is the full planned set — not all are implemented yet.
+
 | Command              | Action                                              |
 |----------------------|-----------------------------------------------------|
 | `/help [topic]`      | Context-sensitive help                              |
@@ -514,7 +511,7 @@ placeholder.
 The builder mode uses a **hybrid validation model**:
 
 **Local validation** (instant, no HISE round-trip):
-- Module type exists (79 types in `moduleList.json`)
+- Module type exists (validated against `moduleList.json`)
 - Module subtype can go in the target chain (constrainer matching)
 - Parameter name is valid for the module type
 - Parameter value is in range (min/max/stepSize)
@@ -525,7 +522,7 @@ The builder mode uses a **hybrid validation model**:
 **Instance validation** (needs live module tree):
 - Module instance name exists (tracked locally after initial fetch)
 - Module instance name uniqueness
-- Dynamic module parameters (12 modules with `metadataType: "dynamic"`)
+- Dynamic module parameters (modules with `metadataType: "dynamic"`)
 
 On entering builder mode, the CLI calls `GET /api/builder/tree` once to
 get the current module tree. From then on, it tracks the tree locally as
@@ -534,7 +531,7 @@ round-trips. The tree can be re-synced if the user edits in the HISE IDE.
 
 #### Module Data (`moduleList.json`)
 
-79 modules with rich metadata:
+All HISE module types with rich metadata (see `data/moduleList.json` for current count):
 
 | Field | Purpose |
 |-------|---------|
@@ -599,9 +596,7 @@ show graph | show <node> | show factories | show <factory>
 undo | clear
 ```
 
-12 node factories, 194 nodes (see `data/scriptnodeList.json`): container,
-core, math, envelope, routing, analyse, fx, control, dynamics, filters,
-jdsp, template.
+Node factories and nodes are listed in `data/scriptnodeList.json`.
 
 ### Script Mode
 
@@ -774,45 +769,45 @@ completion, local validation, and inline help.
 
 ### `data/moduleList.json` (provided)
 
-79 modules, 15 categories. Covers all HISE module types with:
+All HISE module types with rich metadata. Covers:
 - Type metadata (`id`, `type`, `subtype`, `builderPath`, `category`)
 - Structure (`hasChildren`, `hasFX`, `fx_constrainer`, `constrainer`)
 - Parameters with full range/type/items data
 - Modulation chains with constrainer and mode info
 
-See "Builder Mode Validation" section for details.
+See "Builder Mode Validation" section for details. See `src/engine/data.ts`
+for the `ModuleList` type definition.
 
 ### `data/scriptnodeList.json` (provided)
 
-194 nodes, 12 factories (`container`, `control`, `core`, `math`, `envelope`,
-`routing`, `analyse`, `fx`, `dynamics`, `filters`, `jdsp`, `template`).
-Same structure as `moduleList.json`:
+Scriptnode factories and nodes. Same structure as `moduleList.json`:
 - Node metadata (`id`, `description`, `type` polyphonic/monophonic)
 - Structure (`hasChildren`, `hasFX`, `fx_constrainer`, `constrainer`)
-- Parameters with full range/type/items data (79 ComboBox params decoded)
+- Parameters with full range/type/items data (ComboBox params decoded)
 - Modulation outputs with constrainer type (`Normalised`/`Unnormalised`)
 - Properties (`Mode`, `Connection`, `Code`, `NumParameters`, `LocalId`, etc.)
 - Interfaces (`TableProcessor`, `SliderPackProcessor`, `AudioSampleProcessor`,
   `DisplayBufferSource`)
 
-### `data/scripting_api.json` (provided, 26% enriched)
+### `data/scripting_api.json` (provided, partially enriched)
 
-89 classes, 1,789 methods. Covers the full HiseScript API:
+Covers the full HiseScript API. Inspect the JSON for current class/method counts.
 - Base data on all classes: `name`, `description`, `category`, `methods[]`
 - Each method: `name`, `returnType`, `description`, `parameters[]` (name+type)
-- Enriched classes (23/89) add: `commonMistakes`, `llmRef`, `obtainedVia`,
-  and per-method `callScope`, `crossReferences`, `pitfalls`, `examples`
+- Enriched classes (see `enrichedClasses` array in JSON) add: `commonMistakes`,
+  `llmRef`, `obtainedVia`, and per-method `callScope`, `crossReferences`,
+  `pitfalls`, `examples`
 
 Key classes per mode:
 
 | CLI Mode  | Key classes |
 |-----------|-------------|
-| Builder   | `Builder` (8), `Synth` (59) |
-| Script    | All 89 - this is the REPL |
-| Sampler   | `Sampler` (57), `Sample` (11), `ComplexGroupManager` (16) |
-| DSP       | `DspNetwork` (12), `Node` (15), `Connection` (6), `Parameter` (8) |
-| Inspect   | `Engine` (147) |
-| Project   | `Settings` (36), `ExpansionHandler` (18) |
+| Builder   | `Builder`, `Synth` |
+| Script    | All classes — this is the REPL |
+| Sampler   | `Sampler`, `Sample`, `ComplexGroupManager` |
+| DSP       | `DspNetwork`, `Node`, `Connection`, `Parameter` |
+| Inspect   | `Engine` |
+| Project   | `Settings`, `ExpansionHandler` |
 
 ### Future datasets (not yet provided)
 
@@ -903,8 +898,7 @@ commands and HiseScript code generation. Tiny, well-tested, avoids
 reimplementing range expansion edge cases.
 
 **fastest-levenshtein**: Edit distance for "Did you mean?" suggestions
-when users mistype module names (79 types), API methods (1,789 methods),
-or node names (194 nodes). 20KB, zero deps.
+when users mistype module names, API methods, or node names. 20KB, zero deps.
 
 **cli-table3**: Unicode-aware terminal table rendering with box-drawing
 characters. Handles the hard problem of column alignment when cells contain
@@ -969,7 +963,7 @@ component must implement virtual scrolling:
 - Compute visible slice: `history.slice(scrollOffset, scrollOffset + viewportHeight)`
 - Only the visible slice enters the React tree
 - Scroll offset is managed via `useRef` to avoid re-renders on scroll position changes
-- Cap history at 10,000 lines to bound memory growth
+- Cap history at `MAX_HISTORY_LINES` (see `src/tui/components/Output.tsx`) to bound memory growth
 
 **Memory management**: Ink stores dual output buffers internally
 ([#826](https://github.com/vadimdemedes/ink/issues/826)). Mitigations:
@@ -978,7 +972,7 @@ component must implement virtual scrolling:
   Ink excludes `<Static>` content from the dynamic re-render cycle
 - Pre-compute and cache syntax-highlighted ANSI strings when output is
   created (not on every render)
-- Trim output history beyond the 10,000-line cap
+- Trim output history beyond the cap
 
 **Render cost rules**:
 
@@ -1728,10 +1722,11 @@ name valid, value in range). Instance-level constraints (does "Sampler1"
 exist in the live tree?) are tracked locally after an initial fetch from
 `GET /api/builder/tree` on mode entry.
 
-**Rationale**: The module list JSON is rich enough (79 modules with full
-parameter definitions, modulation chain constrainers, FX chain rules) to
-catch the vast majority of user errors instantly. Only 12 modules have
-dynamic parameters that the JSON cannot describe. This gives instant
+**Rationale**: The module list JSON is rich enough (full parameter
+definitions, modulation chain constrainers, FX chain rules) to catch the
+vast majority of user errors instantly. Only a handful of modules have
+dynamic parameters (`metadataType: "dynamic"`) that the JSON cannot
+describe. This gives instant
 feedback for typos and structural mistakes without waiting for HISE, while
 HISE remains the authority for execution.
 

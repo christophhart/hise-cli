@@ -10,8 +10,8 @@ domain-specific modes (builder, script, DSP, sampler, inspect, project,
 compile, import). Each mode has its own grammar, tab completion, and
 contextual help powered by shipped static datasets.
 
-**Smart client** — validates commands locally using shipped JSON data
-(79 module types, 194 scriptnode nodes, 89 API classes with 1789 methods)
+**Smart client** — validates commands locally using shipped JSON datasets
+(`data/moduleList.json`, `data/scriptnodeList.json`, `data/scripting_api.json`)
 before sending them to HISE. Catches typos, invalid parameters, and wrong
 chain placements instantly without a round-trip.
 

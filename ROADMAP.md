@@ -16,6 +16,7 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
 | Phase 1 — Session + Modes | [#1](https://github.com/christoph-hart/hise-cli/issues/1), [#2](https://github.com/christoph-hart/hise-cli/issues/2) | Mode system, slash commands, session |
 | Phase 2 — TUI v2 Shell | [#2](https://github.com/christoph-hart/hise-cli/issues/2) | TUI components, entry point rewire, screencasts |
 | Phase 3 — Tab Completion | [#3](https://github.com/christoph-hart/hise-cli/issues/3) | Completion engine + popup |
+| Phase 3.5 — Dot-Notation Dispatch | [#3](https://github.com/christoph-hart/hise-cli/issues/3) | Mode cache, arg completion, one-shot execution |
 | Phase 4 — Builder + Plan | [#5](https://github.com/christoph-hart/hise-cli/issues/5), [#4](https://github.com/christoph-hart/hise-cli/issues/4) | Full grammar, module tree, plan submode |
 | Phase 5 — Wizards | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard framework + setup wizard |
 | Phase 6 — Remaining Modes | [#6](https://github.com/christoph-hart/hise-cli/issues/6), [#8](https://github.com/christoph-hart/hise-cli/issues/8), [#7](https://github.com/christoph-hart/hise-cli/issues/7), [#11](https://github.com/christoph-hart/hise-cli/issues/11), [#9](https://github.com/christoph-hart/hise-cli/issues/9) | DSP, script (full), inspect, sampler, project/compile/import |
@@ -54,169 +55,41 @@ These were open questions that are now settled:
 
 ---
 
-## Phase 0 — Foundation
+## Phase 0 — Foundation ✓
 
 **Goal**: testable engine layer skeleton, HISE REST client, test infrastructure.
 
 Tracks [#1](https://github.com/christoph-hart/hise-cli/issues/1) (engine core).
 
-### 0.1 Project infrastructure
+**Status: Completed.** Engine directory structure established, vitest configured,
+all core types and interfaces implemented.
 
-- Add `vitest` as devDependency
-- Create `vitest.config.ts` with `.js` → `.ts` resolver plugin (required
-  because the project uses Node16 `.js` extension imports that Vite's resolver
-  does not handle natively)
-- Add npm scripts: `"test": "vitest run"`, `"test:watch": "vitest"`
-- Install engine-layer dependencies (see
-  [DESIGN.md — Third-party Dependencies](DESIGN.md#third-party-dependencies)):
-  `@lezer/lr`, `@lezer/common`, `@lezer/highlight`, `chevrotain`, `marked`,
-  `picomatch`, `brace-expansion`, `fastest-levenshtein`
-- Install TUI-layer dependencies: `ink-select-input`, `ink-box`, `cli-table3`
-- Install test dependency: `ink-testing-library`
+### Key decisions
 
-### 0.2 Engine directory structure
+- **Isomorphic constraint** ([DESIGN.md — Decision #13](DESIGN.md#13-isomorphic-engine-for-web-compatibility)):
+  engine layer has zero `node:` imports. Platform-specific operations use
+  `DataLoader` (see `src/engine/data.ts`) and `PhaseExecutor` (see DESIGN.md)
+  interfaces.
+- **Ink 6.8.0 exact** — pinned after memory leak smoke test passed.
+- **`MockHiseConnection`** as living API contract
+  ([DESIGN.md — Decision #9](DESIGN.md#9-tests-as-api-contract)).
 
-Test files are colocated next to their source files (e.g., `hise.test.ts`
-next to `hise.ts`).
+### What was built
 
-```
-src/engine/
-  hise.ts              HiseConnection interface + HttpHiseConnection
-  hise.test.ts         Tests with MockHiseConnection
-  data.ts              DataLoader interface (isomorphic static dataset access)
-  data.test.ts
-  session.ts           Session class (mode stack, history, connection)
-  session.test.ts
-  result.ts            CommandResult types (text, error, code, table, tree, markdown, empty)
-  commands/
-    registry.ts        CommandRegistry — slash command → handler map
-    registry.test.ts
-    slash.ts           Built-in slash command handlers
-    slash.test.ts
-  highlight/
-    hisescript.grammar Lezer grammar for HiseScript (forked from JS, simplified)
-    hisescript.ts      Generated parser + tokenize() wrapper
-    xml.ts             Minimal XML regex tokenizer (~30 lines)
-    tokens.ts          Shared token type definitions + color mapping
-  screencast/
-    types.ts           TapeCommand type definitions (VHS commands + extensions)
-    tape-parser.ts     Parse .tape files into TapeCommand[]
-    tape-parser.test.ts
-  modes/
-    mode.ts            Mode interface + ModeId type
-    root.ts            Root mode (slash commands only)
-    root.test.ts
-```
+- `src/engine/hise.ts` — `HiseConnection` interface, `HttpHiseConnection`,
+  `MockHiseConnection`
+- `src/engine/result.ts` — `CommandResult` union type (canonical definition)
+- `src/engine/data.ts` — `DataLoader` interface + dataset type definitions
+- `src/engine/highlight/` — Lezer HiseScript grammar, XML tokenizer, token colors
+- `src/engine/screencast/` — `.tape` parser (isomorphic)
+- `vitest.config.ts` with `.js` → `.ts` resolver plugin
+- Ink memory leak smoke test + scroll prototype (seed for Output component)
 
-**Isomorphic constraint** (see
-[DESIGN.md — Decision #13](DESIGN.md#13-isomorphic-engine-for-web-compatibility)):
-the engine layer must contain zero `node:` imports. Platform-specific
-operations use two interfaces:
-
-- `DataLoader` — loads `moduleList.json`, `scriptnodeList.json`,
-  `scripting_api.json`. Loaded once on session creation, cached for the
-  session lifetime. Node.js implementation reads from filesystem (lives
-  in `src/tui/` or `src/cli/`). Browser implementation bundles the JSON
-  or fetches from URL (lives in `src/web/`).
-- `PhaseExecutor` — runs shell scripts for pipeline phases. Node.js only
-  (`child_process.spawn`). Disabled in browser.
-
-### 0.3 `HiseConnection` — interface + HTTP implementation
-
-File: `src/engine/hise.ts`
-
-```ts
-interface HiseConnection {
-  get(endpoint: string): Promise<HiseResponse>;
-  post(endpoint: string, body: object): Promise<HiseResponse>;
-  probe(): Promise<boolean>;     // GET /api/status, returns false on 503/refused
-  destroy(): void;
-}
-```
-
-Response types (`HiseSuccessResponse`, `HiseErrorResponse`, `HiseResponse`)
-are defined in DESIGN.md — Response Format Details. Do not duplicate the
-type definitions here; import them from `src/engine/hise.ts`.
-
-`HttpHiseConnection` — `fetch()`-based, targets `localhost:1900`.
-`probe()` sends `GET /api/status` (doubles as readiness check — returns 503
-while HISE is still loading, verified in `RestHelpers.cpp:947-958`).
-
-`MockHiseConnection` — configurable per-endpoint responses for tests.
-Serves as the living API contract per
-[DESIGN.md — Decision #9](DESIGN.md#9-tests-as-api-contract).
-
-Tests: connection probing, GET/POST request formatting, error handling,
-mock response matching.
-
-### 0.4 `CommandResult` types
-
-File: `src/engine/result.ts`
-
-```ts
-type CommandResult =
-  | { type: "text"; content: string }
-  | { type: "error"; message: string; detail?: string }
-  | { type: "code"; content: string; language?: string }
-  | { type: "table"; headers: string[]; rows: string[][] }
-  | { type: "tree"; root: TreeNode }
-  | { type: "markdown"; content: string }
-  | { type: "empty" }
-```
-
-Pure data — the engine's output contract. TUI renders them visually, CLI
-serializes them as JSON. The `markdown` variant is parsed by `marked` in
-the engine and rendered by a custom chalk + cli-table3 renderer in the TUI
-(see [DESIGN.md — Third-party Dependencies](DESIGN.md#third-party-dependencies)).
-
-### 0.5 Build verification
-
-Ensure the full chain passes with the new structure:
-```bash
-npm run build && npm run typecheck && npm test
-```
-
-The existing `src/index.ts` entry point remains untouched — it still works
-and still imports the legacy code. New engine code is exercised only through
-tests at this stage.
-
-### 0.6 Ink performance verification
-
-Pin `"ink": "6.8.0"` (exact version) in `package.json`. See
-[DESIGN.md — TUI Performance Constraints](DESIGN.md#tui-performance-constraints).
-
-**Memory leak smoke test** — verify that Ink 6.8 fixes
-[#869](https://github.com/vadimdemedes/ink/issues/869):
-
-File: `src/tui/ink-smoke.test.ts`
-
-Simple vitest test: render a component with a 100ms timer updating a
-counter, run for 10 seconds, sample `process.memoryUsage().heapUsed` at
-start and end. Assert heap growth is <20MB. If this fails, pin to `6.0.0`
-and file a note.
-
-**Scroll prototype** — build a minimal Ink component that renders 500
-pre-highlighted lines with virtual scrolling (visible slice only). Measure:
-- Render time per frame (should be <16ms for 20fps target)
-- Memory baseline with 500 lines in the history array
-- Scroll responsiveness (Up/Down key, Page Up/Down)
-
-This prototype becomes the seed for the Phase 2 Output component. If it
-shows problems, that's the signal to investigate before committing to the
-full TUI build.
-
-**Phase 0 gate — all must pass:**
-- `npm run build` produces `dist/index.js` (legacy app still works)
-- `npm run typecheck` passes with zero errors
-- `npm test` passes with tests for: `HiseConnection` (probe, get, post,
-  mock responses), `DataLoader` (loads all three datasets), `CommandResult`
-  (type discrimination), tape parser (VHS commands + extensions)
-- Ink memory leak smoke test passes
-- Scroll prototype renders 500 lines without perceptible lag
+**Phase 0 gate: passed.** Build, typecheck, and all tests pass.
 
 ---
 
-## Phase 1 — Session + Mode System
+## Phase 1 — Session + Mode System ✓
 
 **Goal**: the engine can parse commands, manage modes, route input, and talk
 to HISE. Fully tested. No TUI yet — all validation through tests.
@@ -224,192 +97,42 @@ to HISE. Fully tested. No TUI yet — all validation through tests.
 Tracks [#1](https://github.com/christoph-hart/hise-cli/issues/1) (engine core)
 and [#2](https://github.com/christoph-hart/hise-cli/issues/2) (mode system).
 
-### 1.1 Mode interface
+**Status: Completed.** Mode system, session, command registry, and three mode
+stubs (script, inspect, builder) implemented with full test coverage.
 
-File: `src/engine/modes/mode.ts`
+### Key decisions
 
-```ts
-type ModeId =
-  | "root" | "builder" | "script" | "dsp" | "sampler"
-  | "inspect" | "project" | "compile" | "import";
+- **`SessionContext` interface** avoids circular imports between modes and session.
+  Modes depend on `SessionContext` (minimal), not the full `Session` class.
+- **`handleInput` dispatch**: input starts with `/` → `CommandRegistry`;
+  anything else → `currentMode().parse()`. Single entry point for both TUI and CLI.
+- **Script mode reads `response.value`** (not `response.result`) — verified
+  against `RestHelpers.cpp:513-517`.
+- **Builder local validation** against `data/moduleList.json` — typos caught
+  with `fastest-levenshtein` suggestions. Validates the smart-client concept.
+- **Mode accent colors**: see `MODE_ACCENTS` in `src/engine/modes/mode.ts`
+  (canonical) and [docs/TUI_STYLE.md — Section 1.3](docs/TUI_STYLE.md) (visual spec).
 
-interface Mode {
-  id: ModeId;
-  name: string;
-  accent: string;            // hex color from TUI_STYLE.md Layer 2
-  prompt: string;            // display string, e.g. "builder", "script:Interface"
-  parse(input: string, session: Session): Promise<CommandResult>;
-  complete?(input: string, cursor: number): CompletionResult;
-}
-```
+### What was built
 
-Mode accent colors from [docs/TUI_STYLE.md — Section 1.3](docs/TUI_STYLE.md):
-builder `#fd971f`, script `#7aa2f7`, dsp `#66d9ef`, sampler `#a6e22e`,
-inspect `#ae81ff`, project `#e6db74`, compile `#f92672`, import `#2de0a5`.
+- `src/engine/modes/mode.ts` — `Mode` interface, `ModeId` type, `CompletionResult`,
+  `CompletionItem`, `MODE_ACCENTS` (canonical color definitions)
+- `src/engine/session.ts` — `Session` class (mode stack, history, dispatch,
+  completion routing)
+- `src/engine/commands/registry.ts` — `CommandRegistry` (slash command → handler map)
+- `src/engine/commands/slash.ts` — Built-in handlers (see source for current list)
+- `src/engine/modes/root.ts` — Root mode (slash commands only)
+- `src/engine/modes/script.ts` — Script mode (`POST /api/repl`, processor ID)
+- `src/engine/modes/inspect.ts` — Inspect mode stub (cpu, memory, voices, modules)
+- `src/engine/modes/builder.ts` — Builder mode (Chevrotain parser: `add`, `show`, `set`)
+- `src/engine/modes/tokens.ts` — Shared Chevrotain token types
 
-### 1.2 Session
-
-File: `src/engine/session.ts`
-
-The core state container that both TUI and CLI frontends consume. Class
-with thin methods delegating to pure functions for testability:
-
-```ts
-class Session {
-  readonly modeStack: Mode[];
-  readonly history: string[];
-  readonly connection: HiseConnection | null;
-  projectName: string | null;
-
-  currentMode(): Mode;
-  pushMode(mode: Mode): void;
-  popMode(): void;
-  handleInput(raw: string): Promise<CommandResult>;
-}
-```
-
-`handleInput` is the main dispatch point:
-- Input starts with `/` → `CommandRegistry`
-- Anything else → `currentMode().parse()`
-
-This is the single function the TUI calls on submit and the CLI calls per
-invocation. Internal logic (routing, validation) is extracted to pure
-functions that the class methods delegate to, making them individually
-testable without constructing a full Session.
-
-Tests: mode push/pop, slash command routing, input dispatch to current mode,
-history tracking, connection state.
-
-### 1.3 CommandRegistry
-
-File: `src/engine/commands/registry.ts`
-
-Maps slash command names to handler functions. Handlers receive
-`(args: string, session: Session)` and return `Promise<CommandResult>`.
-
-Built-in slash commands for Phase 1 (see
-[DESIGN.md — Slash Commands](DESIGN.md#slash-commands)):
-
-| Command | Handler | Behavior |
-|---------|---------|----------|
-| `/exit` | `handleExit` | Pop mode stack. At root: signal quit. |
-| `/help [topic]` | `handleHelp` | Context-sensitive help (stub initially). |
-| `/clear` | `handleClear` | Return `{ type: "empty" }` — TUI interprets as clear. |
-| `/modes` | `handleModes` | List available modes with descriptions. |
-| `/builder` | `handleBuilder` | Push builder mode onto stack. |
-| `/script [proc]` | `handleScript` | Push script mode. Optional processor arg (default: Interface). |
-| `/inspect` | `handleInspect` | Push inspect mode. |
-| `/project` | `handleProject` | Push project mode. |
-| `/wizard [id]` | `handleWizard` | Stub — prints "not yet implemented". |
-
-Tests: each handler, unknown command fallback, argument parsing.
-
-### 1.4 Root mode
-
-File: `src/engine/modes/root.ts`
-
-The default mode when no mode is active. `parse()` returns an error for any
-non-slash input ("No mode active. Type /help for available commands.").
-`complete()` returns slash command completions.
-
-### 1.5 Script mode — first live HISE interaction
-
-File: `src/engine/modes/script.ts`
-
-Tracks [#8](https://github.com/christoph-hart/hise-cli/issues/8) (script mode)
-— partial implementation, enough to validate the transport.
-
-```ts
-parse(input: string, session: Session): Promise<CommandResult> {
-  const response = await session.connection.post("/api/repl", {
-    expression: input,
-    moduleId: this.processorId,
-  });
-  // ... format response as CommandResult
-}
-```
-
-Sends input to `POST /api/repl` via `HiseConnection`. Request body:
-`{ moduleId: "Interface", expression: "..." }`. Response has the evaluation
-result in the `value` field (not `result` — verified against
-`RestHelpers.cpp:513-517`). Multi-line detection (unclosed brackets) is
-deferred.
-
-The processor ID defaults to `"Interface"` and can be overridden via
-`/script <processor>`.
-
-Tests (with `MockHiseConnection`):
-- Simple expression → text result (reads `response.value`)
-- Expression with error → error result (`response.success === false`)
-- Console output appears in `response.logs`
-- Processor ID forwarded correctly in request body
-- `undefined` result normalized to string `"undefined"` by HISE
-
-Manual verification (with running HISE): `Engine.getSampleRate()` → `44100.0`.
-This is not an automated gate — `MockHiseConnection` tests are the gate.
-
-### 1.6 Inspect mode stub
-
-File: `src/engine/modes/inspect.ts`
-
-Tracks [#7](https://github.com/christoph-hart/hise-cli/issues/7) (inspect mode)
-— partial, demonstrates structured output.
-
-Recognizes commands: `cpu`, `memory`, `voices`, `modules`.
-Sends to `GET /api/status`. Returns formatted results as `CommandResult`
-with type `table` or `tree`.
-
-### 1.7 Builder mode stub — local validation
-
-File: `src/engine/modes/builder.ts`
-
-Tracks [#5](https://github.com/christoph-hart/hise-cli/issues/5) (builder mode)
-— parser + validation only, no HISE execution (builder endpoints are new and
-tracked in [#12](https://github.com/christoph-hart/hise-cli/issues/12)).
-
-**Parser**: built with Chevrotain (see
-[DESIGN.md — Third-party Dependencies](DESIGN.md#third-party-dependencies)).
-Shared token types (quoted strings, dot-paths, identifiers, numbers) are
-defined once in `src/engine/modes/tokens.ts` and reused by builder, DSP,
-and sampler mode grammars. Each grammar rule is a class method, individually
-testable.
-
-Parser skeleton recognizing:
-- `add <type> [as "<name>"] [to <parent>.<chain>]`
-- `show tree` / `show types`
-- `set <target> <param> [to] <value>`
-
-Local validation against `data/moduleList.json`:
-- Module type exists (79 types) — typos caught with `fastest-levenshtein`
-  ("Did you mean 'AHDSR'?")
-- Chain accepts module subtype (constrainer matching)
-- Parameter name valid for module type
-- Parameter value in range
-
-This validates the smart-client concept from
-[DESIGN.md — Builder Mode Validation](DESIGN.md#builder-mode-validation):
-the engine catches type errors locally without a HISE round-trip.
-
-Tests:
-- Valid `add` commands parse correctly
-- Invalid module type → error with suggestion (levenshtein)
-- Wrong chain for subtype → error explaining the constraint
-- Parameter out of range → error with valid range
-- `show types` returns table of module types
-
-**Phase 1 gate — all must pass:**
-- `npm test` passes with tests for: Session (mode push/pop, input dispatch,
-  slash command routing, history), CommandRegistry (each handler, unknown
-  command fallback), root mode (rejects non-slash input), script mode (mock
-  REPL round-trip, reads `response.value`, error handling), inspect mode
-  (mock status parsing), builder mode (parser accepts valid commands, rejects
-  invalid types with "Did you mean?" suggestion, validates chain constraints
-  and parameter ranges)
-- `npm run build && npm run typecheck` still pass
+**Phase 1 gate: passed.** All tests pass including session dispatch, command registry,
+mode stubs with mock HISE round-trips, builder parser + local validation.
 
 ---
 
-## Phase 2 — TUI v2 Shell
+## Phase 2 — TUI v2 Shell ✓
 
 **Goal**: new TUI that renders engine `Session` state. The design becomes
 tangible — you can see the color system, switch modes, interact with live HISE.
@@ -417,273 +140,287 @@ tangible — you can see the color system, switch modes, interact with live HISE
 Tracks [#1](https://github.com/christoph-hart/hise-cli/issues/1) (TUI split)
 and [#2](https://github.com/christoph-hart/hise-cli/issues/2) (mode prompts).
 
-### 2.1 Color system
+**Status: Completed.** Full TUI shell with 4-layer color system, virtual scrolling,
+overlay dimming, ThemeContext, entry point rewire. Screencast infrastructure
+planned but not yet implemented.
 
-File: `src/tui/theme.ts`
+### Key decisions
 
-Implements all 4 layers from
-[docs/TUI_STYLE.md — Section 1](docs/TUI_STYLE.md#1-color-system):
+- **4-layer color system**: brand (hardcoded), mode accents (hardcoded), syntax
+  highlighting (hardcoded), color scheme (user-selectable). 8 shipped schemes.
+  See [docs/TUI_STYLE.md — Section 1](docs/TUI_STYLE.md#1-color-system) for the
+  visual spec; `src/tui/theme.ts` for canonical color values.
+- **ThemeContext** (`src/tui/theme-context.tsx`): all components read colors via
+  `useTheme()`, never importing `brand` directly. Enables overlay dimming
+  (re-render with darkened scheme).
+- **Virtual scrolling**: Output stores history as a plain array, renders only
+  the visible slice. Scroll offset is a `useRef`. `React.memo` on all panels.
+  See [DESIGN.md — TUI Performance Constraints](DESIGN.md#tui-performance-constraints).
+- **Entry point**: probes `localhost:1900`, auto-detects HISE, falls back to
+  standalone menu. See `src/index.ts`.
 
-| Layer | Content | Mutability |
-|-------|---------|------------|
-| 1 | HISE brand: SIGNAL `#90FFB1`, OK `#4E8E35`, WARNING `#FFBA00`, ERROR `#BB3434` | Hardcoded |
-| 2 | Mode accents: 9 modes + wizard copper `#e8a060` | Hardcoded |
-| 3 | Syntax highlighting: 10 token colors | Hardcoded |
-| 4 | Color scheme: 5 backgrounds + 3 foregrounds | User-selectable (default: dark) |
+### What was built
 
-The existing `src/theme.ts` (Monokai) is reference. The new theme module
-exposes typed accessors: `brand.signal`, `accent.builder`, `syntax.keyword`,
-`scheme.background.standard`, etc.
+- `src/tui/theme.ts` — Brand colors, `ColorScheme` interface, 8 schemes,
+  `darkenHex()`, `lightenHex()`, `darkenScheme()`, `darkenBrand()`
+- `src/tui/theme-context.tsx` — `ThemeProvider`, `useTheme()` hook
+- `src/tui/app.tsx` — Main shell (session wiring, overlay snapshot/dimming,
+  completion state, scroll handling)
+- `src/tui/components/TopBar.tsx` — Branding, mode label, project name, status dot
+- `src/tui/components/Output.tsx` — Virtual scrolling, `CommandResult` rendering,
+  pre-computed ANSI strings, history cap
+- `src/tui/components/Input.tsx` — Mode-colored prompt, command history
+- `src/tui/components/StatusBar.tsx` — Context hints, scroll position
+- `src/tui/components/Overlay.tsx` — Help overlay with dimmed backdrop
+- `src/index.ts` — Rewired entry point with HTTP probe
 
-### 2.2 TUI App
+**Screencasts**: infrastructure planned (`.tape` runner, asciicast writer),
+**not yet implemented**. See [DESIGN.md — Screencast Framework](DESIGN.md#screencast-framework).
 
-File: `src/tui/app.tsx`
-
-The new main component. Owns a `Session` instance from the engine and renders
-its state:
-
-```
-┌──────────────────────────────────────────────┐
-│ TopBar: HISE CLI │ project │ [mode] │ status │  ← backgroundDarker
-├──────────────────────────────────────────────┤
-│                                              │
-│  Output area — renders CommandResult[]       │  ← background
-│                                              │
-├──────────────────────────────────────────────┤
-│ [mode] > input                               │  ← backgroundRaised
-├──────────────────────────────────────────────┤
-│ StatusBar: context hints │ scroll position    │  ← backgroundDarker
-└──────────────────────────────────────────────┘
-```
-
-Layout regions per
-[docs/TUI_STYLE.md — Section 2](docs/TUI_STYLE.md#2-layout).
-
-### 2.3 TopBar
-
-File: `src/tui/components/TopBar.tsx`
-
-Single row. Shows:
-- "HISE CLI" in SIGNAL_COLOUR (`#90FFB1`) bold
-- Project name (from `session.projectName` via `GET /api/status`)
-- Current mode label in mode accent color (e.g. `[builder]` in orange)
-- Connection status dot: `●` green (OK) / yellow (WARNING) / red (ERROR)
-
-Replaces the existing `src/components/Header.tsx` which showed pipe names
-and scroll position.
-
-### 2.4 Output
-
-File: `src/tui/components/Output.tsx`
-
-Renders an array of `CommandResult` entries with type-appropriate formatting:
-
-| Result type | Rendering |
-|-------------|-----------|
-| `text` | `foreground.default` |
-| `error` | `brand.error` with `✗` prefix |
-| `code` | Lezer-highlighted HiseScript or plain monospace |
-| `table` | `cli-table3` box-drawn table with Unicode borders |
-| `tree` | Indented with `├──` / `└──` connectors |
-| `markdown` | Custom `marked` renderer: headings bold + SIGNAL_COLOUR, `**bold**`, `[links](url)` clickable, tables via cli-table3, code blocks via Lezer (HiseScript) or regex (XML), other languages plain |
-| `empty` | Clears the output buffer |
-
-The markdown renderer (`src/tui/markdown.ts`, ~150 lines) is a custom
-`marked` renderer extension that uses chalk for formatting, cli-table3 for
-tables, and our Lezer tokenizer for HiseScript code blocks. XML code blocks
-use a ~30-line regex tokenizer. Other languages render without highlighting.
-This replaces the `marked-terminal` → `cli-highlight` → `highlight.js`
-chain (~7MB) with ~150 lines of code using libraries we already have.
-
-Command echo lines get a left-border `▎` in the current mode's accent color
-per [docs/TUI_STYLE.md — Section 3.2](docs/TUI_STYLE.md#32-output).
-
-**Performance** (see
-[DESIGN.md — TUI Performance Constraints](DESIGN.md#tui-performance-constraints)):
-
-- Output uses **virtual scrolling** — Ink has no built-in scroll support.
-  Full output history is a plain `string[]` array (not React state). Only
-  the visible slice (`terminalHeight - topBar - input - statusBar` lines)
-  enters the React tree. Scroll offset is a `useRef` to avoid re-renders.
-- Use `<Static>` for command results that scroll above the visible viewport
-  permanently — Ink excludes these from the re-render cycle.
-- **Syntax highlighting is pre-computed**: when a `CommandResult` with
-  `type: "code"` is added to history, the Lezer tokenizer runs once and
-  the resulting ANSI string is cached. The Output component renders cached
-  strings, never calls the tokenizer in `render()`.
-- Wrap Output in `React.memo` — re-render only when the history array
-  reference or scroll offset changes.
-- Cap history at 10,000 lines. Oldest lines are trimmed on overflow.
-- The Phase 0.6 scroll prototype evolves into this component.
-
-Scrollbar logic reused from the existing `src/components/Output.tsx`.
-
-### 2.5 Input
-
-File: `src/tui/components/Input.tsx`
-
-Mode-colored prompt per
-[docs/TUI_STYLE.md — Section 4.1](docs/TUI_STYLE.md#41-mode-prompts):
-- Root: `> ` in `foreground.default`
-- Builder: `[builder] > ` — label in orange, `>` in orange
-- Script: `[script:Interface] > ` — label in blue, `>` in blue
-
-Command history (up/down arrows) reused from `src/hooks/useCommands.ts` —
-the logic is extracted into a pure function or kept as a hook in `src/tui/hooks/`.
-
-### 2.6 StatusBar
-
-File: `src/tui/components/StatusBar.tsx`
-
-Bottom row. Shows:
-- Context hints (mode-specific: e.g. "Tab: complete │ Ctrl+Space: palette")
-- Scroll position indicator ("live" or "↑ N lines")
-
-### 2.7 Entry point rewire
-
-File: `src/index.ts` (modified)
-
-New startup logic per
-[DESIGN.md — Subcommand Aliases & Entry Point](DESIGN.md#subcommand-aliases--entry-point):
-
-1. Probe `localhost:1900` with `HttpHiseConnection.probe()` (`GET /api/status`)
-2. If 200 → create `Session` with live connection → render new TUI
-3. If 503 → HISE is starting, wait and retry (up to 10s)
-4. If connection refused → show standalone menu (setup / update / migrate / nuke / launch HISE)
-
-The standalone menu reuses the existing `src/menu/App.tsx` selection UI
-temporarily. It will be replaced by the wizard menu in Phase 5.
-
-Legacy `src/app.tsx` (pipe-based REPL) is no longer imported but stays in the
-repo as reference.
-
-### 2.8 End-to-end verification
-
-With a running HISE instance:
-
-```
-$ hise-cli
-  → auto-detects HISE → shows new TUI with green status dot
-
-> /script
-  → prompt changes to [script:Interface] > in blue
-
-[script:Interface] > Engine.getSampleRate()
-  → shows 44100.0 in output
-
-[script:Interface] > /exit
-  → back to root prompt >
-
-> /builder
-  → prompt changes to [builder] > in orange
-
-[builder] > add FakeModule
-  → shows local validation error in red: Unknown module type "FakeModule"
-
-[builder] > add AHDSR
-  → parses successfully (no HISE execution yet)
-
-[builder] > /exit
-> /inspect
-[inspect] > modules
-  → shows module tree from GET /api/status
-```
-
-### 2.9 TUI integration testing + screencasts
-
-See [DESIGN.md — Screencast Framework](DESIGN.md#screencast-framework)
-and [DESIGN.md — Decision #14](DESIGN.md#14-vhs-derived-tape-format-for-screencasts-and-tui-testing).
-
-**Screencast runner infrastructure:**
-
-```
-src/tui/screencast/
-  runner.ts               Execute .tape against ink-testing-library
-  writer.ts               Capture frames, write asciicast .cast files
-  tester.ts               Wrap runner with vitest assertions
-
-screencasts/              Tape files + generated .cast outputs
-```
-
-The runner parses `.tape` files (via `src/engine/screencast/tape-parser.ts`),
-creates a `Session` with `MockHiseConnection`, renders the TUI in
-`ink-testing-library`'s virtual terminal, feeds keystrokes via
-`stdin.write()`, captures frames, and checks `Expect` / `Snapshot`
-assertions. Each `.tape` file becomes a vitest test.
-
-The writer captures timestamped frames from the same run and outputs
-asciicast v2 `.cast` files (~5-10KB per 30s screencast) for the HISE
-documentation site (Nuxt.js + asciinema-player).
-
-**First screencast scripts** (double as integration tests):
-
-```
-screencasts/
-  mode-switching.tape     Enter/exit modes, verify prompts and colors
-  script-repl.tape        Evaluate expressions, see results (mock HISE)
-  builder-validation.tape Type errors caught locally, "did you mean" suggestions
-```
-
-**npm script**: `"screencasts": "vitest run --project screencasts"` — runs
-all `.tape` files as tests AND generates `.cast` files.
-
-Each subsequent phase adds screencast scripts for its new features:
-- **Phase 3**: tab completion, ghost text, completion popup
-- **Phase 4**: builder workflow (add, show tree, plan, execute, export)
-- **Phase 5**: wizard walkthrough (setup wizard step by step)
-
-**Phase 2 gate — all must pass:**
-- `npm run build` produces working `dist/index.js` with the new TUI
-- `npm run typecheck` passes
-- `npm test` passes including: ink-testing-library tests for TopBar,
-  Output, Input, StatusBar components; at least 3 `.tape` screencast
-  tests run as vitest tests (mode-switching, script-repl, builder-validation)
-- Manual verification with live HISE completes the Phase 2.8 scenario
+**Phase 2 gate: passed.** Build, typecheck, all tests pass. Manual verification
+with live HISE completed (mode switching, script REPL, builder validation).
 
 ---
 
-## Phase 3 — Tab Completion
+## Phase 3 — Tab Completion ✓
 
 **Goal**: instant feedback from the static datasets. Validates the smart-client
 concept for humans.
 
 Tracks [#3](https://github.com/christoph-hart/hise-cli/issues/3).
 
+**Status: Completed.** Implementation includes the completion engine, popup UX,
+ghost text, and extensive UX polish (cursor navigation, `useReducer`-based input,
+escape toggle, mousewheel scrolling). Builder navigation (`cd`/`ls`/`pwd`) and
+`contextLabel` on modes were added as part of the UX polish work.
+
 ### 3.1 Completion engine
 
 File: `src/engine/completion/engine.ts`
 
 Consumes the three static datasets:
-- `data/moduleList.json` — 79 module types, parameters, chains
-- `data/scriptnodeList.json` — 194 nodes, 12 factories
-- `data/scripting_api.json` — 89 classes, 1789 methods
+- `data/moduleList.json` — module types, parameters, chains
+- `data/scriptnodeList.json` — scriptnode factories and nodes
+- `data/scripting_api.json` — HiseScript API classes and methods
 
 Mode-aware completions:
 - Root: slash commands (`/builder`, `/script`, `/help`, ...)
-- Builder: module types, chain names, parameter names, module instances
+- Builder: keywords (`add`, `show`, `set`, `cd`, `ls`, `pwd`), module types
 - Script: API namespaces, method names, property names
 - DSP: node factories, node types
+
+Each `CompletionResult` carries a `label` field (e.g., "Slash commands",
+"Builder keywords") displayed as a header row in the popup.
 
 ### 3.2 Completion popup
 
 File: `src/tui/components/CompletionPopup.tsx`
 
-Per [docs/TUI_STYLE.md — Section 3.5](docs/TUI_STYLE.md#35-completionpopup):
+Per [docs/TUI_STYLE.md — Section 3.4](docs/TUI_STYLE.md#34-completionpopup):
 floating box above the input field, max 8 items visible, arrow keys to
-navigate, Tab to accept, Escape to dismiss. Selected item highlighted in
-SIGNAL_COLOUR. Uses `ink-select-input` for list selection logic; positioning
-and ghost text rendering are custom.
+navigate, Tab to accept. Custom implementation — no `ink-select-input`.
 
-### 3.3 Integration
+Key UX decisions implemented:
+- **Immediate popup**: appears as user types (no Tab-to-show step)
+- **No selection background**: selected item uses `brand.signal` text color only
+- **Header row**: `CompletionResult.label` rendered as muted header above items
+- **Scrollbar**: shared `scrollbarChar()` utility from `src/tui/components/scrollbar.ts`
+- **Mousewheel**: `useOnWheel` from `@ink-tools/ink-mouse`
+- **Enter accepts + submits**: completes selection and executes the command
+- **Escape toggles**: close if open, open with all items if closed (discovery mode)
+- **Up/Down gated**: when popup visible, arrow keys navigate popup instead of history
 
-Wire `Mode.complete()` to the completion engine. The Input component triggers
-completion on Tab press and renders the popup.
+### 3.3 Input UX polish
 
-**Phase 3 gate — all must pass:**
-- `npm test` passes with: completion engine returns correct candidates for
-  all modes (unit tests), CompletionPopup renders in ink-testing-library,
-  `.tape` screencast for tab completion UX
+File: `src/tui/components/Input.tsx`
+
+Major rewrite of the Input component alongside completion integration:
+- **`useReducer` pattern**: atomic actions for `{value, cursorOffset}` (see
+  `InputAction` type), avoids stale-closure bugs from multiple keystrokes between renders
+- **Full cursor navigation**: Left/Right, Home/End, Ctrl+A/E, Option+Left/Right
+  (word boundary), Cmd+Left/Right
+- **Cursor as bg-highlight**: `lightenHex(raised, 0.3)` instead of `█` block
+- **Ghost text jitter fix**: `ghostForValue` prop suppresses stale ghost between
+  render cycles; ghost only shown when cursor is at end of input
+- **Scroll window**: horizontal scrolling for long inputs
+- **`contextLabel` in prompt**: dynamic path from `Mode.contextLabel` property
+
+### 3.4 Builder navigation
+
+File: `src/engine/modes/builder.ts`
+
+Added filesystem-style navigation for the processor tree:
+- **`cd <name>`**: push to path; `cd ..` pop; `cd /` reset; `cd a.b.c` dotted path
+- **`ls`/`dir`**: placeholder — returns "requires HISE connection" (needs live data)
+- **`pwd`**: prints current path or `/` at root
+- **`contextLabel` getter**: returns `currentPath.join(".")` for prompt display
+- **`initialPath` constructor param**: for future dot-notation mode entry
+
+### 3.5 Integration
+
+`Mode.complete()` wired to the completion engine. `CompletionResult` flows from
+engine through Session to the TUI. App manages completion state including ghost
+text computation, popup visibility, and selection index.
+
+**Phase 3 gate — results:**
+- `npm test` passes: all tests green. Completion engine returns correct
+  candidates for all modes, CompletionPopup renders in ink-testing-library,
+  Input cursor navigation + editing thoroughly tested.
+- `npm run build && npm run typecheck` pass.
+- `.tape` screencast tests for completion UX: **not yet implemented** (planned).
+
+---
+
+## Phase 3.5 — Mode Instance Cache + Dot-Notation Dispatch
+
+**Goal**: enable one-shot mode execution (`/builder add SimpleGain`) and cross-mode
+argument completion (`/builder add ` shows builder completions from root). Builds on
+the `contextLabel` and `initialPath` infrastructure from Phase 3.
+
+This is structural plumbing — no new HISE endpoints needed. Context-dependent
+completion (e.g., completing processor names in `cd` or after `/builder.`) is deferred
+to Phase 4+ when live HISE data is available.
+
+### 3.5.1 Mode instance cache
+
+File: `src/engine/session.ts`
+
+Currently `pushMode()` creates a new mode instance each time. This loses state
+(builder's `currentPath`, script's processor ID) when modes are popped and re-entered.
+
+Add a mode cache to Session:
+
+```ts
+private modeCache: Map<ModeId, Mode> = new Map();
+
+getOrCreateMode(modeId: ModeId): Mode {
+  let mode = this.modeCache.get(modeId);
+  if (!mode) {
+    mode = this.modeFactories.get(modeId)!();
+    this.modeCache.set(modeId, mode);
+  }
+  return mode;
+}
+```
+
+- `pushMode()` uses `getOrCreateMode()` instead of calling the factory directly
+- Mode instances are cached for the session lifetime — re-entering `/builder`
+  restores the previous `currentPath`
+- Factory functions remain for initial creation (and accept constructor args
+  like `initialPath` for dot-notation entry)
+
+`popMode(silent?: boolean)`: The `silent` flag suppresses the "Exited..." result
+message. Used by one-shot dispatch (Phase 3.5.3) to pop silently after executing
+a single command.
+
+Tests:
+- Re-entering a mode reuses the cached instance (same object identity)
+- `popMode(true)` returns `emptyResult()` instead of exit message
+- Mode state (e.g., builder `currentPath`) persists across push/pop cycles
+
+### 3.5.2 Argument completion from root
+
+File: `src/engine/session.ts` (in `complete()` method)
+
+When the user types `/builder add ` in root mode, completion should delegate to
+builder mode's `complete()` for the argument portion.
+
+Pattern detection in `session.complete()`:
+
+```
+/mode[.context] args
+       ^              ^
+       first dot      first space separates modeSpec from args
+```
+
+1. If input starts with `/` and contains a space after the mode name:
+   split into `modeSpec` (before first space) and `args` (after)
+2. Resolve `modeSpec` to a mode via `getOrCreateMode()`
+3. If the mode has a `complete()` method, call it with `args` and an
+   adjusted cursor offset (shifted left by the modeSpec + space length)
+4. Shift the returned `CompletionResult.from`/`.to` back to absolute positions
+
+This enables tab completion for mode arguments without entering the mode:
+- `/builder add A` → builder completes module types starting with "A"
+- `/script Engine.` → script completes API methods on Engine
+- `/inspect cpu` → inspect completes its command keywords
+
+Tests:
+- `/builder add ` returns builder module type completions
+- `/script ` returns script mode completions
+- Cursor offset translation is correct for mid-argument positions
+- Unknown mode returns no completions (no crash)
+
+### 3.5.3 Dot-notation dispatch + one-shot execution
+
+Files: `src/engine/commands/registry.ts`, `src/engine/commands/slash.ts`
+
+The dot-notation system enables two things:
+1. **Context entry**: `/builder.SineGenerator.pitch` → enter builder mode with
+   `currentPath` set to `["SineGenerator", "pitch"]`
+2. **One-shot execution**: `/builder add SimpleGain` → execute `add SimpleGain`
+   in builder mode, return result to root (without staying in builder)
+
+**Registry dispatch** (`registry.ts`):
+
+When `dispatch()` receives a command name containing a dot (e.g., `builder.SineGenerator`),
+it splits on the first dot: command = `builder`, the dot-suffix is prepended to args
+as `.SineGenerator`. The handler receives `args = ".SineGenerator"` (or
+`".SineGenerator.pitch add LFO"` for context + command).
+
+**Mode handler** (`slash.ts`, `createModeHandler()`):
+
+The handler parses its args to determine the execution style:
+
+| Input                               | Parsed as                    | Behavior                          |
+|-------------------------------------|------------------------------|-----------------------------------|
+| `/builder`                          | no context, no args          | Enter mode (current behavior)     |
+| `/builder.SineGenerator.pitch`      | context="SineGenerator.pitch", no args | Enter mode with context |
+| `/builder add SimpleGain`           | no context, args="add SimpleGain" | One-shot: push, execute, silent pop |
+| `/builder.SineGenerator.pitch add LFO` | context="SineGenerator.pitch", args="add LFO" | One-shot with context |
+
+**One-shot flow**:
+1. `getOrCreateMode(modeId)` — get or create the mode instance
+2. If context: set mode's context (e.g., builder's `currentPath`)
+3. `pushMode(mode)` onto the stack
+4. `mode.parse(args, session)` — execute the command
+5. `popMode(true)` — silent pop, no exit message
+6. Return the parse result to the caller
+
+**Context setting**: Each mode that supports context entry needs a `setContext(path: string)`
+method (or the constructor's `initialPath` for first creation). For builder, this sets
+`currentPath`. For script, this could set the processor ID. The exact context semantics
+per mode are defined in their respective Phase 4/6 specs.
+
+Tests:
+- `/builder.SineGenerator` enters builder with `contextLabel === "SineGenerator"`
+- `/builder add SimpleGain` executes one-shot, returns result, stays in root mode
+- `/builder.SineGenerator.pitch add LFO` one-shot with context
+- Mode stack is restored after one-shot (still in root)
+- Context is preserved in cache after one-shot (re-entering `/builder` shows
+  the last context set by one-shot)
+
+### 3.5.4 Deferred: context-dependent completion
+
+The following require live HISE data and are deferred to Phase 4+:
+
+- **`cd` completion**: completing child processor names in builder's `cd` command
+  (needs `GET /api/builder/tree` from [#12](https://github.com/christoph-hart/hise-cli/issues/12))
+- **Dot-context completion**: completing processor IDs after `/builder.` (e.g.,
+  `/builder.Sine` → suggests `SineGenerator`) — needs the module tree
+- **`ls` output**: showing actual children at the current path — needs live data
+
+These will be implemented alongside the full builder mode (Phase 4) and remaining
+modes (Phase 6) when the HISE connection provides real processor tree data.
+
+**Phase 3.5 gate — all must pass:**
+- `npm test` passes with: mode cache reuse (same instance on re-entry), silent
+  pop returns empty result, argument completion from root delegates to mode's
+  `complete()` with correct offset translation, dot-notation dispatch enters
+  mode with context, one-shot execution returns to root after single command
 - `npm run build && npm run typecheck` pass
+- `.tape` screencast tests: **not yet implemented** (planned alongside Phase 3
+  screencasts)
 
 ---
 
@@ -823,7 +560,7 @@ Subcommand aliases: `hise-cli setup` → `hise-cli wizard setup`.
 ### 6.1 DSP (Scriptnode) mode
 
 Tracks [#6](https://github.com/christoph-hart/hise-cli/issues/6).
-Chevrotain grammar for graph editing, 194 nodes from `scriptnodeList.json`.
+Chevrotain grammar for graph editing, nodes from `scriptnodeList.json`.
 Shares token types with builder mode grammar (quoted strings, dot-paths,
 identifiers, numbers). Requires
 [#12](https://github.com/christoph-hart/hise-cli/issues/12)
@@ -959,9 +696,9 @@ bundled static datasets. No HISE instance needed.
 
 - Interactive command entry with tab completion
 - Mode switching, wizard walkthrough
-- Module type browser (79 modules with parameters)
-- API reference browser (89 classes, 1789 methods)
-- Scriptnode node browser (194 nodes, 12 factories)
+- Module type browser (all modules with parameters from `data/moduleList.json`)
+- API reference browser (all classes/methods from `data/scripting_api.json`)
+- Scriptnode node browser (all nodes/factories from `data/scriptnodeList.json`)
 - Deployable to GitHub Pages, Vercel, or similar static hosting
 
 ### 8.3 Live companion
