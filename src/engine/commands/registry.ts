@@ -9,6 +9,8 @@ export interface CommandSession {
 	pushMode(modeId: string): CommandResult | null;
 	popMode(): CommandResult;
 	readonly modeStackDepth: number;
+	readonly currentModeId: string;
+	allCommands(): CommandEntry[];
 }
 
 export type CommandHandler = (

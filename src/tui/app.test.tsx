@@ -89,14 +89,6 @@ describe("App", () => {
 
 	it("shows scroll hint when content exceeds viewport", async () => {
 		const mock = new MockHiseConnection();
-		// Register /help to produce multi-line output
-		mock.onPost("/api/repl", () => ({
-			success: true as const,
-			result: "ok",
-			value: "result",
-			logs: [],
-			errors: [],
-		}));
 
 		const instance = render(
 			React.createElement(App, {
@@ -105,9 +97,9 @@ describe("App", () => {
 			}),
 		);
 
-		// Submit many commands to fill the output
+		// Submit many /modes commands to fill the output with table results
 		for (let i = 0; i < 30; i++) {
-			for (const ch of `/help`) {
+			for (const ch of `/modes`) {
 				instance.stdin.write(ch);
 			}
 			instance.stdin.write("\r");

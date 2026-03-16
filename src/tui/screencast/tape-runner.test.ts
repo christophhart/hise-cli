@@ -15,7 +15,8 @@ import { MockHiseConnection } from "../../engine/hise.js";
 import { ScriptMode } from "../../engine/modes/script.js";
 import { InspectMode } from "../../engine/modes/inspect.js";
 import { BuilderMode } from "../../engine/modes/builder.js";
-import type { ModuleList } from "../../engine/data.js";
+import type { ModuleList, ScriptingApi } from "../../engine/data.js";
+import { CompletionEngine, buildDatasets } from "../../engine/completion/engine.js";
 
 const SCREENCASTS_DIR = path.resolve(import.meta.dirname, "../../../screencasts");
 
@@ -237,6 +238,71 @@ describe("screencast: builder-validation.tape", () => {
 		}
 
 		// Exit
+		await session.handleInput("/exit");
+		expect(session.currentMode().id).toBe("root");
+	});
+});
+
+// ── tab-completion.tape ─────────────────────────────────────────────
+
+describe("screencast: tab-completion.tape", () => {
+	let parsed: ParseResult;
+
+	beforeAll(() => {
+		const source = fs.readFileSync(
+			path.join(SCREENCASTS_DIR, "tab-completion.tape"),
+			"utf8",
+		);
+		parsed = parseTape(source);
+	});
+
+	it("parses without errors", () => {
+		expect(parsed.errors).toHaveLength(0);
+	});
+
+	it("contains completion-relevant commands", () => {
+		const inputs = extractInputs(parsed.commands);
+		const typed = inputs.filter((i) => i.type === "type").map((i) => i.value);
+		expect(typed).toContain("/he");
+		expect(typed).toContain("/builder");
+		expect(typed).toContain("/script");
+	});
+
+	it("simulates completion engine against session", async () => {
+		// Create session with completion engine
+		const engine = new CompletionEngine();
+		engine.setDatasets(buildDatasets(moduleList, null, null));
+
+		const mock = new MockHiseConnection();
+		const session = new Session(mock, engine);
+		session.registerMode("script", (ctx) => new ScriptMode(ctx, engine));
+		session.registerMode("inspect", () => new InspectMode(engine));
+		session.registerMode("builder", () => new BuilderMode(moduleList, engine));
+
+		// Slash command completion at root
+		const slashResult = session.complete("/he", 3);
+		expect(slashResult.items.some((i) => i.label === "/help")).toBe(true);
+
+		// Enter builder mode
+		await session.handleInput("/builder");
+		expect(session.currentMode().id).toBe("builder");
+
+		// Keyword completion
+		const kwResult = session.complete("a", 1);
+		expect(kwResult.items.some((i) => i.label === "add")).toBe(true);
+
+		// Module type completion
+		const modResult = session.complete("add AH", 6);
+		expect(modResult.items.some((i) => i.label === "AHDSR")).toBe(true);
+
+		// Exit builder
+		await session.handleInput("/exit");
+
+		// Enter script mode — no API data loaded, so script completion is empty
+		await session.handleInput("/script");
+		const scriptResult = session.complete("Sy", 2);
+		expect(scriptResult.items).toHaveLength(0);
+
 		await session.handleInput("/exit");
 		expect(session.currentMode().id).toBe("root");
 	});

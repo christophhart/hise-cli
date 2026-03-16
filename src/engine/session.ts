@@ -6,13 +6,14 @@
 import type { HiseConnection } from "./hise.js";
 import type { CommandResult } from "./result.js";
 import { errorResult, textResult } from "./result.js";
-import type { Mode, SessionContext } from "./modes/mode.js";
+import type { CompletionResult, Mode, SessionContext } from "./modes/mode.js";
 import { RootMode } from "./modes/root.js";
 import {
 	CommandRegistry,
 	type CommandSession,
 } from "./commands/registry.js";
 import { registerBuiltinCommands } from "./commands/slash.js";
+import type { CompletionEngine } from "./completion/engine.js";
 
 // ── Mode factory registry ───────────────────────────────────────────
 
@@ -29,6 +30,7 @@ export class Session implements SessionContext, CommandSession {
 	readonly history: string[] = [];
 	readonly connection: HiseConnection | null;
 	readonly registry: CommandRegistry;
+	readonly completionEngine: CompletionEngine | null;
 	projectName: string | null = null;
 
 	private readonly modeFactories = new Map<string, ModeFactory>();
@@ -36,11 +38,20 @@ export class Session implements SessionContext, CommandSession {
 	// Signal for TUI to handle quit
 	private quitRequested = false;
 
-	constructor(connection: HiseConnection | null = null) {
+	constructor(
+		connection: HiseConnection | null = null,
+		completionEngine?: CompletionEngine,
+	) {
 		this.connection = connection;
+		this.completionEngine = completionEngine ?? null;
 		this.modeStack = [new RootMode()];
 		this.registry = new CommandRegistry();
 		registerBuiltinCommands(this.registry);
+
+		// Feed slash commands into the completion engine
+		if (this.completionEngine) {
+			this.completionEngine.setSlashCommands(this.registry.all());
+		}
 	}
 
 	// ── Mode factory registration ───────────────────────────────────
@@ -58,6 +69,14 @@ export class Session implements SessionContext, CommandSession {
 	get modeStackDepth(): number {
 		// Root mode doesn't count
 		return this.modeStack.length - 1;
+	}
+
+	get currentModeId(): string {
+		return this.currentMode().id;
+	}
+
+	allCommands(): import("./commands/registry.js").CommandEntry[] {
+		return this.registry.all();
 	}
 
 	// Called by slash command handlers via CommandSession interface.
@@ -92,6 +111,23 @@ export class Session implements SessionContext, CommandSession {
 
 	get shouldQuit(): boolean {
 		return this.quitRequested;
+	}
+
+	// ── Completion ─────────────────────────────────────────────────
+
+	complete(input: string, cursor: number): CompletionResult {
+		// Slash commands always go to the engine's slash completion
+		if (input.startsWith("/") && this.completionEngine) {
+			return this.completionEngine.completeSlash(input);
+		}
+
+		// Delegate to current mode's complete() if available
+		const mode = this.currentMode();
+		if (mode.complete) {
+			return mode.complete(input, cursor);
+		}
+
+		return { items: [], from: 0, to: input.length };
 	}
 
 	// ── Input dispatch ──────────────────────────────────────────────

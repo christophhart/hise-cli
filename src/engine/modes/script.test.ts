@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ScriptMode, formatReplResponse } from "./script.js";
+import { ScriptMode, extractLastToken, formatReplResponse } from "./script.js";
 import { MockHiseConnection } from "../hise.js";
 import type { SessionContext } from "./mode.js";
 import type { HiseSuccessResponse } from "../hise.js";
+import { CompletionEngine, buildDatasets } from "../completion/engine.js";
+import type { ScriptingApi } from "../data.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -256,5 +258,133 @@ describe("formatReplResponse", () => {
 		if (result.type === "text") {
 			expect(result.content).toBe("(no output)");
 		}
+	});
+});
+
+// ── extractLastToken ────────────────────────────────────────────────
+
+describe("extractLastToken", () => {
+	it("extracts identifier at end", () => {
+		const result = extractLastToken("Synth");
+		expect(result.text).toBe("Synth");
+		expect(result.from).toBe(0);
+	});
+
+	it("extracts dotted identifier", () => {
+		const result = extractLastToken("Synth.addNoteOn");
+		expect(result.text).toBe("Synth.addNoteOn");
+		expect(result.from).toBe(0);
+	});
+
+	it("extracts last token after space", () => {
+		const result = extractLastToken("var x = Synth.add");
+		expect(result.text).toBe("Synth.add");
+		expect(result.from).toBe(8);
+	});
+
+	it("extracts last token after operator", () => {
+		const result = extractLastToken("x + Math");
+		expect(result.text).toBe("Math");
+		expect(result.from).toBe(4);
+	});
+
+	it("returns empty for trailing space", () => {
+		const result = extractLastToken("var x = ");
+		expect(result.text).toBe("");
+		expect(result.from).toBe(8);
+	});
+
+	it("handles empty input", () => {
+		const result = extractLastToken("");
+		expect(result.text).toBe("");
+		expect(result.from).toBe(0);
+	});
+});
+
+// ── ScriptMode completion ───────────────────────────────────────────
+
+describe("ScriptMode completion", () => {
+	function createScriptEngine(): CompletionEngine {
+		const api: ScriptingApi = {
+			version: "1.0",
+			generated: "2024",
+			enrichedClasses: [],
+			classes: {
+				Synth: {
+					description: "Synth",
+					category: "namespace",
+					methods: [
+						{
+							name: "addNoteOn",
+							returnType: "int",
+							description: "Add note",
+							parameters: [
+								{ name: "channel", type: "int" },
+								{ name: "note", type: "int" },
+								{ name: "vel", type: "int" },
+								{ name: "ts", type: "int" },
+							],
+							examples: [],
+						},
+						{
+							name: "getNoteCounter",
+							returnType: "int",
+							description: "Get count",
+							parameters: [],
+							examples: [],
+						},
+					],
+				},
+				Engine: {
+					description: "Engine",
+					category: "namespace",
+					methods: [
+						{
+							name: "getSampleRate",
+							returnType: "double",
+							description: "Sample rate",
+							parameters: [],
+							examples: [],
+						},
+					],
+				},
+			},
+		};
+
+		const engine = new CompletionEngine();
+		engine.setDatasets(buildDatasets(null, api, null));
+		return engine;
+	}
+
+	it("returns empty without engine", () => {
+		const mode = new ScriptMode();
+		const result = mode.complete!("Synth", 5);
+		expect(result.items).toHaveLength(0);
+	});
+
+	it("completes namespace names", () => {
+		const engine = createScriptEngine();
+		const mode = new ScriptMode("Interface", engine);
+		const result = mode.complete!("Sy", 2);
+		expect(result.items.some((i) => i.label === "Synth")).toBe(true);
+		expect(result.from).toBe(0);
+	});
+
+	it("completes methods after dot", () => {
+		const engine = createScriptEngine();
+		const mode = new ScriptMode("Interface", engine);
+		const result = mode.complete!("Synth.add", 9);
+		expect(result.items.some((i) => i.label === "addNoteOn")).toBe(true);
+	});
+
+	it("completes last token in expression", () => {
+		const engine = createScriptEngine();
+		const mode = new ScriptMode("Interface", engine);
+		const result = mode.complete!("var x = Engine.get", 18);
+		expect(result.items.some((i) => i.label === "getSampleRate")).toBe(true);
+		// "var x = Engine.get" — lastToken = "Engine.get", from = 8
+		// completeScript("Engine.get") → dotIndex=6, from=7 (within token)
+		// Adjusted: 8 + 7 = 15
+		expect(result.from).toBe(15);
 	});
 });

@@ -11,6 +11,8 @@ export interface StatusBarProps {
 	scrollInfo: string;
 	scheme: ColorScheme;
 	columns: number;
+	/** Override status dot color */
+	statusColorOverride?: string;
 }
 
 export const StatusBar = React.memo(function StatusBar({
@@ -19,9 +21,10 @@ export const StatusBar = React.memo(function StatusBar({
 	scrollInfo,
 	scheme,
 	columns,
+	statusColorOverride,
 }: StatusBarProps) {
 	const dot = statusDot(connectionStatus);
-	const dotColor = statusColor(connectionStatus);
+	const dotColor = statusColorOverride ?? statusColor(connectionStatus);
 	const statusLabel = connectionStatus === "connected" ? "connected"
 		: connectionStatus === "warning" ? "degraded"
 		: "disconnected";

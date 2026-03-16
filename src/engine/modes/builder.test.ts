@@ -9,6 +9,7 @@ import {
 } from "./builder.js";
 import type { ModuleList } from "../data.js";
 import type { SessionContext } from "./mode.js";
+import { CompletionEngine, buildDatasets } from "../completion/engine.js";
 
 // ── Load module list for validation tests ───────────────────────────
 
@@ -351,5 +352,75 @@ describe("BuilderMode", () => {
 		const mode = new BuilderMode(moduleList);
 		const result = await mode.parse("add", nullSession);
 		expect(result.type).toBe("error");
+	});
+});
+
+// ── BuilderMode completion ──────────────────────────────────────────
+
+describe("BuilderMode completion", () => {
+	function createBuilderWithEngine(): BuilderMode {
+		const engine = new CompletionEngine();
+		engine.setDatasets(buildDatasets(moduleList, null, null));
+		return new BuilderMode(moduleList, engine);
+	}
+
+	it("returns empty without engine", () => {
+		const mode = new BuilderMode(moduleList);
+		const result = mode.complete!("a", 1);
+		expect(result.items).toHaveLength(0);
+	});
+
+	it("completes keywords for empty input", () => {
+		const mode = createBuilderWithEngine();
+		const result = mode.complete!("", 0);
+		expect(result.items).toHaveLength(3);
+		const labels = result.items.map((i) => i.label);
+		expect(labels).toContain("add");
+		expect(labels).toContain("show");
+		expect(labels).toContain("set");
+	});
+
+	it("completes keyword prefix", () => {
+		const mode = createBuilderWithEngine();
+		const result = mode.complete!("a", 1);
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].label).toBe("add");
+	});
+
+	it("completes module types after 'add '", () => {
+		const mode = createBuilderWithEngine();
+		const result = mode.complete!("add AH", 6);
+		expect(result.items.some((i) => i.label === "AHDSR")).toBe(true);
+	});
+
+	it("completes show subcommands after 'show '", () => {
+		const mode = createBuilderWithEngine();
+		const result = mode.complete!("show ", 5);
+		expect(result.items).toHaveLength(2);
+		const labels = result.items.map((i) => i.label);
+		expect(labels).toContain("tree");
+		expect(labels).toContain("types");
+	});
+
+	it("completes show subcommand prefix", () => {
+		const mode = createBuilderWithEngine();
+		const result = mode.complete!("show tr", 7);
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].label).toBe("tree");
+	});
+
+	it("completes parameter names after 'set <module> '", () => {
+		const mode = createBuilderWithEngine();
+		const result = mode.complete!("set AHDSR ", 10);
+		expect(result.items.length).toBeGreaterThan(0);
+		const labels = result.items.map((i) => i.label);
+		expect(labels).toContain("Attack");
+	});
+
+	it("filters parameter names by prefix", () => {
+		const mode = createBuilderWithEngine();
+		const result = mode.complete!("set AHDSR At", 12);
+		expect(result.items.some((i) => i.label === "Attack")).toBe(true);
+		expect(result.items.some((i) => i.label === "AttackLevel")).toBe(true);
 	});
 });

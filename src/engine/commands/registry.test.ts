@@ -8,6 +8,12 @@ function createMockSession(): CommandSession {
 		get modeStackDepth() {
 			return modes.length;
 		},
+		get currentModeId() {
+			return modes.length > 0 ? modes[modes.length - 1] : "root";
+		},
+		allCommands() {
+			return [];
+		},
 		pushMode(modeId: string) {
 			modes.push(modeId);
 			return null; // success

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { Session } from "./session.js";
 import { MockHiseConnection } from "./hise.js";
 import type { CommandResult } from "./result.js";
-import type { Mode, SessionContext } from "./modes/mode.js";
+import type { CompletionResult, Mode, SessionContext } from "./modes/mode.js";
+import { CompletionEngine } from "./completion/engine.js";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
@@ -113,7 +114,7 @@ describe("Session input dispatch", () => {
 	it("dispatches slash commands to registry", async () => {
 		const session = createSession();
 		const result = await session.handleInput("/help");
-		expect(result.type).toBe("text");
+		expect(result.type).toBe("overlay");
 	});
 
 	it("dispatches plain input to current mode", async () => {
@@ -210,5 +211,63 @@ describe("Session history", () => {
 		const session = createSession();
 		await session.handleInput("/help");
 		expect(session.history).toContain("/help");
+	});
+});
+
+// ── Session completion ──────────────────────────────────────────────
+
+describe("Session completion", () => {
+	it("completes slash commands at root", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		const result = session.complete("/he", 3);
+		expect(result.items.some((i) => i.label === "/help")).toBe(true);
+	});
+
+	it("returns all slash commands for /", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		const result = session.complete("/", 1);
+		// Should have all 13 built-in commands
+		expect(result.items.length).toBe(13);
+	});
+
+	it("returns empty for plain input in root mode (no mode complete)", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		const result = session.complete("something", 9);
+		expect(result.items).toHaveLength(0);
+	});
+
+	it("delegates to mode complete() for non-slash input", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+
+		// Register a mode with completion
+		session.registerMode("test", () => ({
+			id: "root" as const,
+			name: "Test",
+			accent: "",
+			prompt: "> ",
+			async parse() { return { type: "empty" as const }; },
+			complete(input: string, _cursor: number): CompletionResult {
+				return {
+					items: [{ label: "testItem", detail: "from test mode" }],
+					from: 0,
+					to: input.length,
+				};
+			},
+		}));
+
+		session.pushMode("test");
+		const result = session.complete("te", 2);
+		expect(result.items).toHaveLength(1);
+		expect(result.items[0].label).toBe("testItem");
+	});
+
+	it("returns empty without completion engine for slash commands", () => {
+		const session = new Session(null);
+		const result = session.complete("/he", 3);
+		expect(result.items).toHaveLength(0);
 	});
 });

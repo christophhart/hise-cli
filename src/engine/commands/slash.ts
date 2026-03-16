@@ -4,11 +4,13 @@ import type { CommandResult } from "../result.js";
 import {
 	emptyResult,
 	errorResult,
+	overlayResult,
 	tableResult,
 	textResult,
 } from "../result.js";
 import { MODE_ACCENTS, type ModeId } from "../modes/mode.js";
 import type { CommandHandler, CommandRegistry, CommandSession } from "./registry.js";
+import { generateHelp } from "./help.js";
 
 // ── Handler implementations ─────────────────────────────────────────
 
@@ -21,12 +23,12 @@ async function handleExit(
 
 async function handleHelp(
 	_args: string,
-	_session: CommandSession,
+	session: CommandSession,
 ): Promise<CommandResult> {
-	// Stub — will be expanded with context-sensitive help
-	return textResult(
-		"Available commands: /exit, /help, /clear, /modes, /builder, /script, /inspect, /project, /wizard",
-	);
+	const modeId = session.currentModeId as ModeId;
+	const commands = session.allCommands();
+	const help = generateHelp(modeId, commands);
+	return overlayResult(help.title, help.lines, help.footer);
 }
 
 async function handleClear(

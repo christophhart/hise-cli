@@ -17,13 +17,23 @@ import {
 	resultToLines,
 	commandEchoLine,
 	spacerLine,
+	darkenOutputLines,
 	MAX_HISTORY_LINES,
 	type OutputLine,
 } from "./components/Output.js";
-import { Input } from "./components/Input.js";
+import { Input, type InputHandle } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
+import { Overlay } from "./components/Overlay.js";
+import { CompletionPopup } from "./components/CompletionPopup.js";
+import { CompletionEngine } from "../engine/completion/engine.js";
+import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import {
 	defaultScheme,
+	darkenHex,
+	darkenBrand,
+	darkenScheme,
+	statusColor,
+	type BrandColors,
 	type ColorScheme,
 	type ConnectionStatus,
 } from "./theme.js";
@@ -36,6 +46,25 @@ const BOTTOM_BAR_ROWS = 1;
 const INPUT_SECTION_ROWS = 3; // top border + input + bottom border
 const MIN_OUTPUT_ROWS = 4;
 const SCROLL_WHEEL_LINES = 3; // lines per mouse wheel tick
+const DIM_FACTOR = 0.65; // overlay backdrop brightness (0 = black, 1 = normal)
+
+// ── Overlay backdrop snapshot ───────────────────────────────────────
+
+interface OverlaySnapshot {
+	outputLines: OutputLine[];
+	scrollOffset: number;
+	modeLabel: string;
+	modeAccent: string;
+	connectionStatus: ConnectionStatus;
+	modeHint: string;
+	scrollInfo: string;
+	// Pre-computed dimmed values:
+	dimScheme: ColorScheme;
+	dimOutputLines: OutputLine[];
+	dimModeAccent: string;
+	dimBrand: BrandColors;
+	dimStatusColor: string;
+}
 
 // ── App props ───────────────────────────────────────────────────────
 
@@ -63,17 +92,27 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	const columns = stdout?.columns ?? 80;
 	const rows = stdout?.rows ?? 24;
 
+	// Completion engine — created once, stored in ref
+	const engineRef = useRef<CompletionEngine | null>(null);
+	if (!engineRef.current) {
+		engineRef.current = new CompletionEngine();
+	}
+	const completionEngine = engineRef.current;
+
 	// Session — created once, stored in ref
 	const sessionRef = useRef<Session | null>(null);
 	if (!sessionRef.current) {
-		const session = new Session(connection);
-		// Register available modes
-		session.registerMode("script", (ctx) => new ScriptMode(ctx));
-		session.registerMode("inspect", () => new InspectMode());
-		session.registerMode("builder", () => new BuilderMode());
+		const session = new Session(connection, completionEngine);
+		// Register available modes with completion engine
+		session.registerMode("script", (ctx) => new ScriptMode(ctx, completionEngine));
+		session.registerMode("inspect", () => new InspectMode(completionEngine));
+		session.registerMode("builder", () => new BuilderMode(undefined, completionEngine));
 		sessionRef.current = session;
 	}
 	const session = sessionRef.current;
+
+	// Input imperative handle
+	const inputHandleRef = useRef<InputHandle>(null);
 
 	// State
 	const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
@@ -82,6 +121,23 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	);
 	const [disabled, setDisabled] = useState(false);
 	const [scrollOffset, setScrollOffset] = useState(0);
+
+	// Refs tracking latest state values (for snapshot capture in async callbacks)
+	const outputLinesRef = useRef(outputLines);
+	outputLinesRef.current = outputLines;
+	const scrollOffsetRef = useRef(scrollOffset);
+	scrollOffsetRef.current = scrollOffset;
+	const [overlayData, setOverlayData] = useState<{
+		title: string;
+		lines: string[];
+		footer?: string;
+	} | null>(null);
+	const snapshotRef = useRef<OverlaySnapshot | null>(null);
+	const [completionState, setCompletionState] = useState<{
+		result: CompletionResult;
+		selectedIndex: number;
+		visible: boolean;
+	} | null>(null);
 	const outputRef = useRef<DOMElement>(null);
 
 	// Track whether user has scrolled away from bottom
@@ -126,9 +182,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		userScrolledRef.current = outputLines.length > outputHeight;
 	}, [outputLines.length, outputHeight]);
 
-	// ── Keyboard scrolling ──────────────────────────────────────────
+	// ── Keyboard scrolling (disabled when overlay is visible) ──────
 
 	useInput((_input, key) => {
+		if (overlayData) return; // overlay captures all input
 		if (key.pageUp) {
 			scrollBy(-outputHeight);
 		} else if (key.pageDown) {
@@ -182,7 +239,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		};
 	}, [connection]);
 
-	// ── Load module data for builder mode ───────────────────────────
+	// ── Load data for builder mode and completion engine ────────────
 
 	useEffect(() => {
 		if (!dataLoader) return;
@@ -191,6 +248,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		async function load() {
 			if (!dataLoader || cancelled) return;
 			try {
+				// Load datasets for completion engine
+				await completionEngine.init(dataLoader);
+
 				const moduleList = await dataLoader.loadModuleList();
 				if (!cancelled) {
 					// Update builder mode instances with module data
@@ -208,7 +268,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		void load();
 
 		return () => { cancelled = true; };
-	}, [dataLoader, session]);
+	}, [dataLoader, session, completionEngine]);
 
 	// ── Input handler ───────────────────────────────────────────────
 
@@ -243,7 +303,50 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		try {
 			const result: CommandResult = await session.handleInput(input);
 
-			if (result.type === "empty" && input.startsWith("/")) {
+			if (result.type === "overlay") {
+				// Capture a snapshot of the current UI for the dimmed backdrop.
+				// Read from refs to get latest state (closure may be stale).
+				const snapLines = outputLinesRef.current;
+				const snapScroll = scrollOffsetRef.current;
+				const snapMode = session.currentMode();
+				const snapModeLabel = snapMode.id === "root"
+					? "root"
+					: snapMode.prompt.replace(/[\[\]>]/g, "").trim();
+				const snapModeAccent = snapMode.accent || scheme.foreground.default;
+				const snapScrollHint = snapLines.length > outputHeight ? "PgUp/PgDn scroll" : "";
+				const snapModeHint = snapMode.id === "root"
+					? `/help for commands  /script /builder /inspect to enter modes${snapScrollHint ? `  ${snapScrollHint}` : ""}`
+					: `/exit to leave ${snapMode.name}  /help for commands${snapScrollHint ? `  ${snapScrollHint}` : ""}`;
+				const snapTotalLines = snapLines.length;
+				const snapIsAtBottom = snapScroll >= snapTotalLines - outputHeight;
+				const snapScrollInfo = snapTotalLines <= outputHeight
+					? ""
+					: snapIsAtBottom ? "live" : `\u2191 ${snapTotalLines - snapScroll - outputHeight} lines`;
+
+				const dimScheme = darkenScheme(scheme, DIM_FACTOR);
+
+				snapshotRef.current = {
+					outputLines: [...snapLines],
+					scrollOffset: snapScroll,
+					modeLabel: snapModeLabel,
+					modeAccent: snapModeAccent,
+					connectionStatus,
+					modeHint: snapModeHint,
+					scrollInfo: snapScrollInfo,
+					dimScheme,
+					dimOutputLines: darkenOutputLines(snapLines, DIM_FACTOR),
+					dimModeAccent: darkenHex(snapModeAccent, DIM_FACTOR),
+					dimBrand: darkenBrand(DIM_FACTOR),
+					dimStatusColor: darkenHex(statusColor(connectionStatus), DIM_FACTOR),
+				};
+
+				// Show overlay
+				setOverlayData({
+					title: result.title,
+					lines: result.lines,
+					footer: result.footer,
+				});
+			} else if (result.type === "empty" && input.startsWith("/")) {
 				// Slash commands that produce empty result (mode switches, clear)
 				// Check if it was /clear
 				if (input.trim() === "/clear") {
@@ -307,6 +410,116 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		? `/help for commands  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
 		: `/exit to leave ${currentMode.name}  /help for commands${scrollHint ? `  ${scrollHint}` : ""}`;
 
+	const handleOverlayClose = useCallback(() => {
+		setOverlayData(null);
+		snapshotRef.current = null;
+	}, []);
+
+	// ── Completion handlers ────────────────────────────────────────
+
+	const handleInputValueChange = useCallback((value: string) => {
+		if (overlayData) return; // Don't complete while overlay is visible
+
+		if (value.length < 1) {
+			setCompletionState(null);
+			return;
+		}
+
+		const result = session.complete(value, value.length);
+		if (result.items.length > 0) {
+			setCompletionState({
+				result,
+				selectedIndex: 0,
+				visible: false, // Ghost only until Tab
+			});
+		} else {
+			setCompletionState(null);
+		}
+	}, [session, overlayData]);
+
+	const handleTab = useCallback(() => {
+		if (!completionState) {
+			// No completion results — try to compute
+			const value = inputHandleRef.current?.getValue() ?? "";
+			if (value.length === 0) return;
+
+			const result = session.complete(value, value.length);
+			if (result.items.length > 0) {
+				if (result.items.length === 1) {
+					// Single match — accept immediately
+					acceptCompletion(result.items[0], result);
+				} else {
+					setCompletionState({
+						result,
+						selectedIndex: 0,
+						visible: true,
+					});
+				}
+			}
+			return;
+		}
+
+		if (!completionState.visible) {
+			// Ghost text shown — Tab opens popup
+			setCompletionState((prev) =>
+				prev ? { ...prev, visible: true } : null,
+			);
+			return;
+		}
+
+		// Popup visible — Tab accepts selected item
+		const item = completionState.result.items[completionState.selectedIndex];
+		if (item) {
+			acceptCompletion(item, completionState.result);
+		}
+	}, [completionState, session]);
+
+	const acceptCompletion = useCallback((item: CompletionItem, result: CompletionResult) => {
+		const handle = inputHandleRef.current;
+		if (!handle) return;
+
+		const currentValue = handle.getValue();
+		const insertText = item.insertText ?? item.label;
+		const newValue =
+			currentValue.slice(0, result.from) + insertText;
+		handle.setValue(newValue);
+		setCompletionState(null);
+	}, []);
+
+	const handleCompletionSelect = useCallback((index: number) => {
+		setCompletionState((prev) =>
+			prev ? { ...prev, selectedIndex: index } : null,
+		);
+	}, []);
+
+	const handleCompletionAccept = useCallback((item: CompletionItem) => {
+		if (completionState) {
+			acceptCompletion(item, completionState.result);
+		}
+	}, [completionState, acceptCompletion]);
+
+	const handleCompletionDismiss = useCallback(() => {
+		setCompletionState(null);
+	}, []);
+
+	// Ghost text: show remainder of top candidate after what's typed
+	const ghostText = React.useMemo(() => {
+		if (!completionState || completionState.result.items.length === 0) {
+			return undefined;
+		}
+		const item = completionState.result.items[completionState.selectedIndex];
+		const insertText = item.insertText ?? item.label;
+		const handle = inputHandleRef.current;
+		if (!handle) return undefined;
+
+		const value = handle.getValue();
+		const prefix = value.slice(completionState.result.from);
+		if (insertText.toLowerCase().startsWith(prefix.toLowerCase())) {
+			return insertText.slice(prefix.length);
+		}
+		return undefined;
+	}, [completionState]);
+
 	return (
 		<Box flexDirection="column" height={rows}>
 			<TopBar
@@ -327,13 +540,33 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				/>
 			</Box>
 			<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
+			{completionState?.visible && (
+				<CompletionPopup
+					items={completionState.result.items}
+					selectedIndex={completionState.selectedIndex}
+					onSelect={handleCompletionSelect}
+					onAccept={handleCompletionAccept}
+					onDismiss={handleCompletionDismiss}
+					leftOffset={completionState.result.from + (modeLabel === "root" ? 4 : modeLabel.length + 7)}
+					scheme={scheme}
+					rows={rows}
+					columns={columns}
+				/>
+			)}
 			<Input
 				modeLabel={modeLabel}
 				modeAccent={modeAccent}
 				scheme={scheme}
 				columns={columns}
-				disabled={disabled}
-				onSubmit={(v) => void handleSubmit(v)}
+				disabled={disabled || overlayData !== null}
+				onSubmit={(v) => {
+					setCompletionState(null);
+					void handleSubmit(v);
+				}}
+				ghostText={ghostText}
+				onValueChange={handleInputValueChange}
+				onTab={handleTab}
+				inputRef={inputHandleRef}
 			/>
 			<StatusBar
 				connectionStatus={connectionStatus}
@@ -342,6 +575,72 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				scheme={scheme}
 				columns={columns}
 			/>
+			{overlayData && snapshotRef.current && (() => {
+				const snap = snapshotRef.current!;
+				return (
+					<>
+						{/* Dimmed snapshot of the full UI behind the overlay */}
+						<Box
+							position="absolute"
+							marginLeft={0}
+							marginTop={0}
+							flexDirection="column"
+							height={rows}
+						>
+							<TopBar
+								modeLabel={snap.modeLabel}
+								modeAccent={snap.dimModeAccent}
+								connectionStatus={snap.connectionStatus}
+								scheme={snap.dimScheme}
+								columns={columns}
+								brandOverride={snap.dimBrand}
+								statusColorOverride={snap.dimStatusColor}
+							/>
+							<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
+								{" ".repeat(columns)}
+							</Text>
+							<Box flexDirection="column" height={outputHeight}>
+								<Output
+									lines={snap.dimOutputLines}
+									scrollOffset={snap.scrollOffset}
+									viewportHeight={outputHeight}
+									scheme={snap.dimScheme}
+									columns={columns}
+								/>
+							</Box>
+							<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
+								{" ".repeat(columns)}
+							</Text>
+							<Input
+								modeLabel={snap.modeLabel}
+								modeAccent={snap.dimModeAccent}
+								scheme={snap.dimScheme}
+								columns={columns}
+								disabled={true}
+								onSubmit={() => {}}
+							/>
+							<StatusBar
+								connectionStatus={snap.connectionStatus}
+								modeHint={snap.modeHint}
+								scrollInfo={snap.scrollInfo}
+								scheme={snap.dimScheme}
+								columns={columns}
+								statusColorOverride={snap.dimStatusColor}
+							/>
+						</Box>
+						<Overlay
+							title={overlayData.title}
+							accent={modeAccent}
+							lines={overlayData.lines}
+							footer={overlayData.footer}
+							onClose={handleOverlayClose}
+							columns={columns}
+							rows={rows}
+							scheme={scheme}
+						/>
+					</>
+				);
+			})()}
 		</Box>
 	);
 }

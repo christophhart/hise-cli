@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { InspectMode, formatCpu, formatVoices, formatModules, formatMemory } from "./inspect.js";
 import { MockHiseConnection } from "../hise.js";
 import type { SessionContext } from "./mode.js";
+import { CompletionEngine } from "../completion/engine.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -174,5 +175,35 @@ describe("InspectMode memory", () => {
 			expect(result.rows[0][1]).toBe("N/A");
 			expect(result.rows[1][1]).toBe("N/A");
 		}
+	});
+});
+
+// ── InspectMode completion ──────────────────────────────────────────
+
+describe("InspectMode completion", () => {
+	it("returns empty without engine", () => {
+		const mode = new InspectMode();
+		const result = mode.complete!("c", 1);
+		expect(result.items).toHaveLength(0);
+	});
+
+	it("returns all commands for empty input", () => {
+		const engine = new CompletionEngine();
+		const mode = new InspectMode(engine);
+		const result = mode.complete!("", 0);
+		expect(result.items).toHaveLength(5);
+		const labels = result.items.map((i) => i.label);
+		expect(labels).toContain("cpu");
+		expect(labels).toContain("voices");
+		expect(labels).toContain("modules");
+		expect(labels).toContain("memory");
+		expect(labels).toContain("help");
+	});
+
+	it("filters by prefix", () => {
+		const engine = new CompletionEngine();
+		const mode = new InspectMode(engine);
+		const result = mode.complete!("vo", 2);
+		expect(result.items.some((i) => i.label === "voices")).toBe(true);
 	});
 });

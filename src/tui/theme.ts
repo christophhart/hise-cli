@@ -182,3 +182,79 @@ export function statusColor(status: ConnectionStatus): string {
 export function statusDot(status: ConnectionStatus): string {
 	return "\u25CF"; // ●
 }
+
+// ── Color darkening utilities ───────────────────────────────────────
+
+/** Parse a hex color string to RGB components (0–255). */
+function parseHex(hex: string): [number, number, number] {
+	let h = hex.startsWith("#") ? hex.slice(1) : hex;
+	if (h.length === 3) {
+		h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+	}
+	const n = parseInt(h, 16);
+	return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/** Format RGB components (0–255) back to a hex color string. */
+function toHex(r: number, g: number, b: number): string {
+	const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+	return (
+		"#" +
+		clamp(r).toString(16).padStart(2, "0") +
+		clamp(g).toString(16).padStart(2, "0") +
+		clamp(b).toString(16).padStart(2, "0")
+	);
+}
+
+/**
+ * Darken a hex color by a factor (0.0 = black, 1.0 = unchanged).
+ * Multiplies each RGB channel by the factor.
+ */
+export function darkenHex(hex: string, factor: number): string {
+	const [r, g, b] = parseHex(hex);
+	return toHex(r * factor, g * factor, b * factor);
+}
+
+/**
+ * Darken all colors in a ColorScheme.
+ * Returns a new scheme with every background and foreground color darkened.
+ */
+export function darkenScheme(scheme: ColorScheme, factor: number): ColorScheme {
+	return {
+		name: scheme.name,
+		light: scheme.light,
+		backgrounds: {
+			darker: darkenHex(scheme.backgrounds.darker, factor),
+			standard: darkenHex(scheme.backgrounds.standard, factor),
+			sidebar: darkenHex(scheme.backgrounds.sidebar, factor),
+			raised: darkenHex(scheme.backgrounds.raised, factor),
+			overlay: darkenHex(scheme.backgrounds.overlay, factor),
+		},
+		foreground: {
+			default: darkenHex(scheme.foreground.default, factor),
+			bright: darkenHex(scheme.foreground.bright, factor),
+			muted: darkenHex(scheme.foreground.muted, factor),
+		},
+	};
+}
+
+/** Brand colors as plain strings (not const literals). */
+export interface BrandColors {
+	signal: string;
+	ok: string;
+	warning: string;
+	error: string;
+}
+
+/**
+ * Darken the brand colors.
+ * Returns a new brand-like object with all colors darkened.
+ */
+export function darkenBrand(factor: number): BrandColors {
+	return {
+		signal: darkenHex(brand.signal, factor),
+		ok: darkenHex(brand.ok, factor),
+		warning: darkenHex(brand.warning, factor),
+		error: darkenHex(brand.error, factor),
+	};
+}

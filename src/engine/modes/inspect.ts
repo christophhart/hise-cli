@@ -12,8 +12,9 @@ import {
 	textResult,
 	treeResult,
 } from "../result.js";
-import type { Mode, SessionContext } from "./mode.js";
+import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
+import type { CompletionEngine } from "../completion/engine.js";
 
 const INSPECT_COMMANDS = new Map<string, string>([
 	["cpu", "Show CPU usage and buffer info"],
@@ -28,6 +29,22 @@ export class InspectMode implements Mode {
 	readonly name = "Inspect";
 	readonly accent = MODE_ACCENTS.inspect;
 	readonly prompt = "[inspect] > ";
+	private readonly completionEngine: CompletionEngine | null;
+
+	constructor(completionEngine?: CompletionEngine) {
+		this.completionEngine = completionEngine ?? null;
+	}
+
+	complete(input: string, _cursor: number): CompletionResult {
+		if (!this.completionEngine) {
+			return { items: [], from: 0, to: input.length };
+		}
+
+		const trimmed = input.trimStart();
+		const leadingSpaces = input.length - trimmed.length;
+		const items = this.completionEngine.completeInspect(trimmed);
+		return { items, from: leadingSpaces, to: input.length };
+	}
 
 	async parse(
 		input: string,

@@ -16,6 +16,7 @@ export type CommandResult =
 	| { type: "table"; headers: string[]; rows: string[][] }
 	| { type: "tree"; root: TreeNode }
 	| { type: "markdown"; content: string }
+	| { type: "overlay"; title: string; lines: string[]; footer?: string }
 	| { type: "empty" };
 
 // ── Result factory helpers ──────────────────────────────────────────
@@ -51,6 +52,14 @@ export function treeResult(root: TreeNode): CommandResult {
 
 export function markdownResult(content: string): CommandResult {
 	return { type: "markdown", content };
+}
+
+export function overlayResult(
+	title: string,
+	lines: string[],
+	footer?: string,
+): CommandResult {
+	return { type: "overlay", title, lines, footer };
 }
 
 export function emptyResult(): CommandResult {

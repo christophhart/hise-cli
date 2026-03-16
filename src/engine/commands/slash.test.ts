@@ -11,6 +11,12 @@ function createMockSession(): CommandSession & { modes: string[] } {
 		get modeStackDepth() {
 			return modes.length;
 		},
+		get currentModeId() {
+			return modes.length > 0 ? modes[modes.length - 1] : "root";
+		},
+		allCommands() {
+			return [];
+		},
 		pushMode(modeId: string) {
 			modes.push(modeId);
 			return null;
@@ -51,11 +57,15 @@ describe("built-in slash commands", () => {
 		expect(names).toContain("wizard");
 	});
 
-	it("/help returns text", async () => {
+	it("/help returns overlay", async () => {
 		const registry = createRegistry();
 		const session = createMockSession();
 		const result = await registry.dispatch("/help", session);
-		expect(result.type).toBe("text");
+		expect(result.type).toBe("overlay");
+		if (result.type === "overlay") {
+			expect(result.title).toContain("Help");
+			expect(result.lines.length).toBeGreaterThan(0);
+		}
 	});
 
 	it("/clear returns empty", async () => {

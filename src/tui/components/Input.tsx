@@ -1,6 +1,6 @@
 // ── Input — mode-colored prompt with command history ─────────────────
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useImperativeHandle, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { ColorScheme } from "../theme.js";
 
@@ -60,6 +60,12 @@ export function useCommandHistory() {
 
 // ── Input component ─────────────────────────────────────────────────
 
+/** Imperative handle for controlling the Input from the parent */
+export interface InputHandle {
+	getValue(): string;
+	setValue(value: string): void;
+}
+
 export interface InputProps {
 	modeLabel: string;
 	modeAccent: string;
@@ -67,6 +73,14 @@ export interface InputProps {
 	columns: number;
 	disabled?: boolean;
 	onSubmit: (value: string) => void;
+	/** Ghost text to show after cursor (muted color, top completion candidate) */
+	ghostText?: string;
+	/** Called when input value changes (for completion updates) */
+	onValueChange?: (value: string) => void;
+	/** Called when Tab is pressed (trigger/accept completion) */
+	onTab?: () => void;
+	/** Ref for imperative control */
+	inputRef?: React.Ref<InputHandle>;
 }
 
 export const Input = React.memo(function Input({
@@ -76,6 +90,10 @@ export const Input = React.memo(function Input({
 	columns,
 	disabled = false,
 	onSubmit,
+	ghostText,
+	onValueChange,
+	onTab,
+	inputRef,
 }: InputProps) {
 	const [value, setValue] = useState("");
 	const {
@@ -84,14 +102,32 @@ export const Input = React.memo(function Input({
 		historyDown,
 	} = useCommandHistory();
 
+	// Wrapper that also notifies parent of value changes
+	const updateValue = useCallback((newValue: string | ((prev: string) => string)) => {
+		setValue((prev) => {
+			const next = typeof newValue === "function" ? newValue(prev) : newValue;
+			if (next !== prev && onValueChange) {
+				// Schedule callback after state update
+				queueMicrotask(() => onValueChange(next));
+			}
+			return next;
+		});
+	}, [onValueChange]);
+
+	// Expose imperative handle for parent to read/set value
+	useImperativeHandle(inputRef, () => ({
+		getValue: () => value,
+		setValue: (v: string) => updateValue(v),
+	}), [value, updateValue]);
+
 	const handleSubmit = useCallback(() => {
 		const trimmed = value.trim();
 		if (!trimmed || disabled) return;
 
 		addToHistory(trimmed);
 		onSubmit(trimmed);
-		setValue("");
-	}, [value, disabled, addToHistory, onSubmit]);
+		updateValue("");
+	}, [value, disabled, addToHistory, onSubmit, updateValue]);
 
 	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
 	// the leading \x1b from unrecognized CSI sequences, so mouse events
@@ -116,23 +152,29 @@ export const Input = React.memo(function Input({
 
 		if (key.upArrow) {
 			const prev = historyUp(value);
-			if (prev !== null) setValue(prev);
+			if (prev !== null) updateValue(prev);
 			return;
 		}
 
 		if (key.downArrow) {
 			const next = historyDown();
-			if (next !== null) setValue(next);
+			if (next !== null) updateValue(next);
 			return;
 		}
 
 		if (key.backspace || key.delete) {
-			setValue((v) => v.slice(0, -1));
+			updateValue((v) => v.slice(0, -1));
 			return;
 		}
 
 		// Skip navigation keys handled by the App component
 		if (key.pageUp || key.pageDown || key.home || key.end) {
+			return;
+		}
+
+		// Tab key — trigger completion
+		if (key.tab) {
+			if (onTab) onTab();
 			return;
 		}
 
@@ -148,7 +190,7 @@ export const Input = React.memo(function Input({
 			// input text (e.g. "[<64;15;10M"). Reject these.
 			if (MOUSE_SEQ_RE.test(input)) return;
 
-			setValue((v) => v + input);
+			updateValue((v) => v + input);
 		}
 	});
 
@@ -164,15 +206,21 @@ export const Input = React.memo(function Input({
 	const cursor = disabled ? "" : "\u2588"; // █
 
 	// Content for the input line
+	const ghost = ghostText ?? "";
 	const maxInputWidth = Math.max(0, columns - promptWidth - PAD.length * 2 - 1); // pad each side + cursor
 	let displayValue = value;
 	if (displayValue.length > maxInputWidth) {
 		displayValue = displayValue.slice(displayValue.length - maxInputWidth);
 	}
 
+	// Ghost text fits after cursor
+	const ghostMaxWidth = Math.max(0, maxInputWidth - displayValue.length);
+	const displayGhost = ghost.slice(0, ghostMaxWidth);
+
 	// Padding to fill the input row
-	const inputContentWidth = promptWidth + displayValue.length + (disabled ? "waiting for response...".length : 1); // 1 for cursor
-	const inputPadRight = Math.max(0, columns - PAD.length * 2 - inputContentWidth);
+	const statusText = disabled ? "waiting for response..." : "";
+	const contentWidth = promptWidth + displayValue.length + (disabled ? statusText.length : 1 + displayGhost.length); // 1 for cursor
+	const inputPadRight = Math.max(0, columns - PAD.length * 2 - contentWidth);
 
 	return (
 		<Box flexDirection="column">
@@ -184,11 +232,16 @@ export const Input = React.memo(function Input({
 						<Text color={scheme.foreground.muted}>{promptPrefix}</Text>
 					) : null}
 					<Text color={promptColor} bold>{promptChar}</Text>
-					{disabled ? (
-						<Text color={scheme.foreground.muted}>waiting for response...</Text>
-					) : (
+				{disabled ? (
+					<Text color={scheme.foreground.muted}>waiting for response...</Text>
+				) : (
+					<>
 						<Text color={scheme.foreground.bright}>{displayValue}{cursor}</Text>
-					)}
+						{displayGhost ? (
+							<Text color={scheme.foreground.muted}>{displayGhost}</Text>
+						) : null}
+					</>
+				)}
 					<Text>{" ".repeat(inputPadRight)}</Text>
 					<Text>{PAD}</Text>
 				</Text>

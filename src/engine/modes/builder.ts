@@ -16,8 +16,9 @@ import type {
 	ModuleDefinition,
 	ModuleList,
 } from "../data.js";
-import type { Mode, SessionContext } from "./mode.js";
+import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
+import type { CompletionEngine } from "../completion/engine.js";
 import {
 	Add,
 	As,
@@ -339,13 +340,78 @@ export class BuilderMode implements Mode {
 	readonly prompt = "[builder] > ";
 
 	private moduleList: ModuleList | null = null;
+	private readonly completionEngine: CompletionEngine | null;
 
-	constructor(moduleList?: ModuleList) {
+	constructor(moduleList?: ModuleList, completionEngine?: CompletionEngine) {
 		this.moduleList = moduleList ?? null;
+		this.completionEngine = completionEngine ?? null;
 	}
 
 	setModuleList(moduleList: ModuleList): void {
 		this.moduleList = moduleList;
+	}
+
+	complete(input: string, _cursor: number): CompletionResult {
+		if (!this.completionEngine) {
+			return { items: [], from: 0, to: input.length };
+		}
+
+		const trimmed = input.trimStart();
+		const leadingSpaces = input.length - trimmed.length;
+		const trailingSpace = input.endsWith(" ");
+
+		// Split into non-empty tokens
+		const parts = trimmed.split(/\s+/).filter((p) => p !== "");
+
+		// No input yet or typing first word — suggest keywords
+		if (parts.length === 0 || (parts.length === 1 && !trailingSpace)) {
+			const prefix = parts[0] ?? "";
+			const items = this.completionEngine.completeBuilderKeyword(prefix);
+			return { items, from: leadingSpaces, to: input.length };
+		}
+
+		const keyword = parts[0].toLowerCase();
+
+		// After "add " — complete module types
+		if (keyword === "add") {
+			if (parts.length === 1 && trailingSpace) {
+				const items = this.completionEngine.completeModuleType("");
+				return { items, from: input.length, to: input.length };
+			}
+			if (parts.length === 2 && !trailingSpace) {
+				const items = this.completionEngine.completeModuleType(parts[1]);
+				const from = input.lastIndexOf(parts[1]);
+				return { items, from, to: input.length };
+			}
+		}
+
+		// After "show " — complete tree/types
+		if (keyword === "show") {
+			if (parts.length === 1 && trailingSpace) {
+				const items = this.completionEngine.completeBuilderShow("");
+				return { items, from: input.length, to: input.length };
+			}
+			if (parts.length === 2 && !trailingSpace) {
+				const items = this.completionEngine.completeBuilderShow(parts[1]);
+				const from = input.lastIndexOf(parts[1]);
+				return { items, from, to: input.length };
+			}
+		}
+
+		// After "set <target> " — complete parameter names
+		if (keyword === "set") {
+			if (parts.length === 2 && trailingSpace) {
+				const items = this.completionEngine.completeModuleParam(parts[1], "");
+				return { items, from: input.length, to: input.length };
+			}
+			if (parts.length === 3 && !trailingSpace) {
+				const items = this.completionEngine.completeModuleParam(parts[1], parts[2]);
+				const from = input.lastIndexOf(parts[2]);
+				return { items, from, to: input.length };
+			}
+		}
+
+		return { items: [], from: 0, to: input.length };
 	}
 
 	async parse(

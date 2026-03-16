@@ -11,7 +11,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { CommandResult, TreeNode } from "../../engine/result.js";
-import { brand, type ColorScheme } from "../theme.js";
+import { brand, darkenHex, type ColorScheme } from "../theme.js";
 
 // ── Output line model ───────────────────────────────────────────────
 
@@ -25,6 +25,24 @@ export interface OutputLine {
 }
 
 export const MAX_HISTORY_LINES = 10000;
+
+/**
+ * Darken all colors in an OutputLine array.
+ * Returns a new array with every color field darkened by the factor.
+ */
+export function darkenOutputLines(
+	lines: OutputLine[],
+	factor: number,
+): OutputLine[] {
+	return lines.map((line) => ({
+		text: line.text,
+		color: darkenHex(line.color, factor),
+		prefix: line.prefix,
+		prefixColor: line.prefixColor ? darkenHex(line.prefixColor, factor) : undefined,
+		borderColor: line.borderColor ? darkenHex(line.borderColor, factor) : undefined,
+		bgColor: line.bgColor ? darkenHex(line.bgColor, factor) : undefined,
+	}));
+}
 
 // ── Result → OutputLine conversion ──────────────────────────────────
 
@@ -71,6 +89,10 @@ export function resultToLines(
 				text: line,
 				color: scheme.foreground.bright,
 			}));
+		case "overlay":
+			// Overlay results are handled by App (shows Overlay component).
+			// If we get here, fall through to empty for non-TUI contexts.
+			return [];
 	}
 }
 
