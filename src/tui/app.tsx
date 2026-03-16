@@ -25,6 +25,7 @@ import { Input, type InputHandle } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { Overlay } from "./components/Overlay.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
+import { TreeSidebar, type TreeSidebarHandle } from "./components/TreeSidebar.js";
 import { CompletionEngine } from "../engine/completion/engine.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import {
@@ -114,6 +115,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	// Input imperative handle
 	const inputHandleRef = useRef<InputHandle>(null);
 
+	// Tree sidebar
+	const treeSidebarRef = useRef<TreeSidebarHandle>(null);
+	const [sidebarVisible, setSidebarVisible] = useState(false);
+	const [sidebarFocused, setSidebarFocused] = useState(false);
+
 	// State
 	const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
 	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
@@ -150,6 +156,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		MIN_OUTPUT_ROWS,
 		rows - TOP_BAR_ROWS - GAP_ROWS - BOTTOM_BAR_ROWS - INPUT_SECTION_ROWS,
 	);
+
+	// Sidebar width: responsive 20-35% of terminal, min 20, max 40
+	const sidebarWidth = sidebarVisible
+		? Math.max(20, Math.min(40, Math.floor(columns * 0.25)))
+		: 0;
+	// Content width available for output (minus sidebar and its border)
+	const contentColumns = columns - sidebarWidth;
 
 	// ── Scroll helpers ──────────────────────────────────────────────
 
@@ -190,7 +203,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	// consume the event (return true) or pass it to the next handler
 	// (return false). This guarantees exactly one action per keystroke.
 	//
-	// Priority: Overlay > CompletionPopup > Input > App (scroll)
+	// Priority: Overlay > Global hotkeys > CompletionPopup >
+	//           TreeSidebar (focused) > Input > App (scroll)
 
 	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
 	// the leading \x1b from unrecognized CSI sequences, so mouse events
@@ -208,7 +222,26 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 
 		if (disabled) return;
 
-		// ── Priority 2: Completion popup (when visible) ────────────
+		// ── Priority 2: Global hotkeys ────────────────────────────
+		// Ctrl+B — toggle tree sidebar
+		if (key.ctrl && input === "b") {
+			setSidebarVisible((prev) => {
+				if (prev) {
+					// Closing sidebar — return focus to input
+					setSidebarFocused(false);
+				}
+				return !prev;
+			});
+			return;
+		}
+
+		// Tab — switch focus between sidebar and input (when sidebar visible)
+		if (key.tab && sidebarVisible && !completionState?.visible) {
+			setSidebarFocused((prev) => !prev);
+			return;
+		}
+
+		// ── Priority 3: Completion popup (when visible) ────────────
 		if (completionState?.visible) {
 			if (key.return || key.tab) {
 				const item = completionState.result.items[completionState.selectedIndex];
@@ -235,10 +268,53 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				setCompletionState(null);
 				return; // consumed
 			}
-			// All other keys fall through to Input
+			// All other keys fall through to tree/input
 		}
 
-		// ── Priority 3: Input ─────────────────────────────────────
+		// ── Priority 4: Tree sidebar (when focused) ───────────────
+		if (sidebarFocused && sidebarVisible) {
+			const tree = treeSidebarRef.current;
+			if (tree) {
+				if (key.upArrow) {
+					tree.cursorUp();
+					return;
+				}
+				if (key.downArrow) {
+					tree.cursorDown();
+					return;
+				}
+				if (key.return || key.rightArrow) {
+					tree.expandOrSelect();
+					return;
+				}
+				if (key.leftArrow) {
+					tree.collapseOrParent();
+					return;
+				}
+				if (input === " " && !key.ctrl && !key.meta) {
+					tree.toggle();
+					return;
+				}
+				if (key.escape) {
+					// Escape in tree → return focus to input
+					setSidebarFocused(false);
+					return;
+				}
+			}
+
+			// Character input while tree focused → auto-switch to input
+			if (input && !key.ctrl && !key.meta) {
+				const code = input.charCodeAt(0);
+				if (code >= 0x20 && code !== 0x7f && !MOUSE_SEQ_RE.test(input)) {
+					setSidebarFocused(false);
+					const handle = inputHandleRef.current;
+					if (handle) handle.insertChar(input);
+					return;
+				}
+			}
+		}
+
+		// ── Priority 5: Input ─────────────────────────────────────
 		const handle = inputHandleRef.current;
 		if (!handle) return;
 
@@ -254,7 +330,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			return;
 		}
 
-		// Shift+arrows → output scrolling (handled below in Priority 4)
+		// Shift+arrows → output scrolling (handled below in Priority 6)
 		if (key.shift && (key.upArrow || key.downArrow)) {
 			// fall through to scroll handler
 		}
@@ -317,7 +393,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			handle.deleteBackward();
 			return;
 		}
-		// Tab — trigger/accept completion
+		// Tab — trigger/accept completion (when sidebar not visible)
 		else if (key.tab) {
 			handleTab();
 			return;
@@ -331,7 +407,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			return;
 		}
 
-		// ── Priority 4: App-level scroll (fallback) ───────────────
+		// ── Priority 6: App-level scroll (fallback) ───────────────
 		if (key.pageUp) {
 			scrollBy(-outputHeight);
 		} else if (key.pageDown) {
@@ -722,6 +798,18 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	// the completion result, so it is always in sync with the typed value)
 	const ghostText = completionState?.ghostText;
 
+	// ── Tree sidebar data ──────────────────────────────────────────
+	const modeTree = currentMode.getTree?.() ?? null;
+	const modeSelectedPath = currentMode.getSelectedPath?.() ?? [];
+
+	const handleTreeSelect = useCallback((path: string[]) => {
+		if (currentMode.selectNode) {
+			currentMode.selectNode(path);
+			// Force re-render by toggling a state update
+			setSidebarFocused((prev) => prev);
+		}
+	}, [currentMode]);
+
 	return (
 		<ThemeProvider scheme={scheme}>
 			<Box flexDirection="column" height={rows}>
@@ -732,13 +820,28 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					columns={columns}
 				/>
 				<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
-				<Box ref={outputRef} flexDirection="column" flexGrow={1}>
-					<Output
-						lines={outputLines}
-						scrollOffset={scrollOffset}
-						viewportHeight={outputHeight}
-						columns={columns}
-					/>
+				<Box ref={outputRef} flexDirection="row" flexGrow={1}>
+					{sidebarVisible && (
+						<TreeSidebar
+							tree={modeTree}
+							selectedPath={modeSelectedPath}
+							width={sidebarWidth}
+							height={outputHeight}
+							focused={sidebarFocused}
+							accent={modeAccent}
+							scheme={scheme}
+							onSelect={handleTreeSelect}
+							sidebarRef={treeSidebarRef}
+						/>
+					)}
+					<Box flexDirection="column" flexGrow={1}>
+						<Output
+							lines={outputLines}
+							scrollOffset={scrollOffset}
+							viewportHeight={outputHeight}
+							columns={contentColumns}
+						/>
+					</Box>
 				</Box>
 				<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
 				{completionState?.visible && (
