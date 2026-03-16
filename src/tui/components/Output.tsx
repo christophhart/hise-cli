@@ -18,6 +18,7 @@ import type { TokenSpan } from "../../engine/highlight/tokens.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import { tokenize } from "../../engine/highlight/hisescript.js";
 import { tokenizeXml } from "../../engine/highlight/xml.js";
+import { LandingLogo } from "./LandingLogo.js";
 
 // ── Output line model ───────────────────────────────────────────────
 
@@ -225,33 +226,13 @@ export const Output = React.memo(function Output({
 }: OutputProps) {
 	const { scheme } = useTheme();
 	if (lines.length === 0) {
-		const emptyRows: React.ReactNode[] = [];
-		const midRow = Math.floor(viewportHeight / 2);
-		const hint = "Type a command or /help to get started";
-		for (let i = 0; i < viewportHeight; i++) {
-			if (i === midRow) {
-				const pad = Math.max(0, Math.floor((columns - hint.length) / 2));
-				const padRight = Math.max(0, columns - pad - hint.length);
-				emptyRows.push(
-					<Box key={i}>
-						<Text backgroundColor={scheme.backgrounds.standard}>
-							{" ".repeat(pad)}
-							<Text color={scheme.foreground.muted}>{hint}</Text>
-							{" ".repeat(padRight)}
-						</Text>
-					</Box>,
-				);
-			} else {
-				emptyRows.push(
-					<Box key={i}>
-						<Text backgroundColor={scheme.backgrounds.standard}>
-							{" ".repeat(columns)}
-						</Text>
-					</Box>,
-				);
-			}
-		}
-		return <Box flexDirection="column">{emptyRows}</Box>;
+		return (
+			<LandingLogo
+				viewportHeight={viewportHeight}
+				columns={columns}
+				scheme={scheme}
+			/>
+		);
 	}
 
 	const PAD = "  "; // 2 chars horizontal padding

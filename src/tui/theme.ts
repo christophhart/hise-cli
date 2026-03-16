@@ -207,6 +207,20 @@ function toHex(r: number, g: number, b: number): string {
 }
 
 /**
+ * Linearly interpolate between two hex colors.
+ * t = 0.0 → colorA, t = 1.0 → colorB.
+ */
+export function lerpHex(colorA: string, colorB: string, t: number): string {
+	const [r1, g1, b1] = parseHex(colorA);
+	const [r2, g2, b2] = parseHex(colorB);
+	return toHex(
+		r1 + (r2 - r1) * t,
+		g1 + (g2 - g1) * t,
+		b1 + (b2 - b1) * t,
+	);
+}
+
+/**
  * Darken a hex color by a factor (0.0 = black, 1.0 = unchanged).
  * Multiplies each RGB channel by the factor.
  */
