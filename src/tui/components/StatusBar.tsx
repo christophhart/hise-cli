@@ -26,31 +26,33 @@ export const StatusBar = React.memo(function StatusBar({
 		: connectionStatus === "warning" ? "degraded"
 		: "disconnected";
 
-	const leftContent = `${dot} ${statusLabel}`;
-	const leftWidth = leftContent.length;
+	const PAD = "  "; // 2 chars horizontal padding
+
+	// Left: dot + status label
+	const leftText = `${dot} ${statusLabel}`;
+	const leftWidth = PAD.length + leftText.length;
 
 	// Right side: scroll info
-	const rightContent = scrollInfo ? `  ${scrollInfo}` : "";
-	const rightWidth = rightContent.length;
+	const rightText = scrollInfo ? `${scrollInfo}  ` : PAD;
+	const rightWidth = rightText.length;
 
 	// Center: mode hints
-	const centerWidth = Math.max(0, columns - leftWidth - rightWidth - 4); // 4 for padding
+	const centerAvail = Math.max(0, columns - leftWidth - rightWidth - 2); // 2 for gap
 	let centerText = modeHint;
-	if (centerText.length > centerWidth) {
-		centerText = centerText.slice(0, centerWidth - 1) + "\u2026";
+	if (centerText.length > centerAvail) {
+		centerText = centerText.slice(0, centerAvail - 1) + "\u2026";
 	}
-	const centerPad = Math.max(0, centerWidth - centerText.length);
+	const centerPad = Math.max(0, centerAvail - centerText.length);
 
 	return (
 		<Box>
 			<Text backgroundColor={scheme.backgrounds.darker}>
-				<Text> </Text>
+				<Text>{PAD}</Text>
 				<Text color={dotColor}>{dot}</Text>
 				<Text color={scheme.foreground.muted}> {statusLabel}</Text>
 				<Text color={scheme.foreground.muted}>  {centerText}</Text>
 				<Text>{" ".repeat(centerPad)}</Text>
-				<Text color={scheme.foreground.muted}>{rightContent}</Text>
-				<Text> </Text>
+				<Text color={scheme.foreground.muted}>{rightText}</Text>
 			</Text>
 		</Box>
 	);

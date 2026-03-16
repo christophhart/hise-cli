@@ -69,7 +69,7 @@ describe("Input component", () => {
 		instance.unmount();
 	});
 
-	it("shows separator line", () => {
+	it("renders 3-row raised panel (top border + input + bottom border)", () => {
 		const instance = render(
 			React.createElement(Input, {
 				modeLabel: "root",
@@ -80,7 +80,9 @@ describe("Input component", () => {
 			}),
 		);
 		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("\u2500"); // ─
+		const lines = frame.split("\n");
+		// Should have 3 rows: top padding, input, bottom padding
+		expect(lines.length).toBeGreaterThanOrEqual(3);
 		instance.unmount();
 	});
 

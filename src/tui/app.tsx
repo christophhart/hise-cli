@@ -1,7 +1,9 @@
 // ── TUI App — main shell wiring Session to components ───────────────
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Box, useApp, useStdout } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "ink";
+import type { DOMElement } from "ink";
+import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import { Session } from "../engine/session.js";
 import type { CommandResult } from "../engine/result.js";
 import type { HiseConnection } from "../engine/hise.js";
@@ -14,6 +16,7 @@ import {
 	Output,
 	resultToLines,
 	commandEchoLine,
+	spacerLine,
 	MAX_HISTORY_LINES,
 	type OutputLine,
 } from "./components/Output.js";
@@ -28,9 +31,11 @@ import {
 // ── Layout constants ────────────────────────────────────────────────
 
 const TOP_BAR_ROWS = 1;
+const GAP_ROWS = 2; // 1 gap after topbar + 1 gap before input
 const BOTTOM_BAR_ROWS = 1;
-const INPUT_SECTION_ROWS = 3; // separator + input + bottom border
+const INPUT_SECTION_ROWS = 3; // top border + input + bottom border
 const MIN_OUTPUT_ROWS = 4;
+const SCROLL_WHEEL_LINES = 3; // lines per mouse wheel tick
 
 // ── App props ───────────────────────────────────────────────────────
 
@@ -42,7 +47,15 @@ export interface AppProps {
 
 // ── App component ───────────────────────────────────────────────────
 
-export function App({ connection, dataLoader, scheme: schemeProp }: AppProps) {
+export function App(props: AppProps) {
+	return (
+		<MouseProvider autoEnable={true}>
+			<AppInner {...props} />
+		</MouseProvider>
+	);
+}
+
+function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
@@ -67,17 +80,79 @@ export function App({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
 		connection ? "connected" : "error",
 	);
-	const [projectName, setProjectName] = useState<string | null>(null);
 	const [disabled, setDisabled] = useState(false);
-	const scrollOffsetRef = useRef(0);
 	const [scrollOffset, setScrollOffset] = useState(0);
-	const [, forceUpdate] = useState(0);
+	const outputRef = useRef<DOMElement>(null);
+
+	// Track whether user has scrolled away from bottom
+	const userScrolledRef = useRef(false);
 
 	// Viewport height for output
 	const outputHeight = Math.max(
 		MIN_OUTPUT_ROWS,
-		rows - TOP_BAR_ROWS - BOTTOM_BAR_ROWS - INPUT_SECTION_ROWS,
+		rows - TOP_BAR_ROWS - GAP_ROWS - BOTTOM_BAR_ROWS - INPUT_SECTION_ROWS,
 	);
+
+	// ── Scroll helpers ──────────────────────────────────────────────
+
+	const maxScrollOffset = useCallback(
+		(lineCount?: number) => {
+			const total = lineCount ?? outputLines.length;
+			return Math.max(0, total - outputHeight);
+		},
+		[outputLines.length, outputHeight],
+	);
+
+	const scrollBy = useCallback(
+		(delta: number) => {
+			setScrollOffset((prev) => {
+				const max = maxScrollOffset();
+				const next = Math.max(0, Math.min(max, prev + delta));
+				userScrolledRef.current = next < max;
+				return next;
+			});
+		},
+		[maxScrollOffset],
+	);
+
+	const scrollToBottom = useCallback(() => {
+		const max = maxScrollOffset();
+		setScrollOffset(max);
+		userScrolledRef.current = false;
+	}, [maxScrollOffset]);
+
+	const scrollToTop = useCallback(() => {
+		setScrollOffset(0);
+		userScrolledRef.current = outputLines.length > outputHeight;
+	}, [outputLines.length, outputHeight]);
+
+	// ── Keyboard scrolling ──────────────────────────────────────────
+
+	useInput((_input, key) => {
+		if (key.pageUp) {
+			scrollBy(-outputHeight);
+		} else if (key.pageDown) {
+			scrollBy(outputHeight);
+		} else if (key.home) {
+			scrollToTop();
+		} else if (key.end) {
+			scrollToBottom();
+		} else if (key.shift && key.upArrow) {
+			scrollBy(-1);
+		} else if (key.shift && key.downArrow) {
+			scrollBy(1);
+		}
+	});
+
+	// ── Mouse wheel scrolling ───────────────────────────────────────
+
+	useOnWheel(outputRef, (event) => {
+		if (event.button === "wheel-up") {
+			scrollBy(-SCROLL_WHEEL_LINES);
+		} else if (event.button === "wheel-down") {
+			scrollBy(SCROLL_WHEEL_LINES);
+		}
+	});
 
 	// ── Connection probe ────────────────────────────────────────────
 
@@ -148,10 +223,20 @@ export function App({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	}, []);
 
 	const handleSubmit = useCallback(async (input: string) => {
-		// Add command echo
+		// Layout per message:
+		//   ▎                            ← 1. accent spacer (darker bg)
+		//   ▎ > input                    ← 2. echo (darker bg, accent border)
+		//   ▎                            ← 3. accent spacer (darker bg)
+		//                                ← 4. plain spacer (standard bg)
+		//   result line(s)               ← 5. result (standard bg, no border)
+		//                                ← 6. plain spacer (standard bg)
 		const mode = session.currentMode();
-		const echo = commandEchoLine(input, mode.accent, scheme);
-		addLines([echo]);
+		const accent = mode.accent;
+		const darkerBg = scheme.backgrounds.darker;
+		const plainSpacer = spacerLine(scheme);
+		const darkAccentSpacer = spacerLine(scheme, accent, darkerBg);
+		const echo = commandEchoLine(input, accent, scheme);
+		addLines([darkAccentSpacer, echo, darkAccentSpacer, plainSpacer]);
 
 		setDisabled(true);
 
@@ -163,13 +248,14 @@ export function App({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				// Check if it was /clear
 				if (input.trim() === "/clear") {
 					setOutputLines([]);
-					scrollOffsetRef.current = 0;
 					setScrollOffset(0);
+					userScrolledRef.current = false;
 				}
 			} else if (result.type !== "empty") {
-				const resultMode = session.currentMode();
-				const lines = resultToLines(result, resultMode.accent, scheme);
-				addLines(lines);
+				const lines = resultToLines(result, scheme);
+				//   result line(s)            ← result (standard bg, no border)
+				//   [spacer]                  ← plain spacer after result
+				addLines([...lines, plainSpacer]);
 			}
 
 			// Check for quit
@@ -186,13 +272,14 @@ export function App({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			setDisabled(false);
 		}
 
-		// Auto-scroll to bottom
-		setOutputLines((current) => {
-			const newOffset = Math.max(0, current.length - outputHeight);
-			scrollOffsetRef.current = newOffset;
-			setScrollOffset(newOffset);
-			return current;
-		});
+		// Auto-scroll to bottom if user hasn't manually scrolled up
+		if (!userScrolledRef.current) {
+			setOutputLines((current) => {
+				const newOffset = Math.max(0, current.length - outputHeight);
+				setScrollOffset(newOffset);
+				return current;
+			});
+		}
 	}, [session, scheme, addLines, outputHeight, exit]);
 
 	// ── Mode label ──────────────────────────────────────────────────
@@ -215,27 +302,31 @@ export function App({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 
 	// ── Mode hints ──────────────────────────────────────────────────
 
+	const scrollHint = totalLines > outputHeight ? "PgUp/PgDn scroll" : "";
 	const modeHint = currentMode.id === "root"
-		? "/help for commands  /script /builder /inspect to enter modes"
-		: `/exit to leave ${currentMode.name}  /help for commands`;
+		? `/help for commands  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
+		: `/exit to leave ${currentMode.name}  /help for commands${scrollHint ? `  ${scrollHint}` : ""}`;
 
 	return (
 		<Box flexDirection="column" height={rows}>
 			<TopBar
 				modeLabel={modeLabel}
 				modeAccent={modeAccent}
-				projectName={projectName}
 				connectionStatus={connectionStatus}
 				scheme={scheme}
 				columns={columns}
 			/>
-			<Output
-				lines={outputLines}
-				scrollOffset={scrollOffset}
-				viewportHeight={outputHeight}
-				scheme={scheme}
-				columns={columns}
-			/>
+			<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
+			<Box ref={outputRef} flexDirection="column" flexGrow={1}>
+				<Output
+					lines={outputLines}
+					scrollOffset={scrollOffset}
+					viewportHeight={outputHeight}
+					scheme={scheme}
+					columns={columns}
+				/>
+			</Box>
+			<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
 			<Input
 				modeLabel={modeLabel}
 				modeAccent={modeAccent}

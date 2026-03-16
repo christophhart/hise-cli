@@ -20,7 +20,6 @@ describe("resultToLines", () => {
 	it("converts text result to lines", () => {
 		const lines = resultToLines(
 			{ type: "text", content: "hello world" },
-			accent,
 			defaultScheme,
 		);
 		expect(lines).toHaveLength(1);
@@ -31,7 +30,6 @@ describe("resultToLines", () => {
 	it("converts multi-line text", () => {
 		const lines = resultToLines(
 			{ type: "text", content: "line 1\nline 2\nline 3" },
-			accent,
 			defaultScheme,
 		);
 		expect(lines).toHaveLength(3);
@@ -42,7 +40,6 @@ describe("resultToLines", () => {
 	it("converts error result with prefix", () => {
 		const lines = resultToLines(
 			{ type: "error", message: "bad input" },
-			accent,
 			defaultScheme,
 		);
 		expect(lines).toHaveLength(1);
@@ -53,7 +50,6 @@ describe("resultToLines", () => {
 	it("converts error with detail", () => {
 		const lines = resultToLines(
 			{ type: "error", message: "bad", detail: "extra info" },
-			accent,
 			defaultScheme,
 		);
 		expect(lines).toHaveLength(2);
@@ -67,7 +63,6 @@ describe("resultToLines", () => {
 				headers: ["Name", "Type"],
 				rows: [["AHDSR", "Modulator"], ["LFO", "Modulator"]],
 			},
-			accent,
 			defaultScheme,
 		);
 		// header + divider + 2 data rows
@@ -88,7 +83,6 @@ describe("resultToLines", () => {
 					],
 				},
 			},
-			accent,
 			defaultScheme,
 		);
 		expect(lines.length).toBeGreaterThanOrEqual(4);
@@ -97,8 +91,16 @@ describe("resultToLines", () => {
 	});
 
 	it("returns empty array for empty result", () => {
-		const lines = resultToLines({ type: "empty" }, accent, defaultScheme);
+		const lines = resultToLines({ type: "empty" }, defaultScheme);
 		expect(lines).toHaveLength(0);
+	});
+
+	it("result lines have no border color", () => {
+		const lines = resultToLines(
+			{ type: "text", content: "test" },
+			defaultScheme,
+		);
+		expect(lines[0].borderColor).toBeUndefined();
 	});
 });
 

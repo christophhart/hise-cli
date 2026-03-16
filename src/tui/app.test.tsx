@@ -86,4 +86,39 @@ describe("App", () => {
 
 		instance.unmount();
 	});
+
+	it("shows scroll hint when content exceeds viewport", async () => {
+		const mock = new MockHiseConnection();
+		// Register /help to produce multi-line output
+		mock.onPost("/api/repl", () => ({
+			success: true as const,
+			result: "ok",
+			value: "result",
+			logs: [],
+			errors: [],
+		}));
+
+		const instance = render(
+			React.createElement(App, {
+				connection: mock,
+				scheme: defaultScheme,
+			}),
+		);
+
+		// Submit many commands to fill the output
+		for (let i = 0; i < 30; i++) {
+			for (const ch of `/help`) {
+				instance.stdin.write(ch);
+			}
+			instance.stdin.write("\r");
+			await new Promise((r) => setTimeout(r, 20));
+		}
+		await new Promise((r) => setTimeout(r, 200));
+
+		const frame = instance.lastFrame() ?? "";
+		// StatusBar should show "live" when at bottom
+		expect(frame).toContain("live");
+
+		instance.unmount();
+	});
 });

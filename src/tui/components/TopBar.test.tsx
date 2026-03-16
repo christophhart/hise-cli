@@ -12,7 +12,6 @@ describe("TopBar", () => {
 			React.createElement(TopBar, {
 				modeLabel: "root",
 				modeAccent: "",
-				projectName: null,
 				connectionStatus: "connected",
 				scheme: defaultScheme,
 				columns: 80,
@@ -28,7 +27,6 @@ describe("TopBar", () => {
 			React.createElement(TopBar, {
 				modeLabel: "builder",
 				modeAccent: "#fd971f",
-				projectName: "MyProject",
 				connectionStatus: "connected",
 				scheme: defaultScheme,
 				columns: 80,
@@ -36,7 +34,6 @@ describe("TopBar", () => {
 		);
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("[builder]");
-		expect(frame).toContain("MyProject");
 		instance.unmount();
 	});
 
@@ -45,7 +42,6 @@ describe("TopBar", () => {
 			React.createElement(TopBar, {
 				modeLabel: "root",
 				modeAccent: "",
-				projectName: "TestProject",
 				connectionStatus: "connected",
 				scheme: defaultScheme,
 				columns: 80,
@@ -53,23 +49,6 @@ describe("TopBar", () => {
 		);
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).not.toContain("[root]");
-		expect(frame).toContain("TestProject");
-		instance.unmount();
-	});
-
-	it("shows connecting when no project name", () => {
-		const instance = render(
-			React.createElement(TopBar, {
-				modeLabel: "root",
-				modeAccent: "",
-				projectName: null,
-				connectionStatus: "connected",
-				scheme: defaultScheme,
-				columns: 80,
-			}),
-		);
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("connecting...");
 		instance.unmount();
 	});
 
@@ -78,7 +57,6 @@ describe("TopBar", () => {
 			React.createElement(TopBar, {
 				modeLabel: "root",
 				modeAccent: "",
-				projectName: null,
 				connectionStatus: "error",
 				scheme: defaultScheme,
 				columns: 80,

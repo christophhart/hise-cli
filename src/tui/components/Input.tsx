@@ -93,11 +93,24 @@ export const Input = React.memo(function Input({
 		setValue("");
 	}, [value, disabled, addToHistory, onSubmit]);
 
+	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
+	// the leading \x1b from unrecognized CSI sequences, so mouse events
+	// arrive as input strings like "[<64;15;10M" or "[<0;15;10m".
+	// We also match the full form in case the escape isn't stripped.
+	const MOUSE_SEQ_RE = /^\[?<\d+;\d+;\d+[Mm]$/;
+
 	useInput((input, key) => {
 		if (disabled) return;
 
+		if (key.escape) return;
+
 		if (key.return) {
 			handleSubmit();
+			return;
+		}
+
+		// Shift+arrows are used for scrolling in the App component
+		if (key.shift && (key.upArrow || key.downArrow)) {
 			return;
 		}
 
@@ -118,38 +131,55 @@ export const Input = React.memo(function Input({
 			return;
 		}
 
+		// Skip navigation keys handled by the App component
+		if (key.pageUp || key.pageDown || key.home || key.end) {
+			return;
+		}
+
 		// Regular character input
 		if (input && !key.ctrl && !key.meta) {
+			// Reject control characters
+			const code = input.charCodeAt(0);
+			if (code < 0x20 || code === 0x7f) return;
+
+			// Filter mouse escape sequences. When xterm mouse reporting is
+			// enabled, SGR mouse events (\x1b[<Cb;Cx;CyM) arrive on stdin.
+			// Ink's useInput strips the leading \x1b and passes the rest as
+			// input text (e.g. "[<64;15;10M"). Reject these.
+			if (MOUSE_SEQ_RE.test(input)) return;
+
 			setValue((v) => v + input);
 		}
 	});
 
 	// Build prompt
+	const PAD = "  "; // 2 chars horizontal padding
 	const isRoot = modeLabel === "root";
 	const promptColor = isRoot ? scheme.foreground.default : modeAccent;
 	const promptPrefix = isRoot ? "" : `[${modeLabel}] `;
 	const promptChar = "> ";
 	const promptWidth = promptPrefix.length + promptChar.length;
 
-	// Separator line
-	const separatorChar = "\u2500"; // ─
-	const separator = separatorChar.repeat(columns);
-
 	// Cursor indicator
 	const cursor = disabled ? "" : "\u2588"; // █
 
 	// Content for the input line
-	const maxInputWidth = Math.max(0, columns - promptWidth - 2); // 2 for padding
+	const maxInputWidth = Math.max(0, columns - promptWidth - PAD.length * 2 - 1); // pad each side + cursor
 	let displayValue = value;
 	if (displayValue.length > maxInputWidth) {
 		displayValue = displayValue.slice(displayValue.length - maxInputWidth);
 	}
 
+	// Padding to fill the input row
+	const inputContentWidth = promptWidth + displayValue.length + (disabled ? "waiting for response...".length : 1); // 1 for cursor
+	const inputPadRight = Math.max(0, columns - PAD.length * 2 - inputContentWidth);
+
 	return (
 		<Box flexDirection="column">
-			<Text color={scheme.foreground.muted}>{separator}</Text>
+			<Text backgroundColor={scheme.backgrounds.raised}>{" ".repeat(columns)}</Text>
 			<Box>
 				<Text backgroundColor={scheme.backgrounds.raised}>
+					<Text>{PAD}</Text>
 					{promptPrefix ? (
 						<Text color={scheme.foreground.muted}>{promptPrefix}</Text>
 					) : null}
@@ -159,7 +189,8 @@ export const Input = React.memo(function Input({
 					) : (
 						<Text color={scheme.foreground.bright}>{displayValue}{cursor}</Text>
 					)}
-					<Text>{" ".repeat(Math.max(0, columns - promptWidth - displayValue.length - 1))}</Text>
+					<Text>{" ".repeat(inputPadRight)}</Text>
+					<Text>{PAD}</Text>
 				</Text>
 			</Box>
 			<Text backgroundColor={scheme.backgrounds.raised}>{" ".repeat(columns)}</Text>

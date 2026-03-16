@@ -7,7 +7,6 @@ import { brand, statusColor, statusDot, type ColorScheme, type ConnectionStatus 
 export interface TopBarProps {
 	modeLabel: string;
 	modeAccent: string;
-	projectName: string | null;
 	connectionStatus: ConnectionStatus;
 	scheme: ColorScheme;
 	columns: number;
@@ -16,7 +15,6 @@ export interface TopBarProps {
 export const TopBar = React.memo(function TopBar({
 	modeLabel,
 	modeAccent,
-	projectName,
 	connectionStatus,
 	scheme,
 	columns,
@@ -32,11 +30,10 @@ export const TopBar = React.memo(function TopBar({
 	const rightWidth = rightContent.length;
 
 	// Build the left side content pieces
+	const PAD = "  "; // 2 chars horizontal padding
 	const brandText = "HISE CLI";
-	// Estimate content width for padding
 	const modeText = modeDisplay ? `  ${modeDisplay}` : "";
-	const projectText = projectName ? `  ${projectName}` : "  connecting...";
-	const leftContentWidth = brandText.length + modeText.length + projectText.length;
+	const leftContentWidth = PAD.length + brandText.length + modeText.length;
 
 	// Padding to fill the row
 	const padWidth = Math.max(0, columns - leftContentWidth - rightWidth);
@@ -44,13 +41,11 @@ export const TopBar = React.memo(function TopBar({
 	return (
 		<Box>
 			<Text backgroundColor={scheme.backgrounds.darker}>
+				<Text>{PAD}</Text>
 				<Text color={brand.signal} bold>{brandText}</Text>
 				{modeDisplay ? (
 					<Text color={modeAccent} bold>{modeText}</Text>
 				) : null}
-				<Text color={projectName ? scheme.foreground.default : scheme.foreground.muted}>
-					{projectText}
-				</Text>
 				<Text>{" ".repeat(padWidth)}</Text>
 				<Text color={dotColor}>{rightContent}</Text>
 			</Text>
