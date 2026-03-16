@@ -7,6 +7,11 @@ import { App } from "./app.js";
 import { MockHiseConnection } from "../engine/hise.js";
 import { defaultScheme } from "./theme.js";
 
+// Strip ANSI escape codes for plain text assertions
+function stripAnsi(s: string): string {
+	return s.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 describe("App", () => {
 	it("renders the full shell with all regions", () => {
 		const mock = new MockHiseConnection();
@@ -18,18 +23,19 @@ describe("App", () => {
 		);
 
 		const frame = instance.lastFrame() ?? "";
+		const plain = stripAnsi(frame);
 
 		// TopBar: branding
-		expect(frame).toContain("HISE CLI");
+		expect(plain).toContain("HISE CLI");
 
 		// Output: empty state
-		expect(frame).toContain("/help");
+		expect(plain).toContain("/help");
 
 		// Input: prompt
-		expect(frame).toContain("> ");
+		expect(plain).toContain(">");
 
 		// StatusBar: connection
-		expect(frame).toContain("connected");
+		expect(plain).toContain("connected");
 
 		instance.unmount();
 	});
@@ -43,9 +49,10 @@ describe("App", () => {
 		);
 
 		const frame = instance.lastFrame() ?? "";
-		// Root mode: just "> " without mode label
-		expect(frame).toContain("> ");
-		expect(frame).not.toContain("[root]");
+		const plain = stripAnsi(frame);
+		// Root mode: just ">" without mode label
+		expect(plain).toContain(">");
+		expect(plain).not.toContain("[root]");
 
 		instance.unmount();
 	});

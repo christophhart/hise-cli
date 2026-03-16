@@ -136,6 +136,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		result: CompletionResult;
 		selectedIndex: number;
 		visible: boolean;
+		ghostText?: string;
 	} | null>(null);
 	const outputRef = useRef<DOMElement>(null);
 
@@ -189,10 +190,6 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			scrollBy(-outputHeight);
 		} else if (key.pageDown) {
 			scrollBy(outputHeight);
-		} else if (key.home) {
-			scrollToTop();
-		} else if (key.end) {
-			scrollToBottom();
 		} else if (key.shift && key.upArrow) {
 			scrollBy(-1);
 		} else if (key.shift && key.downArrow) {
@@ -416,7 +413,25 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 
 	// ── Completion handlers ────────────────────────────────────────
 
-	const handleInputValueChange = useCallback((value: string) => {
+	// Compute ghost text from the current input value and completion result.
+	// Extracted as a pure helper so it can be called from multiple places
+	// (value change, selection change) with the same input value, avoiding
+	// the stale-ref timing bug from queueMicrotask.
+	const computeGhostText = useCallback(
+		(value: string, result: CompletionResult, selectedIndex: number): string | undefined => {
+			const item = result.items[selectedIndex];
+			if (!item) return undefined;
+			const insertText = item.insertText ?? item.label;
+			const prefix = value.slice(result.from);
+			if (insertText.toLowerCase().startsWith(prefix.toLowerCase())) {
+				return insertText.slice(prefix.length);
+			}
+			return undefined;
+		},
+		[],
+	);
+
+	const handleInputValueChange = useCallback((value: string, cursorPos: number) => {
 		if (overlayData) return; // Don't complete while overlay is visible
 
 		if (value.length < 1) {
@@ -424,17 +439,26 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			return;
 		}
 
-		const result = session.complete(value, value.length);
+		// Only show completions when cursor is at end of input
+		// (editing mid-string should not trigger the popup)
+		if (cursorPos < value.length) {
+			setCompletionState(null);
+			return;
+		}
+
+		const result = session.complete(value, cursorPos);
 		if (result.items.length > 0) {
+			const ghostText = computeGhostText(value, result, 0);
 			setCompletionState({
 				result,
 				selectedIndex: 0,
-				visible: false, // Ghost only until Tab
+				visible: true,
+				ghostText,
 			});
 		} else {
 			setCompletionState(null);
 		}
-	}, [session, overlayData]);
+	}, [session, overlayData, computeGhostText]);
 
 	const handleTab = useCallback(() => {
 		if (!completionState) {
@@ -448,21 +472,15 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					// Single match — accept immediately
 					acceptCompletion(result.items[0], result);
 				} else {
+					const ghost = computeGhostText(value, result, 0);
 					setCompletionState({
 						result,
 						selectedIndex: 0,
 						visible: true,
+						ghostText: ghost,
 					});
 				}
 			}
-			return;
-		}
-
-		if (!completionState.visible) {
-			// Ghost text shown — Tab opens popup
-			setCompletionState((prev) =>
-				prev ? { ...prev, visible: true } : null,
-			);
 			return;
 		}
 
@@ -471,7 +489,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		if (item) {
 			acceptCompletion(item, completionState.result);
 		}
-	}, [completionState, session]);
+	}, [completionState, session, computeGhostText]);
 
 	const acceptCompletion = useCallback((item: CompletionItem, result: CompletionResult) => {
 		const handle = inputHandleRef.current;
@@ -486,10 +504,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	}, []);
 
 	const handleCompletionSelect = useCallback((index: number) => {
-		setCompletionState((prev) =>
-			prev ? { ...prev, selectedIndex: index } : null,
-		);
-	}, []);
+		setCompletionState((prev) => {
+			if (!prev) return null;
+			const value = inputHandleRef.current?.getValue() ?? "";
+			const ghost = computeGhostText(value, prev.result, index);
+			return { ...prev, selectedIndex: index, ghostText: ghost };
+		});
+	}, [computeGhostText]);
 
 	const handleCompletionAccept = useCallback((item: CompletionItem) => {
 		if (completionState) {
@@ -501,23 +522,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		setCompletionState(null);
 	}, []);
 
-	// Ghost text: show remainder of top candidate after what's typed
-	const ghostText = React.useMemo(() => {
-		if (!completionState || completionState.result.items.length === 0) {
-			return undefined;
-		}
-		const item = completionState.result.items[completionState.selectedIndex];
-		const insertText = item.insertText ?? item.label;
-		const handle = inputHandleRef.current;
-		if (!handle) return undefined;
-
-		const value = handle.getValue();
-		const prefix = value.slice(completionState.result.from);
-		if (insertText.toLowerCase().startsWith(prefix.toLowerCase())) {
-			return insertText.slice(prefix.length);
-		}
-		return undefined;
-	}, [completionState]);
+	// Ghost text: read from completionState (computed at the same time as
+	// the completion result, so it is always in sync with the typed value)
+	const ghostText = completionState?.ghostText;
 
 	return (
 		<ThemeProvider scheme={scheme}>
@@ -563,6 +570,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					ghostText={ghostText}
 					onValueChange={handleInputValueChange}
 					onTab={handleTab}
+					completionVisible={completionState?.visible ?? false}
 					inputRef={inputHandleRef}
 				/>
 				<StatusBar

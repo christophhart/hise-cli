@@ -216,6 +216,20 @@ export function darkenHex(hex: string, factor: number): string {
 }
 
 /**
+ * Lighten a hex color by blending toward white.
+ * amount 0.0 = unchanged, 1.0 = pure white.
+ * Each channel: ch + (255 - ch) * amount.
+ */
+export function lightenHex(hex: string, amount: number): string {
+	const [r, g, b] = parseHex(hex);
+	return toHex(
+		r + (255 - r) * amount,
+		g + (255 - g) * amount,
+		b + (255 - b) * amount,
+	);
+}
+
+/**
  * Darken all colors in a ColorScheme.
  * Returns a new scheme with every background and foreground color darkened.
  */

@@ -93,3 +93,19 @@ by rendering output directly.
 - Classes are used sparingly (`SetupLogger` is the main example)
 - Feature directories contain their own `App.tsx` as the feature root component
 - Constants are co-located at the top of the file or in shared modules (`theme.ts`)
+
+## Debugging
+
+### Key input logging
+
+Terminal emulators vary in what escape sequences they send for key combos
+(e.g. Ghostty sends Ctrl+A/E for fn+Left/Right instead of Home/End). To
+diagnose key mapping issues:
+
+1. Set `DEBUG_KEYS = true` in `src/tui/components/Input.tsx` (~line 207)
+2. `npm run build`
+3. Run the app, press the keys in question, then quit
+4. Inspect `debug-keys.log` (project root, gitignored) — each line shows
+   the raw input, hex codes, and all Ink `key.*` flags that fired
+
+Flip `DEBUG_KEYS` back to `false` before committing.

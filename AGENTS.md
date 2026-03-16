@@ -96,3 +96,5 @@ see [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
 - **ESM only** — `.js` extensions on local imports, `node:` prefix on builtins
   (except in `src/engine/` where `node:` imports are forbidden)
 - **Test files**: colocated next to source (`session.test.ts` next to `session.ts`)
+- **Key input debugging**: flip `DEBUG_KEYS` in `src/tui/components/Input.tsx`,
+  rebuild, inspect `debug-keys.log`. See [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Debugging

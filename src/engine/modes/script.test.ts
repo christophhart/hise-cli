@@ -33,7 +33,7 @@ describe("ScriptMode", () => {
 		const mode = new ScriptMode();
 		expect(mode.id).toBe("script");
 		expect(mode.name).toBe("Script");
-		expect(mode.accent).toBe("#7aa2f7");
+		expect(mode.accent).toBe("#C65638");
 	});
 
 	it("defaults to Interface processor", () => {

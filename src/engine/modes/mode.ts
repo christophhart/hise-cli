@@ -6,8 +6,8 @@ import type { CommandResult } from "../result.js";
 export const MODE_ACCENTS = {
 	root: "", // uses foreground.default
 	builder: "#fd971f",
-	script: "#7aa2f7",
-	dsp: "#66d9ef",
+	script: "#C65638",
+	dsp: "#3a6666",
 	sampler: "#a6e22e",
 	inspect: "#ae81ff",
 	project: "#e6db74",

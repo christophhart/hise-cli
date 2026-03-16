@@ -9,6 +9,7 @@ import {
 	statusDot,
 	wizardAccent,
 	darkenHex,
+	lightenHex,
 	darkenScheme,
 	darkenBrand,
 	type ColorScheme,
@@ -108,6 +109,34 @@ describe("darkenHex", () => {
 		// G: 0x28 * 0.35 = 40 * 0.35 = 14 → 0x0e
 		// B: 0x22 * 0.35 = 34 * 0.35 ≈ 12 → 0x0c
 		expect(result).toBe("#0e0e0c");
+	});
+});
+
+describe("lightenHex", () => {
+	it("lightens black to 30% white", () => {
+		// Each channel: 0 + (255 - 0) * 0.3 = 76.5 → 77 = 0x4d
+		expect(lightenHex("#000000", 0.3)).toBe("#4d4d4d");
+	});
+
+	it("white stays white at any amount", () => {
+		expect(lightenHex("#ffffff", 0.3)).toBe("#ffffff");
+		expect(lightenHex("#ffffff", 1.0)).toBe("#ffffff");
+	});
+
+	it("amount 0.0 preserves the color", () => {
+		expect(lightenHex("#ff8040", 0.0)).toBe("#ff8040");
+	});
+
+	it("amount 1.0 produces white", () => {
+		expect(lightenHex("#ff8040", 1.0)).toBe("#ffffff");
+	});
+
+	it("lightens a dark raised bg", () => {
+		// Monokai raised: #32342d
+		// R: 0x32=50, 50 + (255-50)*0.3 = 50 + 61.5 = 112 → 0x70
+		// G: 0x34=52, 52 + (255-52)*0.3 = 52 + 60.9 = 113 → 0x71
+		// B: 0x2d=45, 45 + (255-45)*0.3 = 45 + 63.0 = 108 → 0x6c
+		expect(lightenHex("#32342d", 0.3)).toBe("#70716c");
 	});
 });
 
