@@ -12,6 +12,7 @@ import React from "react";
 import { Box, Text } from "ink";
 import type { CommandResult, TreeNode } from "../../engine/result.js";
 import { brand, darkenHex, type ColorScheme } from "../theme.js";
+import { useTheme } from "../theme-context.js";
 
 // ── Output line model ───────────────────────────────────────────────
 
@@ -208,7 +209,6 @@ export interface OutputProps {
 	lines: OutputLine[];
 	scrollOffset: number;
 	viewportHeight: number;
-	scheme: ColorScheme;
 	columns: number;
 }
 
@@ -216,9 +216,9 @@ export const Output = React.memo(function Output({
 	lines,
 	scrollOffset,
 	viewportHeight,
-	scheme,
 	columns,
 }: OutputProps) {
+	const { scheme } = useTheme();
 	if (lines.length === 0) {
 		const emptyRows: React.ReactNode[] = [];
 		const midRow = Math.floor(viewportHeight / 2);

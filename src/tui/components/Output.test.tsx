@@ -11,8 +11,10 @@ import {
 	type OutputLine,
 } from "./Output.js";
 import { defaultScheme } from "../theme.js";
+import { ThemeProvider } from "../theme-context.js";
 
 const accent = "#fd971f"; // builder orange
+const w = (el: React.ReactElement) => <ThemeProvider scheme={defaultScheme}>{el}</ThemeProvider>;
 
 // ── resultToLines tests ─────────────────────────────────────────────
 
@@ -120,15 +122,9 @@ describe("commandEchoLine", () => {
 
 describe("Output component", () => {
 	it("shows empty state when no lines", () => {
-		const instance = render(
-			React.createElement(Output, {
-				lines: [],
-				scrollOffset: 0,
-				viewportHeight: 10,
-				scheme: defaultScheme,
-				columns: 80,
-			}),
-		);
+		const instance = render(w(
+			<Output lines={[]} scrollOffset={0} viewportHeight={10} columns={80} />,
+		));
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("/help");
 		instance.unmount();
@@ -139,15 +135,9 @@ describe("Output component", () => {
 			{ text: "first line", color: defaultScheme.foreground.bright },
 			{ text: "second line", color: defaultScheme.foreground.bright },
 		];
-		const instance = render(
-			React.createElement(Output, {
-				lines,
-				scrollOffset: 0,
-				viewportHeight: 10,
-				scheme: defaultScheme,
-				columns: 80,
-			}),
-		);
+		const instance = render(w(
+			<Output lines={lines} scrollOffset={0} viewportHeight={10} columns={80} />,
+		));
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("first line");
 		expect(frame).toContain("second line");
@@ -160,15 +150,9 @@ describe("Output component", () => {
 			color: defaultScheme.foreground.bright,
 		}));
 
-		const instance = render(
-			React.createElement(Output, {
-				lines,
-				scrollOffset: 20,
-				viewportHeight: 10,
-				scheme: defaultScheme,
-				columns: 80,
-			}),
-		);
+		const instance = render(w(
+			<Output lines={lines} scrollOffset={20} viewportHeight={10} columns={80} />,
+		));
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("line-20");
 		expect(frame).toContain("line-29");
@@ -183,17 +167,10 @@ describe("Output component", () => {
 			color: defaultScheme.foreground.bright,
 		}));
 
-		const instance = render(
-			React.createElement(Output, {
-				lines,
-				scrollOffset: 0,
-				viewportHeight: 10,
-				scheme: defaultScheme,
-				columns: 80,
-			}),
-		);
+		const instance = render(w(
+			<Output lines={lines} scrollOffset={0} viewportHeight={10} columns={80} />,
+		));
 		const frame = instance.lastFrame() ?? "";
-		// Should contain scrollbar characters
 		expect(frame).toMatch(/[\u2588\u2502]/); // █ or │
 		instance.unmount();
 	});

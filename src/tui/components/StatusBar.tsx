@@ -2,29 +2,27 @@
 
 import React from "react";
 import { Box, Text } from "ink";
-import type { ColorScheme, ConnectionStatus } from "../theme.js";
-import { statusColor, statusDot } from "../theme.js";
+import type { ConnectionStatus } from "../theme.js";
+import { statusDot } from "../theme.js";
+import { useTheme } from "../theme-context.js";
 
 export interface StatusBarProps {
 	connectionStatus: ConnectionStatus;
 	modeHint: string;
 	scrollInfo: string;
-	scheme: ColorScheme;
 	columns: number;
-	/** Override status dot color */
-	statusColorOverride?: string;
 }
 
 export const StatusBar = React.memo(function StatusBar({
 	connectionStatus,
 	modeHint,
 	scrollInfo,
-	scheme,
 	columns,
-	statusColorOverride,
 }: StatusBarProps) {
+	const { scheme, statusColor } = useTheme();
+
 	const dot = statusDot(connectionStatus);
-	const dotColor = statusColorOverride ?? statusColor(connectionStatus);
+	const dotColor = statusColor(connectionStatus);
 	const statusLabel = connectionStatus === "connected" ? "connected"
 		: connectionStatus === "warning" ? "degraded"
 		: "disconnected";

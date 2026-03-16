@@ -2,7 +2,7 @@
 
 import React, { useCallback, useImperativeHandle, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
-import type { ColorScheme } from "../theme.js";
+import { useTheme } from "../theme-context.js";
 
 // ── Command history hook (extracted from legacy src/hooks/useCommands.ts) ──
 
@@ -69,7 +69,6 @@ export interface InputHandle {
 export interface InputProps {
 	modeLabel: string;
 	modeAccent: string;
-	scheme: ColorScheme;
 	columns: number;
 	disabled?: boolean;
 	onSubmit: (value: string) => void;
@@ -86,7 +85,6 @@ export interface InputProps {
 export const Input = React.memo(function Input({
 	modeLabel,
 	modeAccent,
-	scheme,
 	columns,
 	disabled = false,
 	onSubmit,
@@ -95,6 +93,7 @@ export const Input = React.memo(function Input({
 	onTab,
 	inputRef,
 }: InputProps) {
+	const { scheme } = useTheme();
 	const [value, setValue] = useState("");
 	const {
 		addToHistory,

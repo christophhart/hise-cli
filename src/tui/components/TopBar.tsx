@@ -2,32 +2,26 @@
 
 import React from "react";
 import { Box, Text } from "ink";
-import { brand, statusColor, statusDot, type BrandColors, type ColorScheme, type ConnectionStatus } from "../theme.js";
+import { statusDot, type ConnectionStatus } from "../theme.js";
+import { useTheme } from "../theme-context.js";
 
 export interface TopBarProps {
 	modeLabel: string;
 	modeAccent: string;
 	connectionStatus: ConnectionStatus;
-	scheme: ColorScheme;
 	columns: number;
-	/** Override brand colors (used for dimmed overlay backdrop) */
-	brandOverride?: BrandColors;
-	/** Override status dot color */
-	statusColorOverride?: string;
 }
 
 export const TopBar = React.memo(function TopBar({
 	modeLabel,
 	modeAccent,
 	connectionStatus,
-	scheme,
 	columns,
-	brandOverride,
-	statusColorOverride,
 }: TopBarProps) {
+	const { scheme, brand, statusColor } = useTheme();
+
 	const dot = statusDot(connectionStatus);
-	const dotColor = statusColorOverride ?? statusColor(connectionStatus);
-	const brandSignal = brandOverride?.signal ?? brand.signal;
+	const dotColor = statusColor(connectionStatus);
 
 	// Mode label: [builder], [script:Interface], etc.
 	const modeDisplay = modeLabel === "root" ? "" : `[${modeLabel}]`;
@@ -49,7 +43,7 @@ export const TopBar = React.memo(function TopBar({
 		<Box>
 			<Text backgroundColor={scheme.backgrounds.darker}>
 				<Text>{PAD}</Text>
-				<Text color={brandSignal} bold>{brandText}</Text>
+				<Text color={brand.signal} bold>{brandText}</Text>
 				{modeDisplay ? (
 					<Text color={modeAccent} bold>{modeText}</Text>
 				) : null}

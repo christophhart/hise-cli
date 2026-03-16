@@ -32,11 +32,11 @@ import {
 	darkenHex,
 	darkenBrand,
 	darkenScheme,
-	statusColor,
-	type BrandColors,
+	statusColor as defaultStatusColor,
 	type ColorScheme,
 	type ConnectionStatus,
 } from "./theme.js";
+import { ThemeProvider } from "./theme-context.js";
 
 // ── Layout constants ────────────────────────────────────────────────
 
@@ -62,8 +62,7 @@ interface OverlaySnapshot {
 	dimScheme: ColorScheme;
 	dimOutputLines: OutputLine[];
 	dimModeAccent: string;
-	dimBrand: BrandColors;
-	dimStatusColor: string;
+	dimStatusColor: (status: ConnectionStatus) => string;
 }
 
 // ── App props ───────────────────────────────────────────────────────
@@ -336,8 +335,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					dimScheme,
 					dimOutputLines: darkenOutputLines(snapLines, DIM_FACTOR),
 					dimModeAccent: darkenHex(snapModeAccent, DIM_FACTOR),
-					dimBrand: darkenBrand(DIM_FACTOR),
-					dimStatusColor: darkenHex(statusColor(connectionStatus), DIM_FACTOR),
+					dimStatusColor: (status: ConnectionStatus) =>
+						darkenHex(defaultStatusColor(status), DIM_FACTOR),
 				};
 
 				// Show overlay
@@ -521,126 +520,123 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	}, [completionState]);
 
 	return (
-		<Box flexDirection="column" height={rows}>
-			<TopBar
-				modeLabel={modeLabel}
-				modeAccent={modeAccent}
-				connectionStatus={connectionStatus}
-				scheme={scheme}
-				columns={columns}
-			/>
-			<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
-			<Box ref={outputRef} flexDirection="column" flexGrow={1}>
-				<Output
-					lines={outputLines}
-					scrollOffset={scrollOffset}
-					viewportHeight={outputHeight}
-					scheme={scheme}
+		<ThemeProvider scheme={scheme}>
+			<Box flexDirection="column" height={rows}>
+				<TopBar
+					modeLabel={modeLabel}
+					modeAccent={modeAccent}
+					connectionStatus={connectionStatus}
 					columns={columns}
 				/>
+				<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
+				<Box ref={outputRef} flexDirection="column" flexGrow={1}>
+					<Output
+						lines={outputLines}
+						scrollOffset={scrollOffset}
+						viewportHeight={outputHeight}
+						columns={columns}
+					/>
+				</Box>
+				<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
+				{completionState?.visible && (
+					<CompletionPopup
+						items={completionState.result.items}
+						selectedIndex={completionState.selectedIndex}
+						onSelect={handleCompletionSelect}
+						onAccept={handleCompletionAccept}
+						onDismiss={handleCompletionDismiss}
+						leftOffset={completionState.result.from + (modeLabel === "root" ? 4 : modeLabel.length + 7)}
+						scheme={scheme}
+						rows={rows}
+						columns={columns}
+					/>
+				)}
+				<Input
+					modeLabel={modeLabel}
+					modeAccent={modeAccent}
+					columns={columns}
+					disabled={disabled || overlayData !== null}
+					onSubmit={(v) => {
+						setCompletionState(null);
+						void handleSubmit(v);
+					}}
+					ghostText={ghostText}
+					onValueChange={handleInputValueChange}
+					onTab={handleTab}
+					inputRef={inputHandleRef}
+				/>
+				<StatusBar
+					connectionStatus={connectionStatus}
+					modeHint={modeHint}
+					scrollInfo={scrollInfo}
+					columns={columns}
+				/>
+				{overlayData && snapshotRef.current && (() => {
+					const snap = snapshotRef.current!;
+					return (
+						<>
+							{/* Dimmed snapshot — wrapped in ThemeProvider with darkened colors */}
+							<ThemeProvider
+								scheme={snap.dimScheme}
+								brand={darkenBrand(DIM_FACTOR)}
+								statusColor={snap.dimStatusColor}
+							>
+								<Box
+									position="absolute"
+									marginLeft={0}
+									marginTop={0}
+									flexDirection="column"
+									height={rows}
+								>
+									<TopBar
+										modeLabel={snap.modeLabel}
+										modeAccent={snap.dimModeAccent}
+										connectionStatus={snap.connectionStatus}
+										columns={columns}
+									/>
+									<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
+										{" ".repeat(columns)}
+									</Text>
+									<Box flexDirection="column" height={outputHeight}>
+										<Output
+											lines={snap.dimOutputLines}
+											scrollOffset={snap.scrollOffset}
+											viewportHeight={outputHeight}
+											columns={columns}
+										/>
+									</Box>
+									<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
+										{" ".repeat(columns)}
+									</Text>
+									<Input
+										modeLabel={snap.modeLabel}
+										modeAccent={snap.dimModeAccent}
+										columns={columns}
+										disabled={true}
+										onSubmit={() => {}}
+									/>
+									<StatusBar
+										connectionStatus={snap.connectionStatus}
+										modeHint={snap.modeHint}
+										scrollInfo={snap.scrollInfo}
+										columns={columns}
+									/>
+								</Box>
+							</ThemeProvider>
+							<Overlay
+								title={overlayData.title}
+								accent={modeAccent}
+								lines={overlayData.lines}
+								footer={overlayData.footer}
+								onClose={handleOverlayClose}
+								columns={columns}
+								rows={rows}
+								scheme={scheme}
+							/>
+						</>
+					);
+				})()}
 			</Box>
-			<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
-			{completionState?.visible && (
-				<CompletionPopup
-					items={completionState.result.items}
-					selectedIndex={completionState.selectedIndex}
-					onSelect={handleCompletionSelect}
-					onAccept={handleCompletionAccept}
-					onDismiss={handleCompletionDismiss}
-					leftOffset={completionState.result.from + (modeLabel === "root" ? 4 : modeLabel.length + 7)}
-					scheme={scheme}
-					rows={rows}
-					columns={columns}
-				/>
-			)}
-			<Input
-				modeLabel={modeLabel}
-				modeAccent={modeAccent}
-				scheme={scheme}
-				columns={columns}
-				disabled={disabled || overlayData !== null}
-				onSubmit={(v) => {
-					setCompletionState(null);
-					void handleSubmit(v);
-				}}
-				ghostText={ghostText}
-				onValueChange={handleInputValueChange}
-				onTab={handleTab}
-				inputRef={inputHandleRef}
-			/>
-			<StatusBar
-				connectionStatus={connectionStatus}
-				modeHint={modeHint}
-				scrollInfo={scrollInfo}
-				scheme={scheme}
-				columns={columns}
-			/>
-			{overlayData && snapshotRef.current && (() => {
-				const snap = snapshotRef.current!;
-				return (
-					<>
-						{/* Dimmed snapshot of the full UI behind the overlay */}
-						<Box
-							position="absolute"
-							marginLeft={0}
-							marginTop={0}
-							flexDirection="column"
-							height={rows}
-						>
-							<TopBar
-								modeLabel={snap.modeLabel}
-								modeAccent={snap.dimModeAccent}
-								connectionStatus={snap.connectionStatus}
-								scheme={snap.dimScheme}
-								columns={columns}
-								brandOverride={snap.dimBrand}
-								statusColorOverride={snap.dimStatusColor}
-							/>
-							<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
-								{" ".repeat(columns)}
-							</Text>
-							<Box flexDirection="column" height={outputHeight}>
-								<Output
-									lines={snap.dimOutputLines}
-									scrollOffset={snap.scrollOffset}
-									viewportHeight={outputHeight}
-									scheme={snap.dimScheme}
-									columns={columns}
-								/>
-							</Box>
-							<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
-								{" ".repeat(columns)}
-							</Text>
-							<Input
-								modeLabel={snap.modeLabel}
-								modeAccent={snap.dimModeAccent}
-								scheme={snap.dimScheme}
-								columns={columns}
-								disabled={true}
-								onSubmit={() => {}}
-							/>
-							<StatusBar
-								connectionStatus={snap.connectionStatus}
-								modeHint={snap.modeHint}
-								scrollInfo={snap.scrollInfo}
-								scheme={snap.dimScheme}
-								columns={columns}
-								statusColorOverride={snap.dimStatusColor}
-							/>
-						</Box>
-						<Overlay
-							title={overlayData.title}
-							accent={modeAccent}
-							lines={overlayData.lines}
-							footer={overlayData.footer}
-							onClose={handleOverlayClose}
-							columns={columns}
-							rows={rows}
-							scheme={scheme}
-						/>
-					</>
-				);
-			})()}
-		</Box>
+		</ThemeProvider>
 	);
 }
