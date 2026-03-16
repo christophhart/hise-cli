@@ -11,6 +11,10 @@ export type TapeCommand =
 	| SleepCommand
 	| WaitCommand
 	| ExpectCommand
+	| ExpectModeCommand
+	| ExpectPromptCommand
+	| SetConnectionCommand
+	| SetMockResponseCommand
 	| SnapshotCommand
 	| AnnotationCommand
 	| HideCommand
@@ -76,6 +80,27 @@ export interface ExpectCommand {
 	type: "Expect";
 	pattern: string;
 	region?: "output" | "topbar" | "statusbar" | "input";
+}
+
+export interface ExpectModeCommand {
+	type: "ExpectMode";
+	mode: string;
+}
+
+export interface ExpectPromptCommand {
+	type: "ExpectPrompt";
+	prompt: string;
+}
+
+export interface SetConnectionCommand {
+	type: "SetConnection";
+	connection: "mock" | "live";
+}
+
+export interface SetMockResponseCommand {
+	type: "SetMockResponse";
+	endpoint: string;
+	response: string;
 }
 
 export interface SnapshotCommand {

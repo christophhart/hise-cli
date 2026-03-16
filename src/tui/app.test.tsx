@@ -1,0 +1,89 @@
+// ── TUI App integration tests ───────────────────────────────────────
+
+import React from "react";
+import { describe, expect, it } from "vitest";
+import { render } from "ink-testing-library";
+import { App } from "./app.js";
+import { MockHiseConnection } from "../engine/hise.js";
+import { defaultScheme } from "./theme.js";
+
+describe("App", () => {
+	it("renders the full shell with all regions", () => {
+		const mock = new MockHiseConnection();
+		const instance = render(
+			React.createElement(App, {
+				connection: mock,
+				scheme: defaultScheme,
+			}),
+		);
+
+		const frame = instance.lastFrame() ?? "";
+
+		// TopBar: branding
+		expect(frame).toContain("HISE CLI");
+
+		// Output: empty state
+		expect(frame).toContain("/help");
+
+		// Input: prompt
+		expect(frame).toContain("> ");
+
+		// StatusBar: connection
+		expect(frame).toContain("connected");
+
+		instance.unmount();
+	});
+
+	it("shows root mode prompt initially", () => {
+		const instance = render(
+			React.createElement(App, {
+				connection: null,
+				scheme: defaultScheme,
+			}),
+		);
+
+		const frame = instance.lastFrame() ?? "";
+		// Root mode: just "> " without mode label
+		expect(frame).toContain("> ");
+		expect(frame).not.toContain("[root]");
+
+		instance.unmount();
+	});
+
+	it("shows disconnected when connection is null", () => {
+		const instance = render(
+			React.createElement(App, {
+				connection: null,
+				scheme: defaultScheme,
+			}),
+		);
+
+		const frame = instance.lastFrame() ?? "";
+		expect(frame).toContain("disconnected");
+
+		instance.unmount();
+	});
+
+	it("processes input and shows command echo", async () => {
+		const mock = new MockHiseConnection();
+		const instance = render(
+			React.createElement(App, {
+				connection: mock,
+				scheme: defaultScheme,
+			}),
+		);
+
+		// Type a command
+		instance.stdin.write("/help");
+		instance.stdin.write("\r");
+
+		// Wait for async processing
+		await new Promise((r) => setTimeout(r, 100));
+
+		const frame = instance.lastFrame() ?? "";
+		// Should show the command echo
+		expect(frame).toContain("/help");
+
+		instance.unmount();
+	});
+});

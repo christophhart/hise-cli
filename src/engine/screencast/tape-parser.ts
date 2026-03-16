@@ -68,6 +68,10 @@ function parseLine(line: string, _lineNum: number): LineResult {
 			return parseWait(line);
 		case "Expect":
 			return parseExpect(line);
+		case "ExpectMode":
+			return parseExpectMode(line);
+		case "ExpectPrompt":
+			return parseExpectPrompt(line);
 		case "Snapshot":
 			return parseSnapshot(parts);
 		case "Annotation":
@@ -113,6 +117,26 @@ function parseSet(parts: string[]): LineResult {
 		return { error: "Set requires a key and value" };
 	}
 	const key = parts[1];
+
+	// hise-cli extension: Set Connection "mock" / "live"
+	if (key === "Connection") {
+		const value = stripQuotesSimple(parts.slice(2).join(" "));
+		if (value !== "mock" && value !== "live") {
+			return { error: `Invalid connection type: ${value}. Use "mock" or "live".` };
+		}
+		return { command: { type: "SetConnection", connection: value } };
+	}
+
+	// hise-cli extension: Set MockResponse "/api/repl" {...}
+	if (key === "MockResponse") {
+		if (parts.length < 4) {
+			return { error: "Set MockResponse requires an endpoint and response JSON" };
+		}
+		const endpoint = stripQuotesSimple(parts[2]);
+		const response = parts.slice(3).join(" ");
+		return { command: { type: "SetMockResponse", endpoint, response } };
+	}
+
 	if (!SET_KEYS.has(key)) {
 		return { error: `Unknown Set key: ${key}` };
 	}
@@ -123,6 +147,13 @@ function parseSet(parts: string[]): LineResult {
 			value: parts.slice(2).join(" "),
 		},
 	};
+}
+
+function stripQuotesSimple(s: string): string {
+	if (s.startsWith('"') && s.endsWith('"')) {
+		return s.slice(1, -1);
+	}
+	return s;
 }
 
 function parseType(line: string): LineResult {
@@ -189,6 +220,24 @@ function parseExpect(line: string): LineResult {
 		| "input"
 		| undefined;
 	return { command: { type: "Expect", pattern, region } };
+}
+
+function parseExpectMode(line: string): LineResult {
+	const match = line.match(/^ExpectMode\s+"((?:[^"\\]|\\.)*)"\s*$/);
+	if (!match) {
+		return { error: "ExpectMode requires a quoted mode name" };
+	}
+	const mode = match[1].replace(/\\"/g, '"');
+	return { command: { type: "ExpectMode", mode } };
+}
+
+function parseExpectPrompt(line: string): LineResult {
+	const match = line.match(/^ExpectPrompt\s+"((?:[^"\\]|\\.)*)"\s*$/);
+	if (!match) {
+		return { error: "ExpectPrompt requires a quoted prompt string" };
+	}
+	const prompt = match[1].replace(/\\"/g, '"');
+	return { command: { type: "ExpectPrompt", prompt } };
 }
 
 function parseSnapshot(parts: string[]): LineResult {

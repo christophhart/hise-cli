@@ -8,6 +8,8 @@ import chalk from "chalk";
 import { render } from "ink";
 import React from "react";
 import { App as ReplApp } from "./app.js";
+import { App as TuiApp } from "./tui/app.js";
+import { HttpHiseConnection } from "./engine/hise.js";
 import { MainMenuApp, type MenuChoice } from "./menu/App.js";
 import { PIPE_PREFIX, connect, discoverPipes } from "./pipe.js";
 import { SetupApp } from "./setup/App.js";
@@ -206,13 +208,42 @@ function spawnHiseDebug(exePath: string): void {
 	}
 }
 
+// ── New TUI launch (HTTP REST API) ──────────────────────────────────
+
+async function probeHiseHttp(
+	host = "127.0.0.1",
+	port = 1900,
+	retries = 10,
+	intervalMs = 1000,
+): Promise<boolean> {
+	const connection = new HttpHiseConnection(host, port);
+	for (let i = 0; i < retries; i++) {
+		const alive = await connection.probe();
+		if (alive) return true;
+		if (i < retries - 1) {
+			await new Promise((r) => setTimeout(r, intervalMs));
+		}
+	}
+	return false;
+}
+
+async function launchNewTui(connection: HttpHiseConnection): Promise<void> {
+	const instance = render(
+		React.createElement(TuiApp, { connection }),
+		{
+			exitOnCtrlC: true,
+		},
+	);
+	await instance.waitUntilExit();
+}
+
 // ── Launch functions ────────────────────────────────────────────────
 
 async function launchRepl(
 	args: string[],
 	options: { skipLaunchPrompt?: boolean } = {}
 ): Promise<void> {
-	// If --pipe was explicitly given, use that directly (no auto-launch)
+	// If --pipe was explicitly given, use legacy pipe REPL directly
 	const pipeIndex = args.indexOf("--pipe");
 	const explicitPipe = pipeIndex >= 0 && args[pipeIndex + 1]
 		? args[pipeIndex + 1]
@@ -223,11 +254,29 @@ async function launchRepl(
 		return;
 	}
 
-	// Try to discover existing pipes
+	// 1. Probe HTTP REST API on localhost:1900 (new TUI path)
+	const connection = new HttpHiseConnection();
+	const httpAlive = await connection.probe();
+
+	if (httpAlive) {
+		await launchNewTui(connection);
+		return;
+	}
+
+	// 2. HISE may be starting — wait with retries (up to 10s)
+	console.log(chalk.dim("Probing HISE REST API on localhost:1900..."));
+	const httpReady = await probeHiseHttp("127.0.0.1", 1900, 10, 1000);
+
+	if (httpReady) {
+		const retryConnection = new HttpHiseConnection();
+		await launchNewTui(retryConnection);
+		return;
+	}
+
+	// 3. Fallback: try legacy named pipes
 	const pipes = discoverPipes();
 
 	if (pipes.length > 0) {
-		// Multiple pipes: same logic as before
 		if (pipes.length > 1 && !pipes.includes(PIPE_PREFIX)) {
 			console.log(chalk.cyan("Multiple HISE instances found:"));
 			for (const pipe of pipes) {
@@ -244,7 +293,7 @@ async function launchRepl(
 		return;
 	}
 
-	// No pipes found - offer to launch HISE Debug
+	// 4. No connection — offer to launch HISE Debug
 	const hisePath = findHiseDebug();
 
 	if (!hisePath) {
@@ -275,12 +324,27 @@ async function launchRepl(
 	console.log(chalk.dim("Starting HISE Debug..."));
 	spawnHiseDebug(hisePath);
 
-	process.stdout.write(chalk.dim("Waiting for REPL pipe"));
-	const pipeName = await waitForPipe(30_000, 500, () => {
-		process.stdout.write(chalk.dim("."));
-	});
+	// Wait for either HTTP or pipe connection
+	process.stdout.write(chalk.dim("Waiting for HISE"));
+	const httpOrPipe = await Promise.race([
+		probeHiseHttp("127.0.0.1", 1900, 30, 1000).then((ok) =>
+			ok ? ("http" as const) : null,
+		),
+		waitForPipe(30_000, 500, () => {
+			process.stdout.write(chalk.dim("."));
+		}).then((pipe) => (pipe ? ("pipe" as const) : null)),
+	]);
 
-	if (!pipeName) {
+	if (httpOrPipe === "http") {
+		console.log(chalk.green(" connected (HTTP)!"));
+		const newConnection = new HttpHiseConnection();
+		await launchNewTui(newConnection);
+	} else if (httpOrPipe === "pipe") {
+		console.log(chalk.green(" connected (pipe)!"));
+		const pipes = discoverPipes();
+		const pipeName = pipes.includes(PIPE_PREFIX) ? PIPE_PREFIX : pipes[0];
+		await connectAndRunRepl(pipeName);
+	} else {
 		console.log("");
 		console.error(
 			chalk.red("\nTimed out waiting for HISE to start (30s).")
@@ -290,9 +354,6 @@ async function launchRepl(
 		);
 		process.exit(1);
 	}
-
-	console.log(chalk.green(" connected!"));
-	await connectAndRunRepl(pipeName);
 }
 
 async function connectAndRunRepl(pipeName: string): Promise<void> {
