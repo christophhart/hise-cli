@@ -14,6 +14,10 @@ import type { CommandResult, TreeNode } from "../../engine/result.js";
 import { brand, darkenHex, type ColorScheme } from "../theme.js";
 import { useTheme } from "../theme-context.js";
 import { scrollbarChar } from "./scrollbar.js";
+import type { TokenSpan } from "../../engine/highlight/tokens.js";
+import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
+import { tokenize } from "../../engine/highlight/hisescript.js";
+import { tokenizeXml } from "../../engine/highlight/xml.js";
 
 // ── Output line model ───────────────────────────────────────────────
 
@@ -24,6 +28,9 @@ export interface OutputLine {
 	prefixColor?: string;
 	borderColor?: string;  // left border ▎ color (mode accent)
 	bgColor?: string;
+	/** Pre-computed syntax highlighting spans. When present, rendered as
+	 *  per-token colored <Text> elements instead of a single flat color. */
+	spans?: TokenSpan[];
 }
 
 export const MAX_HISTORY_LINES = 10000;
@@ -43,6 +50,9 @@ export function darkenOutputLines(
 		prefixColor: line.prefixColor ? darkenHex(line.prefixColor, factor) : undefined,
 		borderColor: line.borderColor ? darkenHex(line.borderColor, factor) : undefined,
 		bgColor: line.bgColor ? darkenHex(line.bgColor, factor) : undefined,
+		// Drop spans in dimmed lines — TOKEN_COLORS are static and can't be
+		// dimmed per-span. Falls back to the already-darkened flat color.
+		spans: undefined,
 	}));
 }
 
@@ -75,12 +85,25 @@ export function resultToLines(
 					}))
 					: []),
 			];
-		case "code":
-			// Pre-computed highlighting would go here; for now plain text
-			return result.content.split("\n").map((line) => ({
-				text: line,
-				color: scheme.foreground.bright,
-			}));
+		case "code": {
+			// Select tokenizer by language
+			const codeTokenizer = result.language === "xml"
+				? tokenizeXml
+				: (result.language === "hisescript" || result.language === "javascript")
+					? tokenize
+					: null;
+
+			return result.content.split("\n").map((line) => {
+				if (codeTokenizer && line.length > 0) {
+					return {
+						text: line,
+						color: scheme.foreground.bright,
+						spans: codeTokenizer(line),
+					};
+				}
+				return { text: line, color: scheme.foreground.bright };
+			});
+		}
 		case "table":
 			return formatTable(result.headers, result.rows, scheme);
 		case "tree":
@@ -172,6 +195,7 @@ export function commandEchoLine(
 	input: string,
 	accent: string,
 	scheme: ColorScheme,
+	spans?: TokenSpan[],
 ): OutputLine {
 	return {
 		text: input,
@@ -180,6 +204,7 @@ export function commandEchoLine(
 		prefixColor: accent || scheme.foreground.default,
 		borderColor: accent,
 		bgColor: scheme.backgrounds.darker,
+		spans,
 	};
 }
 
@@ -265,15 +290,24 @@ export const Output = React.memo(function Output({
 		const border = line.borderColor ? "\u258E " : "  "; // ▎ + space, or 2 spaces
 		const prefix = line.prefix ?? "";
 		const maxTextWidth = Math.max(0, contentWidth - border.length - prefix.length);
-		let displayText = line.text;
-		if (displayText.length > maxTextWidth) {
-			displayText = displayText.slice(0, maxTextWidth - 1) + "\u2026"; // …
-		}
+		const truncated = line.text.length > maxTextWidth;
+		const displayText = truncated
+			? line.text.slice(0, maxTextWidth - 1) + "\u2026" // …
+			: line.text;
 		const usedWidth = border.length + prefix.length + displayText.length;
 		const padRight = Math.max(0, contentWidth - usedWidth);
 
 		const lineBg = line.bgColor ?? scheme.backgrounds.standard;
 		const stdBg = scheme.backgrounds.standard;
+
+		// Render text content: use spans for highlighted lines, flat color otherwise.
+		// When truncated, fall back to flat color (truncation mid-span is complex).
+		const hasSpans = line.spans && line.spans.length > 0 && !truncated;
+		const textContent = hasSpans
+			? line.spans!.map((span, si) => (
+				<Text key={si} color={TOKEN_COLORS[span.token]}>{span.text}</Text>
+			))
+			: <Text color={line.color}>{displayText}</Text>;
 
 		renderedLines.push(
 			<Box key={i}>
@@ -285,7 +319,7 @@ export const Output = React.memo(function Output({
 						<Text>{border}</Text>
 					)}
 					{prefix ? <Text color={line.prefixColor ?? line.color}>{prefix}</Text> : null}
-					<Text color={line.color}>{displayText}</Text>
+					{textContent}
 					<Text>{" ".repeat(padRight)}</Text>
 				</Text>
 				<Text backgroundColor={stdBg}>{PAD}</Text>

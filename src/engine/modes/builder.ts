@@ -16,6 +16,8 @@ import type {
 	ModuleDefinition,
 	ModuleList,
 } from "../data.js";
+import type { TokenSpan } from "../highlight/tokens.js";
+import { tokenizeBuilder } from "../highlight/builder.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 import type { CompletionEngine } from "../completion/engine.js";
@@ -349,6 +351,10 @@ export class BuilderMode implements Mode {
 		if (initialPath) {
 			this.currentPath = initialPath.split(".").filter((s) => s !== "");
 		}
+	}
+
+	tokenizeInput(value: string): TokenSpan[] {
+		return tokenizeBuilder(value);
 	}
 
 	/** Dynamic context path shown in prompt (e.g. "SineGenerator.pitch") */

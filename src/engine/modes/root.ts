@@ -2,6 +2,8 @@
 
 import type { CommandResult } from "../result.js";
 import { errorResult } from "../result.js";
+import type { TokenSpan } from "../highlight/tokens.js";
+import { tokenizeSlash } from "../highlight/slash.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 
@@ -23,5 +25,9 @@ export class RootMode implements Mode {
 		// Slash command completions are handled by the command registry,
 		// not by root mode. Return empty results.
 		return { items: [], from: 0, to: 0 };
+	}
+
+	tokenizeInput(value: string): TokenSpan[] {
+		return tokenizeSlash(value);
 	}
 }

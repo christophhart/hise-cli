@@ -12,6 +12,8 @@ import {
 	textResult,
 	treeResult,
 } from "../result.js";
+import type { TokenSpan } from "../highlight/tokens.js";
+import { tokenizeInspect } from "../highlight/inspect.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 import type { CompletionEngine } from "../completion/engine.js";
@@ -33,6 +35,10 @@ export class InspectMode implements Mode {
 
 	constructor(completionEngine?: CompletionEngine) {
 		this.completionEngine = completionEngine ?? null;
+	}
+
+	tokenizeInput(value: string): TokenSpan[] {
+		return tokenizeInspect(value);
 	}
 
 	complete(input: string, _cursor: number): CompletionResult {

@@ -1,8 +1,12 @@
 // ── Token types and color mapping for syntax highlighting ───────────
 
 // Layer 3 colors from TUI_STYLE.md — hardcoded, matches HISE editor.
+// Mode token types use MODE_ACCENTS from mode.ts as their colors.
+
+import { MODE_ACCENTS } from "../modes/mode.js";
 
 export type TokenType =
+	// Language tokens
 	| "keyword"
 	| "identifier"
 	| "scopedStatement"
@@ -13,9 +17,21 @@ export type TokenType =
 	| "operator"
 	| "bracket"
 	| "punctuation"
-	| "plain";
+	| "plain"
+	// Slash command tokens
+	| "command"      // generic slash commands (/clear, /help, /exit, etc.)
+	// Mode-colored tokens (slash commands that enter modes)
+	| "builder"
+	| "script"
+	| "dsp"
+	| "sampler"
+	| "inspect"
+	| "project"
+	| "compile"
+	| "import";
 
 export const TOKEN_COLORS: Record<TokenType, string> = {
+	// Language tokens
 	keyword: "#bbbbff",
 	identifier: "#DDDDFF",
 	scopedStatement: "#88bec5",
@@ -27,6 +43,17 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 	bracket: "#FFFFFF",
 	punctuation: "#CCCCCC",
 	plain: "#DDDDFF",
+	// Slash command tokens
+	command: "#FFFFFF",
+	// Mode-colored tokens — accent colors from MODE_ACCENTS
+	builder: MODE_ACCENTS.builder,
+	script: MODE_ACCENTS.script,
+	dsp: MODE_ACCENTS.dsp,
+	sampler: MODE_ACCENTS.sampler,
+	inspect: MODE_ACCENTS.inspect,
+	project: MODE_ACCENTS.project,
+	compile: MODE_ACCENTS.compile,
+	import: MODE_ACCENTS.import,
 } as const;
 
 export interface TokenSpan {

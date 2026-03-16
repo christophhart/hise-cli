@@ -4,6 +4,9 @@ import type { HiseResponse } from "../hise.js";
 import { isErrorResponse, isSuccessResponse } from "../hise.js";
 import type { CommandResult } from "../result.js";
 import { codeResult, errorResult, textResult } from "../result.js";
+import type { TokenSpan } from "../highlight/tokens.js";
+import { tokenize } from "../highlight/hisescript.js";
+import { tokenizeSlash } from "../highlight/slash.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 import type { CompletionEngine } from "../completion/engine.js";
@@ -41,6 +44,13 @@ export class ScriptMode implements Mode {
 		});
 
 		return formatReplResponse(response, input);
+	}
+
+	tokenizeInput(value: string): TokenSpan[] {
+		if (value.startsWith("/")) {
+			return tokenizeSlash(value);
+		}
+		return tokenize(value);
 	}
 
 	complete(input: string, _cursor: number): CompletionResult {

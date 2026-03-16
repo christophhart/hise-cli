@@ -294,7 +294,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		const darkerBg = scheme.backgrounds.darker;
 		const plainSpacer = spacerLine(scheme);
 		const darkAccentSpacer = spacerLine(scheme, accent, darkerBg);
-		const echo = commandEchoLine(input, accent, scheme);
+		const echoSpans = mode.tokenizeInput?.(input);
+		const echo = commandEchoLine(input, accent, scheme, echoSpans);
 		addLines([darkAccentSpacer, echo, darkAccentSpacer, plainSpacer]);
 
 		setDisabled(true);
@@ -393,6 +394,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		: currentMode.prompt.replace(/[\[\]>]/g, "").trim();
 	const modeAccent = currentMode.accent || scheme.foreground.default;
 	const contextLabel = currentMode.contextLabel ?? "";
+
+	// Syntax highlighting tokenizer from current mode (bound to avoid context loss)
+	const modeTokenizer = currentMode.tokenizeInput
+		? (v: string) => currentMode.tokenizeInput!(v)
+		: undefined;
 
 	// ── Scroll info ─────────────────────────────────────────────────
 
@@ -621,6 +627,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					onEscape={handleEscape}
 					completionVisible={completionState?.visible ?? false}
 					inputRef={inputHandleRef}
+					tokenize={modeTokenizer}
 				/>
 				<StatusBar
 					connectionStatus={connectionStatus}

@@ -1,6 +1,7 @@
 // ── Mode interface — domain-specific input parsing ──────────────────
 
 import type { CommandResult } from "../result.js";
+import type { TokenSpan } from "../highlight/tokens.js";
 
 // Mode accent colors from TUI_STYLE.md — Layer 2 (hardcoded)
 export const MODE_ACCENTS = {
@@ -55,4 +56,6 @@ export interface Mode {
 	readonly contextLabel?: string;
 	parse(input: string, session: SessionContext): Promise<CommandResult>;
 	complete?(input: string, cursor: number): CompletionResult;
+	/** Tokenize input for syntax highlighting. Returns spans with token types. */
+	tokenizeInput?(value: string): TokenSpan[];
 }

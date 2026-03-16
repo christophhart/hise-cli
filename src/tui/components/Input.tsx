@@ -12,6 +12,9 @@ import { appendFileSync } from "node:fs";
 import { Box, Text, useInput } from "ink";
 import { useTheme } from "../theme-context.js";
 import { lightenHex } from "../theme.js";
+import type { TokenSpan } from "../../engine/highlight/tokens.js";
+import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
+import { sliceSpans, splitSpansAtCursor } from "../../engine/highlight/split.js";
 
 // ── Word boundary helpers ───────────────────────────────────────────
 
@@ -206,6 +209,9 @@ export interface InputProps {
 	completionVisible?: boolean;
 	/** Ref for imperative control */
 	inputRef?: React.Ref<InputHandle>;
+	/** Tokenizer for syntax highlighting. If provided, input text is rendered
+	 *  with per-token colors from TOKEN_COLORS. Falls back to flat foreground.bright. */
+	tokenize?: (value: string) => TokenSpan[];
 }
 
 /** Flip to true + rebuild to log every keypress to debug-keys.log. */
@@ -228,6 +234,7 @@ export const Input = React.memo(function Input({
 	onEscape,
 	completionVisible = false,
 	inputRef,
+	tokenize,
 }: InputProps) {
 	const { scheme } = useTheme();
 
@@ -438,32 +445,70 @@ export const Input = React.memo(function Input({
 			totalChars - maxInputWidth,
 		));
 	}
-	const visibleValue = state.value.slice(scrollStart, scrollStart + maxInputWidth);
 	const relCursorPos = state.cursorOffset - scrollStart;
-
-	// Split around cursor
-	const beforeCursor = visibleValue.slice(0, relCursorPos);
-	const afterCursor = atEnd ? "" : visibleValue.slice(relCursorPos + 1);
-
-	// Character under the cursor
-	const cursorChar = atEnd
-		? (ghost.length > 0 ? ghost[0]! : " ")
-		: visibleValue[relCursorPos] ?? " ";
-
-	// Ghost text after cursor (skip first char if at end — shown as cursorChar)
-	const remainingGhost = atEnd ? ghost.slice(1) : "";
-	const ghostSpace = Math.max(0, maxInputWidth - beforeCursor.length - 1 - afterCursor.length);
-	const displayGhost = remainingGhost.slice(0, ghostSpace);
 
 	// Cursor colors
 	const cursorBg = lightenHex(scheme.backgrounds.raised, CURSOR_LIGHTEN);
-	const cursorTextColor = (atEnd && ghost.length > 0)
-		? scheme.foreground.default   // ghost char under cursor (brighter than muted for visibility)
-		: scheme.foreground.bright;   // real char or empty space
+
+	// ── Build rendered spans (highlighted or plain) ────────────────
+	// Tokenize → slice to scroll window → split at cursor → render
+
+	let beforeSpans: TokenSpan[];
+	let cursorChar: string;
+	let cursorTokenColor: string;
+	let afterSpans: TokenSpan[];
+
+	if (tokenize && state.value.length > 0) {
+		// Highlighted path: tokenize full value, slice to visible window, split at cursor
+		const allSpans = tokenize(state.value);
+		const visibleSpans = sliceSpans(allSpans, scrollStart, maxInputWidth);
+		const split = splitSpansAtCursor(visibleSpans, relCursorPos);
+		beforeSpans = split.before;
+		afterSpans = split.after;
+
+		if (atEnd) {
+			cursorChar = ghost.length > 0 ? ghost[0]! : " ";
+			cursorTokenColor = (ghost.length > 0)
+				? scheme.foreground.default  // ghost char under cursor
+				: scheme.foreground.bright;  // empty space
+		} else {
+			cursorChar = split.cursorChar;
+			cursorTokenColor = TOKEN_COLORS[split.cursorToken];
+		}
+	} else {
+		// Plain path: no tokenizer, flat foreground.bright
+		const visibleValue = state.value.slice(scrollStart, scrollStart + maxInputWidth);
+		const beforeText = visibleValue.slice(0, relCursorPos);
+		const afterText = atEnd ? "" : visibleValue.slice(relCursorPos + 1);
+		beforeSpans = beforeText ? [{ text: beforeText, token: "plain" as const }] : [];
+		afterSpans = afterText ? [{ text: afterText, token: "plain" as const }] : [];
+
+		cursorChar = atEnd
+			? (ghost.length > 0 ? ghost[0]! : " ")
+			: visibleValue[relCursorPos] ?? " ";
+		cursorTokenColor = (atEnd && ghost.length > 0)
+			? scheme.foreground.default
+			: scheme.foreground.bright;
+	}
+
+	// Ghost text after cursor (skip first char if at end — shown as cursorChar)
+	const beforeLen = beforeSpans.reduce((sum, s) => sum + s.text.length, 0);
+	const afterLen = afterSpans.reduce((sum, s) => sum + s.text.length, 0);
+	const remainingGhost = atEnd ? ghost.slice(1) : "";
+	const ghostSpace = Math.max(0, maxInputWidth - beforeLen - 1 - afterLen);
+	const displayGhost = remainingGhost.slice(0, ghostSpace);
 
 	// Right padding to fill the row
-	const contentWidth = promptWidth + beforeCursor.length + 1 + afterCursor.length + displayGhost.length;
+	const contentWidth = promptWidth + beforeLen + 1 + afterLen + displayGhost.length;
 	const inputPadRight = Math.max(0, columns - PAD.length * 2 - contentWidth);
+
+	// Helper: render a TokenSpan[] as colored <Text> elements
+	const renderSpans = (spans: TokenSpan[], keyPrefix: string) =>
+		spans.map((span, i) => (
+			<Text key={`${keyPrefix}-${i}`} color={tokenize ? TOKEN_COLORS[span.token] : scheme.foreground.bright}>
+				{span.text}
+			</Text>
+		));
 
 	return (
 		<Box flexDirection="column">
@@ -485,11 +530,9 @@ export const Input = React.memo(function Input({
 					<Text color={scheme.foreground.muted}>waiting for response...</Text>
 				) : (
 					<>
-						<Text color={scheme.foreground.bright}>{beforeCursor}</Text>
-						<Text color={cursorTextColor} backgroundColor={cursorBg}>{cursorChar}</Text>
-						{afterCursor ? (
-							<Text color={scheme.foreground.bright}>{afterCursor}</Text>
-						) : null}
+						{renderSpans(beforeSpans, "b")}
+						<Text color={cursorTokenColor} backgroundColor={cursorBg}>{cursorChar}</Text>
+						{renderSpans(afterSpans, "a")}
 						{displayGhost ? (
 							<Text color={scheme.foreground.muted}>{displayGhost}</Text>
 						) : null}
