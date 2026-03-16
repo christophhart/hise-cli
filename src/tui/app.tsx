@@ -603,15 +603,16 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 
 		const result = session.complete(value, cursorPos);
 		if (result.items.length > 0) {
-			// Auto-close: if the only matching item exactly equals the
-			// typed token, dismiss the popup — Enter will submit normally.
-			if (result.items.length === 1) {
-				const token = value.slice(result.from);
-				const itemText = result.items[0]!.insertText ?? result.items[0]!.label;
-				if (token === itemText) {
-					setCompletionState(null);
-					return;
-				}
+			// Auto-close: if any item exactly matches the typed token,
+			// dismiss the popup — Enter will submit normally. This handles
+			// cases like "/exit" where fuzzy matching also returns "/quit".
+			const token = value.slice(result.from);
+			if (token.length > 0 && result.items.some((item) => {
+				const itemText = item.insertText ?? item.label;
+				return token === itemText;
+			})) {
+				setCompletionState(null);
+				return;
 			}
 
 			const ghostText = computeGhostText(value, result, 0);
