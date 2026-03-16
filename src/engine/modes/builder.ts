@@ -431,7 +431,7 @@ export class BuilderMode implements Mode {
 
 	async parse(
 		input: string,
-		_session: SessionContext,
+		session: SessionContext,
 	): Promise<CommandResult> {
 		const trimmed = input.trim();
 		const parts = trimmed.split(/\s+/);
@@ -439,7 +439,7 @@ export class BuilderMode implements Mode {
 
 		// ── Navigation commands (handled before Chevrotain parser) ──
 		if (keyword === "cd") {
-			return this.handleCd(parts.slice(1).join(" ").trim());
+			return this.handleCd(parts.slice(1).join(" ").trim(), session);
 		}
 		if (keyword === "ls" || keyword === "dir") {
 			return this.handleLs();
@@ -471,7 +471,7 @@ export class BuilderMode implements Mode {
 
 	// ── Navigation handlers ─────────────────────────────────────────
 
-	private handleCd(target: string): CommandResult {
+	private handleCd(target: string, session: SessionContext): CommandResult {
 		if (!target || target === "/") {
 			// cd or cd / — go to root
 			this.currentPath = [];
@@ -479,9 +479,9 @@ export class BuilderMode implements Mode {
 		}
 
 		if (target === "..") {
-			// cd .. — go up one level
+			// cd .. — go up one level; at context root, exit builder mode
 			if (this.currentPath.length === 0) {
-				return textResult("/ (already at root)");
+				return session.popMode();
 			}
 			this.currentPath.pop();
 			return textResult(this.currentPath.length > 0 ? this.currentPath.join(".") : "/");

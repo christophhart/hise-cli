@@ -4,6 +4,7 @@ import type { SessionContext } from "./mode.js";
 
 const mockSession: SessionContext = {
 	connection: null,
+	popMode: () => ({ type: "text", content: "Goodbye." }),
 };
 
 describe("RootMode", () => {

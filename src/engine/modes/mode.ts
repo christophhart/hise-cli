@@ -45,6 +45,8 @@ export interface CompletionResult {
 // The full Session class implements this. Avoids circular imports.
 export interface SessionContext {
 	readonly connection: import("../hise.js").HiseConnection | null;
+	/** Exit the current mode (pops the mode stack). At root, signals quit. */
+	popMode(): import("../result.js").CommandResult;
 }
 
 export interface Mode {

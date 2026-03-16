@@ -11,7 +11,10 @@ import type { ScriptingApi } from "../data.js";
 function createMockSession(
 	mock: MockHiseConnection,
 ): SessionContext {
-	return { connection: mock };
+	return {
+		connection: mock,
+		popMode: () => ({ type: "text", content: "Exited Script mode." }),
+	};
 }
 
 function successResponse(
@@ -50,7 +53,10 @@ describe("ScriptMode", () => {
 
 	it("returns error when no connection", async () => {
 		const mode = new ScriptMode();
-		const session: SessionContext = { connection: null };
+		const session: SessionContext = {
+			connection: null,
+			popMode: () => ({ type: "text", content: "Exited Script mode." }),
+		};
 		const result = await mode.parse("Engine.getSampleRate()", session);
 		expect(result.type).toBe("error");
 		if (result.type === "error") {

@@ -228,13 +228,17 @@ async function probeHiseHttp(
 }
 
 async function launchNewTui(connection: HttpHiseConnection): Promise<void> {
+	const restoreAltScreen = setupAltScreen();
+
 	const instance = render(
 		React.createElement(TuiApp, { connection }),
 		{
 			exitOnCtrlC: true,
 		},
 	);
-	await instance.waitUntilExit();
+	await instance.waitUntilExit().finally(() => {
+		restoreAltScreen();
+	});
 }
 
 // ── Launch functions ────────────────────────────────────────────────
@@ -489,7 +493,9 @@ async function main(): Promise<void> {
 			break;
 		case "menu":
 		default:
-			launchMenu();
+			// Skip the menu — go directly to HISE connection.
+			// Setup/update/migrate/nuke are accessible via CLI subcommands.
+			await launchRepl(rest);
 			break;
 	}
 }

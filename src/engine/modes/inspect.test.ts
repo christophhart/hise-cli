@@ -27,7 +27,10 @@ function createMockSession(
 		logs: [],
 		errors: [],
 	}));
-	return { connection: mock };
+	return {
+		connection: mock,
+		popMode: () => ({ type: "text", content: "Exited Inspect mode." }),
+	};
 }
 
 // ── InspectMode identity ────────────────────────────────────────────
@@ -65,7 +68,10 @@ describe("InspectMode", () => {
 
 	it("returns error when no connection", async () => {
 		const mode = new InspectMode();
-		const session: SessionContext = { connection: null };
+		const session: SessionContext = {
+			connection: null,
+			popMode: () => ({ type: "text", content: "Exited Inspect mode." }),
+		};
 		const result = await mode.parse("cpu", session);
 		expect(result.type).toBe("error");
 	});

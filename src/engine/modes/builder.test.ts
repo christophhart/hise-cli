@@ -24,7 +24,10 @@ beforeAll(() => {
 	moduleList = JSON.parse(raw) as ModuleList;
 });
 
-const nullSession: SessionContext = { connection: null };
+const nullSession: SessionContext = {
+	connection: null,
+	popMode: () => ({ type: "text", content: "Exited Builder mode." }),
+};
 
 // ── Parser tests ────────────────────────────────────────────────────
 

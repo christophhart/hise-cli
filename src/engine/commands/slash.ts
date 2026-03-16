@@ -90,6 +90,12 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
+		name: "quit",
+		description: "Quit (alias for /exit)",
+		handler: handleExit,
+	});
+
+	registry.register({
 		name: "help",
 		description: "Show available commands and help topics",
 		handler: handleHelp,
