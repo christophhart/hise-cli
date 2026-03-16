@@ -113,7 +113,12 @@ the terminal TUI and CLI, all sharing the same command engine.
 
 5. **Theme as data** — color values are hex strings in the engine. Terminal
    escape codes are TUI-specific. CSS custom properties are web-specific.
-   Both derive from the same hex values defined in the engine.
+   Both derive from the same hex values defined in the engine. In the TUI,
+   a `ThemeContext` provides all colors to the component tree via
+   `useTheme()`. This enables the overlay dimming system: wrapping
+   components in a `ThemeProvider` with `darkenScheme()` values makes
+   every component render dimmed without any code changes. See
+   TUI_STYLE.md §1.7–1.8 for details.
 
 ### Data Flow
 
@@ -925,8 +930,9 @@ rendering and `CommandResult { type: "table" }` output.
 | Markdown terminal renderer | ~150 | `marked` AST → chalk + cli-table3 + Lezer code highlighting |
 | XML syntax highlighter | ~30 | Regex tokenizer for module tree XML output |
 | Highlighted input | ~100-150 | Lezer-tokenized input with ghost text completion |
-| CompletionPopup | ~100-150 | Floating popup with arrow key navigation, delegates to `ink-select-input` |
-| Color scheme context | ~50 | React context providing the 4-layer color system from TUI_STYLE.md |
+| CompletionPopup | ~120 | Absolute-positioned dropdown above input, arrow keys, Tab/Enter accept |
+| Overlay | ~180 | Centered floating panel for help/wizard, absolute-positioned, mouse wheel scroll |
+| ThemeContext | ~75 | `ThemeProvider` + `useTheme()` — all components read colors from context. Enables the overlay dimming system: the backdrop wraps a `ThemeProvider` with `darkenScheme()` values, so every component automatically renders dimmed without override props. See TUI_STYLE.md §1.7–1.8. |
 
 ### Bundle Impact
 

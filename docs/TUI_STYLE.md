@@ -164,6 +164,67 @@ Scheme selection: `/theme` lists available schemes with a preview. `/theme <name
 switches and persists to config. The current scheme name is stored in the hise-cli
 config file.
 
+### 1.7 ThemeContext — Centralized Color Provider
+
+All TUI components read colors from a React context (`ThemeProvider` / `useTheme()`)
+instead of importing `brand` or `statusColor` directly. This enables the overlay
+dimming system: when a modal overlay opens, the backdrop re-renders the entire UI
+inside a `ThemeProvider` with darkened values. Every component automatically gets
+dimmed colors without override props.
+
+```ts
+interface ThemeContextValue {
+  scheme: ColorScheme;             // current color scheme (or darkened)
+  brand: BrandColors;              // brand colors (or darkened)
+  statusColor: (status) => string; // status dot color resolver (or darkened)
+}
+```
+
+Components call `useTheme()` to access these values:
+
+```ts
+const { scheme, brand, statusColor } = useTheme();
+```
+
+**Rule**: Components must never import `brand` or `statusColor` directly from
+`theme.ts` for rendering purposes. Always use `useTheme()`. The only exception
+is pure functions that bake colors into data structures at creation time (e.g.,
+`resultToLines` bakes `brand.error` into `OutputLine.color` — these baked colors
+are handled by `darkenOutputLines()` separately).
+
+### 1.8 Overlay Dimming System
+
+When a modal overlay opens (help, wizard, command palette), the underlying UI
+freezes and dims to create a visual backdrop. This is implemented as a full
+component re-render with darkened colors, not a semi-transparent CSS overlay
+(terminals don't support alpha compositing).
+
+**How it works:**
+
+1. **Snapshot**: When the overlay opens, the current UI state is captured
+   (output lines, scroll offset, mode label, accent, connection status, hints).
+2. **Darken**: All colors are darkened by a factor (`DIM_FACTOR = 0.65`, i.e.,
+   65% brightness). This applies to:
+   - The entire `ColorScheme` via `darkenScheme(scheme, factor)`
+   - Brand colors via `darkenBrand(factor)`
+   - Status colors via a darkened resolver
+   - Mode accent colors via `darkenHex(accent, factor)`
+   - Baked `OutputLine` colors via `darkenOutputLines(lines, factor)`
+3. **Re-render**: The snapshot is rendered as an absolute-positioned layer at
+   `marginTop={0}` using a `<ThemeProvider>` with the darkened values. Components
+   inside this provider (TopBar, Output, Input, StatusBar) automatically render
+   with dimmed colors.
+4. **Overlay on top**: The modal panel renders at full brightness on top of the
+   dimmed backdrop.
+
+**`darkenHex(hex, factor)`**: Multiplies each RGB channel by the factor.
+Factor 1.0 = unchanged, 0.0 = black.
+
+**Future-proofing**: Any new component that uses `useTheme()` automatically
+participates in the dimming system. No override props needed. The only manual
+work is extending `darkenOutputLines()` if new color fields are added to
+`OutputLine`.
+
 ---
 
 ## 2. Layout Regions
@@ -346,35 +407,37 @@ Background: `backgrounds.raised` for all three rows. Horizontal padding: 2 chara
 
 ### 3.4 CompletionPopup
 
-Dropdown that appears above the input line when Tab is pressed or after typing 2+
-characters with matches.
+Floating dropdown that appears above the input line when Tab is pressed. Uses
+absolute positioning (`position="absolute"`) to overlay the content without
+affecting layout. No border — solid filled rows spanning the full terminal width.
 
 ```
-│  ┌──────────────────────────────┐                                    │
-│  │  AHDSR          EnvelopeMod  │  ← selected: SIGNAL_COLOUR bg     │
-│  │  TableEnvelope  EnvelopeMod  │                                    │
-│  │  MPEModulator   EnvelopeMod  │                                    │
-│  │  LFO            TimeVariant  │                                    │
-│  └──────────────────────────────┘                                    │
+   AHDSR          EnvelopeModulator         ← selected: raised bg, signal text
+   TableEnvelope  EnvelopeModulator         ← overlay bg
+   MPEModulator   EnvelopeModulator         ← overlay bg
+   LFO            TimeVariantModulator      ← overlay bg
 │  [builder] > add A_                                                  │
 ```
 
 | Element          | Color / Style                                      |
 |------------------|----------------------------------------------------|
-| Background       | `backgrounds.overlay`                              |
-| Border           | `foreground.muted`                                 |
+| Background       | `backgrounds.overlay` (full row, edge to edge)     |
 | Item name        | `foreground.default`                               |
 | Item annotation  | `foreground.muted` (type, category, or signature)  |
-| Selected item bg | SIGNAL_COLOUR with darkened alpha (~30%)            |
-| Selected item fg | `foreground.bright`                                |
+| Selected row bg  | `backgrounds.raised` (subtle highlight)            |
+| Selected name fg | SIGNAL_COLOUR (`brand.signal`)                     |
+| Selected detail  | `foreground.bright`                                |
 
-- **Position**: directly above input, left-aligned to the token being completed
-- **Width**: adapts to content, max 50% of available width
+- **Position**: absolute, directly above input, full terminal width per row.
+  Left area before the popup content is filled with `backgrounds.overlay`.
+- **Width**: adapts to content, max 50 chars
 - **Height**: max 8 visible items, scrollable
 - **Dismiss**: Escape, submitting, or input diverging from all candidates
-- **Navigation**: Up/Down arrows, Enter or Tab to accept
+- **Navigation**: Up/Down arrows (wrap around), Enter or Tab to accept
 
-Ghost text inline in the input shows the top candidate. The dropdown shows alternatives.
+Ghost text inline in the input shows the top candidate in `foreground.muted`.
+The dropdown shows alternatives. Tab toggles between ghost-only and popup-visible
+states.
 
 ### 3.5 Progress
 
@@ -538,11 +601,14 @@ or `wizard <id>` in a mode that registers the wizard. See [DESIGN.md](../DESIGN.
 "Wizard Framework" for the engine-layer architecture and type definitions.
 
 **Dimensions**: fixed 60 chars wide × 20 lines tall. Centered horizontally and
-vertically over the REPL content. The REPL remains visible behind the overlay
-(dimmed by the overlay background).
+vertically over the REPL content using absolute positioning. The REPL remains
+visible behind the overlay, frozen and dimmed via the overlay dimming system
+(see Section 1.8). All underlying UI components re-render at `DIM_FACTOR`
+brightness inside a `ThemeProvider` with darkened colors.
 
-**Background**: `backgrounds.overlay`. **Border**: single-line box drawing characters
-(`┌─┐│└─┘`) in wizard copper accent `#e8a060`.
+**Background**: `backgrounds.overlay` (at full brightness — only the backdrop
+dims). No border — solid filled rectangle matching the help overlay style.
+Title row uses wizard copper accent `#e8a060` for the step label.
 
 **Layout** (inside border: 58 usable columns × 18 usable rows):
 
