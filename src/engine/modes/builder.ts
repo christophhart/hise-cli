@@ -16,10 +16,12 @@ import type {
 	ModuleDefinition,
 	ModuleList,
 } from "../data.js";
+import type { TreeNode } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenizeBuilder } from "../highlight/builder.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
+import { DUMMY_MODULE_TREE } from "./dummyTree.js";
 import type { CompletionEngine } from "../completion/engine.js";
 import {
 	Add,
@@ -355,6 +357,21 @@ export class BuilderMode implements Mode {
 
 	tokenizeInput(value: string): TokenSpan[] {
 		return tokenizeBuilder(value);
+	}
+
+	// ── Tree sidebar support ────────────────────────────────────
+
+	getTree(): TreeNode | null {
+		// TODO: replace with live tree from HISE when connection is available
+		return DUMMY_MODULE_TREE;
+	}
+
+	getSelectedPath(): string[] {
+		return [...this.currentPath];
+	}
+
+	selectNode(path: string[]): void {
+		this.currentPath = [...path];
 	}
 
 	/** Dynamic context path shown in prompt (e.g. "SineGenerator.pitch") */

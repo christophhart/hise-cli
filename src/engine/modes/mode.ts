@@ -1,6 +1,6 @@
 // ── Mode interface — domain-specific input parsing ──────────────────
 
-import type { CommandResult } from "../result.js";
+import type { CommandResult, TreeNode } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 
 // Mode accent colors from TUI_STYLE.md — Layer 2 (hardcoded)
@@ -60,4 +60,12 @@ export interface Mode {
 	complete?(input: string, cursor: number): CompletionResult;
 	/** Tokenize input for syntax highlighting. Returns spans with token types. */
 	tokenizeInput?(value: string): TokenSpan[];
+
+	// ── Tree sidebar support ────────────────────────────────────
+	/** Return the mode's navigable tree hierarchy, or null if the mode has no tree. */
+	getTree?(): TreeNode | null;
+	/** Return the currently selected path in the tree (array of node ids). */
+	getSelectedPath?(): string[];
+	/** Navigate to a node by path (called when the user selects a tree node). */
+	selectNode?(path: string[]): void;
 }

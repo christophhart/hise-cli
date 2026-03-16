@@ -7,6 +7,13 @@ export interface TreeNode {
 	label: string;
 	type?: string;
 	children?: TreeNode[];
+	/** Unique path identifier for selection tracking (e.g. "Master.Gain Modulation.LFO") */
+	id?: string;
+	/** Whether this node is a module or a chain container */
+	nodeKind?: "module" | "chain";
+	/** For chain nodes: constrainer pattern controlling what subtypes are accepted
+	 *  (e.g. "*", "VoiceStartModulator", "MasterEffect"). See docs/MODULE_TREE.md. */
+	chainConstrainer?: string;
 }
 
 export type CommandResult =
