@@ -279,7 +279,7 @@ describe("buildDatasets", () => {
 		expect(methods).toBeDefined();
 		expect(methods!).toHaveLength(2);
 		expect(methods![0].label).toBe("addNoteOn");
-		expect(methods![0].detail).toContain("→ int");
+		expect(methods![0].detail).toBe("Add a note on");
 	});
 
 	it("sets insertText for zero-param methods", () => {

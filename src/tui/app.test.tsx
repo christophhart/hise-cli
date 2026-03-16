@@ -104,13 +104,14 @@ describe("App", () => {
 			}),
 		);
 
-		// Submit many /modes commands to fill the output with table results
+		// Submit many plain-text commands to fill the output with error lines.
+		// Write characters individually with async gaps so React processes
+		// each keystroke before the next arrives.
 		for (let i = 0; i < 30; i++) {
-			for (const ch of `/modes`) {
-				instance.stdin.write(ch);
-			}
+			instance.stdin.write("x");
+			await new Promise((r) => setTimeout(r, 5));
 			instance.stdin.write("\r");
-			await new Promise((r) => setTimeout(r, 20));
+			await new Promise((r) => setTimeout(r, 30));
 		}
 		await new Promise((r) => setTimeout(r, 200));
 

@@ -607,13 +607,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					disabled={disabled || overlayData !== null}
 					onSubmit={(v) => {
 						if (completionState?.visible) {
-							// Enter with popup visible: accept completion + submit
+							// Enter with popup visible: accept completion only (fill input).
+							// User presses Enter again to submit with the completed text.
 							const item = completionState.result.items[completionState.selectedIndex];
 							if (item) {
-								const insertText = item.insertText ?? item.label;
-								const completed = v.slice(0, completionState.result.from) + insertText;
-								setCompletionState(null);
-								void handleSubmit(completed);
+								acceptCompletion(item, completionState.result);
 								return;
 							}
 						}

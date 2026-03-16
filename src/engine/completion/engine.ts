@@ -149,19 +149,24 @@ export function buildDatasets(
 
 	if (scriptingApi) {
 		for (const [name, cls] of Object.entries(scriptingApi.classes)) {
+			// Brief description: first sentence, fall back to category.
+			const nsBrief = cls.description
+				? cls.description.split(/\.\s/)[0]!.replace(/\.$/, "")
+				: cls.category;
 			apiNamespaceItems.push({
 				label: name,
-				detail: cls.category,
+				detail: nsBrief,
 			});
 
 			if (cls.methods.length > 0) {
 				const methods: CompletionItem[] = cls.methods.map((m) => {
-					const sig = m.parameters
-						.map((p) => `${p.name}`)
-						.join(", ");
+					// Brief description: first sentence (up to first period).
+					const brief = m.description
+						? m.description.split(/\.\s/)[0]!.replace(/\.$/, "")
+						: "";
 					return {
 						label: m.name,
-						detail: `(${sig}) → ${m.returnType}`,
+						detail: brief,
 						insertText: m.parameters.length === 0
 							? `${m.name}()`
 							: `${m.name}(`,

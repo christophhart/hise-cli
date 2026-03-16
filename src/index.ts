@@ -10,6 +10,7 @@ import React from "react";
 import { App as ReplApp } from "./app.js";
 import { App as TuiApp } from "./tui/app.js";
 import { HttpHiseConnection } from "./engine/hise.js";
+import { createNodeDataLoader } from "./tui/nodeDataLoader.js";
 import { MainMenuApp, type MenuChoice } from "./menu/App.js";
 import { PIPE_PREFIX, connect, discoverPipes } from "./pipe.js";
 import { SetupApp } from "./setup/App.js";
@@ -227,11 +228,16 @@ async function probeHiseHttp(
 	return false;
 }
 
+// Resolve data/ directory relative to this file (works from both
+// dist/index.js and src/index.ts).
+const dataDir = path.resolve(import.meta.dirname, "../data");
+const dataLoader = createNodeDataLoader(dataDir);
+
 async function launchNewTui(connection: HttpHiseConnection): Promise<void> {
 	const restoreAltScreen = setupAltScreen();
 
 	const instance = render(
-		React.createElement(TuiApp, { connection }),
+		React.createElement(TuiApp, { connection, dataLoader }),
 		{
 			exitOnCtrlC: true,
 		},
