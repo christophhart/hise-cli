@@ -373,11 +373,14 @@ describe("BuilderMode completion", () => {
 	it("completes keywords for empty input", () => {
 		const mode = createBuilderWithEngine();
 		const result = mode.complete!("", 0);
-		expect(result.items).toHaveLength(3);
+		expect(result.items).toHaveLength(6); // add, show, set, cd, ls, pwd
 		const labels = result.items.map((i) => i.label);
 		expect(labels).toContain("add");
 		expect(labels).toContain("show");
 		expect(labels).toContain("set");
+		expect(labels).toContain("cd");
+		expect(labels).toContain("ls");
+		expect(labels).toContain("pwd");
 	});
 
 	it("completes keyword prefix", () => {

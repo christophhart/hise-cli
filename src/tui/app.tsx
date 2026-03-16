@@ -55,6 +55,7 @@ interface OverlaySnapshot {
 	scrollOffset: number;
 	modeLabel: string;
 	modeAccent: string;
+	contextLabel: string;
 	connectionStatus: ConnectionStatus;
 	modeHint: string;
 	scrollInfo: string;
@@ -105,7 +106,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		// Register available modes with completion engine
 		session.registerMode("script", (ctx) => new ScriptMode(ctx, completionEngine));
 		session.registerMode("inspect", () => new InspectMode(completionEngine));
-		session.registerMode("builder", () => new BuilderMode(undefined, completionEngine));
+		session.registerMode("builder", (ctx) => new BuilderMode(undefined, completionEngine, ctx));
 		sessionRef.current = session;
 	}
 	const session = sessionRef.current;
@@ -328,6 +329,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					scrollOffset: snapScroll,
 					modeLabel: snapModeLabel,
 					modeAccent: snapModeAccent,
+					contextLabel: snapMode.contextLabel ?? "",
 					connectionStatus,
 					modeHint: snapModeHint,
 					scrollInfo: snapScrollInfo,
@@ -390,6 +392,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		? "root"
 		: currentMode.prompt.replace(/[\[\]>]/g, "").trim();
 	const modeAccent = currentMode.accent || scheme.foreground.default;
+	const contextLabel = currentMode.contextLabel ?? "";
 
 	// ── Scroll info ─────────────────────────────────────────────────
 
@@ -526,6 +529,33 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		setCompletionState(null);
 	}, []);
 
+	// Escape toggles the completion popup: close if visible, open if hidden.
+	const handleEscape = useCallback(() => {
+		if (completionState?.visible) {
+			setCompletionState(null);
+			return;
+		}
+		// Open: compute completions for current input
+		const handle = inputHandleRef.current;
+		if (!handle) return;
+		const value = handle.getValue();
+		const cursorPos = handle.getCursorPos();
+		// In root mode with empty input, query slash commands
+		const query = (value.length === 0 && session.currentModeId === "root") ? "/" : value;
+		const qCursor = (value.length === 0 && session.currentModeId === "root") ? 1 : cursorPos;
+		const result = session.complete(query, qCursor);
+		if (result.items.length > 0) {
+			const ghost = computeGhostText(value, result, 0);
+			setCompletionState({
+				result,
+				selectedIndex: 0,
+				visible: true,
+				ghostText: ghost,
+				forValue: value,
+			});
+		}
+	}, [completionState, session, computeGhostText]);
+
 	// Ghost text: read from completionState (computed at the same time as
 	// the completion result, so it is always in sync with the typed value)
 	const ghostText = completionState?.ghostText;
@@ -566,6 +596,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				<Input
 					modeLabel={modeLabel}
 					modeAccent={modeAccent}
+					contextLabel={contextLabel}
 					columns={columns}
 					disabled={disabled || overlayData !== null}
 					onSubmit={(v) => {
@@ -587,6 +618,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					ghostForValue={completionState?.forValue}
 					onValueChange={handleInputValueChange}
 					onTab={handleTab}
+					onEscape={handleEscape}
 					completionVisible={completionState?.visible ?? false}
 					inputRef={inputHandleRef}
 				/>
@@ -636,6 +668,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 									<Input
 										modeLabel={snap.modeLabel}
 										modeAccent={snap.dimModeAccent}
+										contextLabel={snap.contextLabel}
 										columns={columns}
 										disabled={true}
 										onSubmit={() => {}}

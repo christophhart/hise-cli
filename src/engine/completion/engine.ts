@@ -372,6 +372,9 @@ export class CompletionEngine {
 			{ label: "add", detail: "Add a module to the tree" },
 			{ label: "show", detail: "Show tree or types" },
 			{ label: "set", detail: "Set a module parameter" },
+			{ label: "cd", detail: "Navigate to a processor (cd .., cd /)" },
+			{ label: "ls", detail: "List children at current path" },
+			{ label: "pwd", detail: "Print current path" },
 		];
 		return fuzzyFilter(prefix, items);
 	}

@@ -55,7 +55,9 @@ describe("CompletionPopup", () => {
 		expect(frame).toContain("TimeVariantModulator");
 	});
 
-	it("calls onDismiss on Escape", async () => {
+	it("does not handle Escape internally (handled by App)", async () => {
+		// Escape toggle is handled centrally by the App component,
+		// not by CompletionPopup. Verify onDismiss is NOT called.
 		const onDismiss = vi.fn();
 		const { stdin } = render(w(
 			<CompletionPopup
@@ -70,7 +72,7 @@ describe("CompletionPopup", () => {
 		));
 		stdin.write("\x1b");
 		await new Promise((r) => setTimeout(r, 150));
-		expect(onDismiss).toHaveBeenCalled();
+		expect(onDismiss).not.toHaveBeenCalled();
 	});
 
 	it("calls onSelect on arrow down", () => {

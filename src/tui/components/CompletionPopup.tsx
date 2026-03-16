@@ -89,9 +89,8 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 
 	// Keyboard input
 	useInput((_input, key) => {
-		if (key.escape) {
-			onDismiss();
-		} else if (key.upArrow) {
+		// Escape is handled centrally by the App (toggle open/close).
+		if (key.upArrow) {
 			const next = selectedIndex > 0 ? selectedIndex - 1 : items.length - 1;
 			onSelect(next);
 		} else if (key.downArrow) {

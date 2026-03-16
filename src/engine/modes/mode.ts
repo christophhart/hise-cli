@@ -51,6 +51,8 @@ export interface Mode {
 	readonly name: string;
 	readonly accent: string;
 	readonly prompt: string;
+	/** Dynamic context path (e.g. "SineGenerator.pitch" in builder mode) */
+	readonly contextLabel?: string;
 	parse(input: string, session: SessionContext): Promise<CommandResult>;
 	complete?(input: string, cursor: number): CompletionResult;
 }

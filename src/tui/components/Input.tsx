@@ -187,6 +187,8 @@ export interface InputHandle {
 export interface InputProps {
 	modeLabel: string;
 	modeAccent: string;
+	/** Dynamic context path (e.g. "SineGenerator.pitch") shown after mode label */
+	contextLabel?: string;
 	columns: number;
 	disabled?: boolean;
 	onSubmit: (value: string) => void;
@@ -198,6 +200,8 @@ export interface InputProps {
 	onValueChange?: (value: string, cursorPos: number) => void;
 	/** Called when Tab is pressed (trigger/accept completion) */
 	onTab?: () => void;
+	/** Called when Escape is pressed (toggle completion popup) */
+	onEscape?: () => void;
 	/** When true, up/down arrows are reserved for popup navigation (skip history) */
 	completionVisible?: boolean;
 	/** Ref for imperative control */
@@ -216,10 +220,12 @@ export const Input = React.memo(function Input({
 	columns,
 	disabled = false,
 	onSubmit,
+	contextLabel,
 	ghostText,
 	ghostForValue,
 	onValueChange,
 	onTab,
+	onEscape,
 	completionVisible = false,
 	inputRef,
 }: InputProps) {
@@ -282,7 +288,10 @@ export const Input = React.memo(function Input({
 
 		if (disabled) return;
 
-		if (key.escape) return;
+		if (key.escape) {
+			onEscape?.();
+			return;
+		}
 
 		if (key.return) {
 			handleSubmit();
@@ -406,7 +415,8 @@ export const Input = React.memo(function Input({
 	const PAD = "  "; // 2 chars horizontal padding
 	const isRoot = modeLabel === "root";
 	const promptColor = isRoot ? scheme.foreground.default : modeAccent;
-	const promptPrefix = isRoot ? "" : `[${modeLabel}] `;
+	const contextSuffix = contextLabel ? ` ${contextLabel}` : "";
+	const promptPrefix = isRoot ? "" : `[${modeLabel}]${contextSuffix} `;
 	const promptChar = "> ";
 	const promptWidth = promptPrefix.length + promptChar.length;
 
@@ -461,8 +471,14 @@ export const Input = React.memo(function Input({
 			<Box>
 				<Text backgroundColor={scheme.backgrounds.raised}>
 					<Text>{PAD}</Text>
-					{promptPrefix ? (
-						<Text color={scheme.foreground.muted}>{promptPrefix}</Text>
+					{!isRoot ? (
+						<>
+							<Text color={scheme.foreground.muted}>[{modeLabel}]</Text>
+							{contextLabel ? (
+								<Text color={scheme.foreground.default}> {contextLabel}</Text>
+							) : null}
+							<Text color={scheme.foreground.muted}> </Text>
+						</>
 					) : null}
 					<Text color={promptColor} bold>{promptChar}</Text>
 				{disabled ? (

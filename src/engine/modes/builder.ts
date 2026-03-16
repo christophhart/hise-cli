@@ -341,10 +341,19 @@ export class BuilderMode implements Mode {
 
 	private moduleList: ModuleList | null = null;
 	private readonly completionEngine: CompletionEngine | null;
+	private currentPath: string[] = [];
 
-	constructor(moduleList?: ModuleList, completionEngine?: CompletionEngine) {
+	constructor(moduleList?: ModuleList, completionEngine?: CompletionEngine, initialPath?: string) {
 		this.moduleList = moduleList ?? null;
 		this.completionEngine = completionEngine ?? null;
+		if (initialPath) {
+			this.currentPath = initialPath.split(".").filter((s) => s !== "");
+		}
+	}
+
+	/** Dynamic context path shown in prompt (e.g. "SineGenerator.pitch") */
+	get contextLabel(): string {
+		return this.currentPath.length > 0 ? this.currentPath.join(".") : "";
 	}
 
 	setModuleList(moduleList: ModuleList): void {
@@ -418,6 +427,22 @@ export class BuilderMode implements Mode {
 		input: string,
 		_session: SessionContext,
 	): Promise<CommandResult> {
+		const trimmed = input.trim();
+		const parts = trimmed.split(/\s+/);
+		const keyword = parts[0]?.toLowerCase();
+
+		// ── Navigation commands (handled before Chevrotain parser) ──
+		if (keyword === "cd") {
+			return this.handleCd(parts.slice(1).join(" ").trim());
+		}
+		if (keyword === "ls" || keyword === "dir") {
+			return this.handleLs();
+		}
+		if (keyword === "pwd") {
+			return this.handlePwd();
+		}
+
+		// ── Chevrotain-parsed builder commands ──
 		const result = parseBuilderInput(input);
 
 		if ("error" in result) {
@@ -436,6 +461,49 @@ export class BuilderMode implements Mode {
 			default:
 				return errorResult("Unknown builder command");
 		}
+	}
+
+	// ── Navigation handlers ─────────────────────────────────────────
+
+	private handleCd(target: string): CommandResult {
+		if (!target || target === "/") {
+			// cd or cd / — go to root
+			this.currentPath = [];
+			return textResult("/");
+		}
+
+		if (target === "..") {
+			// cd .. — go up one level
+			if (this.currentPath.length === 0) {
+				return textResult("/ (already at root)");
+			}
+			this.currentPath.pop();
+			return textResult(this.currentPath.length > 0 ? this.currentPath.join(".") : "/");
+		}
+
+		// Navigate down — target can be a single name or a dotted path
+		const segments = target.split(".").filter((s) => s !== "");
+		for (const seg of segments) {
+			if (seg === "..") {
+				if (this.currentPath.length > 0) this.currentPath.pop();
+			} else {
+				this.currentPath.push(seg);
+			}
+		}
+		return textResult(this.currentPath.join("."));
+	}
+
+	private handleLs(): CommandResult {
+		const path = this.currentPath.length > 0 ? this.currentPath.join(".") : "/";
+		// Without a HISE connection, we can't query the live processor tree.
+		// Return the current path and a hint about needing a connection.
+		return textResult(
+			`${path}: listing children requires a HISE connection (use show types for available module types)`,
+		);
+	}
+
+	private handlePwd(): CommandResult {
+		return textResult(this.currentPath.length > 0 ? this.currentPath.join(".") : "/");
 	}
 
 	private handleAdd(cmd: AddCommand): CommandResult {

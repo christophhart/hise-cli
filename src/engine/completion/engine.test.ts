@@ -660,7 +660,7 @@ describe("CompletionEngine", () => {
 	describe("completeBuilderKeyword", () => {
 		it("returns all keywords for empty prefix", () => {
 			const items = engine.completeBuilderKeyword("");
-			expect(items).toHaveLength(3);
+			expect(items).toHaveLength(6); // add, show, set, cd, ls, pwd
 		});
 
 		it("filters by prefix", () => {
