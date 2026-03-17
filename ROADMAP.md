@@ -17,9 +17,11 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
 | Phase 2 — TUI v2 Shell | [#2](https://github.com/christoph-hart/hise-cli/issues/2) | TUI components, entry point rewire, screencasts |
 | Phase 3 — Tab Completion | [#3](https://github.com/christoph-hart/hise-cli/issues/3) | Completion engine + popup |
 | Phase 3.5 — Dot-Notation Dispatch | [#3](https://github.com/christoph-hart/hise-cli/issues/3) | Mode cache, arg completion, one-shot execution |
-| Phase 4 — Builder + Plan | [#5](https://github.com/christoph-hart/hise-cli/issues/5), [#4](https://github.com/christoph-hart/hise-cli/issues/4) | Full grammar, module tree, plan submode |
+| Phase 3.7 — Markdown Renderer | — | Terminal markdown rendering (engine AST + TUI renderer) |
+| Phase 4 — Builder + Plan | [#5](https://github.com/christoph-hart/hise-cli/issues/5), [#4](https://github.com/christoph-hart/hise-cli/issues/4) | C++ builder endpoints, full grammar, module tree, plan submode |
 | Phase 5 — Wizards | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard framework + setup wizard |
 | Phase 6 — Remaining Modes | [#6](https://github.com/christoph-hart/hise-cli/issues/6), [#8](https://github.com/christoph-hart/hise-cli/issues/8), [#7](https://github.com/christoph-hart/hise-cli/issues/7), [#11](https://github.com/christoph-hart/hise-cli/issues/11), [#9](https://github.com/christoph-hart/hise-cli/issues/9) | DSP, script (full), inspect, sampler, project/compile/import |
+| Phase 6 — New Modes | [#16](https://github.com/christoph-hart/hise-cli/issues/16), [#17](https://github.com/christoph-hart/hise-cli/issues/17), [#18](https://github.com/christoph-hart/hise-cli/issues/18), [#19](https://github.com/christoph-hart/hise-cli/issues/19) | `/modules` reference, `/api` docs, `/ui` component CRUD, `/expansions` manager |
 | Phase 7 — Polish | [#10](https://github.com/christoph-hart/hise-cli/issues/10), [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Command palette, remaining wizards, CLI frontend |
 | HISE C++ (parallel) | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | New REST endpoints + SSE |
 | Post-1.0 — Web Frontend | — | Browser frontend, live screencast replay |
@@ -37,6 +39,16 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
   living API contract ([DESIGN.md — Decision #9](DESIGN.md#9-tests-as-api-contract)).
 - **Live HISE early**: script mode (`POST /api/repl`) works against the real
   REST API from Phase 1. No mock-only development.
+- **REST-first for HISE-connected modes**: any mode requiring new HISE REST
+  endpoints follows a strict sequence: design endpoint contract → implement in
+  HISE C++ → write C++ unit tests → verify behavior → build validated dummy
+  data in hise-cli → implement CLI mode. Dummy data must match the validated
+  C++ test response structures — it acts as a contract bridge ensuring
+  TypeScript tests and C++ tests agree on response shapes. Modes using only
+  local data (`moduleList.json`, `scripting_api.json`) or existing endpoints
+  (`POST /api/repl`, `GET /api/status`) skip the C++ steps. This applies to
+  Phase 4 (builder execution), Phase 6 (UI, expansions, DSP, sampler), and
+  any future mode needing new endpoints.
 - **Clean break**: existing code in `src/` stays as reference. New code goes
   into `src/engine/`, `src/tui/`, `src/cli/`. Entry point (`src/index.ts`)
   is rewired in Phase 2.
@@ -449,13 +461,99 @@ modes (Phase 6) when the HISE connection provides real processor tree data.
 
 ---
 
+## Phase 3.7 — Terminal Markdown Renderer
+
+**Goal**: shared markdown rendering infrastructure for the TUI. Prerequisite for
+wizard step descriptions (Phase 5), API/module docs display (Phase 6), and builder
+help text. Currently the `type: "markdown"` result in Output.tsx is a stub that
+renders plain text.
+
+### 3.7.1 Engine layer (isomorphic)
+
+File: `src/engine/markdown/`
+
+Parse markdown to an intermediate AST using `marked` (or minimal custom parser).
+The AST is a plain data structure — no DOM, no terminal escapes, no Ink components.
+This keeps the engine layer isomorphic: the same AST feeds the TUI renderer (Ink),
+CLI renderer (plain text with ANSI), and future web renderer (`react-markdown`).
+
+### 3.7.2 TUI renderer
+
+File: `src/tui/components/MarkdownRenderer.tsx`
+
+Ink components that render the markdown AST:
+- **Headings**: bold + mode accent color, `##` level controls size/weight
+- **Bold/italic**: `<Text bold>` / `<Text italic>` (Ink native)
+- **Inline code**: dimmed background (`backgrounds.raised`), monospace
+- **Fenced code blocks**: syntax highlighted via existing tokenizers (HiseScript,
+  XML, builder). Language tag selects tokenizer. Falls back to plain monospace.
+- **Tables**: column-aligned with `─`/`┼` separators (reuses existing `table`
+  result rendering logic from Output.tsx)
+- **Lists**: bullet (`•`) and numbered, with indentation
+- **Horizontal rules**: `─` repeated to terminal width
+- **Paragraphs**: line-wrapped to available width
+- No images (terminal constraint), no clickable links (show URL in parens)
+
+Wire into `Output.tsx` replacing the stub `case "markdown":`.
+
+### 3.7.3 CLI renderer (planned)
+
+File: `src/cli/markdown.ts` (Phase 7)
+
+Plain text with optional ANSI escape codes. Consumes the same engine AST.
+Deferred to CLI frontend implementation.
+
+**Phase 3.7 gate — all must pass:**
+- `npm test` passes with: markdown AST parser handles all supported elements,
+  edge cases (nested formatting, empty code blocks, tables with varying column
+  counts)
+- TUI renders markdown results visually (manual verification)
+- `npm run build && npm run typecheck` pass
+
+---
+
 ## Phase 4 — Builder Mode + Plan Submode
 
 **Goal**: the first mode with real depth. Local validation, module tree
-tracking, plan recording, HiseScript generation.
+tracking, plan recording, HiseScript generation. **First test balloon for
+the REST-first workflow** — C++ endpoints are implemented and tested before
+the CLI-side execution is wired up.
 
 Tracks [#5](https://github.com/christoph-hart/hise-cli/issues/5) (builder)
 and [#4](https://github.com/christoph-hart/hise-cli/issues/4) (plan submode).
+
+### 4.0 HISE C++ builder endpoints (REST-first)
+
+The builder is the first mode that mutates HISE state via REST. Following
+the REST-first principle, C++ endpoints are implemented and tested before
+the CLI-side builder execution code.
+
+**4.0.1 — Design endpoint contracts**: JSON request/response schemas for
+all builder endpoints. Full specification in
+[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md) § Builder.
+
+**4.0.2 — Implement C++ handlers**: Add to `ApiRoute` enum, route metadata,
+handler implementations in `RestHelpers.cpp`, switch cases in
+`BackendProcessor.cpp`. Endpoints:
+- `GET /api/builder/tree` — hierarchical module tree
+- `POST /api/builder/add` — add module (with `validate: true` dry-run)
+- `POST /api/builder/remove` — remove module
+- `POST /api/builder/set_attributes` — set parameter values
+- `POST /api/builder/clear` / `clear_children` — clear modules
+- `POST /api/builder/clone` — deep-copy modules
+- `POST /api/builder/move` — move module between chains
+- `POST /api/builder/connect_to_script` — attach external script
+- `POST /api/builder/flush` — apply pending UI updates
+
+**4.0.3 — C++ unit tests**: Verify each operation end-to-end in
+`ServerUnitTests.cpp`. Test patterns: add → verify via tree, remove →
+verify gone, set_attributes → verify parameter changed, clone → verify
+copy exists, move → verify new parent. Test error cases: invalid module
+type, duplicate name, invalid chain target, out-of-range parameter.
+
+**4.0.4 — Update dummy data**: `dummyTree.ts` response structure must match
+the validated `GET /api/builder/tree` response from C++ tests. The dummy
+data acts as the contract bridge between C++ and TypeScript test suites.
 
 ### 4.1 Builder parser
 
@@ -467,10 +565,9 @@ Full Chevrotain grammar from
 
 ### 4.2 Module tree tracking + tree sidebar integration
 
-Fetch from `GET /api/builder/tree` on mode entry (requires
-[#12](https://github.com/christoph-hart/hise-cli/issues/12)).
-Update locally as commands execute. Enables instance-level validation
-(module name exists, name uniqueness) without round-trips.
+Fetch from `GET /api/builder/tree` on mode entry. Update locally as commands
+execute. Enables instance-level validation (module name exists, name
+uniqueness) without round-trips.
 
 The tree sidebar (implemented in Phase 3.6) displays this tree via
 `Mode.getTree()` / `getSelectedPath()` / `selectNode()`. `cd` validates
@@ -490,20 +587,19 @@ planned changes: `"added"` (green +) for modules to be created,
 for parameter changes. `added`/`removed` propagate to children
 automatically via the existing diff propagation in `propagateChainColors()`.
 
-HISE-side plan validation via `validate: true` flag requires
-[#12](https://github.com/christoph-hart/hise-cli/issues/12).
-
-Phase 4 can be completed with `MockHiseConnection`. Live HISE execution
-of builder commands requires [#12](https://github.com/christoph-hart/hise-cli/issues/12)
-to be implemented on the C++ side.
+HISE-side plan validation via `validate: true` flag on `POST /api/builder/add`.
 
 **Phase 4 gate — all must pass:**
-- `npm test` passes with: full Chevrotain parser for all documented grammar
-  forms (`add`, `clone`, `remove`, `clear`, `move`, `set`, `connect`, `show`,
-  `select`, `bypass`/`enable`, `flush`), plan submode records/shows/removes/
-  exports commands, module tree tracking validates against mocked
-  `builder/tree` response, `.tape` screencast for builder workflow
+- **C++ gate** (4.0): all builder endpoints pass unit tests in
+  `ServerUnitTests.cpp`, `verifyAllEndpointsTested()` passes
+- **hise-cli gate** (4.1–4.3): `npm test` passes with full Chevrotain parser
+  for all grammar forms (`add`, `clone`, `remove`, `clear`, `move`, `set`,
+  `connect`, `show`, `select`, `bypass`/`enable`, `flush`), plan submode
+  records/shows/removes/exports commands, module tree tracking validates
+  against dummy data matching the C++ response structure, `.tape` screencast
+  for builder workflow
 - `npm run build && npm run typecheck` pass
+- **Integration**: builder commands execute correctly against live HISE
 
 ---
 
@@ -594,25 +690,135 @@ Subcommand aliases: `hise-cli setup` → `hise-cli wizard setup`.
 
 ## Phase 6 — Remaining Modes
 
-### 6.1 DSP (Scriptnode) mode
+New `ModeId` entries for Phase 6: `ui`, `api`, `expansions`, `modules`.
+Accent colors: `ui: "#66d9ef"` (cyan), `api: "#b8bb26"` (warm green),
+`expansions: "#d4879c"` (muted pink), `modules: "#83a598"` (soft teal).
+Added to `MODE_ACCENTS` in `src/engine/modes/mode.ts` and shared
+Chevrotain tokens in `src/engine/modes/tokens.ts` (new keywords: `At`,
+`Remove`, `Move`, `Rename` for the UI grammar extension).
+
+All modes support Phase 3.5 argument parsing for one-shot execution
+(e.g., `/api Console.print` directly shows docs, `/modules AHDSR` shows
+module reference).
+
+Modes are ordered by C++ dependency: local-data-only modes first, then
+modes requiring new REST endpoints (REST-first: C++ implementation +
+tests before CLI-side mode code).
+
+### 6.1 Module reference browser (`/modules`)
+
+Tracks [#16](https://github.com/christoph-hart/hise-cli/issues/16).
+**No C++ work needed** — pure local data from `DataLoader.loadModuleList()`.
+
+Searchable offline reference for all HISE module types. Tree sidebar
+shows module categories (from `moduleList.json` `categories` map) with
+module types as children. Chat window renders markdown-formatted module
+docs with parameter tables, modulation slots, interfaces, and builder
+paths. Commands: type module name for full docs, `search` for fuzzy
+search, `ls` to list by category, `params` for parameter-only view,
+`compare` for side-by-side comparison. Completion: module names, category
+names, parameter names within module context.
+
+Phase 3.5: `/modules AHDSR` directly shows AHDSR docs.
+
+### 6.2 API documentation browser (`/api`)
+
+Tracks [#17](https://github.com/christoph-hart/hise-cli/issues/17).
+**No C++ work needed for browsing** — local data from
+`DataLoader.loadScriptingApi()`. Uses existing `POST /api/repl` for
+example execution.
+
+Read-only documentation browser for the HISE scripting API. Tree sidebar
+shows class list grouped by category (namespace, object, component,
+scriptnode) from `scripting_api.json`. Chat window renders full markdown
+docs with method signatures, parameter tables, code examples, pitfalls,
+and cross-references. Enriched classes (22 of 89) show additional detail
+(thread safety, common mistakes, `obtainedVia`). Commands: type class
+or `Class.method` name for docs, `search` for fuzzy search, `run N` to
+execute code examples in-place via REPL (stays in `/api` mode), `cd` to
+set class context, `ls` to list methods. No HISE connection required for
+browsing; connection needed only for `run`.
+
+Phase 3.5: `/api Console.print` directly shows method docs.
+
+### 6.3 UI component management (`/ui`) — C++ first
+
+Tracks [#18](https://github.com/christoph-hart/hise-cli/issues/18).
+**REST-first**: 5 new endpoints needed. Existing endpoints
+(`GET /api/list_components`, `GET /api/get_component_properties`,
+`POST /api/set_component_properties`, `GET/POST /api/*_component_value`)
+handle browsing and property mutation. New endpoints handle component
+CRUD.
+
+**C++ endpoints** (implement + test before CLI-side code):
+- `POST /api/ui/add_component` — create component (`{moduleId, type, id,
+  x, y, w, h, parentId?}`)
+- `POST /api/ui/remove_component` — remove by ID
+- `POST /api/ui/rename_component` — rename (`{moduleId, id, newId}`)
+- `POST /api/ui/move_component` — change position/size
+- `POST /api/ui/reparent_component` — move to different parent panel
+
+Full CRUD for UI components via NLP grammar. Extends the builder
+Chevrotain grammar (shared tokens, context flag) with UI-specific rules:
+`add ScriptButton "name" at x y w h`, `remove name`, `set name prop
+value`, `move name to x y`. Tree sidebar shows component hierarchy from
+`GET /api/list_components?hierarchy=true`. Validates component types
+against `scripting_api.json` `category: "component"` (14 types).
+Navigation: `cd` into components, `ls` lists children. Completion:
+component type names, existing component IDs, property names.
+
+Full specification in GitHub issue (see cross-reference table).
+
+Phase 3.5: `/ui PlayButton` enters UI mode focused on PlayButton.
+
+### 6.4 Expansion manager (`/expansions`) — C++ first
+
+Tracks [#19](https://github.com/christoph-hart/hise-cli/issues/19).
+**REST-first**: 6 new endpoints needed. No existing expansion endpoints.
+
+**C++ endpoints** (implement + test before CLI-side code):
+- `GET /api/expansions/list` — all expansions with properties + active
+  status
+- `POST /api/expansions/switch` — switch active expansion
+- `POST /api/expansions/create` — create new expansion
+- `POST /api/expansions/encode` — encode expansion assets
+- `GET /api/expansions/assets` — list assets by type for an expansion
+- `POST /api/expansions/refresh` — refresh expansion list
+
+Full specification in
+[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md) § Expansion Management.
+
+Manage HISE expansions: list, create, switch, encode. Tree sidebar shows
+expansion list with asset children grouped by type (Images, AudioFiles,
+SampleMaps, MidiFiles, UserPresets). Active expansion highlighted.
+Commands: `list`, `switch`, `create`, `encode`, `cd` into expansion,
+`ls` shows assets by type, `info` for properties, `refresh`. Dummy tree
+for development until C++ endpoints are validated.
+
+Phase 3.5: `/expansions switch "Pack 1"` one-shot switches.
+
+### 6.5 DSP (Scriptnode) mode — C++ first
 
 Tracks [#6](https://github.com/christoph-hart/hise-cli/issues/6).
+**REST-first**: requires `POST /api/dsp/*` endpoints (see
+[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md) § DSP).
+C++ endpoints implemented and tested before CLI-side mode code.
+
 Chevrotain grammar for graph editing, nodes from `scriptnodeList.json`.
 Shares token types with builder mode grammar (quoted strings, dot-paths,
 identifiers, numbers). Tree sidebar shows the scriptnode network hierarchy
 (root network as single root node, containers and nodes as children).
-Requires [#12](https://github.com/christoph-hart/hise-cli/issues/12)
-for new dsp endpoints.
 
-### 6.2 Script mode — full implementation
+### 6.6 Script mode — full implementation
 
 Tracks [#8](https://github.com/christoph-hart/hise-cli/issues/8).
 Multi-line support (unclosed brackets — detected via Lezer parse tree),
 `_` for last result, `/api` inline help (rendered as `markdown`
-CommandResult). Input syntax highlighting already wired via the regex
-tokenizer (Phase 3.6); upgrade to Lezer grammar is a drop-in replacement.
-Tree sidebar shows namespace hierarchy from `scripting_api.json`. Diff
-indicators show variable changes between compilations.
+CommandResult — requires Phase 3.7 markdown renderer). Input syntax
+highlighting already wired via the regex tokenizer (Phase 3.6); upgrade
+to Lezer grammar is a drop-in replacement. Tree sidebar shows namespace
+hierarchy from `scripting_api.json`. Diff indicators show variable
+changes between compilations.
 
 **Variable watch** (see
 [DESIGN.md — Script Mode / Variable Watch](DESIGN.md#variable-watch)):
@@ -624,10 +830,10 @@ indicators show variable changes between compilations.
   Type badges (R/V/C/G/N) in color. Expandable object/array children.
   `/watch [glob]` to toggle and filter.
 - Configurable polling interval (default 500ms, matching HISE IDE)
-- Depends on `GET /api/inspect/watch_variables` — new endpoint in
-  [#12](https://github.com/christoph-hart/hise-cli/issues/12)
+- **REST-first**: depends on `GET /api/inspect/watch_variables` — new
+  endpoint, C++ implementation + tests before CLI-side watch code
 
-### 6.3 Inspect mode — full implementation
+### 6.7 Inspect mode — full implementation
 
 Tracks [#7](https://github.com/christoph-hart/hise-cli/issues/7).
 Live monitoring (cpu, midi) via SSE subscriptions when available, with
@@ -636,27 +842,32 @@ not yet implemented in HISE C++ — see DESIGN.md SSE Status). The polling
 fallback ships in 1.0; SSE upgrade is transparent when
 [#12](https://github.com/christoph-hart/hise-cli/issues/12) delivers it.
 
-### 6.4 Sampler mode
+### 6.8 Sampler mode — C++ first
 
 Tracks [#11](https://github.com/christoph-hart/hise-cli/issues/11).
+**REST-first**: requires `POST /api/sampler/*` endpoints (see
+[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md) § Sampler).
+C++ endpoints implemented and tested before CLI-side mode code.
+
 Selection-based workflow, sample map management, complex group manager.
 Tree sidebar shows sample map structure (samplemap ID as root, groups
 and zones as children).
-Requires [#12](https://github.com/christoph-hart/hise-cli/issues/12).
 
-### 6.5 Project, Compile, Import modes
+### 6.9 Project, Compile, Import modes
 
 Tracks [#9](https://github.com/christoph-hart/hise-cli/issues/9).
 Project mode uses the tree sidebar for folder structure (project folder
 as root). Diff indicators from git status (added/removed/modified files).
 
 **Phase 6 gate — all must pass:**
-- `npm test` passes with: DSP mode Chevrotain grammar, script mode
-  multi-line detection + `/api` help + watch polling, inspect mode polling
-  fallback, sampler mode grammar + selection commands, project/compile/import
-  mode parsers
+- **C++ gate**: all new endpoints (UI mutations, expansions, DSP, sampler,
+  watch_variables) pass unit tests in `ServerUnitTests.cpp`
+- **hise-cli gate**: `npm test` passes with all mode parsers, tree
+  building, search, completion, and markdown docs rendering
 - All modes have at least one `.tape` screencast test
 - `npm run build && npm run typecheck` pass
+- **Integration**: each C++-dependent mode executes correctly against
+  live HISE with validated endpoints
 
 ---
 
@@ -824,7 +1035,10 @@ regression tests alongside their HISE projects.
 ## Dependencies on HISE C++ work
 
 [#12](https://github.com/christoph-hart/hise-cli/issues/12) tracks all new
-REST API endpoints. This work proceeds in parallel on the HISE side.
+REST API endpoints. Following the REST-first principle, each group of
+endpoints is implemented and tested in C++ before the corresponding
+CLI-side mode code is written. The dummy data in hise-cli must match
+the validated C++ test response structures.
 
 | hise-cli feature | Required HISE endpoint | Phase blocked |
 |------------------|----------------------|---------------|
@@ -834,16 +1048,23 @@ REST API endpoints. This work proceeds in parallel on the HISE side.
 | Script mode (file list) | `GET /api/get_included_files` (exists) | None — works now |
 | Inspect mode (basic) | `GET /api/status` (exists) | None — works now |
 | Connection probe | `GET /api/status` (exists, returns 503 while loading) | None — works now |
-| Builder execution | `POST /api/builder/add`, `/remove`, `/move`, `/set` | Phase 4 |
-| Plan validation | `POST /api/builder/add` with `validate: true` | Phase 4 |
-| Module tree fetch | `GET /api/builder/tree` | Phase 4 |
-| Variable watch | `GET /api/inspect/watch_variables` (new) | Phase 6 |
-| DSP mode | `POST /api/dsp/*` | Phase 6 |
-| Sampler mode | `POST /api/sampler/*` | Phase 6 |
+| UI browsing | `GET /api/list_components` (exists) | None — works now |
+| UI properties | `GET/POST /api/*_component_properties` (exists) | None — works now |
+| Module reference (`/modules`) | None — local `moduleList.json` | None |
+| API docs (`/api`) | None — local `scripting_api.json` | None |
+| Builder execution | `POST /api/builder/add`, `/remove`, `/move`, `/set_attributes` | Phase 4 (4.0) |
+| Plan validation | `POST /api/builder/add` with `validate: true` | Phase 4 (4.0) |
+| Module tree fetch | `GET /api/builder/tree` | Phase 4 (4.0) |
+| UI component CRUD | `POST /api/ui/add_component`, `/remove_component`, `/rename_component`, `/move_component`, `/reparent_component` | Phase 6.3 |
+| Expansion management | `GET /api/expansions/list`, `/assets`; `POST /api/expansions/switch`, `/create`, `/encode`, `/refresh` | Phase 6.4 |
+| DSP mode | `POST /api/dsp/*` | Phase 6.5 |
+| Variable watch | `GET /api/inspect/watch_variables` (new) | Phase 6.6 |
+| Sampler mode | `POST /api/sampler/*` | Phase 6.8 |
 | SSE events | `GET /api/events` (not yet implemented in C++) | Phase 6-7 |
 
 Phases 0–3 require **no new C++ endpoints**. Everything uses existing APIs
-or local validation against static datasets.
+or local validation against static datasets. Phase 6.1 (`/modules`) and
+6.2 (`/api`) also require no new endpoints.
 
 ---
 

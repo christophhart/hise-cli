@@ -33,6 +33,21 @@ Standalone wizards (setup, update, migrate, nuke) replace the current `src/setup
 `src/menu/` code. Source wizard JSONs from HISE's C++ multipage dialogs live in
 `data/wizards/`. Conversion guide: [docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md).
 
+**REST-first development**: Any mode requiring new HISE REST endpoints follows a strict
+sequence: design endpoint contract → implement in HISE C++ → write C++ unit tests →
+verify behavior → build validated dummy data in hise-cli → implement CLI mode. Dummy
+data must match the validated C++ test response structures — it acts as a contract
+bridge ensuring TypeScript tests and C++ tests agree on response shapes. Modes using
+only local data (`moduleList.json`, `scripting_api.json`) or existing endpoints
+(`POST /api/repl`, `GET /api/status`) skip the C++ steps. This applies to Phase 4
+(builder execution), Phase 6 (UI, expansions, DSP, sampler), and any future mode
+needing new endpoints. See [ROADMAP.md](ROADMAP.md) Principles.
+
+**Terminal markdown renderer**: Shared prerequisite (Phase 3.7) for wizard step
+descriptions (Phase 5), API/module docs rendering (Phase 6), and builder help text.
+Parses markdown with `marked` in the engine layer (isomorphic), renders via Ink in
+the TUI. Replaces the stub `case "markdown":` in `Output.tsx`.
+
 ## Build & Verify
 
 ```bash

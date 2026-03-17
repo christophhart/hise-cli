@@ -17,7 +17,7 @@ import type { LayoutScale } from "../layout.js";
 
 // ── Flattened row for rendering ─────────────────────────────────────
 
-interface FlatRow {
+export interface FlatRow {
 	node: TreeNode;
 	depth: number;
 	path: string[];           // node id path from root
@@ -52,6 +52,8 @@ export interface TreeSidebarHandle {
 	/** Collapse all nodes whose label matches the glob pattern. Returns match count.
 	 *  Root node is never collapsed. */
 	collapseMatching(pattern: string): number;
+	/** Jump cursor to the first visible (non-separator, non-hidden) row. Returns true if found. */
+	jumpToFirstMatch(): boolean;
 }
 
 // ── Props ───────────────────────────────────────────────────────────
@@ -81,6 +83,10 @@ export interface TreeSidebarProps {
 	onStateChange?: (state: TreeSidebarState) => void;
 	/** Called when the sidebar wants focus (e.g. on mouse click). */
 	onFocus?: () => void;
+	/** Whether the search bar is focused (key dispatch is in app.tsx). */
+	searchFocused?: boolean;
+	/** Current search text (managed by app.tsx key dispatcher). */
+	searchText?: string;
 }
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -133,7 +139,7 @@ function nodeLabel(node: TreeNode): string {
 
 // ── Flatten tree into visible rows ──────────────────────────────────
 
-function flattenTree(
+export function flattenTree(
 	node: TreeNode,
 	depth: number,
 	parentPath: string[],
@@ -217,6 +223,74 @@ function insertSpacingRows(rows: FlatRow[], layout: LayoutScale): FlatRow[] {
 	return result;
 }
 
+// ── Search filter: compute which rows are visible ───────────────────
+
+/**
+ * Given a list of flat rows, a case-insensitive filter string, and the
+ * selected key (current root), return the set of row indices that should
+ * be visible. Returns null when there is no active filter (all visible).
+ *
+ * Visibility rules:
+ * 1. The root (depth 0) row is always visible.
+ * 2. A row matches if its label contains the filter substring (case-insensitive).
+ * 3. All ancestors of a matching row are visible (to preserve tree structure).
+ * 4. Separator rows are visible if an adjacent non-separator row is visible.
+ */
+export function computeVisibleSet(
+	rows: FlatRow[],
+	filter: string,
+): Set<number> | null {
+	if (!filter) return null; // no filter → all visible
+
+	const lower = filter.toLowerCase();
+	const visible = new Set<number>();
+
+	for (let i = 0; i < rows.length; i++) {
+		const row = rows[i]!;
+		if (row.separator) continue;
+
+		// Root is always visible
+		if (row.depth === 0) {
+			visible.add(i);
+			continue;
+		}
+
+		// Check match
+		if (row.node.label.toLowerCase().includes(lower)) {
+			visible.add(i);
+			// Make all ancestors visible by walking backwards
+			const pathPrefix = row.path.slice(0, -1);
+			for (let j = i - 1; j >= 0; j--) {
+				const ancestor = rows[j]!;
+				if (ancestor.separator) continue;
+				if (visible.has(j)) break; // already processed this branch
+				// Check if this row is an ancestor (its path is a prefix of the match's path)
+				if (pathPrefix.length >= ancestor.path.length &&
+					ancestor.path.every((seg, idx) => seg === pathPrefix[idx])) {
+					visible.add(j);
+				}
+			}
+		}
+	}
+
+	// Make separator rows visible if the row they precede is visible
+	for (let i = 0; i < rows.length; i++) {
+		if (rows[i]?.separator) {
+			// Find next non-separator
+			let next = i + 1;
+			while (next < rows.length && rows[next]?.separator) next++;
+			if (next < rows.length && visible.has(next)) {
+				visible.add(i);
+			}
+		}
+	}
+
+	return visible;
+}
+
+// ── Search bar icon ─────────────────────────────────────────────────
+const SEARCH_ICON = "⌕";
+
 // ── Component ───────────────────────────────────────────────────────
 
 export const TreeSidebar = React.memo(function TreeSidebar({
@@ -232,6 +306,8 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	persistedState,
 	onStateChange,
 	onFocus,
+	searchFocused = false,
+	searchText = "",
 }: TreeSidebarProps) {
 	const [expandedSet, setExpandedSet] = useState<Set<string>>(() => {
 		if (persistedState) return new Set(persistedState.expandedPaths);
@@ -260,6 +336,29 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	// Layout scale from theme context
 	const { layout } = useTheme();
 
+	// ── Search filter debounce ─────────────────────────────────
+	const [filterPattern, setFilterPattern] = useState("");
+	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	useEffect(() => {
+		if (debounceRef.current) clearTimeout(debounceRef.current);
+		if (searchText === "") {
+			setFilterPattern(""); // immediate clear
+			return;
+		}
+		debounceRef.current = setTimeout(() => {
+			setFilterPattern(searchText);
+		}, 500);
+		return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+	}, [searchText]);
+
+	// ── Search bar visibility ─────────────────────────────────
+	// Compact: only show if search is focused or filter is active
+	// Standard/spacious: always show
+	const searchBarVisible = layout.density !== "compact" || searchFocused || filterPattern !== "";
+	const searchBarHeight = searchBarVisible ? 1 : 0;
+	const treeHeight = height - searchBarHeight;
+
 	// Flatten tree and insert spacing rows
 	const rawRows: FlatRow[] = [];
 	if (tree) {
@@ -267,11 +366,36 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	}
 	const rows = insertSpacingRows(rawRows, layout);
 
-	// Clamp cursor (skip separator rows)
+	// Compute visible set based on active filter
+	const visibleSet = computeVisibleSet(rows, filterPattern);
+
+	// Helper: does a row directly match the filter (not just visible as ancestor)?
+	const lowerFilter = filterPattern.toLowerCase();
+	const isFilterMatch = (idx: number): boolean => {
+		if (filterPattern === "") return true; // no filter = everything matches
+		const row = rows[idx];
+		if (!row || row.separator) return false;
+		if (row.depth === 0) return true; // root always navigable
+		return row.node.label.toLowerCase().includes(lowerFilter);
+	};
+
+	// Helper: is a row navigable (not separator, not hidden, not ancestor-only)?
+	const isNavigable = (idx: number): boolean => {
+		if (idx < 0 || idx >= rows.length) return false;
+		if (rows[idx]?.separator) return false;
+		if (visibleSet && !visibleSet.has(idx)) return false;
+		if (!isFilterMatch(idx)) return false;
+		return true;
+	};
+
+	// Clamp cursor (skip separator rows and hidden rows)
 	let clampedCursor = Math.max(0, Math.min(cursorIndex, rows.length - 1));
-	while (clampedCursor < rows.length && rows[clampedCursor]?.separator) clampedCursor++;
-	if (clampedCursor >= rows.length) clampedCursor = Math.max(0, rows.length - 1);
-	while (clampedCursor > 0 && rows[clampedCursor]?.separator) clampedCursor--;
+	while (clampedCursor < rows.length && !isNavigable(clampedCursor)) clampedCursor++;
+	if (clampedCursor >= rows.length) {
+		clampedCursor = rows.length - 1;
+		while (clampedCursor > 0 && !isNavigable(clampedCursor)) clampedCursor--;
+	}
+	clampedCursor = Math.max(0, clampedCursor);
 	if (clampedCursor !== cursorIndex) {
 		setCursorIndex(clampedCursor);
 	}
@@ -281,9 +405,17 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		? [tree?.id ?? tree?.label, ...selectedPath].filter(Boolean).join(".")
 		: tree?.id ?? tree?.label ?? "";
 
+	// Flag: when jumpToFirstMatch sets the cursor, suppress the next
+	// focus-enter effect (which would override it back to the selected root).
+	const skipFocusJumpRef = useRef(false);
+
 	// When focus enters the sidebar, jump cursor to the selected node
 	useEffect(() => {
 		if (!focused || rows.length === 0) return;
+		if (skipFocusJumpRef.current) {
+			skipFocusJumpRef.current = false;
+			return;
+		}
 		const targetIndex = rows.findIndex((r) => !r.separator && r.path.join(".") === selectedKey);
 		if (targetIndex >= 0) {
 			setCursorIndex(targetIndex);
@@ -293,16 +425,27 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	// Scrolling
 	const sidebarLeftPad = layout.sidebarLeftPad;
 	const contentWidth = width - GAP_WIDTH - sidebarLeftPad;
-	const visibleRows = height;
-	const totalRows = rows.length;
-	const showScrollbar = totalRows > visibleRows;
+	const viewportRows = treeHeight;
 
-	// Keep cursor in view
+	// Build array of visible row indices (respecting filter)
+	const visibleIndices: number[] = [];
+	for (let i = 0; i < rows.length; i++) {
+		if (!visibleSet || visibleSet.has(i)) {
+			visibleIndices.push(i);
+		}
+	}
+	const totalVisibleRows = visibleIndices.length;
+	const showScrollbar = totalVisibleRows > viewportRows;
+
+	// Keep cursor in view — use visible position, not raw row index
+	const cursorVisiblePos = visibleIndices.indexOf(clampedCursor);
 	let adjScroll = scrollOffset;
-	if (clampedCursor < adjScroll) {
-		adjScroll = clampedCursor;
-	} else if (clampedCursor >= adjScroll + visibleRows) {
-		adjScroll = clampedCursor - visibleRows + 1;
+	if (cursorVisiblePos >= 0) {
+		if (cursorVisiblePos < adjScroll) {
+			adjScroll = cursorVisiblePos;
+		} else if (cursorVisiblePos >= adjScroll + viewportRows) {
+			adjScroll = cursorVisiblePos - viewportRows + 1;
+		}
 	}
 	if (adjScroll !== scrollOffset) {
 		setScrollOffset(adjScroll);
@@ -325,17 +468,17 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		cursorUp: () => {
 			setCursorIndex((prev) => {
 				let next = prev - 1;
-				// Skip separator rows
-				while (next >= 0 && rows[next]?.separator) next--;
+				// Skip separator rows and hidden rows
+				while (next >= 0 && !isNavigable(next)) next--;
 				return Math.max(0, next);
 			});
 		},
 		cursorDown: () => {
 			setCursorIndex((prev) => {
 				let next = prev + 1;
-				// Skip separator rows
-				while (next < rows.length && rows[next]?.separator) next++;
-				return Math.min(rows.length - 1, next);
+				// Skip separator rows and hidden rows
+				while (next < rows.length && !isNavigable(next)) next++;
+				return next < rows.length ? next : prev;
 			});
 		},
 		expand: () => {
@@ -448,7 +591,24 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			}
 			return toCollapse.length;
 		},
-	}), [rows, clampedCursor, expandedSet, onSelect, tree]);
+		jumpToFirstMatch: () => {
+			// Suppress the focus-enter effect that would override cursor
+			skipFocusJumpRef.current = true;
+			// Find the first navigable row after root (skip depth 0)
+			for (let i = 0; i < rows.length; i++) {
+				if (isNavigable(i) && rows[i]!.depth > 0) {
+					setCursorIndex(i);
+					return true;
+				}
+			}
+			// Fall back to root
+			if (rows.length > 0 && isNavigable(0)) {
+				setCursorIndex(0);
+				return true;
+			}
+			return false;
+		},
+	}), [rows, clampedCursor, expandedSet, onSelect, tree, visibleSet]);
 
 	// ── Mouse interaction ──────────────────────────────────────
 
@@ -462,7 +622,13 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 
 	useOnClick(boxRef, (event) => {
 		const relRow = event.y - elementPos.top;
-		const rowIndex = relRow + adjScroll;
+		// Account for search bar taking the first row
+		const treeRelRow = relRow - searchBarHeight;
+		if (treeRelRow < 0) return; // clicked on search bar
+		// Map viewport row to actual row index via visibleIndices
+		const visiblePos = treeRelRow + adjScroll;
+		const rowIndex = visibleIndices[visiblePos];
+		if (rowIndex == null) return;
 		const row = rows[rowIndex];
 		if (!row || row.separator) return;
 
@@ -489,7 +655,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		if (event.button === "wheel-up") {
 			setScrollOffset((prev) => Math.max(0, prev - WHEEL_LINES));
 		} else if (event.button === "wheel-down") {
-			const maxScroll = Math.max(0, totalRows - visibleRows);
+			const maxScroll = Math.max(0, totalVisibleRows - viewportRows);
 			setScrollOffset((prev) => Math.min(maxScroll, prev + WHEEL_LINES));
 		}
 	});
@@ -503,7 +669,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	if (!tree) {
 		// No tree — render empty sidebar
 		const emptyRows: React.ReactNode[] = [];
-		for (let i = 0; i < height; i++) {
+		for (let i = 0; i < treeHeight; i++) {
 			emptyRows.push(
 				<Box key={i}>
 					<Text backgroundColor={scheme.backgrounds.sidebar}>
@@ -518,15 +684,17 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		return <Box ref={boxRef} flexDirection="column">{emptyRows}</Box>;
 	}
 
-	const visibleSlice = rows.slice(adjScroll, adjScroll + visibleRows);
+	// Slice visible indices for the current scroll window
+	const slicedIndices = visibleIndices.slice(adjScroll, adjScroll + viewportRows);
 	const renderedRows: React.ReactNode[] = [];
 
-	for (let i = 0; i < visibleRows; i++) {
-		const row = visibleSlice[i];
+	for (let i = 0; i < viewportRows; i++) {
+		const rowIndex = slicedIndices[i];
+		const row = rowIndex != null ? rows[rowIndex] : undefined;
 		if (!row) {
 			// Empty row below content
 			const sb = showScrollbar
-				? scrollbarChar(i, visibleRows, totalRows, adjScroll, scheme)
+				? scrollbarChar(i, viewportRows, totalVisibleRows, adjScroll, scheme)
 				: null;
 			const padW = contentWidth - (sb ? 1 : 0);
 			renderedRows.push(
@@ -546,7 +714,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		// ── Separator row: connector lines only ────────────────
 		if (row.separator) {
 			const sb = showScrollbar
-				? scrollbarChar(i, visibleRows, totalRows, adjScroll, scheme)
+				? scrollbarChar(i, viewportRows, totalVisibleRows, adjScroll, scheme)
 				: null;
 			const scrollbarSpace = sb ? 1 : 0;
 
@@ -592,7 +760,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 
 		const pathKey = row.path.join(".");
 		const isCurrentRoot = pathKey === selectedKey;
-		const isCursorRow = (adjScroll + i) === clampedCursor;
+		const isCursorRow = rowIndex === clampedCursor;
 
 		// ── Build row content as segments ──────────────────────
 
@@ -605,11 +773,18 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			bg = mix(DIFF_COLORS[row.node.diff]!, scheme.backgrounds.sidebar, DIFF_BG_ALPHA);
 		}
 
-		if (isCursorRow && focused) {
+		// When filter is active, dim ancestor-only rows (visible but not matching)
+		const isFilterAncestorOnly = filterPattern !== "" && rowIndex != null
+			&& !row.node.label.toLowerCase().includes(filterPattern.toLowerCase())
+			&& row.depth > 0; // root is always full brightness
+
+		if (isCursorRow && (focused || searchFocused)) {
 			fg = brand.signal;
 			bg = scheme.backgrounds.raised;
 		} else if (isCurrentRoot) {
 			fg = scheme.foreground.bright;
+		} else if (isFilterAncestorOnly) {
+			fg = scheme.foreground.muted;
 		} else if (row.node.dimmed) {
 			fg = scheme.foreground.muted;
 		}
@@ -705,7 +880,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 
 		// Scrollbar
 		const sb = showScrollbar
-			? scrollbarChar(i, visibleRows, totalRows, adjScroll, scheme)
+			? scrollbarChar(i, viewportRows, totalVisibleRows, adjScroll, scheme)
 			: null;
 
 		renderedRows.push(
@@ -725,5 +900,58 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		);
 	}
 
-	return <Box ref={boxRef} flexDirection="column">{renderedRows}</Box>;
+	// ── Search bar row ─────────────────────────────────────────
+	const searchBarRow = searchBarVisible ? (() => {
+		const iconColor = searchFocused
+			? brand.signal
+			: filterPattern
+				? scheme.foreground.default
+				: scheme.foreground.muted;
+		const searchBg = searchFocused
+			? scheme.backgrounds.raised
+			: scheme.backgrounds.sidebar;
+		const textColor = searchFocused
+			? scheme.foreground.bright
+			: scheme.foreground.muted;
+
+		// Render search text with cursor
+		const displayText = searchText;
+		const iconStr = SEARCH_ICON + " ";
+		const maxTextLen = Math.max(0, contentWidth - iconStr.length);
+		const truncText = displayText.length > maxTextLen
+			? displayText.slice(displayText.length - maxTextLen)
+			: displayText;
+		const padLen = Math.max(0, contentWidth - iconStr.length - truncText.length);
+
+		// Match count (shown when filter is active and not focused)
+		let countStr = "";
+		if (filterPattern && !searchFocused) {
+			const matchCount = visibleSet ? visibleSet.size : 0;
+			countStr = ` ${matchCount}`;
+		}
+		const padWithCount = Math.max(0, padLen - countStr.length);
+
+		return (
+			<Box key="search-bar">
+				<Text backgroundColor={searchBg}>
+					{leftPad}
+					<Text color={iconColor}>{iconStr}</Text>
+					<Text color={textColor}>{truncText}</Text>
+					{searchFocused && <Text backgroundColor={scheme.foreground.bright}>{" "}</Text>}
+					<Text>{" ".repeat(Math.max(0, searchFocused ? padWithCount - 1 : padWithCount))}</Text>
+					{countStr ? <Text color={scheme.foreground.muted}>{countStr}</Text> : null}
+				</Text>
+				<Text backgroundColor={scheme.backgrounds.darker}>
+					{" ".repeat(GAP_WIDTH)}
+				</Text>
+			</Box>
+		);
+	})() : null;
+
+	return (
+		<Box ref={boxRef} flexDirection="column">
+			{searchBarRow}
+			{renderedRows}
+		</Box>
+	);
 });

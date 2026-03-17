@@ -133,6 +133,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		sidebarStateRef.current = state;
 	}, []);
 
+	// Tree sidebar search
+	const [searchFocused, setSearchFocused] = useState(false);
+	const [searchText, setSearchText] = useState("");
+
 	// State
 	const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
 	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
@@ -252,6 +256,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				if (prev) {
 					// Closing sidebar — return focus to input
 					setSidebarFocused(false);
+					setSearchFocused(false);
 				} else {
 					// Opening sidebar — grab focus immediately
 					setSidebarFocused(true);
@@ -261,9 +266,31 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			return;
 		}
 
-		// Tab — switch focus between sidebar and input (when sidebar visible)
+		// Ctrl+F or Ctrl+S — focus tree sidebar search bar
+		// (Ctrl+F may be intercepted by some terminals like iTerm2/VS Code;
+		//  Ctrl+S is the fallback for those environments)
+		if (key.ctrl && (input === "f" || input === "k")) {
+			if (!sidebarVisible) {
+				setSidebarVisible(true);
+			}
+			setSearchFocused(true);
+			setSidebarFocused(false);
+			return;
+		}
+
+		// Tab — switch focus between sidebar/search and input (when sidebar visible)
 		if (key.tab && sidebarVisible && !completionState?.visible) {
-			setSidebarFocused((prev) => !prev);
+			if (searchFocused) {
+				// Search → input (keep filter active)
+				setSearchFocused(false);
+				setSidebarFocused(false);
+			} else if (sidebarFocused) {
+				// Tree → input
+				setSidebarFocused(false);
+			} else {
+				// Input → tree (or search if there's an active search)
+				setSidebarFocused(true);
+			}
 			return;
 		}
 
@@ -297,8 +324,48 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			// All other keys fall through to tree/input
 		}
 
-		// ── Priority 4: Tree sidebar (when focused) ───────────────
-		if (sidebarFocused && sidebarVisible) {
+		// ── Priority 4: Search bar (when focused) ────────────────
+		if (searchFocused && sidebarVisible) {
+			if (key.return) {
+				// Jump to first match, unfocus search, focus tree
+				treeSidebarRef.current?.jumpToFirstMatch();
+				setSearchFocused(false);
+				setSidebarFocused(true);
+				return;
+			}
+			if (key.escape) {
+				// Clear search text, remove filter, unfocus, focus tree
+				setSearchText("");
+				setSearchFocused(false);
+				setSidebarFocused(true);
+				return;
+			}
+			if (key.backspace || key.delete) {
+				setSearchText((prev) => prev.slice(0, -1));
+				return;
+			}
+			// Down arrow — jump to first match (mirrors Enter)
+			if (key.downArrow) {
+				treeSidebarRef.current?.jumpToFirstMatch();
+				setSearchFocused(false);
+				setSidebarFocused(true);
+				return;
+			}
+			// Up arrow passes through to tree navigation (Priority 5)
+			if (key.upArrow) {
+				// Fall through to tree handling below
+			} else if (input && !key.ctrl && !key.meta) {
+				const code = input.charCodeAt(0);
+				if (code >= 0x20 && code !== 0x7f && !MOUSE_SEQ_RE.test(input)) {
+					setSearchText((prev) => prev + input);
+					return;
+				}
+			}
+		}
+
+		// ── Priority 5: Tree sidebar (when focused) ───────────────
+		// Up/Down navigation also applies when search is focused (pass-through from Priority 4)
+		if ((sidebarFocused || searchFocused) && sidebarVisible) {
 			const tree = treeSidebarRef.current;
 			if (tree) {
 				if (key.upArrow) {
@@ -309,6 +376,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					tree.cursorDown();
 					return;
 				}
+			}
+		}
+		if (sidebarFocused && sidebarVisible) {
+			const tree = treeSidebarRef.current;
+			if (tree) {
 				if (key.return) {
 					tree.selectAsRoot();
 					return;
@@ -326,8 +398,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					return;
 				}
 				if (key.escape) {
-					// Escape in tree → return focus to input
-					setSidebarFocused(false);
+					if (searchText !== "") {
+						// First Escape: clear search filter, stay in tree
+						setSearchText("");
+					} else {
+						// Second Escape (or no filter): return focus to input
+						setSidebarFocused(false);
+					}
 					return;
 				}
 			}
@@ -701,6 +778,17 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	const contextLabel = currentMode.contextLabel ?? "";
 	const treeLabel = sidebarVisible ? currentMode.treeLabel : undefined;
 
+	// Clear search when mode changes (tree changes)
+	const currentModeId = currentMode.id;
+	const prevModeIdRef = useRef(currentModeId);
+	useEffect(() => {
+		if (prevModeIdRef.current !== currentModeId) {
+			prevModeIdRef.current = currentModeId;
+			setSearchText("");
+			setSearchFocused(false);
+		}
+	}, [currentModeId]);
+
 	// Syntax highlighting tokenizer from current mode (bound to avoid context loss)
 	const modeTokenizer = currentMode.tokenizeInput
 		? (v: string) => currentMode.tokenizeInput!(v)
@@ -911,20 +999,22 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				/>
 				<Box flexDirection="row" height={mainAreaHeight}>
 					{sidebarVisible && (
-						<TreeSidebar
-							tree={modeTree}
-							selectedPath={modeSelectedPath}
-							width={sidebarW}
-							height={mainAreaHeight}
-							focused={sidebarFocused}
-							accent={modeAccent}
-							scheme={scheme}
-							onSelect={handleTreeSelect}
-							sidebarRef={treeSidebarRef}
-							persistedState={sidebarStateRef.current}
-							onStateChange={handleSidebarStateChange}
-							onFocus={() => setSidebarFocused(true)}
-						/>
+					<TreeSidebar
+						tree={modeTree}
+						selectedPath={modeSelectedPath}
+						width={sidebarW}
+						height={mainAreaHeight}
+						focused={sidebarFocused}
+						accent={modeAccent}
+						scheme={scheme}
+						onSelect={handleTreeSelect}
+						sidebarRef={treeSidebarRef}
+						persistedState={sidebarStateRef.current}
+						onStateChange={handleSidebarStateChange}
+						onFocus={() => setSidebarFocused(true)}
+						searchFocused={searchFocused}
+						searchText={searchText}
+					/>
 					)}
 					<Box ref={outputRef} flexDirection="column" flexGrow={1}>
 						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>

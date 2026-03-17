@@ -1826,6 +1826,440 @@ Analyze and report signal chain latency.
 
 ---
 
+## UI Component Mutation
+
+Endpoints for creating, removing, and reorganizing UI components from the
+interface designer. Complements the existing read/property endpoints
+(`GET /api/list_components`, `GET/POST /api/*_component_properties`,
+`GET/POST /api/*_component_value`). Used by the `/ui` mode (Phase 6.3).
+
+### POST /api/ui/add_component
+
+Create a new UI component on the interface.
+
+**JSON Body**:
+
+| Field      | Required | Description                                                  |
+|------------|----------|--------------------------------------------------------------|
+| `moduleId` | Yes      | Script processor ID (e.g., `"Interface"`)                    |
+| `type`     | Yes      | Component type (e.g., `"ScriptButton"`, `"ScriptSlider"`, `"ScriptPanel"`) |
+| `id`       | Yes      | Unique component ID (e.g., `"PlayButton"`)                   |
+| `x`        | No       | X position in pixels (default: 0)                            |
+| `y`        | No       | Y position in pixels (default: 0)                            |
+| `width`    | No       | Width in pixels (default: type-dependent)                    |
+| `height`   | No       | Height in pixels (default: type-dependent)                   |
+| `parentId` | No       | Parent panel ID (default: root content area)                 |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Component created",
+  "component": {
+    "id": "PlayButton",
+    "type": "ScriptButton",
+    "x": 100,
+    "y": 200,
+    "width": 128,
+    "height": 32,
+    "parentId": ""
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 400: `type` is not a valid component type
+- 400: `id` already exists
+- 400: `id` is empty or contains invalid characters
+- 404: `moduleId` is not a valid script processor
+- 404: `parentId` does not exist or is not a ScriptPanel
+
+**Implementation notes**: Maps component types to `Content::add*` methods:
+`ScriptButton` → `addButton()`, `ScriptSlider` → `addKnob()`,
+`ScriptPanel` → `addPanel()`, `ScriptComboBox` → `addComboBox()`,
+`ScriptLabel` → `addLabel()`, `ScriptImage` → `addImage()`,
+`ScriptTable` → `addTable()`, `ScriptSliderPack` → `addSliderPack()`,
+`ScriptAudioWaveform` → `addAudioWaveform()`,
+`ScriptFloatingTile` → `addFloatingTile()`,
+`ScriptWebView` → `addWebView()`,
+`ScriptedViewport` → `addViewport()`.
+After creation, sets position/size via `setPosition()` and parent via
+`set_component_properties` `parentComponent` property.
+
+---
+
+### POST /api/ui/remove_component
+
+Remove a component from the interface.
+
+**JSON Body**:
+
+| Field      | Required | Description                              |
+|------------|----------|------------------------------------------|
+| `moduleId` | Yes      | Script processor ID                      |
+| `id`       | Yes      | Component ID to remove                   |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Component removed",
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 400: `id` is empty
+- 404: `moduleId` is not a valid script processor
+- 404: component `id` does not exist
+
+**Implementation notes**: Uses the Content API to remove the component.
+Child components of a panel are removed recursively.
+
+---
+
+### POST /api/ui/rename_component
+
+Rename a component (change its ID).
+
+**JSON Body**:
+
+| Field      | Required | Description                              |
+|------------|----------|------------------------------------------|
+| `moduleId` | Yes      | Script processor ID                      |
+| `id`       | Yes      | Current component ID                     |
+| `newId`    | Yes      | New component ID                         |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Component renamed",
+  "oldId": "Button1",
+  "newId": "PlayButton",
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 400: `newId` already exists
+- 400: `newId` is empty or contains invalid characters
+- 404: `moduleId` is not a valid script processor
+- 404: component `id` does not exist
+
+---
+
+### POST /api/ui/move_component
+
+Change a component's position and/or size.
+
+**JSON Body**:
+
+| Field      | Required | Description                              |
+|------------|----------|------------------------------------------|
+| `moduleId` | Yes      | Script processor ID                      |
+| `id`       | Yes      | Component ID                             |
+| `x`        | No       | New X position (unchanged if omitted)    |
+| `y`        | No       | New Y position (unchanged if omitted)    |
+| `width`    | No       | New width (unchanged if omitted)         |
+| `height`   | No       | New height (unchanged if omitted)        |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Component moved",
+  "component": {
+    "id": "PlayButton",
+    "x": 300,
+    "y": 400,
+    "width": 128,
+    "height": 32
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 400: no position/size fields provided
+- 404: `moduleId` is not a valid script processor
+- 404: component `id` does not exist
+
+**Implementation notes**: Uses `setPosition(x, y, w, h)` on the component.
+Only provided fields are changed; omitted fields retain current values.
+
+---
+
+### POST /api/ui/reparent_component
+
+Move a component to a different parent panel.
+
+**JSON Body**:
+
+| Field         | Required | Description                                     |
+|---------------|----------|-------------------------------------------------|
+| `moduleId`    | Yes      | Script processor ID                             |
+| `id`          | Yes      | Component ID to reparent                        |
+| `newParentId` | Yes      | Target parent panel ID (empty string for root)  |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Component reparented",
+  "component": {
+    "id": "PlayButton",
+    "parentId": "MainPanel"
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 400: `newParentId` is the component itself (circular)
+- 400: `newParentId` is a descendant of the component (circular)
+- 404: `moduleId` is not a valid script processor
+- 404: component `id` does not exist
+- 404: `newParentId` does not exist or is not a ScriptPanel
+
+**Implementation notes**: Uses the `parentComponent` property via
+`set_component_properties`. Validates that the target is a ScriptPanel
+(or empty string for root) and checks for circular parent references.
+
+---
+
+## Expansion Management
+
+Endpoints for listing, switching, creating, and encoding HISE expansions.
+Wraps the `ExpansionHandler` C++ API (accessible via
+`MainController::getExpansionHandler()`). Used by the `/expansions` mode
+(Phase 6.4).
+
+### GET /api/expansions/list
+
+List all available expansions with their properties and active status.
+
+**Query Parameters**: None.
+
+**Response**:
+```json
+{
+  "success": true,
+  "expansions": [
+    {
+      "name": "Factory Content",
+      "version": "1.0.0",
+      "isActive": true,
+      "properties": {
+        "Name": "Factory Content",
+        "Version": "1.0.0",
+        "Description": "Default factory samples and presets",
+        "Tags": "factory, default",
+        "UUID": "abc123-def456"
+      }
+    },
+    {
+      "name": "Expansion Pack 1",
+      "version": "1.2.0",
+      "isActive": false,
+      "properties": {
+        "Name": "Expansion Pack 1",
+        "Version": "1.2.0",
+        "Description": "Additional sound library",
+        "Tags": "expansion",
+        "UUID": "ghi789-jkl012"
+      }
+    }
+  ],
+  "logs": [],
+  "errors": []
+}
+```
+
+**Implementation notes**: Uses `getExpansionHandler().getListOfAvailableExpansions()`
+to enumerate expansions, `getCurrentExpansion()` to determine active state,
+and `Expansion::getProperties()` for property data.
+
+---
+
+### POST /api/expansions/switch
+
+Switch the active expansion.
+
+**JSON Body**:
+
+| Field  | Required | Description                                          |
+|--------|----------|------------------------------------------------------|
+| `name` | Yes      | Expansion name to activate (empty string to deactivate all) |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Switched to expansion: Expansion Pack 1",
+  "activeExpansion": "Expansion Pack 1",
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 404: expansion `name` does not exist
+
+**Implementation notes**: Uses `getExpansionHandler().setCurrentExpansion(name)`.
+
+---
+
+### POST /api/expansions/create
+
+Create a new expansion.
+
+**JSON Body**:
+
+| Field         | Required | Description                              |
+|---------------|----------|------------------------------------------|
+| `name`        | Yes      | Expansion name                           |
+| `version`     | No       | Version string (default: `"1.0.0"`)     |
+| `description` | No       | Expansion description                    |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Expansion created",
+  "expansion": {
+    "name": "My Expansion",
+    "version": "1.0.0",
+    "description": "A new expansion"
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 400: `name` is empty
+- 400: expansion with `name` already exists
+- 400: `name` contains invalid characters (filesystem-safe names only)
+
+**Implementation notes**: Creates the expansion folder structure under
+the project's Expansions directory. Writes the expansion properties XML.
+
+---
+
+### POST /api/expansions/encode
+
+Encode expansion assets (monolith format, encrypted packages).
+
+**JSON Body**:
+
+| Field  | Required | Description                                               |
+|--------|----------|-----------------------------------------------------------|
+| `name` | Yes      | Expansion name to encode                                  |
+| `type` | No       | Encode type: `"monolith"`, `"package"` (default: `"monolith"`) |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Expansion encoded",
+  "expansion": "My Expansion",
+  "type": "monolith",
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 400: invalid `type` value
+- 404: expansion `name` does not exist
+
+**Implementation notes**: Long-running operation. When SSE is available
+(Phase 7), progress events should be emitted. Until then, the HTTP
+request blocks until encoding completes (with the standard 30s timeout —
+may need an extended timeout for large expansions).
+
+---
+
+### GET /api/expansions/assets
+
+List assets grouped by type for a specific expansion.
+
+**Query Parameters**:
+
+| Parameter | Required | Description               |
+|-----------|----------|---------------------------|
+| `name`    | Yes      | Expansion name            |
+
+**Response**:
+```json
+{
+  "success": true,
+  "expansion": "Factory Content",
+  "assets": {
+    "Images": [
+      "background.png",
+      "logo.png",
+      "knob_filmstrip.png"
+    ],
+    "AudioFiles": [
+      "impulse_hall.wav",
+      "noise_layer.wav"
+    ],
+    "SampleMaps": [
+      "Piano_Map.xml",
+      "Strings_Map.xml"
+    ],
+    "MidiFiles": [
+      "arp_pattern.mid"
+    ],
+    "UserPresets": [
+      "Init.preset",
+      "Bright Pad.preset"
+    ]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Error cases**:
+- 404: expansion `name` does not exist
+
+**Implementation notes**: Uses `Expansion::getAudioFileList()`,
+`getImageFileList()`, `getSampleMapList()`, `getMidiFileList()`,
+`getUserPresetList()`. Asset paths are relative to the expansion root.
+
+---
+
+### POST /api/expansions/refresh
+
+Refresh the expansion list (re-scan the Expansions directory).
+
+**JSON Body**: Empty (`{}`).
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Expansion list refreshed",
+  "count": 3,
+  "logs": [],
+  "errors": []
+}
+```
+
+**Implementation notes**: Uses `getExpansionHandler().refreshExpansions()`.
+Returns the updated expansion count.
+
+---
+
 ## Server-Sent Events (SSE)
 
 ### GET /api/events
