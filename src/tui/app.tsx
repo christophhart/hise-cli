@@ -146,6 +146,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	outputLinesRef.current = outputLines;
 	const scrollOffsetRef = useRef(scrollOffset);
 	scrollOffsetRef.current = scrollOffset;
+	const sidebarVisibleRef = useRef(sidebarVisible);
+	sidebarVisibleRef.current = sidebarVisible;
 	const [overlayData, setOverlayData] = useState<{
 		title: string;
 		lines: string[];
@@ -618,7 +620,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				// Expand tree sidebar nodes matching pattern
 				const pattern = input.trim().slice("/expand".length).trim() || "*";
 				const handle = treeSidebarRef.current;
-				if (handle && sidebarVisible) {
+				if (handle && sidebarVisibleRef.current) {
 					const count = handle.expandMatching(pattern);
 					const expandLines = resultToLines(
 						{ type: "text", content: `Expanded ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
@@ -636,7 +638,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				// Collapse tree sidebar nodes matching pattern
 				const pattern = input.trim().slice("/collapse".length).trim() || "*";
 				const handle = treeSidebarRef.current;
-				if (handle && sidebarVisible) {
+				if (handle && sidebarVisibleRef.current) {
 					const count = handle.collapseMatching(pattern);
 					const collapseLines = resultToLines(
 						{ type: "text", content: `Collapsed ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
