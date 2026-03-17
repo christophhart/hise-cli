@@ -1,7 +1,7 @@
 // ── TreeSidebar — navigable tree panel on the left ──────────────────
 
-// Renders a TreeNode hierarchy as an indented, expandable tree.
-// Chains are shown with [] brackets, modules with their type.
+// Renders a TreeNode hierarchy as an indented, expandable tree with
+// ASCII connector lines (├─ └─ │). Chains are shown with [] brackets.
 // Keyboard navigation is handled by the central key dispatcher in
 // app.tsx — this component exposes imperative methods via ref.
 
@@ -10,7 +10,7 @@ import { Box, Text, type DOMElement } from "ink";
 import { useOnClick, useOnWheel, useElementPosition } from "@ink-tools/ink-mouse";
 import type { TreeNode } from "../../engine/result.js";
 import type { ColorScheme } from "../theme.js";
-import { brand } from "../theme.js";
+import { brand, darkenHex } from "../theme.js";
 import { scrollbarChar } from "./scrollbar.js";
 
 // ── Flattened row for rendering ─────────────────────────────────────
@@ -18,9 +18,11 @@ import { scrollbarChar } from "./scrollbar.js";
 interface FlatRow {
 	node: TreeNode;
 	depth: number;
-	path: string[];        // node id path from root
+	path: string[];           // node id path from root
 	hasChildren: boolean;
 	expanded: boolean;
+	isLast: boolean;           // is this the last child of its parent?
+	ancestorIsLast: boolean[]; // for each depth 0..depth-1, was the ancestor the last child?
 }
 
 // ── Imperative handle ───────────────────────────────────────────────
@@ -30,11 +32,11 @@ export interface TreeSidebarHandle {
 	cursorUp(): void;
 	/** Move cursor down one row */
 	cursorDown(): void;
-	/** Expand node, or select if leaf */
+	/** Expand node, or select if leaf. Auto-expands target on navigate. */
 	expandOrSelect(): void;
-	/** Collapse node, or move to parent */
+	/** Collapse node (no-op on root), or move to parent */
 	collapseOrParent(): void;
-	/** Toggle expand/collapse */
+	/** Toggle expand/collapse (no-op on root) */
 	toggle(): void;
 	/** Get the path of the currently focused node */
 	getFocusedPath(): string[];
@@ -71,18 +73,16 @@ export interface TreeSidebarProps {
 
 // ── Constants ───────────────────────────────────────────────────────
 
-const INDENT_WIDTH = 2;
 const GAP_WIDTH = 1; // single char gap between sidebar and output
 
-// ── Icons ───────────────────────────────────────────────────────────
+// ── Connector characters ────────────────────────────────────────────
 
-function nodeIcon(node: TreeNode, expanded: boolean): string {
-	const hasChildren = node.children && node.children.length > 0;
-	if (node.nodeKind === "chain") {
-		return hasChildren ? (expanded ? "▾ " : "▸ ") : "  ";
-	}
-	return hasChildren ? (expanded ? "▾ " : "▸ ") : "  ";
-}
+const CONN_BRANCH = "├─"; // has siblings below
+const CONN_LAST   = "└─"; // last child
+const CONN_VERT   = "│ "; // continuation from ancestor
+const CONN_SPACE  = "  "; // no continuation (ancestor was last child)
+
+// ── Icons ───────────────────────────────────────────────────────────
 
 function nodeLabel(node: TreeNode): string {
 	if (node.nodeKind === "chain") {
@@ -99,17 +99,23 @@ function flattenTree(
 	parentPath: string[],
 	expandedSet: Set<string>,
 	rows: FlatRow[],
+	isLast: boolean,
+	ancestorIsLast: boolean[],
 ): void {
 	const path = [...parentPath, node.id ?? node.label];
 	const pathKey = path.join(".");
 	const hasChildren = !!(node.children && node.children.length > 0);
-	const expanded = hasChildren && expandedSet.has(pathKey);
+	// Root node (depth 0) is always expanded
+	const expanded = hasChildren && (depth === 0 || expandedSet.has(pathKey));
 
-	rows.push({ node, depth, path, hasChildren, expanded });
+	rows.push({ node, depth, path, hasChildren, expanded, isLast, ancestorIsLast });
 
 	if (expanded && node.children) {
-		for (const child of node.children) {
-			flattenTree(child, depth + 1, path, expandedSet, rows);
+		const childAncestors = [...ancestorIsLast, isLast];
+		for (let i = 0; i < node.children.length; i++) {
+			const child = node.children[i]!;
+			const childIsLast = i === node.children.length - 1;
+			flattenTree(child, depth + 1, path, expandedSet, rows, childIsLast, childAncestors);
 		}
 	}
 }
@@ -157,7 +163,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	// Flatten tree
 	const rows: FlatRow[] = [];
 	if (tree) {
-		flattenTree(tree, 0, [], expandedSet, rows);
+		flattenTree(tree, 0, [], expandedSet, rows, true, []);
 	}
 
 	// Clamp cursor
@@ -172,7 +178,6 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		: tree?.id ?? tree?.label ?? "";
 
 	// When focus enters the sidebar, jump cursor to the selected node
-	// and ensure it's expanded/visible
 	useEffect(() => {
 		if (!focused || rows.length === 0) return;
 		const targetIndex = rows.findIndex((r) => r.path.join(".") === selectedKey);
@@ -182,7 +187,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	}, [focused]); // intentionally only on focus change
 
 	// Scrolling
-	const contentWidth = width - GAP_WIDTH; // space for darker gap
+	const contentWidth = width - GAP_WIDTH;
 	const visibleRows = height;
 	const totalRows = rows.length;
 	const showScrollbar = totalRows > visibleRows;
@@ -197,6 +202,18 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	if (adjScroll !== scrollOffset) {
 		setScrollOffset(adjScroll);
 	}
+
+	// ── Helper: auto-expand target and navigate ────────────────
+	const navigateToNode = (row: FlatRow) => {
+		// Auto-expand if collapsed
+		const pathKey = row.path.join(".");
+		if (row.hasChildren && !expandedSet.has(pathKey)) {
+			setExpandedSet((prev) => new Set(prev).add(pathKey));
+		}
+		// Navigate (cd)
+		const navPath = row.path.slice(1);
+		onSelect(navPath);
+	};
 
 	// Imperative handle
 	useImperativeHandle(sidebarRef, () => ({
@@ -214,15 +231,15 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 				// Expand
 				setExpandedSet((prev) => new Set(prev).add(pathKey));
 			} else {
-				// Select (navigate to this node)
-				// Strip the root from the path for selectNode/cd
-				const navPath = row.path.slice(1);
-				onSelect(navPath);
+				// Navigate into node (auto-expand + cd)
+				navigateToNode(row);
 			}
 		},
 		collapseOrParent: () => {
 			const row = rows[clampedCursor];
 			if (!row) return;
+			// Root node (depth 0) cannot be collapsed
+			if (row.depth === 0) return;
 			const pathKey = row.path.join(".");
 			if (row.expanded) {
 				// Collapse
@@ -231,7 +248,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 					next.delete(pathKey);
 					return next;
 				});
-			} else if (row.depth > 0) {
+			} else {
 				// Move to parent
 				const parentPath = row.path.slice(0, -1);
 				const parentIndex = rows.findIndex(
@@ -245,6 +262,8 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		toggle: () => {
 			const row = rows[clampedCursor];
 			if (!row || !row.hasChildren) return;
+			// Root node (depth 0) cannot be collapsed
+			if (row.depth === 0) return;
 			const pathKey = row.path.join(".");
 			setExpandedSet((prev) => {
 				const next = new Set(prev);
@@ -267,9 +286,8 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	const boxRef = useRef<DOMElement>(null);
 	const elementPos = useElementPosition(boxRef);
 
-	// Single click: move cursor + grab focus (instant, no debounce).
-	// Double click: navigate into node (cd).
-	// Expand/collapse is keyboard-only (Space, Right, Left).
+	// Single click: move cursor + grab focus (instant).
+	// Double click: navigate into node (cd + auto-expand).
 	const DOUBLE_CLICK_MS = 300;
 	const lastClickRef = useRef<{ row: number; time: number } | null>(null);
 
@@ -288,10 +306,9 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		const last = lastClickRef.current;
 
 		if (last && last.row === rowIndex && now - last.time < DOUBLE_CLICK_MS) {
-			// Double-click — navigate into node
+			// Double-click — navigate into node (auto-expand + cd)
 			lastClickRef.current = null;
-			const navPath = row.path.slice(1);
-			onSelect(navPath);
+			navigateToNode(row);
 		} else {
 			lastClickRef.current = { row: rowIndex, time: now };
 		}
@@ -309,6 +326,9 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	});
 
 	// ── Render ──────────────────────────────────────────────────
+
+	// Connector line color — dimmer than foreground.muted
+	const connectorColor = darkenHex(scheme.foreground.muted, 0.5);
 
 	if (!tree) {
 		// No tree — render empty sidebar
@@ -354,35 +374,89 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		}
 
 		const pathKey = row.path.join(".");
-		const isSelected = pathKey === selectedKey;
+		const isCurrentRoot = pathKey === selectedKey;
 		const isCursorRow = (adjScroll + i) === clampedCursor;
 
-		// Build indented label
-		const indent = " ".repeat(row.depth * INDENT_WIDTH);
-		const icon = nodeIcon(row.node, row.expanded);
-		const label = nodeLabel(row.node);
-		const fullText = indent + icon + label;
+		// ── Build row content as segments ──────────────────────
 
-		// Truncate to content width (minus scrollbar)
-		const scrollbarSpace = showScrollbar ? 1 : 0;
-		const maxLabelWidth = contentWidth - scrollbarSpace;
-		const displayText = fullText.length > maxLabelWidth
-			? fullText.slice(0, maxLabelWidth - 1) + "\u2026"
-			: fullText;
-		const padRight = Math.max(0, maxLabelWidth - displayText.length);
-
-		// Colors
+		// Determine colors
 		let fg = scheme.foreground.default;
 		let bg = scheme.backgrounds.sidebar;
 
 		if (isCursorRow && focused) {
 			fg = brand.signal;
 			bg = scheme.backgrounds.raised;
-		} else if (isSelected) {
-			fg = accent;
 		} else if (row.node.nodeKind === "chain") {
 			fg = scheme.foreground.muted;
 		}
+
+		const isBold = isCurrentRoot;
+
+		// Segments: array of { text, color, bold? } to render
+		const segments: Array<{ text: string; color: string; bold?: boolean }> = [];
+
+		if (row.depth === 0) {
+			// Root node: show > if current root, else expand triangle
+			if (isCurrentRoot) {
+				segments.push({ text: "> ", color: fg, bold: true });
+			} else {
+				const icon = row.expanded ? "▾ " : "▸ ";
+				segments.push({ text: icon, color: fg });
+			}
+		} else {
+			// Non-root: column 0 is > indicator or space
+			if (isCurrentRoot) {
+				segments.push({ text: ">", color: fg, bold: true });
+			} else {
+				segments.push({ text: " ", color: fg });
+			}
+
+			// Connector lines for depths 1..depth-1 (ancestor continuation)
+			for (let d = 1; d < row.depth; d++) {
+				// ancestorIsLast[d] tells us if the ancestor at depth d was the last child
+				const ancestorLast = row.ancestorIsLast[d] ?? false;
+				segments.push({
+					text: ancestorLast ? CONN_SPACE : CONN_VERT,
+					color: connectorColor,
+				});
+			}
+
+			// Own connector (branch or last)
+			segments.push({
+				text: row.isLast ? CONN_LAST : CONN_BRANCH,
+				color: connectorColor,
+			});
+
+			// Expand icon
+			if (row.hasChildren) {
+				segments.push({ text: row.expanded ? "▾ " : "▸ ", color: fg });
+			} else {
+				segments.push({ text: "  ", color: fg });
+			}
+		}
+
+		// Label
+		const label = nodeLabel(row.node);
+		segments.push({ text: label, color: fg, bold: isBold });
+
+		// Compute total text length
+		const totalTextLen = segments.reduce((sum, s) => sum + s.text.length, 0);
+
+		// Truncate if needed
+		const scrollbarSpace = showScrollbar ? 1 : 0;
+		const maxWidth = contentWidth - scrollbarSpace;
+		let truncated = false;
+		if (totalTextLen > maxWidth) {
+			// Truncate the last segment (label)
+			const overflow = totalTextLen - maxWidth + 1; // +1 for …
+			const lastSeg = segments[segments.length - 1]!;
+			if (lastSeg.text.length > overflow) {
+				lastSeg.text = lastSeg.text.slice(0, lastSeg.text.length - overflow) + "\u2026";
+			}
+			truncated = true;
+		}
+		const renderedLen = segments.reduce((sum, s) => sum + s.text.length, 0);
+		const padRight = Math.max(0, maxWidth - renderedLen);
 
 		// Scrollbar
 		const sb = showScrollbar
@@ -392,7 +466,9 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		renderedRows.push(
 			<Box key={i}>
 				<Text backgroundColor={bg}>
-					<Text color={fg}>{displayText}</Text>
+					{segments.map((seg, si) => (
+						<Text key={si} color={seg.color} bold={seg.bold}>{seg.text}</Text>
+					))}
 					<Text>{" ".repeat(padRight)}</Text>
 					{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 				</Text>
