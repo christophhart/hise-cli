@@ -62,15 +62,37 @@ export interface RunResult {
 
 function stripAnsi(s: string): string {
 	// Strip all ANSI escape sequences: CSI, OSC, character set, etc.
+	// Also normalize line endings to LF-only (Windows ConPTY emits CRLF).
 	return s
 		.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "")
 		.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
 		.replace(/\x1b[()][0-9A-B]/g, "")
-		.replace(/\x1b[=>]/g, "");
+		.replace(/\x1b[=>]/g, "")
+		.replace(/\r\n/g, "\n")  // normalize CRLF to LF
+		.replace(/\r/g, "");      // strip remaining CR
 }
 
 function delay(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Find the start of the last full-screen repaint in the pty output buffer.
+ *
+ * On macOS, Ink repaints using cursor-up + line-erase sequences, and the
+ * pty output occasionally includes `\x1b[2J` (ED2 — clear entire screen).
+ *
+ * On Windows, ConPTY intercepts Ink's VT sequences and translates each
+ * repaint cycle into `\x1b[H` (CUP — cursor home) followed by a full
+ * content rewrite. The `\x1b[2J` clear only appears once at boot.
+ *
+ * Using the later of the two markers works on both platforms.
+ */
+function lastScreenStart(buffer: string): number {
+	return Math.max(
+		buffer.lastIndexOf("\x1b[2J"),
+		buffer.lastIndexOf("\x1b[H"),
+	);
 }
 
 // ── Region extraction ───────────────────────────────────────────────
@@ -126,7 +148,12 @@ function extractRegion(
 
 		case "sidebar": {
 			if (!sidebarVisible) return null;
-			const mainRows = rows.slice(topH, height - botH);
+			// Extract main area rows plus a few extra to account for ConPTY
+			// rendering offsets (blank lines inserted by cursor positioning).
+			// On Windows, content may be shifted down by a few rows.
+			const mainStart = Math.max(0, topH - 2);  // start a bit earlier
+			const mainEnd = Math.min(height, height - botH + 3);  // end a bit later
+			const mainRows = rows.slice(mainStart, mainEnd);
 			return mainRows.map((r) => r.slice(0, sideW)).join("\n");
 		}
 
@@ -366,37 +393,37 @@ export async function runTape(
 					break;
 				}
 
-			case "Expect": {
-				// Check the last visible screen for the pattern.
-				// This is more reliable than cursor-based tracking
-				// because the pty output contains full screen repaints.
-				const lastClear = outputBuffer.lastIndexOf("\x1b[2J");
+		case "Expect": {
+			// Check the last visible screen for the pattern.
+			// This is more reliable than cursor-based tracking
+			// because the pty output contains full screen repaints.
+			const lastClear = lastScreenStart(outputBuffer);
 				const lastScreen = lastClear >= 0
 					? stripAnsi(outputBuffer.slice(lastClear))
 					: stripAnsi(outputBuffer.slice(-2000));
 
-				if (cmd.region) {
-					// Region-scoped assertion — extract only the
-					// requested region from the screen
-					const regionText = extractRegion(
-						lastScreen, cmd.region, width, height,
-					);
-					if (regionText === null) {
-						assertions.push({
-							pass: false,
-							command: cmd,
-							message: `Expect failed: ${cmd.region} region is not visible`,
-						});
-					} else {
-						const pass = regionText.includes(cmd.pattern);
-						assertions.push({
-							pass,
-							command: cmd,
-							message: pass
-								? `Expect passed: found "${cmd.pattern}" in ${cmd.region}`
-								: `Expect failed: "${cmd.pattern}" not found in ${cmd.region}`,
-						});
-					}
+			if (cmd.region) {
+				// Region-scoped assertion — extract only the
+				// requested region from the screen
+				const regionText = extractRegion(
+					lastScreen, cmd.region, width, height,
+				);
+				if (regionText === null) {
+					assertions.push({
+						pass: false,
+						command: cmd,
+						message: `Expect failed: ${cmd.region} region is not visible`,
+					});
+				} else {
+					const pass = regionText.includes(cmd.pattern);
+					assertions.push({
+						pass,
+						command: cmd,
+						message: pass
+							? `Expect passed: found "${cmd.pattern}" in ${cmd.region}`
+							: `Expect failed: "${cmd.pattern}" not found in ${cmd.region}`,
+					});
+				}
 				} else {
 					// Full-screen search (default)
 					const pass = lastScreen.includes(cmd.pattern);
@@ -411,14 +438,14 @@ export async function runTape(
 				break;
 			}
 
-				case "ExpectMode": {
-					// The pty output contains full screen repaints. We check
-					// the LAST screen repaint (the final clear+redraw in the
-					// buffer) to determine the currently visible mode.
-					const plain = stripAnsi(outputBuffer);
-					// Find the last screen clear — this marks the start of
-					// the most recent visible frame.
-					const lastClear = outputBuffer.lastIndexOf("\x1b[2J");
+			case "ExpectMode": {
+				// The pty output contains full screen repaints. We check
+				// the LAST screen repaint (the final clear+redraw in the
+				// buffer) to determine the currently visible mode.
+				const plain = stripAnsi(outputBuffer);
+				// Find the last screen repaint start — cursor home on
+				// Windows (ConPTY), or screen clear on macOS.
+				const lastClear = lastScreenStart(outputBuffer);
 					const lastScreen = lastClear >= 0
 						? stripAnsi(outputBuffer.slice(lastClear))
 						: plain.slice(-2000);
@@ -442,9 +469,9 @@ export async function runTape(
 					break;
 				}
 
-				case "ExpectPrompt": {
-					// Check the last visible screen for the prompt text
-					const lastClear = outputBuffer.lastIndexOf("\x1b[2J");
+			case "ExpectPrompt": {
+				// Check the last visible screen for the prompt text
+				const lastClear = lastScreenStart(outputBuffer);
 					const lastScreen = lastClear >= 0
 						? stripAnsi(outputBuffer.slice(lastClear))
 						: stripAnsi(outputBuffer.slice(-2000));
