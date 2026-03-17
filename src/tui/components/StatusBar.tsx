@@ -19,7 +19,7 @@ export const StatusBar = React.memo(function StatusBar({
 	scrollInfo,
 	columns,
 }: StatusBarProps) {
-	const { scheme, statusColor } = useTheme();
+	const { scheme, statusColor, layout } = useTheme();
 
 	const dot = statusDot(connectionStatus);
 	const dotColor = statusColor(connectionStatus);
@@ -27,14 +27,14 @@ export const StatusBar = React.memo(function StatusBar({
 		: connectionStatus === "warning" ? "degraded"
 		: "disconnected";
 
-	const PAD = "  "; // 2 chars horizontal padding
+	const pad = " ".repeat(layout.horizontalPad);
 
 	// Left: dot + status label
 	const leftText = `${dot} ${statusLabel}`;
-	const leftWidth = PAD.length + leftText.length;
+	const leftWidth = pad.length + leftText.length;
 
 	// Right side: scroll info
-	const rightText = scrollInfo ? `${scrollInfo}  ` : PAD;
+	const rightText = scrollInfo ? `${scrollInfo}${pad}` : pad;
 	const rightWidth = rightText.length;
 
 	// Center: mode hints
@@ -45,16 +45,24 @@ export const StatusBar = React.memo(function StatusBar({
 	}
 	const centerPad = Math.max(0, centerAvail - centerText.length);
 
+	const bg = scheme.backgrounds.darker;
+	const barPadRow = layout.barVerticalPad > 0
+		? <Text backgroundColor={bg}>{" ".repeat(columns)}</Text>
+		: null;
+
 	return (
-		<Box>
-			<Text backgroundColor={scheme.backgrounds.darker}>
-				<Text>{PAD}</Text>
-				<Text color={dotColor}>{dot}</Text>
-				<Text color={scheme.foreground.muted}> {statusLabel}</Text>
-				<Text color={scheme.foreground.muted}>  {centerText}</Text>
-				<Text>{" ".repeat(centerPad)}</Text>
-				<Text color={scheme.foreground.muted}>{rightText}</Text>
-			</Text>
+		<Box flexDirection="column">
+			{barPadRow}
+			<Box>
+				<Text backgroundColor={bg}>
+					<Text>{pad}</Text>
+					<Text color={dotColor}>{dot}</Text>
+					<Text color={scheme.foreground.muted}> {statusLabel}</Text>
+					<Text color={scheme.foreground.muted}>  {centerText}</Text>
+					<Text>{" ".repeat(centerPad)}</Text>
+					<Text color={scheme.foreground.muted}>{rightText}</Text>
+				</Text>
+			</Box>
 		</Box>
 	);
 });

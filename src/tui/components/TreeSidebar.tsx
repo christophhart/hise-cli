@@ -11,7 +11,9 @@ import { useOnClick, useOnWheel, useElementPosition } from "@ink-tools/ink-mouse
 import type { TreeNode } from "../../engine/result.js";
 import type { ColorScheme } from "../theme.js";
 import { brand, darkenHex, mix } from "../theme.js";
+import { useTheme } from "../theme-context.js";
 import { scrollbarChar } from "./scrollbar.js";
+import type { LayoutScale } from "../layout.js";
 
 // ── Flattened row for rendering ─────────────────────────────────────
 
@@ -23,6 +25,9 @@ interface FlatRow {
 	expanded: boolean;
 	isLast: boolean;           // is this the last child of its parent?
 	ancestorIsLast: boolean[]; // for each depth 0..depth-1, was the ancestor the last child?
+	/** When true, this is a blank separator row with connector lines only.
+	 *  Inserted before nodes with topMargin when layout.sidebarTopMargin is enabled. */
+	separator?: boolean;
 }
 
 // ── Imperative handle ───────────────────────────────────────────────
@@ -137,6 +142,63 @@ function flattenTree(
 	}
 }
 
+/**
+ * Insert visual spacing rows based on the layout scale.
+ * - sidebarTopPad: blank rows before the root node
+ * - sidebarTopMargin: blank connector rows before nodes with topMargin: true
+ * - sidebarBottomPad: blank rows after the last node
+ * Separator rows have `separator: true` and carry the same connector context
+ * as the node they precede, so vertical lines render correctly.
+ */
+function insertSpacingRows(rows: FlatRow[], layout: LayoutScale): FlatRow[] {
+	if (layout.sidebarTopPad === 0 && !layout.sidebarTopMargin && layout.sidebarBottomPad === 0) {
+		return rows;
+	}
+
+	const result: FlatRow[] = [];
+	const emptyNode: TreeNode = { label: "" };
+
+	// Top padding
+	for (let i = 0; i < layout.sidebarTopPad; i++) {
+		result.push({
+			node: emptyNode, depth: 0, path: ["__top_pad_" + i],
+			hasChildren: false, expanded: false, isLast: true, ancestorIsLast: [],
+			separator: true,
+		});
+	}
+
+	for (let i = 0; i < rows.length; i++) {
+		const row = rows[i]!;
+
+		// Insert separator before nodes with topMargin (skip root at index 0)
+		if (layout.sidebarTopMargin && row.node.topMargin && i > 0) {
+			result.push({
+				node: emptyNode,
+				depth: row.depth,
+				path: ["__sep_" + i],
+				hasChildren: false,
+				expanded: false,
+				isLast: row.isLast,
+				ancestorIsLast: row.ancestorIsLast,
+				separator: true,
+			});
+		}
+
+		result.push(row);
+	}
+
+	// Bottom padding
+	for (let i = 0; i < layout.sidebarBottomPad; i++) {
+		result.push({
+			node: emptyNode, depth: 0, path: ["__bot_pad_" + i],
+			hasChildren: false, expanded: false, isLast: true, ancestorIsLast: [],
+			separator: true,
+		});
+	}
+
+	return result;
+}
+
 // ── Component ───────────────────────────────────────────────────────
 
 export const TreeSidebar = React.memo(function TreeSidebar({
@@ -177,14 +239,21 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		onStateChange?.({ expandedPaths: expandedSet, cursorIndex, scrollOffset });
 	}, [expandedSet, cursorIndex, scrollOffset]);
 
-	// Flatten tree
-	const rows: FlatRow[] = [];
-	if (tree) {
-		flattenTree(tree, 0, [], expandedSet, rows, true, []);
-	}
+	// Layout scale from theme context
+	const { layout } = useTheme();
 
-	// Clamp cursor
-	const clampedCursor = Math.max(0, Math.min(cursorIndex, rows.length - 1));
+	// Flatten tree and insert spacing rows
+	const rawRows: FlatRow[] = [];
+	if (tree) {
+		flattenTree(tree, 0, [], expandedSet, rawRows, true, []);
+	}
+	const rows = insertSpacingRows(rawRows, layout);
+
+	// Clamp cursor (skip separator rows)
+	let clampedCursor = Math.max(0, Math.min(cursorIndex, rows.length - 1));
+	while (clampedCursor < rows.length && rows[clampedCursor]?.separator) clampedCursor++;
+	if (clampedCursor >= rows.length) clampedCursor = Math.max(0, rows.length - 1);
+	while (clampedCursor > 0 && rows[clampedCursor]?.separator) clampedCursor--;
 	if (clampedCursor !== cursorIndex) {
 		setCursorIndex(clampedCursor);
 	}
@@ -197,14 +266,15 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	// When focus enters the sidebar, jump cursor to the selected node
 	useEffect(() => {
 		if (!focused || rows.length === 0) return;
-		const targetIndex = rows.findIndex((r) => r.path.join(".") === selectedKey);
+		const targetIndex = rows.findIndex((r) => !r.separator && r.path.join(".") === selectedKey);
 		if (targetIndex >= 0) {
 			setCursorIndex(targetIndex);
 		}
 	}, [focused]); // intentionally only on focus change
 
 	// Scrolling
-	const contentWidth = width - GAP_WIDTH;
+	const sidebarLeftPad = layout.sidebarLeftPad;
+	const contentWidth = width - GAP_WIDTH - sidebarLeftPad;
 	const visibleRows = height;
 	const totalRows = rows.length;
 	const showScrollbar = totalRows > visibleRows;
@@ -235,14 +305,24 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	// Imperative handle
 	useImperativeHandle(sidebarRef, () => ({
 		cursorUp: () => {
-			setCursorIndex((prev) => Math.max(0, prev - 1));
+			setCursorIndex((prev) => {
+				let next = prev - 1;
+				// Skip separator rows
+				while (next >= 0 && rows[next]?.separator) next--;
+				return Math.max(0, next);
+			});
 		},
 		cursorDown: () => {
-			setCursorIndex((prev) => Math.min(rows.length - 1, prev + 1));
+			setCursorIndex((prev) => {
+				let next = prev + 1;
+				// Skip separator rows
+				while (next < rows.length && rows[next]?.separator) next++;
+				return Math.min(rows.length - 1, next);
+			});
 		},
 		expand: () => {
 			const row = rows[clampedCursor];
-			if (!row) return;
+			if (!row || row.separator) return;
 			if (row.hasChildren && !row.expanded) {
 				const pathKey = row.path.join(".");
 				setExpandedSet((prev) => new Set(prev).add(pathKey));
@@ -251,13 +331,13 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		},
 		selectAsRoot: () => {
 			const row = rows[clampedCursor];
-			if (!row) return;
+			if (!row || row.separator) return;
 			// Always navigate (auto-expand if collapsed)
 			navigateToNode(row);
 		},
 		collapseOrParent: () => {
 			const row = rows[clampedCursor];
-			if (!row) return;
+			if (!row || row.separator) return;
 			// Root node (depth 0) cannot be collapsed
 			if (row.depth === 0) return;
 			const pathKey = row.path.join(".");
@@ -281,7 +361,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		},
 		toggle: () => {
 			const row = rows[clampedCursor];
-			if (!row || !row.hasChildren) return;
+			if (!row || row.separator || !row.hasChildren) return;
 			// Root node (depth 0) cannot be collapsed
 			if (row.depth === 0) return;
 			const pathKey = row.path.join(".");
@@ -297,7 +377,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		},
 		getFocusedPath: () => {
 			const row = rows[clampedCursor];
-			return row ? row.path.slice(1) : [];
+			return (row && !row.separator) ? row.path.slice(1) : [];
 		},
 	}), [rows, clampedCursor, expandedSet, onSelect]);
 
@@ -315,7 +395,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		const relRow = event.y - elementPos.top;
 		const rowIndex = relRow + adjScroll;
 		const row = rows[rowIndex];
-		if (!row) return;
+		if (!row || row.separator) return;
 
 		// Always grab focus and move cursor immediately
 		onFocus?.();
@@ -349,6 +429,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 
 	// Connector line color — dimmer than foreground.muted
 	const connectorColor = darkenHex(scheme.foreground.muted, 0.5);
+	const leftPad = sidebarLeftPad > 0 ? " ".repeat(sidebarLeftPad) : "";
 
 	if (!tree) {
 		// No tree — render empty sidebar
@@ -357,7 +438,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			emptyRows.push(
 				<Box key={i}>
 					<Text backgroundColor={scheme.backgrounds.sidebar}>
-						{" ".repeat(contentWidth)}
+						{leftPad}{" ".repeat(contentWidth)}
 					</Text>
 					<Text backgroundColor={scheme.backgrounds.darker}>
 						{" ".repeat(GAP_WIDTH)}
@@ -378,11 +459,58 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			const sb = showScrollbar
 				? scrollbarChar(i, visibleRows, totalRows, adjScroll, scheme)
 				: null;
-			const pad = contentWidth - (sb ? 1 : 0);
+			const padW = contentWidth - (sb ? 1 : 0);
 			renderedRows.push(
 				<Box key={i}>
 					<Text backgroundColor={scheme.backgrounds.sidebar}>
-						{" ".repeat(Math.max(0, pad))}
+						{leftPad}{" ".repeat(Math.max(0, padW))}
+						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
+					</Text>
+					<Text backgroundColor={scheme.backgrounds.darker}>
+						{" ".repeat(GAP_WIDTH)}
+					</Text>
+				</Box>,
+			);
+			continue;
+		}
+
+		// ── Separator row: connector lines only ────────────────
+		if (row.separator) {
+			const sb = showScrollbar
+				? scrollbarChar(i, visibleRows, totalRows, adjScroll, scheme)
+				: null;
+			const scrollbarSpace = sb ? 1 : 0;
+
+			// Build connector-only content: column 0 space + ancestor connectors
+			const segments: Array<{ text: string; color: string }> = [];
+			segments.push({ text: " ", color: scheme.foreground.default }); // column 0 (no diff/indicator)
+			for (let d = 1; d < row.depth; d++) {
+				const ancestorLast = row.ancestorIsLast[d] ?? false;
+				segments.push({
+					text: ancestorLast ? CONN_SPACE : CONN_VERT,
+					color: connectorColor,
+				});
+			}
+			// At the depth of the node this separator precedes, show vertical
+			// continuation if the node is not the last child of its parent
+			if (row.depth > 0) {
+				segments.push({
+					text: row.isLast ? CONN_SPACE : CONN_VERT,
+					color: connectorColor,
+				});
+			}
+
+			const segLen = segments.reduce((sum, s) => sum + s.text.length, 0);
+			const padW = Math.max(0, contentWidth - scrollbarSpace - segLen);
+
+			renderedRows.push(
+				<Box key={i}>
+					<Text backgroundColor={scheme.backgrounds.sidebar}>
+						{leftPad}
+						{segments.map((seg, si) => (
+							<Text key={si} color={seg.color}>{seg.text}</Text>
+						))}
+						<Text>{" ".repeat(padW)}</Text>
 						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 					</Text>
 					<Text backgroundColor={scheme.backgrounds.darker}>
@@ -514,6 +642,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		renderedRows.push(
 			<Box key={i}>
 				<Text backgroundColor={bg}>
+					{leftPad}
 					{segments.map((seg, si) => (
 						<Text key={si} color={seg.color} bold={seg.bold}>{seg.text}</Text>
 					))}

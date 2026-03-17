@@ -224,7 +224,7 @@ export const Output = React.memo(function Output({
 	viewportHeight,
 	columns,
 }: OutputProps) {
-	const { scheme } = useTheme();
+	const { scheme, layout } = useTheme();
 	if (lines.length === 0) {
 		return (
 			<LandingLogo
@@ -235,12 +235,12 @@ export const Output = React.memo(function Output({
 		);
 	}
 
-	const PAD = "  "; // 2 chars horizontal padding
+	const pad = " ".repeat(layout.horizontalPad);
 	const visible = lines.slice(scrollOffset, scrollOffset + viewportHeight);
 	const showScrollbar = lines.length > viewportHeight;
 	// Content width: total - left pad - right pad - scrollbar (1 char + 1 space gap)
 	const scrollbarWidth = showScrollbar ? 2 : 0;
-	const contentWidth = columns - PAD.length - PAD.length - scrollbarWidth;
+	const contentWidth = columns - pad.length - pad.length - scrollbarWidth;
 
 	const renderedLines: React.ReactNode[] = [];
 
@@ -292,7 +292,7 @@ export const Output = React.memo(function Output({
 
 		renderedLines.push(
 			<Box key={i}>
-				<Text backgroundColor={stdBg}>{PAD}</Text>
+				<Text backgroundColor={stdBg}>{pad}</Text>
 				<Text backgroundColor={lineBg}>
 					{line.borderColor ? (
 						<Text color={line.borderColor}>{border}</Text>
@@ -303,7 +303,7 @@ export const Output = React.memo(function Output({
 					{textContent}
 					<Text>{" ".repeat(padRight)}</Text>
 				</Text>
-				<Text backgroundColor={stdBg}>{PAD}</Text>
+				<Text backgroundColor={stdBg}>{pad}</Text>
 				{scrollChar ? (
 					<Text backgroundColor={stdBg}>
 						<Text color={scrollChar.color}> {scrollChar.char}</Text>

@@ -18,7 +18,7 @@ export const TopBar = React.memo(function TopBar({
 	connectionStatus,
 	columns,
 }: TopBarProps) {
-	const { scheme, brand, statusColor } = useTheme();
+	const { scheme, brand, statusColor, layout } = useTheme();
 
 	const dot = statusDot(connectionStatus);
 	const dotColor = statusColor(connectionStatus);
@@ -31,25 +31,33 @@ export const TopBar = React.memo(function TopBar({
 	const rightWidth = rightContent.length;
 
 	// Build the left side content pieces
-	const PAD = "  "; // 2 chars horizontal padding
+	const pad = " ".repeat(layout.horizontalPad);
 	const brandText = "HISE CLI";
 	const modeText = modeDisplay ? `  ${modeDisplay}` : "";
-	const leftContentWidth = PAD.length + brandText.length + modeText.length;
+	const leftContentWidth = pad.length + brandText.length + modeText.length;
 
 	// Padding to fill the row
 	const padWidth = Math.max(0, columns - leftContentWidth - rightWidth);
 
+	const bg = scheme.backgrounds.darker;
+	const barPadRow = layout.barVerticalPad > 0
+		? <Text backgroundColor={bg}>{" ".repeat(columns)}</Text>
+		: null;
+
 	return (
-		<Box>
-			<Text backgroundColor={scheme.backgrounds.darker}>
-				<Text>{PAD}</Text>
-				<Text color={brand.signal} bold>{brandText}</Text>
-				{modeDisplay ? (
-					<Text color={modeAccent} bold>{modeText}</Text>
-				) : null}
-				<Text>{" ".repeat(padWidth)}</Text>
-				<Text color={dotColor}>{rightContent}</Text>
-			</Text>
+		<Box flexDirection="column">
+			<Box>
+				<Text backgroundColor={bg}>
+					<Text>{pad}</Text>
+					<Text color={brand.signal} bold>{brandText}</Text>
+					{modeDisplay ? (
+						<Text color={modeAccent} bold>{modeText}</Text>
+					) : null}
+					<Text>{" ".repeat(padWidth)}</Text>
+					<Text color={dotColor}>{rightContent}</Text>
+				</Text>
+			</Box>
+			{barPadRow}
 		</Box>
 	);
 });

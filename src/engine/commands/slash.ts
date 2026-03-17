@@ -80,6 +80,24 @@ async function handleWizard(
 	return errorResult(`Wizard "${args}" not yet implemented.`);
 }
 
+const VALID_DENSITIES = ["auto", "compact", "standard", "spacious"];
+
+async function handleDensity(
+	args: string,
+	_session: CommandSession,
+): Promise<CommandResult> {
+	const arg = args.trim().toLowerCase();
+	if (arg && !VALID_DENSITIES.includes(arg)) {
+		return errorResult(
+			`Unknown density "${arg}". Valid options: ${VALID_DENSITIES.join(", ")}`,
+		);
+	}
+	// The actual density change is handled by the TUI layer (app.tsx)
+	// which intercepts this command's input. The engine returns a
+	// placeholder text that the TUI will replace with the actual state.
+	return textResult(`Density: ${arg || "auto"}`);
+}
+
 // ── Registration ────────────────────────────────────────────────────
 
 export function registerBuiltinCommands(registry: CommandRegistry): void {
@@ -165,5 +183,11 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "wizard",
 		description: "Run a wizard workflow",
 		handler: handleWizard,
+	});
+
+	registry.register({
+		name: "density",
+		description: "Set layout density (auto/compact/standard/spacious)",
+		handler: handleDensity,
 	});
 }

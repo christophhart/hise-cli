@@ -234,7 +234,7 @@ export const Input = React.memo(function Input({
 	inputRef,
 	tokenize,
 }: InputProps) {
-	const { scheme } = useTheme();
+	const { scheme, layout } = useTheme();
 
 	const [state, dispatch] = useReducer(inputReducer, {
 		value: "",
@@ -300,7 +300,7 @@ export const Input = React.memo(function Input({
 
 	// ── Rendering ──────────────────────────────────────────────────
 
-	const PAD = "  "; // 2 chars horizontal padding
+	const pad = " ".repeat(layout.horizontalPad);
 	const isRoot = modeLabel === "root";
 	const promptColor = isRoot ? scheme.foreground.default : modeAccent;
 	const contextSuffix = contextLabel ? ` ${contextLabel}` : "";
@@ -309,7 +309,7 @@ export const Input = React.memo(function Input({
 	const promptWidth = promptPrefix.length + promptChar.length;
 
 	// Maximum characters available for value + cursor + ghost
-	const maxInputWidth = Math.max(0, columns - promptWidth - PAD.length * 2);
+	const maxInputWidth = Math.max(0, columns - promptWidth - pad.length * 2);
 
 	// Ghost text only shown when cursor is at end of input AND the ghost
 	// was computed for the current value (prevents one-frame jitter on typing).
@@ -381,7 +381,7 @@ export const Input = React.memo(function Input({
 
 	// Right padding to fill the row
 	const contentWidth = promptWidth + beforeLen + 1 + afterLen + displayGhost.length;
-	const inputPadRight = Math.max(0, columns - PAD.length * 2 - contentWidth);
+	const inputPadRight = Math.max(0, columns - pad.length * 2 - contentWidth);
 
 	// Helper: render a TokenSpan[] as colored <Text> elements
 	const renderSpans = (spans: TokenSpan[], keyPrefix: string) =>
@@ -396,7 +396,7 @@ export const Input = React.memo(function Input({
 			<Text backgroundColor={scheme.backgrounds.raised}>{" ".repeat(columns)}</Text>
 			<Box>
 				<Text backgroundColor={scheme.backgrounds.raised}>
-					<Text>{PAD}</Text>
+					<Text>{pad}</Text>
 					{!isRoot ? (
 						<>
 							<Text color={scheme.foreground.muted}>[{modeLabel}]</Text>
@@ -420,7 +420,7 @@ export const Input = React.memo(function Input({
 					</>
 				)}
 					<Text>{" ".repeat(inputPadRight)}</Text>
-					<Text>{PAD}</Text>
+					<Text>{pad}</Text>
 				</Text>
 			</Box>
 			<Text backgroundColor={scheme.backgrounds.raised}>{" ".repeat(columns)}</Text>

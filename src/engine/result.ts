@@ -27,6 +27,11 @@ export interface TreeNode {
 	 *  "added" (green +) and "removed" (red -) propagate to all children.
 	 *  "modified" (amber *) does not propagate. Set by the data pipeline. */
 	diff?: "added" | "removed" | "modified";
+	/** When true and layout.sidebarTopMargin is enabled, the tree sidebar
+	 *  renders a blank continuation-connector row above this node. Each mode
+	 *  decides which nodes get top margin (builder: sound generators,
+	 *  script: class nodes, dsp: container nodes). Set by the data pipeline. */
+	topMargin?: boolean;
 }
 
 export type CommandResult =

@@ -38,14 +38,18 @@ import {
 	type ConnectionStatus,
 } from "./theme.js";
 import { ThemeProvider } from "./theme-context.js";
+import {
+	computeLayout,
+	topBarHeight,
+	bottomBarHeight,
+	sidebarWidth as calcSidebarWidth,
+	GAP_ROWS,
+	INPUT_SECTION_ROWS,
+	type LayoutDensity,
+} from "./layout.js";
 
-// ── Layout constants ────────────────────────────────────────────────
+// ── Layout constants (non-scaling) ──────────────────────────────────
 
-const TOP_BAR_ROWS = 1;
-const GAP_ROWS = 2; // 1 gap after topbar + 1 gap before input
-const BOTTOM_BAR_ROWS = 1;
-const INPUT_SECTION_ROWS = 3; // top border + input + bottom border
-const MIN_OUTPUT_ROWS = 4;
 const SCROLL_WHEEL_LINES = 3; // lines per mouse wheel tick
 const DIM_FACTOR = 0.65; // overlay backdrop brightness (0 = black, 1 = normal)
 
@@ -92,6 +96,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	const scheme = schemeProp ?? defaultScheme;
 	const columns = stdout?.columns ?? 80;
 	const rows = stdout?.rows ?? 24;
+
+	// Layout density — auto-detected from terminal size, overridable via /density
+	const [densityOverride, setDensityOverride] = useState<LayoutDensity | undefined>(undefined);
+	const layout = computeLayout(columns, rows, densityOverride);
 
 	// Completion engine — created once, stored in ref
 	const engineRef = useRef<CompletionEngine | null>(null);
@@ -156,22 +164,24 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	// Track whether user has scrolled away from bottom
 	const userScrolledRef = useRef(false);
 
-	// Sidebar width: responsive 20-35% of terminal, min 20, max 40
-	const sidebarWidth = sidebarVisible
-		? Math.max(20, Math.min(40, Math.floor(columns * 0.25)))
-		: 0;
+	// Sidebar width: responsive, driven by layout scale
+	const sidebarW = sidebarVisible ? calcSidebarWidth(layout, columns) : 0;
 	// Content width available for output/input (minus sidebar)
-	const contentColumns = columns - sidebarWidth;
+	const contentColumns = columns - sidebarW;
+
+	// Chrome heights derived from layout scale
+	const topH = topBarHeight(layout);
+	const botH = bottomBarHeight(layout);
 
 	// Full height between TopBar and StatusBar — sidebar spans all of this
 	const mainAreaHeight = Math.max(
-		MIN_OUTPUT_ROWS + GAP_ROWS + INPUT_SECTION_ROWS,
-		rows - TOP_BAR_ROWS - BOTTOM_BAR_ROWS,
+		layout.minOutputRows + GAP_ROWS + INPUT_SECTION_ROWS,
+		rows - topH - botH,
 	);
 
 	// Viewport height for output (within the main area)
 	const outputHeight = Math.max(
-		MIN_OUTPUT_ROWS,
+		layout.minOutputRows,
 		mainAreaHeight - GAP_ROWS - INPUT_SECTION_ROWS,
 	);
 
@@ -585,6 +595,25 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					lines: result.lines,
 					footer: result.footer,
 				});
+			} else if (result.type === "text" && input.trim().startsWith("/density")) {
+				// Density command — intercept to apply TUI-side state change
+				const arg = input.trim().slice("/density".length).trim().toLowerCase();
+				const validDensities = ["compact", "standard", "spacious"] as const;
+				type D = typeof validDensities[number];
+				if (arg === "auto" || arg === "") {
+					setDensityOverride(undefined);
+				} else if (validDensities.includes(arg as D)) {
+					setDensityOverride(arg as LayoutDensity);
+				}
+				// Show the result with actual applied density info
+				const applied = arg === "" || arg === "auto"
+					? `auto (${computeLayout(columns, rows).density})`
+					: arg;
+				const densityLines = resultToLines(
+					{ type: "text", content: `Density: ${applied} (${columns}x${rows})` },
+					scheme,
+				);
+				addLines([...densityLines, plainSpacer]);
 			} else if (result.type === "empty" && input.startsWith("/")) {
 				// Slash commands that produce empty result (mode switches, clear)
 				// Check if it was /clear
@@ -832,7 +861,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	}, [currentMode]);
 
 	return (
-		<ThemeProvider scheme={scheme}>
+		<ThemeProvider scheme={scheme} layout={layout}>
 			<Box flexDirection="column" height={rows}>
 				<TopBar
 					modeLabel={modeLabel}
@@ -845,7 +874,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 						<TreeSidebar
 							tree={modeTree}
 							selectedPath={modeSelectedPath}
-							width={sidebarWidth}
+							width={sidebarW}
 							height={mainAreaHeight}
 							focused={sidebarFocused}
 							accent={modeAccent}
@@ -866,20 +895,23 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 							columns={contentColumns}
 						/>
 						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
-						{completionState?.visible && (
-							<CompletionPopup
-								items={completionState.result.items}
-								selectedIndex={completionState.selectedIndex}
-								onSelect={handleCompletionSelect}
-								onAccept={handleCompletionAccept}
-								onDismiss={handleCompletionDismiss}
-								leftOffset={completionState.result.from + (modeLabel === "root" ? 4 : modeLabel.length + 7)}
-								scheme={scheme}
-								label={completionState.result.label}
-								rows={rows}
-								columns={contentColumns}
-							/>
-						)}
+					{completionState?.visible && (
+						<CompletionPopup
+							items={completionState.result.items}
+							selectedIndex={completionState.selectedIndex}
+							onSelect={handleCompletionSelect}
+							onAccept={handleCompletionAccept}
+							onDismiss={handleCompletionDismiss}
+							leftOffset={completionState.result.from + layout.horizontalPad + (modeLabel === "root" ? 2 : modeLabel.length + 5)}
+							scheme={scheme}
+							label={completionState.result.label}
+							maxVisible={layout.completionMaxVisible}
+							maxWidth={layout.completionMaxWidth}
+							rows={rows}
+							columns={contentColumns}
+							bottomOffset={INPUT_SECTION_ROWS + botH}
+						/>
+					)}
 						<Input
 							modeLabel={modeLabel}
 							modeAccent={modeAccent}
@@ -913,6 +945,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 								scheme={snap.dimScheme}
 								brand={darkenBrand(DIM_FACTOR)}
 								statusColor={snap.dimStatusColor}
+								layout={layout}
 							>
 								<Box
 									position="absolute"

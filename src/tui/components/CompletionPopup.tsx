@@ -36,10 +36,15 @@ export interface CompletionPopupProps {
 	label?: string;
 	/** Max visible items */
 	maxVisible?: number;
+	/** Max inner width of the popup content */
+	maxWidth?: number;
 	/** Total viewport rows (for absolute positioning) */
 	rows?: number;
 	/** Total viewport columns (for filling background) */
 	columns?: number;
+	/** Rows consumed below the popup anchor (input + statusbar chrome).
+	 *  Defaults to 4 for backward compatibility (compact: input=3 + statusbar=1). */
+	bottomOffset?: number;
 }
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -59,8 +64,10 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	scheme,
 	label,
 	maxVisible = DEFAULT_MAX_VISIBLE,
+	maxWidth: maxWidthProp,
 	rows: viewportRows,
 	columns: viewportColumns,
+	bottomOffset = 4,
 }: CompletionPopupProps) {
 	const visibleCount = Math.min(items.length, maxVisible);
 
@@ -87,7 +94,7 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 		0,
 	);
 	const contentWidth = maxLabelWidth + 2 + (maxDetailWidth > 0 ? maxDetailWidth + 2 : 0);
-	const innerWidth = Math.min(contentWidth, 50);
+	const innerWidth = Math.min(contentWidth, maxWidthProp ?? 50);
 
 	// Note: keyboard input is handled by the central key dispatcher
 	// in app.tsx which calls onSelect/onAccept/onDismiss as needed.
@@ -106,12 +113,11 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	});
 
 	// Absolute positioning: sit just above the input area.
-	// Input section = 3 rows, statusbar = 1 → bottom anchor offset.
+	// bottomOffset accounts for input section + statusbar chrome height.
 	const headerRows = label ? 1 : 0;
 	const popupHeight = visibleCount + headerRows;
-	const BOTTOM_OFFSET = 4; // input(3) + statusbar
 	const marginTop = viewportRows
-		? Math.max(0, viewportRows - BOTTOM_OFFSET - popupHeight)
+		? Math.max(0, viewportRows - bottomOffset - popupHeight)
 		: undefined;
 
 	const totalCols = viewportColumns ?? 80;

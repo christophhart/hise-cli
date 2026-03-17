@@ -14,6 +14,7 @@ import {
 	type ColorScheme,
 	type ConnectionStatus,
 } from "./theme.js";
+import { COMPACT, type LayoutScale } from "./layout.js";
 
 // ── Context value ───────────────────────────────────────────────────
 
@@ -21,6 +22,7 @@ export interface ThemeContextValue {
 	scheme: ColorScheme;
 	brand: BrandColors;
 	statusColor: (status: ConnectionStatus) => string;
+	layout: LayoutScale;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -33,6 +35,8 @@ export interface ThemeProviderProps {
 	brand?: BrandColors;
 	/** Override status color resolver */
 	statusColor?: (status: ConnectionStatus) => string;
+	/** Layout scale (defaults to COMPACT for backward compatibility) */
+	layout?: LayoutScale;
 	children: React.ReactNode;
 }
 
@@ -40,12 +44,14 @@ export function ThemeProvider({
 	scheme,
 	brand: brandOverride,
 	statusColor: statusColorOverride,
+	layout: layoutOverride,
 	children,
 }: ThemeProviderProps): React.ReactElement {
 	const value: ThemeContextValue = {
 		scheme,
 		brand: brandOverride ?? defaultBrand,
 		statusColor: statusColorOverride ?? defaultStatusColor,
+		layout: layoutOverride ?? COMPACT,
 	};
 
 	return (

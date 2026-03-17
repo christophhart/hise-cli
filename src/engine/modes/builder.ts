@@ -47,6 +47,7 @@ function propagateChainColors(
 	node: TreeNode,
 	parentChainColour: string | null = null,
 	parentDiff?: DiffStatus,
+	depth: number = 0,
 ): TreeNode {
 	// ── Resolve diff status ─────────────────────────────────────
 	// Node's own diff wins. Otherwise inherit added/removed from parent.
@@ -84,7 +85,7 @@ function propagateChainColors(
 		// Propagate to children
 		if (node.children) {
 			for (const child of node.children) {
-				propagateChainColors(child, colour, childDiff);
+				propagateChainColors(child, colour, childDiff, depth + 1);
 			}
 		}
 	} else if (node.nodeKind === "module" && parentChainColour) {
@@ -95,18 +96,21 @@ function propagateChainColors(
 		// Module's children (e.g. AHDSR's sub-chains) inherit the same colour
 		if (node.children) {
 			for (const child of node.children) {
-				propagateChainColors(child, parentChainColour, childDiff);
+				propagateChainColors(child, parentChainColour, childDiff, depth + 1);
 			}
 		}
 	} else {
 		// Sound generator or module not in a chain — no dot
 		node.colour = undefined;
 		node.filledDot = undefined;
+		// Sound generators at depth > 0 get topMargin for visual separation
+		// (root node is excluded — sidebar top padding handles that separately)
+		node.topMargin = depth > 0;
 
 		// Children start with fresh colour context (null) but inherit diff
 		if (node.children) {
 			for (const child of node.children) {
-				propagateChainColors(child, null, childDiff);
+				propagateChainColors(child, null, childDiff, depth + 1);
 			}
 		}
 	}
