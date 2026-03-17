@@ -5,8 +5,9 @@
 // Keyboard navigation is handled by the central key dispatcher in
 // app.tsx — this component exposes imperative methods via ref.
 
-import React, { useEffect, useImperativeHandle, useState } from "react";
-import { Box, Text } from "ink";
+import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Box, Text, type DOMElement } from "ink";
+import { useOnClick, useOnWheel, useElementPosition } from "@ink-tools/ink-mouse";
 import type { TreeNode } from "../../engine/result.js";
 import type { ColorScheme } from "../theme.js";
 import { brand } from "../theme.js";
@@ -64,6 +65,8 @@ export interface TreeSidebarProps {
 	persistedState?: TreeSidebarState;
 	/** Called whenever internal state changes, so the parent can persist it. */
 	onStateChange?: (state: TreeSidebarState) => void;
+	/** Called when the sidebar wants focus (e.g. on mouse click). */
+	onFocus?: () => void;
 }
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -125,6 +128,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	sidebarRef,
 	persistedState,
 	onStateChange,
+	onFocus,
 }: TreeSidebarProps) {
 	const [expandedSet, setExpandedSet] = useState<Set<string>>(() => {
 		if (persistedState) return new Set(persistedState.expandedPaths);
@@ -258,6 +262,89 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		},
 	}), [rows, clampedCursor, expandedSet, onSelect]);
 
+	// ── Mouse interaction ──────────────────────────────────────
+
+	const boxRef = useRef<DOMElement>(null);
+	const elementPos = useElementPosition(boxRef);
+
+	// Debounced single-click + double-click detection.
+	// Single click (after 250ms): toggle expand/collapse + move cursor.
+	// Double click (within 250ms): navigate into node (cd).
+	const DOUBLE_CLICK_MS = 250;
+	const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const lastClickRef = useRef<{ row: number; time: number } | null>(null);
+
+	// Clean up timer on unmount
+	useEffect(() => {
+		return () => {
+			if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+		};
+	}, []);
+
+	const toggleExpandByIndex = useCallback((rowIndex: number) => {
+		const row = rows[rowIndex];
+		if (!row || !row.hasChildren) return;
+		const pathKey = row.path.join(".");
+		setExpandedSet((prev) => {
+			const next = new Set(prev);
+			if (next.has(pathKey)) {
+				next.delete(pathKey);
+			} else {
+				next.add(pathKey);
+			}
+			return next;
+		});
+	}, [rows]);
+
+	useOnClick(boxRef, (event) => {
+		// Compute which row was clicked
+		const relRow = event.y - elementPos.top;
+		const rowIndex = relRow + adjScroll;
+		const row = rows[rowIndex];
+		if (!row) return;
+
+		// Always grab focus immediately
+		onFocus?.();
+
+		// Always move cursor immediately (no debounce for visual feedback)
+		setCursorIndex(rowIndex);
+
+		const now = Date.now();
+		const last = lastClickRef.current;
+
+		if (last && last.row === rowIndex && now - last.time < DOUBLE_CLICK_MS) {
+			// Double-click — cancel pending single-click, navigate into node
+			if (clickTimerRef.current) {
+				clearTimeout(clickTimerRef.current);
+				clickTimerRef.current = null;
+			}
+			lastClickRef.current = null;
+			const navPath = row.path.slice(1);
+			onSelect(navPath);
+		} else {
+			// Potential single-click — debounce expand/collapse
+			lastClickRef.current = { row: rowIndex, time: now };
+			if (clickTimerRef.current) {
+				clearTimeout(clickTimerRef.current);
+			}
+			clickTimerRef.current = setTimeout(() => {
+				clickTimerRef.current = null;
+				toggleExpandByIndex(rowIndex);
+			}, DOUBLE_CLICK_MS);
+		}
+	});
+
+	// Scroll wheel
+	const WHEEL_LINES = 3;
+	useOnWheel(boxRef, (event) => {
+		if (event.button === "wheel-up") {
+			setScrollOffset((prev) => Math.max(0, prev - WHEEL_LINES));
+		} else if (event.button === "wheel-down") {
+			const maxScroll = Math.max(0, totalRows - visibleRows);
+			setScrollOffset((prev) => Math.min(maxScroll, prev + WHEEL_LINES));
+		}
+	});
+
 	// ── Render ──────────────────────────────────────────────────
 
 	if (!tree) {
@@ -275,7 +362,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 				</Box>,
 			);
 		}
-		return <Box flexDirection="column">{emptyRows}</Box>;
+		return <Box ref={boxRef} flexDirection="column">{emptyRows}</Box>;
 	}
 
 	const visibleSlice = rows.slice(adjScroll, adjScroll + visibleRows);
@@ -353,5 +440,5 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		);
 	}
 
-	return <Box flexDirection="column">{renderedRows}</Box>;
+	return <Box ref={boxRef} flexDirection="column">{renderedRows}</Box>;
 });

@@ -847,6 +847,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 							sidebarRef={treeSidebarRef}
 							persistedState={sidebarStateRef.current}
 							onStateChange={handleSidebarStateChange}
+							onFocus={() => setSidebarFocused(true)}
 						/>
 					)}
 					<Box ref={outputRef} flexDirection="column" flexGrow={1}>
