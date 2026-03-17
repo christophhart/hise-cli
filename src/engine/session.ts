@@ -34,6 +34,7 @@ export class Session implements SessionContext, CommandSession {
 	projectName: string | null = null;
 
 	private readonly modeFactories = new Map<string, ModeFactory>();
+	private readonly modeCache = new Map<string, Mode>();
 
 	// Signal for TUI to handle quit
 	private quitRequested = false;
@@ -60,6 +61,26 @@ export class Session implements SessionContext, CommandSession {
 		this.modeFactories.set(id, factory);
 	}
 
+	// ── Mode instance cache ─────────────────────────────────────────
+
+	getOrCreateMode(modeId: string): Mode {
+		let mode = this.modeCache.get(modeId);
+		if (!mode) {
+			const colonIndex = modeId.indexOf(":");
+			const baseId = colonIndex === -1 ? modeId : modeId.slice(0, colonIndex);
+			const context = colonIndex === -1 ? undefined : modeId.slice(colonIndex + 1);
+
+			const factory = this.modeFactories.get(baseId);
+			if (!factory) {
+				throw new Error(`Mode "${baseId}" is not registered`);
+			}
+
+			mode = factory(context);
+			this.modeCache.set(modeId, mode);
+		}
+		return mode;
+	}
+
 	// ── Mode stack ──────────────────────────────────────────────────
 
 	currentMode(): Mode {
@@ -84,7 +105,6 @@ export class Session implements SessionContext, CommandSession {
 	pushMode(modeId: string): CommandResult | null {
 		const colonIndex = modeId.indexOf(":");
 		const baseId = colonIndex === -1 ? modeId : modeId.slice(0, colonIndex);
-		const context = colonIndex === -1 ? undefined : modeId.slice(colonIndex + 1);
 
 		const factory = this.modeFactories.get(baseId);
 		if (!factory) {
@@ -93,19 +113,23 @@ export class Session implements SessionContext, CommandSession {
 			);
 		}
 
-		const mode = factory(context);
+		const mode = this.getOrCreateMode(modeId);
 		this.modeStack.push(mode);
 		return null;
 	}
 
 	// Called by /exit handler via CommandSession interface.
-	popMode(): CommandResult {
+	// If silent is true, returns empty result instead of exit message.
+	popMode(silent?: boolean): CommandResult {
 		if (this.modeStack.length <= 1) {
 			// At root — signal quit
 			this.quitRequested = true;
 			return textResult("Goodbye.");
 		}
 		const popped = this.modeStack.pop()!;
+		if (silent) {
+			return { type: "empty" };
+		}
 		return textResult(`Exited ${popped.name} mode.`);
 	}
 
@@ -117,12 +141,65 @@ export class Session implements SessionContext, CommandSession {
 		return this.quitRequested;
 	}
 
+	// ── One-shot execution ──────────────────────────────────────────
+
+	async executeOneShot(modeId: string, input: string): Promise<CommandResult> {
+		const mode = this.getOrCreateMode(modeId);
+		this.modeStack.push(mode);
+		const result = await mode.parse(input, this);
+		this.popMode(true); // Silent pop
+		
+		// Tag the result with the mode's accent so the TUI can use it for output borders
+		if (result.type !== "empty") {
+			result.accent = mode.accent;
+		}
+		
+		return result;
+	}
+
 	// ── Completion ─────────────────────────────────────────────────
 
 	complete(input: string, cursor: number): CompletionResult {
-		// Slash commands always go to the engine's slash completion
-		if (input.startsWith("/") && this.completionEngine) {
-			return this.completionEngine.completeSlash(input);
+		// Slash commands: check if we're completing mode arguments
+		if (input.startsWith("/")) {
+			// Pattern: /mode[.context] args
+			// If there's a space after the mode name, delegate to that mode's completion
+			const spaceIndex = input.indexOf(" ");
+			if (spaceIndex > 0) {
+				// Extract mode spec (e.g., "builder" or "script" from "/builder add" or "/script Interface")
+				const modeSpec = input.slice(1, spaceIndex);
+				const args = input.slice(spaceIndex + 1);
+				
+				// Try to resolve the mode (ignore dots for now, they're for context)
+				const dotIndex = modeSpec.indexOf(".");
+				const baseModeId = dotIndex === -1 ? modeSpec : modeSpec.slice(0, dotIndex);
+				
+				// Check if this mode is registered
+				if (this.modeFactories.has(baseModeId)) {
+					try {
+						const mode = this.getOrCreateMode(baseModeId);
+						if (mode.complete) {
+							// Delegate to mode's completion with adjusted cursor
+							const adjustedCursor = cursor - (spaceIndex + 1);
+							const result = mode.complete(args, adjustedCursor);
+							// Shift the result positions back to absolute
+							return {
+								items: result.items,
+								from: result.from + spaceIndex + 1,
+								to: result.to + spaceIndex + 1,
+								label: result.label,
+							};
+						}
+					} catch {
+						// Mode not registered, fall through to slash completion
+					}
+				}
+			}
+			
+			// Normal slash command completion
+			if (this.completionEngine) {
+				return this.completionEngine.completeSlash(input);
+			}
 		}
 
 		// Delegate to current mode's complete() if available

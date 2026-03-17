@@ -35,14 +35,14 @@ export interface TreeNode {
 }
 
 export type CommandResult =
-	| { type: "text"; content: string }
-	| { type: "error"; message: string; detail?: string }
-	| { type: "code"; content: string; language?: string }
-	| { type: "table"; headers: string[]; rows: string[][] }
-	| { type: "tree"; root: TreeNode }
-	| { type: "markdown"; content: string }
-	| { type: "overlay"; title: string; lines: string[]; footer?: string }
-	| { type: "empty" };
+	| { type: "text"; content: string; accent?: string }
+	| { type: "error"; message: string; detail?: string; accent?: string }
+	| { type: "code"; content: string; language?: string; accent?: string }
+	| { type: "table"; headers: string[]; rows: string[][]; accent?: string }
+	| { type: "tree"; root: TreeNode; accent?: string }
+	| { type: "markdown"; content: string; accent?: string }
+	| { type: "overlay"; title: string; lines: string[]; footer?: string; accent?: string }
+	| { type: "empty"; accent?: string };
 
 // ── Result factory helpers ──────────────────────────────────────────
 

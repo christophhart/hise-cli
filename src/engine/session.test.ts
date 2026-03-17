@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Session } from "./session.js";
 import { MockHiseConnection } from "./hise.js";
 import type { CommandResult } from "./result.js";
-import type { CompletionResult, Mode, SessionContext } from "./modes/mode.js";
+import type { CompletionResult, Mode, ModeId, SessionContext } from "./modes/mode.js";
 import { CompletionEngine } from "./completion/engine.js";
 
 // ── Test helpers ────────────────────────────────────────────────────
@@ -151,10 +151,11 @@ describe("Session input dispatch", () => {
 		expect(session.currentMode().id).toBe("builder");
 	});
 
-	it("/script Interface switches to script mode with context", async () => {
+	it("/script.Interface switches to script mode with context", async () => {
 		const session = createSession();
-		await session.handleInput("/script Interface");
-		expect(session.currentMode().id).toBe("script:Interface");
+		await session.handleInput("/script.Interface");
+		expect(session.currentMode().id).toBe("script");
+		// Context would be verified via mode.contextLabel (not mode.id)
 	});
 
 	it("/exit pops mode", async () => {
@@ -268,6 +269,170 @@ describe("Session completion", () => {
 	it("returns empty without completion engine for slash commands", () => {
 		const session = new Session(null);
 		const result = session.complete("/he", 3);
+		expect(result.items).toHaveLength(0);
+	});
+});
+
+// ── Phase 3.5.1: Mode instance cache ────────────────────────────────
+
+describe("Session mode instance cache", () => {
+	it("caches mode instances on first push", () => {
+		const session = createSession();
+		session.pushMode("builder");
+		const firstInstance = session.currentMode();
+		
+		session.popMode(); // back to root
+		session.pushMode("builder");
+		const secondInstance = session.currentMode();
+		
+		// Should reuse the same instance
+		expect(secondInstance).toBe(firstInstance);
+	});
+
+	it("getOrCreateMode returns cached instance", () => {
+		const session = createSession();
+		const first = session.getOrCreateMode("builder" as ModeId);
+		const second = session.getOrCreateMode("builder" as ModeId);
+		expect(second).toBe(first);
+	});
+
+	it("getOrCreateMode creates new instance on cache miss", () => {
+		const session = createSession();
+		const mode = session.getOrCreateMode("builder" as ModeId);
+		expect(mode).toBeDefined();
+		expect(mode.id).toBe("builder");
+	});
+
+	it("popMode with silent flag returns empty result", () => {
+		const session = createSession();
+		session.pushMode("builder");
+		const result = session.popMode(true);
+		expect(result.type).toBe("empty");
+	});
+
+	it("popMode without silent flag returns text result", () => {
+		const session = createSession();
+		session.pushMode("builder");
+		const result = session.popMode(false);
+		expect(result.type).toBe("text");
+	});
+
+	it("mode state persists across push/pop cycles", async () => {
+		const session = new Session(null);
+		const engine = new CompletionEngine();
+		
+		// Register builder with state tracking
+		let stateValue = 0;
+		session.registerMode("stateful", () => {
+			const mode: Mode = {
+				id: "builder",
+				name: "Stateful",
+				accent: "#ffffff",
+				prompt: "> ",
+				async parse() { 
+					stateValue++;
+					return { type: "text", content: `state=${stateValue}` };
+				},
+			};
+			return mode;
+		});
+		
+		// Enter mode, trigger state change
+		session.pushMode("stateful");
+		await session.handleInput("test1");
+		expect(stateValue).toBe(1);
+		
+		// Exit and re-enter - should reuse cached instance with same state
+		session.popMode();
+		session.pushMode("stateful");
+		await session.handleInput("test2");
+		expect(stateValue).toBe(2); // State persisted
+	});
+});
+
+// ── Phase 3.5.2: Argument completion from root ──────────────────────
+
+describe("Session argument completion from root", () => {
+	it("delegates /builder add to builder mode completion", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		
+		// Register builder mode with completion
+		session.registerMode("builder", () => ({
+			id: "builder",
+			name: "Builder",
+			accent: "#fd971f",
+			prompt: "> ",
+			async parse() { return { type: "empty" }; },
+			complete(input: string, _cursor: number): CompletionResult {
+				// Builder should complete module types after "add "
+				if (input.trim().startsWith("add")) {
+					return {
+						items: [{ label: "SimpleGain" }, { label: "Synthesiser" }],
+						from: 4,
+						to: input.length,
+					};
+				}
+				return { items: [], from: 0, to: input.length };
+			},
+		}));
+		
+		const result = session.complete("/builder add ", 14);
+		expect(result.items.length).toBeGreaterThan(0);
+		expect(result.items.some(i => i.label === "SimpleGain")).toBe(true);
+	});
+
+	it("translates cursor offset for mode completion", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		
+		let receivedCursor = -1;
+		session.registerMode("test", () => ({
+			id: "builder",
+			name: "Test",
+			accent: "",
+			prompt: "> ",
+			async parse() { return { type: "empty" }; },
+			complete(input: string, cursor: number): CompletionResult {
+				receivedCursor = cursor;
+				return { items: [], from: 0, to: input.length };
+			},
+		}));
+		
+		// "/test abc" with cursor at position 9 (end of "abc")
+		// Should delegate "abc" with cursor 3 to mode
+		session.complete("/test abc", 9);
+		expect(receivedCursor).toBe(3);
+	});
+
+	it("shifts completion result positions back to absolute", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		
+		session.registerMode("test", () => ({
+			id: "builder",
+			name: "Test",
+			accent: "",
+			prompt: "> ",
+			async parse() { return { type: "empty" }; },
+			complete(input: string, _cursor: number): CompletionResult {
+				// Mode returns relative positions
+				return { items: [{ label: "item" }], from: 2, to: 5 };
+			},
+		}));
+		
+		// "/test hello" - mode gets "hello", returns from=2, to=5
+		// Should be shifted to from=8, to=11 (6 chars for "/test ")
+		const result = session.complete("/test hello", 11);
+		expect(result.from).toBe(8);
+		expect(result.to).toBe(11);
+	});
+
+	it("returns empty for unknown mode in argument completion", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		
+		const result = session.complete("/nonexistent args", 17);
 		expect(result.items).toHaveLength(0);
 	});
 });

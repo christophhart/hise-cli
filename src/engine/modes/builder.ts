@@ -476,6 +476,10 @@ export class BuilderMode implements Mode {
 		return this.currentPath.length > 0 ? this.currentPath.join(".") : "";
 	}
 
+	setContext(path: string): void {
+		this.currentPath = path.split(".").filter((s) => s !== "");
+	}
+
 	setModuleList(moduleList: ModuleList): void {
 		this.moduleList = moduleList;
 	}

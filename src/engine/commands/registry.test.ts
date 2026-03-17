@@ -4,6 +4,8 @@ import { textResult } from "../result.js";
 
 function createMockSession(): CommandSession {
 	const modes: string[] = [];
+	const modeCache = new Map<string, import("../modes/mode.js").Mode>();
+	
 	return {
 		get modeStackDepth() {
 			return modes.length;
@@ -18,14 +20,40 @@ function createMockSession(): CommandSession {
 			modes.push(modeId);
 			return null; // success
 		},
-		popMode() {
+		popMode(silent?: boolean) {
 			if (modes.length === 0) {
 				return textResult("Already at root.");
 			}
 			modes.pop();
+			if (silent) {
+				return { type: "empty" };
+			}
 			return textResult("Exited mode.");
 		},
 		requestQuit() {},
+		getOrCreateMode(modeId: string) {
+			let mode = modeCache.get(modeId);
+			if (!mode) {
+				mode = {
+					id: modeId as import("../modes/mode.js").ModeId,
+					name: modeId,
+					accent: "#ffffff",
+					prompt: "> ",
+					async parse() {
+						return textResult(`Parsed in ${modeId}`);
+					},
+				};
+				modeCache.set(modeId, mode);
+			}
+			return mode;
+		},
+		async executeOneShot(modeId: string, input: string) {
+			const mode = this.getOrCreateMode(modeId);
+			modes.push(modeId);
+			const result = await mode.parse(input, this as any);
+			modes.pop();
+			return result;
+		},
 	};
 }
 
@@ -141,5 +169,84 @@ describe("CommandRegistry", () => {
 		if (result.type === "text") {
 			expect(result.content).toBe("args=''");
 		}
+	});
+});
+
+// ── Phase 3.5.3: Dot-notation dispatch ──────────────────────────────
+
+describe("CommandRegistry dot-notation dispatch", () => {
+	it("splits command.suffix and prepends dot to args", async () => {
+		const registry = new CommandRegistry();
+		let receivedArgs = "";
+		registry.register({
+			name: "builder",
+			description: "Builder",
+			handler: async (args) => {
+				receivedArgs = args;
+				return textResult("ok");
+			},
+		});
+
+		const session = createMockSession();
+		await registry.dispatch("/builder.SineGenerator", session);
+		expect(receivedArgs).toBe(".SineGenerator");
+	});
+
+	it("combines dot-suffix with existing args", async () => {
+		const registry = new CommandRegistry();
+		let receivedArgs = "";
+		registry.register({
+			name: "builder",
+			description: "Builder",
+			handler: async (args) => {
+				receivedArgs = args;
+				return textResult("ok");
+			},
+		});
+
+		const session = createMockSession();
+		await registry.dispatch("/builder.SineGenerator add SimpleGain", session);
+		expect(receivedArgs).toBe(".SineGenerator add SimpleGain");
+	});
+
+	it("handles multiple dots in suffix", async () => {
+		const registry = new CommandRegistry();
+		let receivedArgs = "";
+		registry.register({
+			name: "builder",
+			description: "Builder",
+			handler: async (args) => {
+				receivedArgs = args;
+				return textResult("ok");
+			},
+		});
+
+		const session = createMockSession();
+		await registry.dispatch("/builder.Sine.Gain.pitch", session);
+		expect(receivedArgs).toBe(".Sine.Gain.pitch");
+	});
+
+	it("works with plain command name (no dots)", async () => {
+		const registry = new CommandRegistry();
+		let receivedArgs = "";
+		registry.register({
+			name: "builder",
+			description: "Builder",
+			handler: async (args) => {
+				receivedArgs = args;
+				return textResult("ok");
+			},
+		});
+
+		const session = createMockSession();
+		await registry.dispatch("/builder", session);
+		expect(receivedArgs).toBe("");
+	});
+
+	it("returns error for unknown base command with dots", async () => {
+		const registry = new CommandRegistry();
+		const session = createMockSession();
+		const result = await registry.dispatch("/unknown.path", session);
+		expect(result.type).toBe("error");
 	});
 });

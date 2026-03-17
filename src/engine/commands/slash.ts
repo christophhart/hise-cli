@@ -70,11 +70,62 @@ async function handleModes(
 
 function createModeHandler(modeId: ModeId): CommandHandler {
 	const handler: CommandHandler = async (args, session) => {
-		const fullId = args ? `${modeId}:${args}` : modeId;
-		const result = session.pushMode(fullId);
-		if (result) return result;
-		const label = args ? `${modeId}:${args}` : modeId;
-		return textResult(`Entered ${label} mode.`);
+		// Parse args: [.context] [command]
+		// - /builder → enter mode
+		// - /builder.SineGenerator → enter mode with context
+		// - /builder add SimpleGain → one-shot execution
+		// - /builder.SineGenerator add LFO → one-shot with context
+		
+		let context: string | undefined;
+		let commandInput: string | undefined;
+		
+		if (args.startsWith(".")) {
+			// Dot-notation: extract context path
+			const spaceIndex = args.indexOf(" ");
+			if (spaceIndex === -1) {
+				// Just context, no command: /builder.SineGenerator
+				context = args.slice(1);
+			} else {
+				// Context + command: /builder.SineGenerator add LFO
+				context = args.slice(1, spaceIndex);
+				commandInput = args.slice(spaceIndex + 1).trim();
+			}
+		} else if (args) {
+			// No dot prefix → one-shot command
+			commandInput = args;
+		}
+		
+		// Determine execution mode
+		if (commandInput) {
+			// One-shot execution
+			const mode = session.getOrCreateMode(modeId);
+			
+			// Set context if provided
+			if (context && mode.setContext) {
+				mode.setContext(context);
+			}
+			
+			// Execute one-shot
+			return session.executeOneShot(modeId, commandInput);
+		} else {
+			// Enter mode (with optional context)
+			const mode = session.getOrCreateMode(modeId);
+			
+			// Set context if provided
+			if (context && mode.setContext) {
+				mode.setContext(context);
+			}
+			
+			// Push mode onto stack
+			const pushResult = session.pushMode(modeId);
+			if (pushResult) return pushResult;
+			
+			const label = context ? `${modeId}.${context}` : modeId;
+			const result = textResult(`Entered ${label} mode.`);
+			// Tag with target mode's accent for output border
+			result.accent = mode.accent;
+			return result;
+		}
 	};
 	return handler;
 }

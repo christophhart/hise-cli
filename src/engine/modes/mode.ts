@@ -64,6 +64,12 @@ export interface Mode {
 	/** Tokenize input for syntax highlighting. Returns spans with token types. */
 	tokenizeInput?(value: string): TokenSpan[];
 
+	// ── Context entry (Phase 3.5.3) ─────────────────────────────
+	/** Set the mode's context path (e.g., builder's currentPath, script's processor ID).
+	 *  Called by dot-notation mode entry (/builder.SineGenerator.pitch) to navigate
+	 *  to a specific location before entering the mode or executing a one-shot command. */
+	setContext?(path: string): void;
+
 	// ── Tree sidebar support ────────────────────────────────────
 	/** Return the mode's navigable tree hierarchy, or null if the mode has no tree. */
 	getTree?(): TreeNode | null;

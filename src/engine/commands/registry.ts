@@ -7,12 +7,16 @@ import { errorResult } from "../result.js";
 // The full Session class will satisfy this interface.
 export interface CommandSession {
 	pushMode(modeId: string): CommandResult | null;
-	popMode(): CommandResult;
+	popMode(silent?: boolean): CommandResult;
 	/** Force quit the application regardless of mode stack depth */
 	requestQuit(): void;
 	readonly modeStackDepth: number;
 	readonly currentModeId: string;
 	allCommands(): CommandEntry[];
+	/** Get or create a cached mode instance (for one-shot execution and argument completion) */
+	getOrCreateMode(modeId: string): import("../modes/mode.js").Mode;
+	/** Execute a command in a mode without entering it (one-shot) */
+	executeOneShot(modeId: string, input: string): Promise<CommandResult>;
 }
 
 export type CommandHandler = (
@@ -61,14 +65,25 @@ export class CommandRegistry {
 
 		const withoutSlash = trimmed.slice(1);
 		const spaceIndex = withoutSlash.indexOf(" ");
-		const name =
+		const fullName =
 			spaceIndex === -1
 				? withoutSlash
 				: withoutSlash.slice(0, spaceIndex);
-		const args =
+		let args =
 			spaceIndex === -1
 				? ""
 				: withoutSlash.slice(spaceIndex + 1).trim();
+
+		// Dot-notation: split on first dot to separate command from context
+		// e.g., "builder.SineGenerator" → name="builder", prepend ".SineGenerator" to args
+		const dotIndex = fullName.indexOf(".");
+		const name = dotIndex === -1 ? fullName : fullName.slice(0, dotIndex);
+		const dotSuffix = dotIndex === -1 ? "" : fullName.slice(dotIndex);
+		
+		// Prepend dot-suffix to args
+		if (dotSuffix) {
+			args = dotSuffix + (args ? " " + args : "");
+		}
 
 		const entry = this.commands.get(name);
 		if (!entry) {

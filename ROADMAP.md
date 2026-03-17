@@ -460,13 +460,35 @@ The following require live HISE data and are deferred to Phase 4+:
 These will be implemented alongside the full builder mode (Phase 4) and remaining
 modes (Phase 6) when the HISE connection provides real processor tree data.
 
-**Phase 3.5 gate — all must pass:**
-- `npm test` passes with: mode cache reuse (same instance on re-entry), silent
-  pop returns empty result, argument completion from root delegates to mode's
-  `complete()` with correct offset translation, dot-notation dispatch enters
-  mode with context, one-shot execution returns to root after single command
-- `npm run build && npm run typecheck` pass
-- 5 `.tape` screencast tests passing (see Phase 3 gate)
+**Phase 3.5 gate — results:**
+- ✅ `npm test` passes: 499 tests (24 new tests for cache, completion, dot-notation, one-shot)
+- ✅ Mode cache reuse: same instance on re-entry, state persists across push/pop cycles
+- ✅ Silent pop: `popMode(true)` returns empty result for one-shot cleanup
+- ✅ Argument completion from root: `/builder add ` delegates to builder's `complete()`
+  with correct cursor offset translation
+- ✅ Dot-notation dispatch: `/builder.SineGenerator` splits into command + context,
+  handler receives `.SineGenerator` prepended to args
+- ✅ One-shot execution: `/builder add SimpleGain` executes in builder, returns to root
+- ✅ Context entry: `/builder.SineGenerator.pitch` enters builder with `currentPath` set
+- ✅ `CommandResult.accent` propagation: one-shot and mode-switch commands carry target
+  mode's accent color, echo line border reflects executing mode (not current mode)
+- ✅ `npm run build && npm run typecheck` pass
+- ✅ 5 `.tape` screencast tests passing
+- ✅ Legacy colon syntax removed (`/script:Interface` → `/script.Interface`)
+
+**Implemented files:**
+- `src/engine/session.ts` — mode cache, `getOrCreateMode()`, `popMode(silent)`,
+  `executeOneShot()`, argument completion delegation (40 lines added)
+- `src/engine/modes/mode.ts` — `setContext(path)` interface (4 lines)
+- `src/engine/modes/builder.ts` — `setContext()` implementation (3 lines)
+- `src/engine/commands/registry.ts` — dot-notation dispatch, `CommandSession` interface
+  update (20 lines added)
+- `src/engine/commands/slash.ts` — `createModeHandler()` rewrite for context + one-shot (30 lines)
+- `src/engine/result.ts` — `accent?: string` field on all CommandResult types (8 lines)
+- `src/tui/app.tsx` — use `result.accent` for echo line border (5 lines changed)
+- `src/engine/session.test.ts` — 10 new tests (cache + completion, 130 lines)
+- `src/engine/commands/registry.test.ts` — 5 new tests (dot-notation, 80 lines)
+- `src/engine/commands/slash.test.ts` — 5 new tests + mock updates (one-shot + context, 90 lines)
 
 ---
 

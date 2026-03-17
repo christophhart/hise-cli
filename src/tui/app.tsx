@@ -630,19 +630,22 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		//   result line(s)               ← 5. result (standard bg, no border)
 		//                                ← 6. plain spacer (standard bg)
 		const mode = session.currentMode();
-		const accent = mode.accent;
+		const currentAccent = mode.accent;
 		const darkerBg = scheme.backgrounds.darker;
 		const plainSpacer = spacerLine(scheme);
-		const darkAccentSpacer = spacerLine(scheme, accent, darkerBg);
 		const echoSpans = mode.tokenizeInput?.(input);
-		const echo = commandEchoLine(input, accent, scheme, echoSpans);
-		addLines([darkAccentSpacer, echo, darkAccentSpacer, plainSpacer]);
 
 		disabledRef.current = true;
 		setDisabled(true);
 
 		try {
 			const result: CommandResult = await session.handleInput(input);
+			
+			// Use result.accent if provided (one-shot/mode-switch), otherwise current mode
+			const accent = result.accent ?? currentAccent;
+			const darkAccentSpacer = spacerLine(scheme, accent, darkerBg);
+			const echo = commandEchoLine(input, accent, scheme, echoSpans);
+			addLines([darkAccentSpacer, echo, darkAccentSpacer, plainSpacer]);
 
 			if (result.type === "overlay") {
 				// Capture a snapshot of the current UI for the dimmed backdrop.

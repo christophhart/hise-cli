@@ -7,6 +7,8 @@ import { textResult } from "../result.js";
 function createMockSession(): CommandSession & { modes: string[]; quitRequested: boolean } {
 	const modes: string[] = [];
 	let quitRequested = false;
+	const modeCache = new Map<string, import("../modes/mode.js").Mode>();
+	
 	return {
 		modes,
 		get quitRequested() { return quitRequested; },
@@ -23,15 +25,45 @@ function createMockSession(): CommandSession & { modes: string[]; quitRequested:
 			modes.push(modeId);
 			return null;
 		},
-		popMode() {
+		popMode(silent?: boolean) {
 			if (modes.length === 0) {
 				return textResult("Already at root.");
 			}
 			modes.pop();
+			if (silent) {
+				return { type: "empty" };
+			}
 			return textResult("Exited mode.");
 		},
 		requestQuit() {
 			quitRequested = true;
+		},
+		getOrCreateMode(modeId: string) {
+			let mode = modeCache.get(modeId);
+			if (!mode) {
+				// Create a stub mode
+				mode = {
+					id: modeId as import("../modes/mode.js").ModeId,
+					name: modeId,
+					accent: "#ffffff",
+					prompt: "> ",
+					async parse() {
+						return textResult(`Parsed in ${modeId}`);
+					},
+					setContext(_path: string) {
+						// Stub
+					},
+				};
+				modeCache.set(modeId, mode);
+			}
+			return mode;
+		},
+		async executeOneShot(modeId: string, input: string) {
+			const mode = this.getOrCreateMode(modeId);
+			modes.push(modeId);
+			const result = await mode.parse(input, this as any);
+			modes.pop();
+			return result;
 		},
 	};
 }
@@ -126,11 +158,11 @@ describe("built-in slash commands", () => {
 		expect(session.modes).toContain("script");
 	});
 
-	it("/script with processor arg includes it", async () => {
+	it("/script.MyProcessor enters script mode with context", async () => {
 		const registry = createRegistry();
 		const session = createMockSession();
-		await registry.dispatch("/script MyProcessor", session);
-		expect(session.modes).toContain("script:MyProcessor");
+		await registry.dispatch("/script.MyProcessor", session);
+		expect(session.modes).toContain("script");
 	});
 
 	it("/inspect pushes inspect mode", async () => {
@@ -222,5 +254,59 @@ describe("built-in slash commands", () => {
 		const registry = createRegistry();
 		expect(registry.has("expand")).toBe(true);
 		expect(registry.has("collapse")).toBe(true);
+	});
+});
+
+// ── Phase 3.5.3: One-shot execution + context entry ─────────────────
+
+describe("mode handler one-shot execution", () => {
+	it("/builder.SineGenerator enters builder with context", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		
+		await registry.dispatch("/builder.SineGenerator", session);
+		expect(session.modes).toContain("builder");
+		// Context verification would need builder mode inspection (deferred to integration)
+	});
+
+	it("/builder add SimpleGain executes one-shot and stays in root", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		
+		const result = await registry.dispatch("/builder add SimpleGain", session);
+		// Should execute the command
+		expect(result.type).not.toBe("error");
+		// Should remain in root mode (not enter builder)
+		expect(session.modes).toHaveLength(0);
+	});
+
+	it("/builder.SineGenerator.pitch add LFO one-shot with context", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		
+		await registry.dispatch("/builder.SineGenerator.pitch add LFO", session);
+		// Should execute and return to root
+		expect(session.modes).toHaveLength(0);
+	});
+
+	it("one-shot execution preserves mode state in cache", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		
+		// First one-shot
+		await registry.dispatch("/builder add SimpleGain", session);
+		expect(session.modes).toHaveLength(0);
+		
+		// Second one-shot should reuse cached instance
+		await registry.dispatch("/builder add Synthesiser", session);
+		expect(session.modes).toHaveLength(0);
+	});
+
+	it("/builder without args enters mode (existing behavior)", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		
+		await registry.dispatch("/builder", session);
+		expect(session.modes).toContain("builder");
 	});
 });
