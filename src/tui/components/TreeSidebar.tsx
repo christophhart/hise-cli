@@ -5,7 +5,7 @@
 // Keyboard navigation is handled by the central key dispatcher in
 // app.tsx — this component exposes imperative methods via ref.
 
-import React, { useImperativeHandle, useState } from "react";
+import React, { useEffect, useImperativeHandle, useState } from "react";
 import { Box, Text } from "ink";
 import type { TreeNode } from "../../engine/result.js";
 import type { ColorScheme } from "../theme.js";
@@ -41,6 +41,14 @@ export interface TreeSidebarHandle {
 
 // ── Props ───────────────────────────────────────────────────────────
 
+/** Persistent sidebar state that survives close/reopen. Stored in a
+ *  ref in app.tsx and passed to TreeSidebar as initial + sync target. */
+export interface TreeSidebarState {
+	expandedPaths: Set<string>;
+	cursorIndex: number;
+	scrollOffset: number;
+}
+
 export interface TreeSidebarProps {
 	tree: TreeNode | null;
 	selectedPath: string[];
@@ -51,12 +59,17 @@ export interface TreeSidebarProps {
 	scheme: ColorScheme;
 	onSelect: (path: string[]) => void;
 	sidebarRef?: React.Ref<TreeSidebarHandle>;
+	/** Persistent state from a previous mount. When provided, the sidebar
+	 *  restores expand/cursor/scroll state from this instead of defaults. */
+	persistedState?: TreeSidebarState;
+	/** Called whenever internal state changes, so the parent can persist it. */
+	onStateChange?: (state: TreeSidebarState) => void;
 }
 
 // ── Constants ───────────────────────────────────────────────────────
 
 const INDENT_WIDTH = 2;
-const BORDER_CHAR = "│";
+const GAP_WIDTH = 1; // single char gap between sidebar and output
 
 // ── Icons ───────────────────────────────────────────────────────────
 
@@ -110,8 +123,11 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	scheme,
 	onSelect,
 	sidebarRef,
+	persistedState,
+	onStateChange,
 }: TreeSidebarProps) {
 	const [expandedSet, setExpandedSet] = useState<Set<string>>(() => {
+		if (persistedState) return new Set(persistedState.expandedPaths);
 		// Auto-expand root and selected path on mount
 		const initial = new Set<string>();
 		if (tree) {
@@ -126,8 +142,13 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		}
 		return initial;
 	});
-	const [cursorIndex, setCursorIndex] = useState(0);
-	const [scrollOffset, setScrollOffset] = useState(0);
+	const [cursorIndex, setCursorIndex] = useState(persistedState?.cursorIndex ?? 0);
+	const [scrollOffset, setScrollOffset] = useState(persistedState?.scrollOffset ?? 0);
+
+	// Persist state changes back to parent
+	useEffect(() => {
+		onStateChange?.({ expandedPaths: expandedSet, cursorIndex, scrollOffset });
+	}, [expandedSet, cursorIndex, scrollOffset]);
 
 	// Flatten tree
 	const rows: FlatRow[] = [];
@@ -146,8 +167,18 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		? [tree?.id ?? tree?.label, ...selectedPath].filter(Boolean).join(".")
 		: tree?.id ?? tree?.label ?? "";
 
+	// When focus enters the sidebar, jump cursor to the selected node
+	// and ensure it's expanded/visible
+	useEffect(() => {
+		if (!focused || rows.length === 0) return;
+		const targetIndex = rows.findIndex((r) => r.path.join(".") === selectedKey);
+		if (targetIndex >= 0) {
+			setCursorIndex(targetIndex);
+		}
+	}, [focused]); // intentionally only on focus change
+
 	// Scrolling
-	const contentWidth = width - 1; // 1 char for border
+	const contentWidth = width - GAP_WIDTH; // space for darker gap
 	const visibleRows = height;
 	const totalRows = rows.length;
 	const showScrollbar = totalRows > visibleRows;
@@ -237,7 +268,9 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 				<Box key={i}>
 					<Text backgroundColor={scheme.backgrounds.sidebar}>
 						{" ".repeat(contentWidth)}
-						<Text color={scheme.foreground.muted}>{BORDER_CHAR}</Text>
+					</Text>
+					<Text backgroundColor={scheme.backgrounds.darker}>
+						{" ".repeat(GAP_WIDTH)}
 					</Text>
 				</Box>,
 			);
@@ -261,7 +294,9 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 					<Text backgroundColor={scheme.backgrounds.sidebar}>
 						{" ".repeat(Math.max(0, pad))}
 						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
-						<Text color={scheme.foreground.muted}>{BORDER_CHAR}</Text>
+					</Text>
+					<Text backgroundColor={scheme.backgrounds.darker}>
+						{" ".repeat(GAP_WIDTH)}
 					</Text>
 				</Box>,
 			);
@@ -310,7 +345,9 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 					<Text color={fg}>{displayText}</Text>
 					<Text>{" ".repeat(padRight)}</Text>
 					{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
-					<Text color={scheme.foreground.muted}>{BORDER_CHAR}</Text>
+				</Text>
+				<Text backgroundColor={scheme.backgrounds.darker}>
+					{" ".repeat(GAP_WIDTH)}
 				</Text>
 			</Box>,
 		);

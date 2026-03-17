@@ -25,7 +25,7 @@ import { Input, type InputHandle } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { Overlay } from "./components/Overlay.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
-import { TreeSidebar, type TreeSidebarHandle } from "./components/TreeSidebar.js";
+import { TreeSidebar, type TreeSidebarHandle, type TreeSidebarState } from "./components/TreeSidebar.js";
 import { CompletionEngine } from "../engine/completion/engine.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import {
@@ -119,6 +119,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	const treeSidebarRef = useRef<TreeSidebarHandle>(null);
 	const [sidebarVisible, setSidebarVisible] = useState(false);
 	const [sidebarFocused, setSidebarFocused] = useState(false);
+	// Persistent sidebar state survives close/reopen
+	const sidebarStateRef = useRef<TreeSidebarState | undefined>(undefined);
+	const handleSidebarStateChange = useCallback((state: TreeSidebarState) => {
+		sidebarStateRef.current = state;
+	}, []);
 
 	// State
 	const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
@@ -151,18 +156,24 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	// Track whether user has scrolled away from bottom
 	const userScrolledRef = useRef(false);
 
-	// Viewport height for output
-	const outputHeight = Math.max(
-		MIN_OUTPUT_ROWS,
-		rows - TOP_BAR_ROWS - GAP_ROWS - BOTTOM_BAR_ROWS - INPUT_SECTION_ROWS,
-	);
-
 	// Sidebar width: responsive 20-35% of terminal, min 20, max 40
 	const sidebarWidth = sidebarVisible
 		? Math.max(20, Math.min(40, Math.floor(columns * 0.25)))
 		: 0;
-	// Content width available for output (minus sidebar and its border)
+	// Content width available for output/input (minus sidebar)
 	const contentColumns = columns - sidebarWidth;
+
+	// Full height between TopBar and StatusBar — sidebar spans all of this
+	const mainAreaHeight = Math.max(
+		MIN_OUTPUT_ROWS + GAP_ROWS + INPUT_SECTION_ROWS,
+		rows - TOP_BAR_ROWS - BOTTOM_BAR_ROWS,
+	);
+
+	// Viewport height for output (within the main area)
+	const outputHeight = Math.max(
+		MIN_OUTPUT_ROWS,
+		mainAreaHeight - GAP_ROWS - INPUT_SECTION_ROWS,
+	);
 
 	// ── Scroll helpers ──────────────────────────────────────────────
 
@@ -819,61 +830,63 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					connectionStatus={connectionStatus}
 					columns={columns}
 				/>
-				<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
-				<Box ref={outputRef} flexDirection="row" flexGrow={1}>
+				<Box flexDirection="row" height={mainAreaHeight}>
 					{sidebarVisible && (
 						<TreeSidebar
 							tree={modeTree}
 							selectedPath={modeSelectedPath}
 							width={sidebarWidth}
-							height={outputHeight}
+							height={mainAreaHeight}
 							focused={sidebarFocused}
 							accent={modeAccent}
 							scheme={scheme}
 							onSelect={handleTreeSelect}
 							sidebarRef={treeSidebarRef}
+							persistedState={sidebarStateRef.current}
+							onStateChange={handleSidebarStateChange}
 						/>
 					)}
-					<Box flexDirection="column" flexGrow={1}>
+					<Box ref={outputRef} flexDirection="column" flexGrow={1}>
+						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
 						<Output
 							lines={outputLines}
 							scrollOffset={scrollOffset}
 							viewportHeight={outputHeight}
 							columns={contentColumns}
 						/>
+						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
+						{completionState?.visible && (
+							<CompletionPopup
+								items={completionState.result.items}
+								selectedIndex={completionState.selectedIndex}
+								onSelect={handleCompletionSelect}
+								onAccept={handleCompletionAccept}
+								onDismiss={handleCompletionDismiss}
+								leftOffset={completionState.result.from + (modeLabel === "root" ? 4 : modeLabel.length + 7)}
+								scheme={scheme}
+								label={completionState.result.label}
+								rows={rows}
+								columns={contentColumns}
+							/>
+						)}
+						<Input
+							modeLabel={modeLabel}
+							modeAccent={modeAccent}
+							contextLabel={contextLabel}
+							columns={contentColumns}
+							disabled={disabled || overlayData !== null}
+							onSubmit={(v) => {
+								setCompletionState(null);
+								void handleSubmit(v);
+							}}
+							ghostText={ghostText}
+							ghostForValue={completionState?.forValue}
+							onValueChange={handleInputValueChange}
+							inputRef={inputHandleRef}
+							tokenize={modeTokenizer}
+						/>
 					</Box>
 				</Box>
-				<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(columns)}</Text>
-				{completionState?.visible && (
-					<CompletionPopup
-						items={completionState.result.items}
-						selectedIndex={completionState.selectedIndex}
-						onSelect={handleCompletionSelect}
-						onAccept={handleCompletionAccept}
-						onDismiss={handleCompletionDismiss}
-						leftOffset={completionState.result.from + (modeLabel === "root" ? 4 : modeLabel.length + 7)}
-						scheme={scheme}
-						label={completionState.result.label}
-						rows={rows}
-						columns={columns}
-					/>
-				)}
-				<Input
-					modeLabel={modeLabel}
-					modeAccent={modeAccent}
-					contextLabel={contextLabel}
-					columns={columns}
-					disabled={disabled || overlayData !== null}
-					onSubmit={(v) => {
-						setCompletionState(null);
-						void handleSubmit(v);
-					}}
-					ghostText={ghostText}
-					ghostForValue={completionState?.forValue}
-					onValueChange={handleInputValueChange}
-					inputRef={inputHandleRef}
-					tokenize={modeTokenizer}
-				/>
 				<StatusBar
 					connectionStatus={connectionStatus}
 					modeHint={modeHint}
