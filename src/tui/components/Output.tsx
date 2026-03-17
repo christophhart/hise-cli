@@ -265,7 +265,7 @@ export const Output = React.memo(function Output({
 		const hasSpans = line.spans && line.spans.length > 0 && !truncated;
 		const textContent = hasSpans
 			? line.spans!.map((span, si) => (
-				<Text key={si} color={TOKEN_COLORS[span.token]} bold={line.bold}>{span.text}</Text>
+				<Text key={si} color={span.color || TOKEN_COLORS[span.token]} bold={line.bold}>{span.text}</Text>
 			))
 			: <Text color={line.color} bold={line.bold}>{displayText}</Text>;
 

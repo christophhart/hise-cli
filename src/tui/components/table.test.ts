@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import { formatTable } from "./table.js";
-import { schemes } from "../theme.js";
+import { lightenHex, schemes } from "../theme.js";
 
 const testScheme = schemes.monokai;
 
@@ -144,8 +144,15 @@ describe("formatTable - multiple columns and rows", () => {
 describe("formatTable - color scheme", () => {
 	it("applies header color and bold", () => {
 		const lines = formatTable(["A"], [["1"]], testScheme, "standard");
-		expect(lines[1].color).toBe(testScheme.foreground.default);
+		// Base line color is muted (for separators)
+		expect(lines[1].color).toBe(testScheme.foreground.muted);
 		expect(lines[1].bold).toBe(true);
+		
+		// Header cell content uses lightened color via spans
+		expect(lines[1].spans).toBeDefined();
+		const cellSpans = lines[1].spans!.filter(s => s.text.includes("A"));
+		expect(cellSpans.length).toBeGreaterThan(0);
+		expect(cellSpans[0].color).toBe(lightenHex(testScheme.foreground.default, 0.2));
 	});
 
 	it("applies muted color to borders", () => {
@@ -157,8 +164,29 @@ describe("formatTable - color scheme", () => {
 
 	it("applies default color to data rows", () => {
 		const lines = formatTable(["A"], [["1"]], testScheme, "standard");
-		expect(lines[3].color).toBe(testScheme.foreground.default);
+		// Base line color is muted (for separators)
+		expect(lines[3].color).toBe(testScheme.foreground.muted);
 		expect(lines[3].bold).toBeUndefined();
+		
+		// Data cell content uses default color via spans
+		expect(lines[3].spans).toBeDefined();
+		const cellSpans = lines[3].spans!.filter(s => s.text.includes("1"));
+		expect(cellSpans.length).toBeGreaterThan(0);
+		expect(cellSpans[0].color).toBe(testScheme.foreground.default);
+	});
+
+	it("applies muted color to all separators (vertical bars)", () => {
+		const lines = formatTable(["A", "B"], [["1", "2"]], testScheme, "standard");
+		
+		// Header row separators should be muted
+		const headerSeparators = lines[1].spans!.filter(s => s.text === "\u2502");
+		expect(headerSeparators.length).toBe(3); // │ A │ B │
+		expect(headerSeparators.every(s => s.color === testScheme.foreground.muted)).toBe(true);
+		
+		// Data row separators should be muted
+		const dataSeparators = lines[3].spans!.filter(s => s.text === "\u2502");
+		expect(dataSeparators.length).toBe(3); // │ 1 │ 2 │
+		expect(dataSeparators.every(s => s.color === testScheme.foreground.muted)).toBe(true);
 	});
 });
 

@@ -59,4 +59,8 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 export interface TokenSpan {
 	text: string;
 	token: TokenType;
+	/** Optional direct color override (hex string). When present, takes
+	 *  precedence over TOKEN_COLORS mapping. Used for theme-aware colors
+	 *  like table cell separators. */
+	color?: string;
 }
