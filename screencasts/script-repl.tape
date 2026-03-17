@@ -1,25 +1,20 @@
-# Script REPL — evaluate expressions, see results (mock HISE)
-# Tests script mode with mock responses.
+# Script REPL — enter script mode, verify prompt, exit
+# Tests script mode entry, prompt display, and exit.
+# Expression evaluation (requires HISE or SetMockResponse) is
+# deferred until mock response support is added to the pty runner.
 
-Set Width 80
-Set Height 24
-Set Connection "mock"
-Set MockResponse "/api/repl" {"success": true, "result": "REPL Evaluation OK", "value": 44100.0, "logs": [], "errors": []}
+Set Width 140
+Set Height 34
 
 # Enter script mode
 Type "/script"
 Enter
-Sleep 300ms
-ExpectMode "script"
-
-# Evaluate an expression
-Type "Engine.getSampleRate()"
-Enter
 Sleep 500ms
-Expect "44100"
+ExpectMode "script"
+ExpectPrompt "[script] >"
 
 # Exit
 Type "/exit"
 Enter
-Sleep 300ms
+Sleep 500ms
 ExpectMode "root"

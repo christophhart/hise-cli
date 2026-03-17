@@ -7,3 +7,8 @@ hise-source/
 
 # Debug key log (flip DEBUG_KEYS in src/tui/components/Input.tsx to enable)
 debug-keys.log
+
+# Screencasts — uncompressed .cast and preview HTML are intermediate artifacts.
+# Only .tape (source) and .cast.gz (compressed) are committed.
+screencasts/*.cast
+screencasts/index.html

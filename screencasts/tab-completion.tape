@@ -1,52 +1,53 @@
-# Tab completion — verify completion engine provides candidates
-# This tape tests completion via the Session.complete() method
-# without rendering the TUI (engine-level validation).
+# Tab completion — verify completion engine via rendered TUI
+# Tests Tab-triggered completion: single-match auto-accept and
+# multi-match popup display.
 
-Set Width 80
-Set Height 24
+Set Width 140
+Set Height 34
 Set Connection "mock"
 
 # Start in root mode
 ExpectPrompt "> "
 
-# Slash command completion at root
-Type "/he"
-# Session.complete("/he") should return /help as a match
+# ── Slash command completion (single match: /hel → /help) ────────
 
-# Enter builder mode
+Type "/hel"
+Sleep 200ms
+Tab
+Sleep 300ms
+# Single match auto-accepted — input should now show "/help"
+Expect "/help"
+
+# Clear input and submit to reset
+Backspace 5
+Sleep 100ms
+
+# ── Enter builder mode for keyword + module completion ───────────
+
 Type "/builder"
 Enter
 Sleep 300ms
 ExpectMode "builder"
 
-# Keyword completion in builder
+# Builder keyword completion (single match: "a" + Tab → "add")
 Type "a"
-# complete("a") should return "add" keyword
+Sleep 200ms
+Tab
+Sleep 300ms
+Expect "add"
 
-# Module type completion after "add "
-Type "dd AH"
-# complete("add AH") should return AHDSR
+# Continue typing module prefix (single match: "add AH" + Tab → "add AHDSR")
+Type " AH"
+Sleep 200ms
+Tab
+Sleep 300ms
+Expect "AHDSR"
+
+# Submit the completed command
+Enter
+Sleep 300ms
 
 # Exit builder
-Type "/exit"
-Enter
-Sleep 300ms
-
-# Enter script mode
-Type "/script"
-Enter
-Sleep 300ms
-ExpectMode "script"
-
-# Namespace completion
-Type "Sy"
-# complete("Sy") should return Synth
-
-# Method completion after dot
-Type "nth.add"
-# complete("Synth.add") should return addNoteOn, addNoteOff
-
-# Exit script
 Type "/exit"
 Enter
 Sleep 300ms

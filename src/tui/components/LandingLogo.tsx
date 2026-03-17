@@ -70,21 +70,25 @@ export interface LandingLogoProps {
 	viewportHeight: number;
 	columns: number;
 	scheme: ColorScheme;
+	/** Set to false to freeze the gradient animation. Default: true. */
+	animate?: boolean;
 }
 
 export const LandingLogo = React.memo(function LandingLogo({
 	viewportHeight,
 	columns,
 	scheme,
+	animate = true,
 }: LandingLogoProps) {
 	const [offset, setOffset] = useState(0);
 
 	useEffect(() => {
+		if (!animate) return;
 		const timer = setInterval(() => {
 			setOffset((prev) => prev + SHIFT_PER_TICK);
 		}, TICK_MS);
 		return () => clearInterval(timer);
-	}, []);
+	}, [animate]);
 
 	const logoWidth = LOGO_LINES.reduce((max, l) => Math.max(max, l.length), 0);
 	const logoHeight = LOGO_LINES.length;

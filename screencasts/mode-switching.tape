@@ -1,8 +1,8 @@
 # Mode switching — enter and exit modes, verify prompts
 # This tape tests basic mode stack navigation.
 
-Set Width 80
-Set Height 24
+Set Width 140
+Set Height 34
 Set Connection "mock"
 
 # Start in root mode

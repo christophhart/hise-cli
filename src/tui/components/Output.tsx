@@ -216,6 +216,7 @@ export interface OutputProps {
 	scrollOffset: number;
 	viewportHeight: number;
 	columns: number;
+	animate?: boolean;
 }
 
 export const Output = React.memo(function Output({
@@ -223,6 +224,7 @@ export const Output = React.memo(function Output({
 	scrollOffset,
 	viewportHeight,
 	columns,
+	animate,
 }: OutputProps) {
 	const { scheme, layout } = useTheme();
 	if (lines.length === 0) {
@@ -231,6 +233,7 @@ export const Output = React.memo(function Output({
 				viewportHeight={viewportHeight}
 				columns={columns}
 				scheme={scheme}
+				animate={animate}
 			/>
 		);
 	}

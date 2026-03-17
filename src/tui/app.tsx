@@ -77,6 +77,9 @@ export interface AppProps {
 	connection: HiseConnection | null;
 	dataLoader?: DataLoader;
 	scheme?: ColorScheme;
+	width?: number;  // override stdout.columns (for screencast runner)
+	height?: number; // override stdout.rows (for screencast runner)
+	animate?: boolean; // disable logo animation (--no-animation)
 }
 
 // ── App component ───────────────────────────────────────────────────
@@ -89,13 +92,13 @@ export function App(props: AppProps) {
 	);
 }
 
-function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
+function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, animate }: AppProps) {
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
 	const scheme = schemeProp ?? defaultScheme;
-	const columns = stdout?.columns ?? 80;
-	const rows = stdout?.rows ?? 24;
+	const columns = width ?? stdout?.columns ?? 80;
+	const rows = height ?? stdout?.rows ?? 24;
 
 	// Layout density — auto-detected from terminal size, overridable via /density
 	const [densityOverride, setDensityOverride] = useState<LayoutDensity | undefined>(undefined);
@@ -108,6 +111,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	}
 	const completionEngine = engineRef.current;
 
+	// Loaded module list — stored in ref so the builder factory always
+	// gets the latest data (even for modes created after initial load).
+	const moduleListRef = useRef<import("../engine/data.js").ModuleList | undefined>(undefined);
+
 	// Session — created once, stored in ref
 	const sessionRef = useRef<Session | null>(null);
 	if (!sessionRef.current) {
@@ -115,7 +122,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		// Register available modes with completion engine
 		session.registerMode("script", (ctx) => new ScriptMode(ctx, completionEngine));
 		session.registerMode("inspect", () => new InspectMode(completionEngine));
-		session.registerMode("builder", (ctx) => new BuilderMode(undefined, completionEngine, ctx));
+		session.registerMode("builder", (ctx) => new BuilderMode(moduleListRef.current, completionEngine, ctx));
 		sessionRef.current = session;
 	}
 	const session = sessionRef.current;
@@ -143,6 +150,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		connection ? "connected" : "error",
 	);
 	const [disabled, setDisabled] = useState(false);
+	// Synchronous disabled check — avoids the React render-cycle gap
+	// where keystrokes can arrive between setDisabled(true) and the
+	// next render, causing them to be dropped by the useInput handler.
+	const disabledRef = useRef(false);
 	const [scrollOffset, setScrollOffset] = useState(0);
 
 	// Refs tracking latest state values (for snapshot capture in async callbacks)
@@ -247,7 +258,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 			return; // overlay eats all keys
 		}
 
-		if (disabled) return;
+		if (disabledRef.current) return;
 
 		// ── Priority 2: Global hotkeys ────────────────────────────
 		// Ctrl+B — toggle tree sidebar
@@ -579,7 +590,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 
 				const moduleList = await dataLoader.loadModuleList();
 				if (!cancelled) {
-					// Update builder mode instances with module data
+					// Store for future builder mode instances
+					moduleListRef.current = moduleList;
+					// Update existing builder mode instances with module data
 					for (const mode of session.modeStack) {
 						if (mode instanceof BuilderMode) {
 							mode.setModuleList(moduleList);
@@ -625,6 +638,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		const echo = commandEchoLine(input, accent, scheme, echoSpans);
 		addLines([darkAccentSpacer, echo, darkAccentSpacer, plainSpacer]);
 
+		disabledRef.current = true;
 		setDisabled(true);
 
 		try {
@@ -755,6 +769,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				color: scheme.foreground.muted,
 			}]);
 		} finally {
+			disabledRef.current = false;
 			setDisabled(false);
 		}
 
@@ -1023,6 +1038,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 							scrollOffset={scrollOffset}
 							viewportHeight={outputHeight}
 							columns={contentColumns}
+							animate={animate}
 						/>
 						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
 					{completionState?.visible && (
@@ -1100,6 +1116,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 											scrollOffset={snap.scrollOffset}
 											viewportHeight={outputHeight}
 											columns={columns}
+											animate={false}
 										/>
 									</Box>
 									<Text backgroundColor={snap.dimScheme.backgrounds.standard}>

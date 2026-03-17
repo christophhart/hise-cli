@@ -9,7 +9,7 @@ import { render } from "ink";
 import React from "react";
 import { App as ReplApp } from "./app.js";
 import { App as TuiApp } from "./tui/app.js";
-import { HttpHiseConnection } from "./engine/hise.js";
+import { HttpHiseConnection, MockHiseConnection } from "./engine/hise.js";
 import { createNodeDataLoader } from "./tui/nodeDataLoader.js";
 import { MainMenuApp, type MenuChoice } from "./menu/App.js";
 import { PIPE_PREFIX, connect, discoverPipes } from "./pipe.js";
@@ -233,11 +233,18 @@ async function probeHiseHttp(
 const dataDir = path.resolve(import.meta.dirname, "../data");
 const dataLoader = createNodeDataLoader(dataDir);
 
-async function launchNewTui(connection: HttpHiseConnection): Promise<void> {
+async function launchNewTui(
+	connection: import("./engine/hise.js").HiseConnection,
+	options?: { animate?: boolean },
+): Promise<void> {
 	const restoreAltScreen = setupAltScreen();
 
 	const instance = render(
-		React.createElement(TuiApp, { connection, dataLoader }),
+		React.createElement(TuiApp, {
+			connection,
+			dataLoader,
+			animate: options?.animate,
+		}),
 		{
 			exitOnCtrlC: true,
 		},
@@ -253,6 +260,18 @@ async function launchRepl(
 	args: string[],
 	options: { skipLaunchPrompt?: boolean } = {}
 ): Promise<void> {
+	const noAnimation = args.includes("--no-animation");
+
+	// If --mock was given, skip all connection probing and launch
+	// with a mock connection. Useful for exploring the CLI without
+	// HISE running, for demos, and for screencast recording.
+	if (args.includes("--mock")) {
+		const mock = new MockHiseConnection();
+		mock.setProbeResult(true);
+		await launchNewTui(mock, { animate: !noAnimation });
+		return;
+	}
+
 	// If --pipe was explicitly given, use legacy pipe REPL directly
 	const pipeIndex = args.indexOf("--pipe");
 	const explicitPipe = pipeIndex >= 0 && args[pipeIndex + 1]
@@ -269,7 +288,7 @@ async function launchRepl(
 	const httpAlive = await connection.probe();
 
 	if (httpAlive) {
-		await launchNewTui(connection);
+		await launchNewTui(connection, { animate: !noAnimation });
 		return;
 	}
 
@@ -279,7 +298,7 @@ async function launchRepl(
 
 	if (httpReady) {
 		const retryConnection = new HttpHiseConnection();
-		await launchNewTui(retryConnection);
+		await launchNewTui(retryConnection, { animate: !noAnimation });
 		return;
 	}
 
@@ -348,7 +367,7 @@ async function launchRepl(
 	if (httpOrPipe === "http") {
 		console.log(chalk.green(" connected (HTTP)!"));
 		const newConnection = new HttpHiseConnection();
-		await launchNewTui(newConnection);
+		await launchNewTui(newConnection, { animate: !noAnimation });
 	} else if (httpOrPipe === "pipe") {
 		console.log(chalk.green(" connected (pipe)!"));
 		const pipes = discoverPipes();
