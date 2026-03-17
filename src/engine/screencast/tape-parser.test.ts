@@ -137,6 +137,16 @@ Sleep 100
 		});
 	});
 
+	it("parses Expect with sidebar region", () => {
+		const result = parseTape('Expect "Oscillators" sidebar');
+		expect(result.commands).toHaveLength(1);
+		expect(result.commands[0]).toEqual({
+			type: "Expect",
+			pattern: "Oscillators",
+			region: "sidebar",
+		});
+	});
+
 	it("parses Snapshot", () => {
 		const result = parseTape("Snapshot after-mode-switch");
 		expect(result.commands).toHaveLength(1);

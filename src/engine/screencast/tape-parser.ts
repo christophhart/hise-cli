@@ -207,7 +207,7 @@ function parseWait(line: string): LineResult {
 function parseExpect(line: string): LineResult {
 	// Expect "pattern" [region]
 	const match = line.match(
-		/^Expect\s+"((?:[^"\\]|\\.)*)"\s*(?:(output|topbar|statusbar|input))?$/,
+		/^Expect\s+"((?:[^"\\]|\\.)*)"\s*(?:(output|topbar|statusbar|input|sidebar))?$/,
 	);
 	if (!match) {
 		return { error: "Expect requires a quoted pattern" };
@@ -218,6 +218,7 @@ function parseExpect(line: string): LineResult {
 		| "topbar"
 		| "statusbar"
 		| "input"
+		| "sidebar"
 		| undefined;
 	return { command: { type: "Expect", pattern, region } };
 }

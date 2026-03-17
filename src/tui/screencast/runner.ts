@@ -7,6 +7,13 @@
 import * as path from "node:path";
 import * as pty from "node-pty";
 import type { TapeCommand } from "../../engine/screencast/types.js";
+import {
+	computeLayout,
+	topBarHeight,
+	bottomBarHeight,
+	sidebarWidth as calcSidebarWidth,
+	INPUT_SECTION_ROWS,
+} from "../layout.js";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -64,6 +71,81 @@ function stripAnsi(s: string): string {
 
 function delay(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── Region extraction ───────────────────────────────────────────────
+//
+// Splits a plain-text terminal screen (ANSI already stripped) into
+// named regions based on the TUI layout geometry.
+//
+// Layout at 140×34 standard density with sidebar visible:
+//   rows 0–1:   TopBar (full width)
+//   rows 2–31:  Main area — left cols = sidebar, right cols = output+input
+//   rows 32–33: StatusBar (full width)
+
+/** The search icon rendered at the top of the TreeSidebar (standard+ density). */
+const SIDEBAR_SEARCH_ICON = "⌕";
+
+/**
+ * Extract text from a named region of the terminal screen.
+ * Returns `null` if the region is not visible (e.g., sidebar not open).
+ */
+function extractRegion(
+	plainScreen: string,
+	region: "topbar" | "statusbar" | "sidebar" | "output" | "input",
+	width: number,
+	height: number,
+): string | null {
+	const layout = computeLayout(width, height);
+	const topH = topBarHeight(layout);
+	const botH = bottomBarHeight(layout);
+	const sideW = calcSidebarWidth(layout, width);
+
+	// Split screen into rows, pad each to full width
+	const rawRows = plainScreen.split("\n");
+	const rows: string[] = [];
+	for (let i = 0; i < height; i++) {
+		const row = rawRows[i] ?? "";
+		rows.push(row.padEnd(width).slice(0, width));
+	}
+
+	// Detect sidebar visibility by looking for the search icon
+	// in the main area rows within the sidebar column range
+	const sidebarVisible = rows.some((row, i) =>
+		i >= topH && i < height - botH && row.slice(0, sideW).includes(SIDEBAR_SEARCH_ICON),
+	);
+
+	const contentLeft = sidebarVisible ? sideW : 0;
+
+	switch (region) {
+		case "topbar":
+			return rows.slice(0, topH).join("\n");
+
+		case "statusbar":
+			return rows.slice(height - botH).join("\n");
+
+		case "sidebar": {
+			if (!sidebarVisible) return null;
+			const mainRows = rows.slice(topH, height - botH);
+			return mainRows.map((r) => r.slice(0, sideW)).join("\n");
+		}
+
+		case "output": {
+			// Output viewport: main area minus input section rows at the bottom.
+			// Also skip the 1-row gap above and below output.
+			const mainStart = topH;
+			const inputStart = height - botH - INPUT_SECTION_ROWS;
+			const outputRows = rows.slice(mainStart, inputStart);
+			return outputRows.map((r) => r.slice(contentLeft)).join("\n");
+		}
+
+		case "input": {
+			const inputStart = height - botH - INPUT_SECTION_ROWS;
+			const inputEnd = height - botH;
+			const inputRows = rows.slice(inputStart, inputEnd);
+			return inputRows.map((r) => r.slice(contentLeft)).join("\n");
+		}
+	}
 }
 
 /** Map a Key command name to the stdin byte sequence. */
@@ -284,14 +366,39 @@ export async function runTape(
 					break;
 				}
 
-				case "Expect": {
-					// Check the last visible screen for the pattern.
-					// This is more reliable than cursor-based tracking
-					// because the pty output contains full screen repaints.
-					const lastClear = outputBuffer.lastIndexOf("\x1b[2J");
-					const lastScreen = lastClear >= 0
-						? stripAnsi(outputBuffer.slice(lastClear))
-						: stripAnsi(outputBuffer.slice(-2000));
+			case "Expect": {
+				// Check the last visible screen for the pattern.
+				// This is more reliable than cursor-based tracking
+				// because the pty output contains full screen repaints.
+				const lastClear = outputBuffer.lastIndexOf("\x1b[2J");
+				const lastScreen = lastClear >= 0
+					? stripAnsi(outputBuffer.slice(lastClear))
+					: stripAnsi(outputBuffer.slice(-2000));
+
+				if (cmd.region) {
+					// Region-scoped assertion — extract only the
+					// requested region from the screen
+					const regionText = extractRegion(
+						lastScreen, cmd.region, width, height,
+					);
+					if (regionText === null) {
+						assertions.push({
+							pass: false,
+							command: cmd,
+							message: `Expect failed: ${cmd.region} region is not visible`,
+						});
+					} else {
+						const pass = regionText.includes(cmd.pattern);
+						assertions.push({
+							pass,
+							command: cmd,
+							message: pass
+								? `Expect passed: found "${cmd.pattern}" in ${cmd.region}`
+								: `Expect failed: "${cmd.pattern}" not found in ${cmd.region}`,
+						});
+					}
+				} else {
+					// Full-screen search (default)
 					const pass = lastScreen.includes(cmd.pattern);
 					assertions.push({
 						pass,
@@ -300,8 +407,9 @@ export async function runTape(
 							? `Expect passed: found "${cmd.pattern}"`
 							: `Expect failed: "${cmd.pattern}" not found in last screen`,
 					});
-					break;
 				}
+				break;
+			}
 
 				case "ExpectMode": {
 					// The pty output contains full screen repaints. We check

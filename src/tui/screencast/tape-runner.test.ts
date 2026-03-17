@@ -38,6 +38,10 @@ describe("screencasts", () => {
 		await testTape(tape("tab-completion"));
 	}, 30_000);
 
+	it("builder-tree-expanded", async () => {
+		await testTape(tape("builder-tree-expanded"));
+	}, 30_000);
+
 	afterAll(() => {
 		// Gzip .cast files and generate HTML preview page
 		const script = path.join(SCREENCASTS_DIR, "generate.py");

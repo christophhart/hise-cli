@@ -79,7 +79,7 @@ export interface WaitCommand {
 export interface ExpectCommand {
 	type: "Expect";
 	pattern: string;
-	region?: "output" | "topbar" | "statusbar" | "input";
+	region?: "output" | "topbar" | "statusbar" | "input" | "sidebar";
 }
 
 export interface ExpectModeCommand {

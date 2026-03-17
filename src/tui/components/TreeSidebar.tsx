@@ -311,17 +311,20 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 }: TreeSidebarProps) {
 	const [expandedSet, setExpandedSet] = useState<Set<string>>(() => {
 		if (persistedState) return new Set(persistedState.expandedPaths);
-		// Auto-expand root and selected path on mount
+		// Fully expand the entire tree on first open so users see
+		// the complete hierarchy without manual expand clicks.
 		const initial = new Set<string>();
 		if (tree) {
-			const rootKey = tree.id ?? tree.label;
-			initial.add(rootKey);
-			// Expand along the selected path
-			let pathSoFar = rootKey;
-			for (const seg of selectedPath) {
-				pathSoFar += "." + seg;
-				initial.add(pathSoFar);
+			function expandAll(node: TreeNode, parentPath: string[]): void {
+				const key = [...parentPath, node.id ?? node.label].join(".");
+				initial.add(key);
+				if (node.children) {
+					for (const child of node.children) {
+						expandAll(child, [...parentPath, node.id ?? node.label]);
+					}
+				}
 			}
+			expandAll(tree, []);
 		}
 		return initial;
 	});
