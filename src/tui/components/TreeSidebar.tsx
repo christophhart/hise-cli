@@ -5,7 +5,7 @@
 // Keyboard navigation is handled by the central key dispatcher in
 // app.tsx — this component exposes imperative methods via ref.
 
-import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
 import { Box, Text, type DOMElement } from "ink";
 import { useOnClick, useOnWheel, useElementPosition } from "@ink-tools/ink-mouse";
 import type { TreeNode } from "../../engine/result.js";
@@ -267,70 +267,33 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	const boxRef = useRef<DOMElement>(null);
 	const elementPos = useElementPosition(boxRef);
 
-	// Debounced single-click + double-click detection.
-	// Single click (after 250ms): toggle expand/collapse + move cursor.
-	// Double click (within 250ms): navigate into node (cd).
-	const DOUBLE_CLICK_MS = 150;
-	const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	// Single click: move cursor + grab focus (instant, no debounce).
+	// Double click: navigate into node (cd).
+	// Expand/collapse is keyboard-only (Space, Right, Left).
+	const DOUBLE_CLICK_MS = 300;
 	const lastClickRef = useRef<{ row: number; time: number } | null>(null);
 
-	// Clean up timer on unmount
-	useEffect(() => {
-		return () => {
-			if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-		};
-	}, []);
-
-	const toggleExpandByIndex = useCallback((rowIndex: number) => {
-		const row = rows[rowIndex];
-		if (!row || !row.hasChildren) return;
-		const pathKey = row.path.join(".");
-		setExpandedSet((prev) => {
-			const next = new Set(prev);
-			if (next.has(pathKey)) {
-				next.delete(pathKey);
-			} else {
-				next.add(pathKey);
-			}
-			return next;
-		});
-	}, [rows]);
-
 	useOnClick(boxRef, (event) => {
-		// Compute which row was clicked
 		const relRow = event.y - elementPos.top;
 		const rowIndex = relRow + adjScroll;
 		const row = rows[rowIndex];
 		if (!row) return;
 
-		// Always grab focus immediately
+		// Always grab focus and move cursor immediately
 		onFocus?.();
-
-		// Always move cursor immediately (no debounce for visual feedback)
 		setCursorIndex(rowIndex);
 
+		// Double-click detection
 		const now = Date.now();
 		const last = lastClickRef.current;
 
 		if (last && last.row === rowIndex && now - last.time < DOUBLE_CLICK_MS) {
-			// Double-click — cancel pending single-click, navigate into node
-			if (clickTimerRef.current) {
-				clearTimeout(clickTimerRef.current);
-				clickTimerRef.current = null;
-			}
+			// Double-click — navigate into node
 			lastClickRef.current = null;
 			const navPath = row.path.slice(1);
 			onSelect(navPath);
 		} else {
-			// Potential single-click — debounce expand/collapse
 			lastClickRef.current = { row: rowIndex, time: now };
-			if (clickTimerRef.current) {
-				clearTimeout(clickTimerRef.current);
-			}
-			clickTimerRef.current = setTimeout(() => {
-				clickTimerRef.current = null;
-				toggleExpandByIndex(rowIndex);
-			}, DOUBLE_CLICK_MS);
 		}
 	});
 
