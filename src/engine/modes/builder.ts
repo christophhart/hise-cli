@@ -41,10 +41,24 @@ const FALLBACK_CHAIN_COLOUR = "#666666"; // grey for chains with no resolved col
  *
  * Mutates the tree in place and returns it.
  */
+type DiffStatus = "added" | "removed" | "modified";
+
 function propagateChainColors(
 	node: TreeNode,
 	parentChainColour: string | null = null,
+	parentDiff?: DiffStatus,
 ): TreeNode {
+	// ── Resolve diff status ─────────────────────────────────────
+	// Node's own diff wins. Otherwise inherit added/removed from parent.
+	// "modified" is never inherited — it stays on the node that set it.
+	const resolvedDiff: DiffStatus | undefined = node.diff
+		?? (parentDiff === "added" || parentDiff === "removed" ? parentDiff : undefined);
+	node.diff = resolvedDiff;
+
+	// Diff to pass to children: propagate added/removed, not modified
+	const childDiff: DiffStatus | undefined =
+		resolvedDiff === "added" || resolvedDiff === "removed" ? resolvedDiff : undefined;
+
 	if (node.nodeKind === "chain") {
 		// Resolve this chain's colour
 		let colour: string;
@@ -70,7 +84,7 @@ function propagateChainColors(
 		// Propagate to children
 		if (node.children) {
 			for (const child of node.children) {
-				propagateChainColors(child, colour);
+				propagateChainColors(child, colour, childDiff);
 			}
 		}
 	} else if (node.nodeKind === "module" && parentChainColour) {
@@ -81,7 +95,7 @@ function propagateChainColors(
 		// Module's children (e.g. AHDSR's sub-chains) inherit the same colour
 		if (node.children) {
 			for (const child of node.children) {
-				propagateChainColors(child, parentChainColour);
+				propagateChainColors(child, parentChainColour, childDiff);
 			}
 		}
 	} else {
@@ -89,10 +103,10 @@ function propagateChainColors(
 		node.colour = undefined;
 		node.filledDot = undefined;
 
-		// Children start with fresh colour context (null)
+		// Children start with fresh colour context (null) but inherit diff
 		if (node.children) {
 			for (const child of node.children) {
-				propagateChainColors(child, null);
+				propagateChainColors(child, null, childDiff);
 			}
 		}
 	}

@@ -23,6 +23,10 @@ export interface TreeNode {
 	/** When true, the node's label and dot are rendered in muted/dimmed color.
 	 *  Used for empty chains (no children) and bypassed modules. */
 	dimmed?: boolean;
+	/** Diff status for visual indicators in the tree sidebar.
+	 *  "added" (green +) and "removed" (red -) propagate to all children.
+	 *  "modified" (amber *) does not propagate. Set by the data pipeline. */
+	diff?: "added" | "removed" | "modified";
 }
 
 export type CommandResult =

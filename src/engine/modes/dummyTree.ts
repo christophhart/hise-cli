@@ -9,11 +9,14 @@
 
 import type { TreeNode } from "../result.js";
 
+type DiffStatus = "added" | "removed" | "modified";
+
 function chain(
 	label: string,
 	constrainer: string,
 	children?: TreeNode[],
 	colour?: string,
+	diff?: DiffStatus,
 ): TreeNode {
 	return {
 		label,
@@ -22,6 +25,7 @@ function chain(
 		chainConstrainer: constrainer,
 		children,
 		colour,
+		diff,
 	};
 }
 
@@ -29,6 +33,7 @@ function mod(
 	label: string,
 	type: string,
 	children?: TreeNode[],
+	diff?: DiffStatus,
 ): TreeNode {
 	return {
 		label,
@@ -36,6 +41,7 @@ function mod(
 		type,
 		nodeKind: "module",
 		children,
+		diff,
 	};
 }
 
@@ -43,6 +49,7 @@ function synth(
 	label: string,
 	type: string,
 	children?: TreeNode[],
+	diff?: DiffStatus,
 ): TreeNode {
 	return {
 		label,
@@ -50,6 +57,7 @@ function synth(
 		type,
 		nodeKind: "module",
 		children,
+		diff,
 	};
 }
 
@@ -68,7 +76,7 @@ export const DUMMY_MODULE_TREE: TreeNode = synth("Master", "SynthChain", [
 	], GAIN_COLOUR),
 	chain("FX Chain", "MasterEffect", [
 		mod("Output", "SimpleGain"),
-		mod("Hall", "SimpleReverb"),
+		mod("Hall", "SimpleReverb", undefined, "added"),
 	], FX_COLOUR),
 	synth("Oscillators", "SynthGroup", [
 		chain("Gain Modulation", "*", [
@@ -83,9 +91,9 @@ export const DUMMY_MODULE_TREE: TreeNode = synth("Master", "SynthChain", [
 			mod("Vibrato", "LFO", [
 				chain("LFO Intensity Mod", "*"),
 				chain("LFO Frequency Mod", "*"),
-			]),
+			], "removed"),
 		], PITCH_COLOUR),
-		chain("Detune Modulation", "*"),
+		chain("Detune Modulation", "*", undefined, undefined, "added"),
 		chain("Spread Modulation", "*"),
 		chain("FX Chain", "*", [
 			mod("LP", "PolyphonicFilter", [
@@ -104,7 +112,7 @@ export const DUMMY_MODULE_TREE: TreeNode = synth("Master", "SynthChain", [
 			chain("Gain Modulation", "*", undefined, GAIN_COLOUR),
 			chain("Pitch Modulation", "*", undefined, PITCH_COLOUR),
 			chain("FX Chain", "VoiceEffect", undefined, FX_COLOUR),
-		]),
+		], "modified"),
 	]),
 	synth("Piano", "StreamingSampler", [
 		chain("Gain Modulation", "*", [

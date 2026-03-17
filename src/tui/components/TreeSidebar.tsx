@@ -10,7 +10,7 @@ import { Box, Text, type DOMElement } from "ink";
 import { useOnClick, useOnWheel, useElementPosition } from "@ink-tools/ink-mouse";
 import type { TreeNode } from "../../engine/result.js";
 import type { ColorScheme } from "../theme.js";
-import { brand, darkenHex } from "../theme.js";
+import { brand, darkenHex, mix } from "../theme.js";
 import { scrollbarChar } from "./scrollbar.js";
 
 // ── Flattened row for rendering ─────────────────────────────────────
@@ -76,6 +76,24 @@ export interface TreeSidebarProps {
 // ── Constants ───────────────────────────────────────────────────────
 
 const GAP_WIDTH = 1; // single char gap between sidebar and output
+
+// ── Diff rendering constants ────────────────────────────────────────
+
+/** How much of the status color to mix into the sidebar background.
+ *  0.9 = 10% status color, 90% sidebar bg. */
+const DIFF_BG_ALPHA = 0.9;
+
+const DIFF_CHARS: Record<string, string> = {
+	added: "+",
+	removed: "-",
+	modified: "*",
+};
+
+const DIFF_COLORS: Record<string, string> = {
+	added: brand.ok,       // #4E8E35 green
+	removed: brand.error,  // #BB3434 red
+	modified: brand.warning, // #FFBA00 amber
+};
 
 // ── Connector characters ────────────────────────────────────────────
 
@@ -385,6 +403,11 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		let fg = scheme.foreground.default;
 		let bg = scheme.backgrounds.sidebar;
 
+		// Diff tinted background (applied before cursor check so cursor wins)
+		if (row.node.diff && DIFF_COLORS[row.node.diff]) {
+			bg = mix(DIFF_COLORS[row.node.diff]!, scheme.backgrounds.sidebar, DIFF_BG_ALPHA);
+		}
+
 		if (isCursorRow && focused) {
 			fg = brand.signal;
 			bg = scheme.backgrounds.raised;
@@ -400,9 +423,11 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		const segments: Array<{ text: string; color: string; bold?: boolean }> = [];
 
 		if (row.depth === 0) {
-			// Root node: show > if current root, else expand triangle
+			// Root node: > if current root, diff char, or expand triangle
 			if (isCurrentRoot) {
 				segments.push({ text: ">", color: fg, bold: true });
+			} else if (row.node.diff && DIFF_CHARS[row.node.diff]) {
+				segments.push({ text: DIFF_CHARS[row.node.diff]!, color: DIFF_COLORS[row.node.diff]! });
 			} else {
 				const icon = row.expanded ? "▾" : "▸";
 				segments.push({ text: icon, color: fg });
@@ -415,9 +440,11 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 				segments.push({ text: " ", color: fg });
 			}
 		} else {
-			// Non-root: column 0 is > indicator or space
+			// Non-root: column 0 is > indicator, diff char, or space
 			if (isCurrentRoot) {
 				segments.push({ text: ">", color: fg, bold: true });
+			} else if (row.node.diff && DIFF_CHARS[row.node.diff]) {
+				segments.push({ text: DIFF_CHARS[row.node.diff]!, color: DIFF_COLORS[row.node.diff]! });
 			} else {
 				segments.push({ text: " ", color: fg });
 			}

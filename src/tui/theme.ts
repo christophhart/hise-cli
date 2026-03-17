@@ -221,6 +221,14 @@ export function lerpHex(colorA: string, colorB: string, t: number): string {
 }
 
 /**
+ * Mix two colors. alpha=0 → pure colorA, alpha=1 → pure colorB.
+ * mix(green, sidebarBg, 0.9) = 10% green + 90% sidebarBg.
+ */
+export function mix(colorA: string, colorB: string, alpha: number): string {
+	return lerpHex(colorA, colorB, alpha);
+}
+
+/**
  * Darken a hex color by a factor (0.0 = black, 1.0 = unchanged).
  * Multiplies each RGB channel by the factor.
  */
