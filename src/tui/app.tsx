@@ -240,6 +240,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 				if (prev) {
 					// Closing sidebar — return focus to input
 					setSidebarFocused(false);
+				} else {
+					// Opening sidebar — grab focus immediately
+					setSidebarFocused(true);
 				}
 				return !prev;
 			});
