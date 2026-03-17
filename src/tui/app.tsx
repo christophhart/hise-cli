@@ -297,8 +297,12 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					tree.cursorDown();
 					return;
 				}
-				if (key.return || key.rightArrow) {
-					tree.expandOrSelect();
+				if (key.return) {
+					tree.selectAsRoot();
+					return;
+				}
+				if (key.rightArrow) {
+					tree.expand();
 					return;
 				}
 				if (key.leftArrow) {

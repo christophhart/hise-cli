@@ -32,8 +32,10 @@ export interface TreeSidebarHandle {
 	cursorUp(): void;
 	/** Move cursor down one row */
 	cursorDown(): void;
-	/** Expand node, or select if leaf. Auto-expands target on navigate. */
-	expandOrSelect(): void;
+	/** Expand a collapsed node. No-op on leaves or already-expanded nodes. */
+	expand(): void;
+	/** Navigate into the focused node (auto-expands if collapsed). */
+	selectAsRoot(): void;
 	/** Collapse node (no-op on root), or move to parent */
 	collapseOrParent(): void;
 	/** Toggle expand/collapse (no-op on root) */
@@ -223,17 +225,20 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		cursorDown: () => {
 			setCursorIndex((prev) => Math.min(rows.length - 1, prev + 1));
 		},
-		expandOrSelect: () => {
+		expand: () => {
 			const row = rows[clampedCursor];
 			if (!row) return;
-			const pathKey = row.path.join(".");
 			if (row.hasChildren && !row.expanded) {
-				// Expand
+				const pathKey = row.path.join(".");
 				setExpandedSet((prev) => new Set(prev).add(pathKey));
-			} else {
-				// Navigate into node (auto-expand + cd)
-				navigateToNode(row);
 			}
+			// No-op on leaves or already-expanded nodes
+		},
+		selectAsRoot: () => {
+			const row = rows[clampedCursor];
+			if (!row) return;
+			// Always navigate (auto-expand if collapsed)
+			navigateToNode(row);
 		},
 		collapseOrParent: () => {
 			const row = rows[clampedCursor];
@@ -386,6 +391,8 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		if (isCursorRow && focused) {
 			fg = brand.signal;
 			bg = scheme.backgrounds.raised;
+		} else if (isCurrentRoot) {
+			fg = scheme.foreground.bright;
 		} else if (row.node.nodeKind === "chain") {
 			fg = scheme.foreground.muted;
 		}
