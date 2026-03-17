@@ -1,4 +1,4 @@
-// ── TopBar — brand + mode + project + connection status ─────────────
+// ── TopBar — tree label + brand + mode + connection status ──────────
 
 import React from "react";
 import { Box, Text } from "ink";
@@ -10,6 +10,8 @@ export interface TopBarProps {
 	modeAccent: string;
 	connectionStatus: ConnectionStatus;
 	columns: number;
+	/** Tree sidebar content label (e.g. "Module Tree"). Only shown when provided. */
+	treeLabel?: string;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -17,27 +19,27 @@ export const TopBar = React.memo(function TopBar({
 	modeAccent,
 	connectionStatus,
 	columns,
+	treeLabel,
 }: TopBarProps) {
 	const { scheme, brand, statusColor, layout } = useTheme();
 
 	const dot = statusDot(connectionStatus);
 	const dotColor = statusColor(connectionStatus);
 
-	// Mode label: [builder], [script:Interface], etc.
-	const modeDisplay = modeLabel === "root" ? "" : `[${modeLabel}]`;
-
-	// Build the right side: status dot
-	const rightContent = ` ${dot} `;
-	const rightWidth = rightContent.length;
-
-	// Build the left side content pieces
 	const pad = " ".repeat(layout.horizontalPad);
-	const brandText = "HISE CLI";
-	const modeText = modeDisplay ? `  ${modeDisplay}` : "";
-	const leftContentWidth = pad.length + brandText.length + modeText.length;
 
-	// Padding to fill the row
-	const padWidth = Math.max(0, columns - leftContentWidth - rightWidth);
+	// ── Left side: tree label (accent colored, only when provided) ──
+	const leftText = treeLabel ?? "";
+	const leftWidth = leftText ? pad.length + leftText.length : 0;
+
+	// ── Right side: brand + [mode] + dot ──
+	const brandText = "HISE CLI";
+	const modeDisplay = modeLabel === "root" ? "" : ` [${modeLabel}]`;
+	const rightContent = `${brandText}${modeDisplay} ${dot} `;
+	const rightWidth = rightContent.length + pad.length;
+
+	// Fill between left and right
+	const fillWidth = Math.max(0, columns - leftWidth - rightWidth);
 
 	const bg = scheme.backgrounds.darker;
 	const barPadRow = layout.barVerticalPad > 0
@@ -48,13 +50,21 @@ export const TopBar = React.memo(function TopBar({
 		<Box flexDirection="column">
 			<Box>
 				<Text backgroundColor={bg}>
+					{leftText ? (
+						<>
+							<Text>{pad}</Text>
+							<Text color={modeAccent} bold>{leftText}</Text>
+						</>
+					) : null}
+					<Text>{" ".repeat(fillWidth)}</Text>
 					<Text>{pad}</Text>
 					<Text color={brand.signal} bold>{brandText}</Text>
 					{modeDisplay ? (
-						<Text color={modeAccent} bold>{modeText}</Text>
+						<Text color={modeAccent} bold>{modeDisplay}</Text>
 					) : null}
-					<Text>{" ".repeat(padWidth)}</Text>
-					<Text color={dotColor}>{rightContent}</Text>
+					<Text> </Text>
+					<Text color={dotColor}>{dot}</Text>
+					<Text> </Text>
 				</Text>
 			</Box>
 			{barPadRow}

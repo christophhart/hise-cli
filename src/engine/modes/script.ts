@@ -16,6 +16,7 @@ export class ScriptMode implements Mode {
 	readonly name = "Script";
 	readonly accent = MODE_ACCENTS.script;
 	readonly prompt: string;
+	readonly treeLabel = "Variable Tree";
 	readonly processorId: string;
 	private readonly completionEngine: CompletionEngine | null;
 

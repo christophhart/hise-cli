@@ -699,6 +699,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 		: currentMode.prompt.replace(/[\[\]>]/g, "").trim();
 	const modeAccent = currentMode.accent || scheme.foreground.default;
 	const contextLabel = currentMode.contextLabel ?? "";
+	const treeLabel = sidebarVisible ? currentMode.treeLabel : undefined;
 
 	// Syntax highlighting tokenizer from current mode (bound to avoid context loss)
 	const modeTokenizer = currentMode.tokenizeInput
@@ -906,6 +907,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					modeAccent={modeAccent}
 					connectionStatus={connectionStatus}
 					columns={columns}
+					treeLabel={treeLabel}
 				/>
 				<Box flexDirection="row" height={mainAreaHeight}>
 					{sidebarVisible && (
@@ -956,6 +958,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 							contextLabel={contextLabel}
 							columns={contentColumns}
 							disabled={disabled || overlayData !== null}
+							focused={!sidebarFocused}
 							onSubmit={(v) => {
 								setCompletionState(null);
 								void handleSubmit(v);
@@ -1016,6 +1019,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 										modeLabel={snap.modeLabel}
 										modeAccent={snap.dimModeAccent}
 										contextLabel={snap.contextLabel}
+										focused={false}
 										columns={columns}
 										disabled={true}
 										onSubmit={() => {}}

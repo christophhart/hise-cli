@@ -509,7 +509,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 					<Text backgroundColor={scheme.backgrounds.sidebar}>
 						{leftPad}{" ".repeat(contentWidth)}
 					</Text>
-					<Text backgroundColor={scheme.backgrounds.darker}>
+					<Text backgroundColor={scheme.backgrounds.sidebar}>
 						{" ".repeat(GAP_WIDTH)}
 					</Text>
 				</Box>,
@@ -535,7 +535,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 						{leftPad}{" ".repeat(Math.max(0, padW))}
 						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 					</Text>
-					<Text backgroundColor={scheme.backgrounds.darker}>
+					<Text backgroundColor={scheme.backgrounds.sidebar}>
 						{" ".repeat(GAP_WIDTH)}
 					</Text>
 				</Box>,
@@ -582,7 +582,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 						<Text>{" ".repeat(padW)}</Text>
 						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 					</Text>
-					<Text backgroundColor={scheme.backgrounds.darker}>
+					<Text backgroundColor={scheme.backgrounds.sidebar}>
 						{" ".repeat(GAP_WIDTH)}
 					</Text>
 				</Box>,

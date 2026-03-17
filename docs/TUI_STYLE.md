@@ -37,14 +37,14 @@ These match the C++ macros in the HISE codebase. They are fixed across all schem
 | Error    | `HISE_ERROR_COLOUR`    | `#BB3434` | Failed commands, validation errors `✗`, disconnected  |
 
 **SIGNAL_COLOUR** (`#90FFB1`) is the distinctive HISE neon green. It appears on
-system-level interactive chrome — never on the prompt (which uses mode accents) and
-never on output content lines (which use semantic or foreground colors).
+system-level interactive chrome and as the **keyboard focus indicator** (see Section 1.4).
+It never appears on output content lines (which use semantic or foreground colors).
 
 ### 1.3 Mode Accent Colors (Layer 2 — Hardcoded)
 
 Each mode has a fixed accent color that provides instant visual orientation. Mode accents
-appear on: the `>` prompt character, the `[mode]` label in the top bar, the sidebar
-heading, and the left-border `▎` on command echo lines in the output.
+appear on: the `[mode]` label in the top bar, the sidebar heading, and the left-border
+`▎` on command echo lines in the output.
 
 | Mode     | Accent   | Hex       |
 |----------|----------|-----------|
@@ -67,7 +67,24 @@ heading, and the left-border `▎` on command echo lines in the output.
 Used for: wizard overlay border, step indicator highlight, header title, confirm
 highlights, selected item markers. See Section 3.10 for full specification.
 
-### 1.4 Syntax Highlighting (Layer 3 — Hardcoded)
+### 1.4 Focus Visibility (Rule)
+
+Any component that currently holds the keyboard focus **must** use `brand.signal`
+(`#90FFB1`) in some visible form to indicate it. This provides a consistent,
+unambiguous focus cue across all panels.
+
+| Component    | Focus indicator                                    |
+|--------------|----------------------------------------------------|
+| Input        | `>` prompt character rendered in `brand.signal`     |
+| TreeSidebar  | Focused row label rendered in `brand.signal`        |
+| Overlay      | Inherent - the overlay itself is the focus target   |
+
+When a component loses focus, its focus indicator reverts to a neutral color
+(`foreground.muted` for the prompt char, `foreground.default` for tree rows).
+This makes it immediately obvious where keystrokes will be routed by the central
+key dispatcher.
+
+### 1.5 Syntax Highlighting (Layer 3 — Hardcoded)
 
 These match the HISE code editor color scheme. They apply to the input field in script
 mode (full highlighting) and partially in builder/DSP modes (strings, numbers, known
@@ -101,7 +118,7 @@ needs a lightweight regex-based tokenizer (pure function in the engine layer, no
 that returns `{text, tokenType}[]` spans, rendered as multiple `<Text>` elements with
 per-token colors. The tokenizer handles cursor positioning and ghost-text overlay.
 
-### 1.5 Color Schemes (Layer 4 — User-Selectable)
+### 1.6 Color Schemes (Layer 4 — User-Selectable)
 
 A scheme defines 8 values: 5 background tiers and 3 foreground tiers.
 See `ColorScheme` interface in `src/tui/theme.ts` for the canonical type definition.
@@ -124,7 +141,7 @@ See `ColorScheme` interface in `src/tui/theme.ts` for the canonical type definit
 | bright  | Result output lines, emphasized text              |
 | muted   | Hints, secondary text, disabled, separators       |
 
-### 1.6 Shipped Schemes
+### 1.7 Shipped Schemes
 
 8 schemes (6 dark + 2 light) shipped in `src/tui/theme.ts` (`schemes` object).
 Default is Monokai. Each scheme is 8 color values + a name.
@@ -136,7 +153,7 @@ config file.
 On light themes (`scheme.light === true`), mode accents with poor contrast
 (yellow, green, cyan) are automatically darkened for readability.
 
-### 1.7 ThemeContext — Centralized Color Provider
+### 1.8 ThemeContext — Centralized Color Provider
 
 All TUI components read colors from a React context (`ThemeProvider` / `useTheme()`)
 instead of importing `brand` or `statusColor` directly. This enables the overlay
@@ -153,7 +170,7 @@ is pure functions that bake colors into data structures at creation time (e.g.,
 `resultToLines` bakes `brand.error` into `OutputLine.color` — these baked colors
 are handled by `darkenOutputLines()` separately).
 
-### 1.8 Overlay Dimming System
+### 1.9 Overlay Dimming System
 
 When a modal overlay opens (help, wizard, command palette), the underlying UI
 freezes and dims to create a visual backdrop. This is implemented as a full
@@ -282,20 +299,31 @@ tree return `null` and the sidebar shows empty space.
 
 ### 3.1 TopBar
 
-Single row anchored to the top of the screen.
+Single row anchored to the top of the screen. Two-part layout: mode-specific tree
+label on the left, branding and connection status on the right.
 
 ```
-│ HISE REPL  [builder:plan]  MyProject                                 │
+│  Module Tree                                    HISE CLI [builder] ● │
 ```
 
-| Element       | Color                      | Style |
-|---------------|----------------------------|-------|
-| `HISE REPL`   | SIGNAL_COLOUR (`#90FFB1`)  | bold  |
-| `[mode:ctx]`  | Mode accent color          | bold  |
-| Project name  | `foreground.default`       |       |
-| (no project)  | `foreground.muted`         | shows "connecting..." |
+In root mode or when the sidebar is hidden, the left side is empty:
+
+```
+│                                                          HISE CLI ● │
+```
+
+| Element       | Position | Color                      | Style |
+|---------------|----------|----------------------------|-------|
+| Tree label    | Left     | Mode accent color          | bold  |
+| `HISE CLI`    | Right    | SIGNAL_COLOUR (`#90FFB1`)  | bold  |
+| `[mode:ctx]`  | Right    | Mode accent color          | bold  |
+| Status dot    | Right    | Status color               |       |
 
 Background: `backgrounds.darker`. Full terminal width, padded with spaces.
+
+**Tree labels by mode** (from `Mode.treeLabel`): Builder = "Module Tree",
+Script = "Variable Tree", Inspect = "System Monitor". Modes without a tree
+sidebar omit the label.
 
 Mode label updates instantly on mode switch. Nested modes use colon separator:
 `[builder]`, `[builder:plan]`, `[script:Interface]`, `[sampler:MySampler]`.
@@ -585,7 +613,7 @@ or `wizard <id>` in a mode that registers the wizard. See [DESIGN.md](../DESIGN.
 **Dimensions**: fixed 60 chars wide × 20 lines tall. Centered horizontally and
 vertically over the REPL content using absolute positioning. The REPL remains
 visible behind the overlay, frozen and dimmed via the overlay dimming system
-(see Section 1.8). All underlying UI components re-render at `DIM_FACTOR`
+(see Section 1.9). All underlying UI components re-render at `DIM_FACTOR`
 brightness inside a `ThemeProvider` with darkened colors.
 
 **Background**: `backgrounds.overlay` (at full brightness — only the backdrop

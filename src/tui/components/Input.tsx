@@ -216,6 +216,8 @@ export interface InputProps {
 	/** Tokenizer for syntax highlighting. If provided, input text is rendered
 	 *  with per-token colors from TOKEN_COLORS. Falls back to flat foreground.bright. */
 	tokenize?: (value: string) => TokenSpan[];
+	/** Whether the input has keyboard focus. When true, the prompt char uses brand.signal. */
+	focused?: boolean;
 }
 
 /** Cursor background: lighten the input bar's raised bg by 30% */
@@ -233,8 +235,9 @@ export const Input = React.memo(function Input({
 	onValueChange,
 	inputRef,
 	tokenize,
+	focused = true,
 }: InputProps) {
-	const { scheme, layout } = useTheme();
+	const { scheme, brand, layout } = useTheme();
 
 	const [state, dispatch] = useReducer(inputReducer, {
 		value: "",
@@ -302,7 +305,7 @@ export const Input = React.memo(function Input({
 
 	const pad = " ".repeat(layout.horizontalPad);
 	const isRoot = modeLabel === "root";
-	const promptColor = isRoot ? scheme.foreground.default : modeAccent;
+	const promptColor = focused ? brand.signal : scheme.foreground.muted;
 	const contextSuffix = contextLabel ? ` ${contextLabel}` : "";
 	const promptPrefix = isRoot ? "" : `[${modeLabel}]${contextSuffix} `;
 	const promptChar = "> ";
