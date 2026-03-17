@@ -240,3 +240,19 @@ is closed.
 5. Implement the fix
 6. `npm run build` and re-run — verify it **passes** (green)
 7. `npm run test` — verify no regressions
+
+## Platform Compatibility
+
+### Windows ConPTY rendering differences
+
+The screencast runner accounts for platform-specific terminal behavior:
+
+**Screen boundary detection**: macOS ptys emit `\x1b[2J` (clear screen) during repaints; Windows ConPTY uses `\x1b[H` (cursor home) instead. `lastScreenStart()` checks both markers with `Math.max()`.
+
+**Line endings**: ConPTY emits CRLF (`\r\n`). `stripAnsi()` normalizes to LF-only to prevent `\r` characters from breaking row splitting and string matching.
+
+**Region extraction offsets**: ConPTY inserts extra blank rows via cursor positioning, shifting content down 2-3 rows from geometric expectations. Sidebar extraction expands the row range (`mainStart = topH - 2`, `mainEnd = height - botH + 3`) to account for this drift.
+
+**Debugging Windows failures**: If an assertion fails on Windows but passes on macOS, log `lastScreen.includes(pattern)` to distinguish extraction issues from rendering issues. Check for content bleeding between panes and missing rows outside the slice range.
+
+**Known issue**: `AttachConsole failed` stderr errors from node-pty cleanup are non-fatal noise on Node.js 25 + Windows. Tests pass despite the errors. Suppress with `2>/dev/null` if needed.
