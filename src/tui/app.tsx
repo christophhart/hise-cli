@@ -165,7 +165,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	sidebarVisibleRef.current = sidebarVisible;
 	const [overlayData, setOverlayData] = useState<{
 		title: string;
-		lines: string[];
+		content?: string;  // markdown content
+		lines?: string[];  // legacy plain text lines
 		footer?: string;
 	} | null>(null);
 	const snapshotRef = useRef<OverlaySnapshot | null>(null);
@@ -688,6 +689,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				// Show overlay
 				setOverlayData({
 					title: result.title,
+					content: result.content,
 					lines: result.lines,
 					footer: result.footer,
 				});
@@ -708,6 +710,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				const densityLines = resultToLines(
 					{ type: "text", content: `Density: ${applied} (${columns}x${rows})` },
 					scheme,
+					layout,
 				);
 				addLines([...densityLines, plainSpacer]);
 			} else if (result.type === "text" && input.trim().startsWith("/expand")) {
@@ -719,12 +722,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					const expandLines = resultToLines(
 						{ type: "text", content: `Expanded ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
 						scheme,
+						layout,
 					);
 					addLines([...expandLines, plainSpacer]);
 				} else {
 					const expandLines = resultToLines(
 						{ type: "text", content: "Tree sidebar is not visible. Press Ctrl+B to open it." },
 						scheme,
+						layout,
 					);
 					addLines([...expandLines, plainSpacer]);
 				}
@@ -737,12 +742,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					const collapseLines = resultToLines(
 						{ type: "text", content: `Collapsed ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
 						scheme,
+						layout,
 					);
 					addLines([...collapseLines, plainSpacer]);
 				} else {
 					const collapseLines = resultToLines(
 						{ type: "text", content: "Tree sidebar is not visible. Press Ctrl+B to open it." },
 						scheme,
+						layout,
 					);
 					addLines([...collapseLines, plainSpacer]);
 				}
@@ -755,7 +762,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					userScrolledRef.current = false;
 				}
 			} else if (result.type !== "empty") {
-				const lines = resultToLines(result, scheme);
+				const lines = resultToLines(result, scheme, layout);
 				//   result line(s)            ← result (standard bg, no border)
 				//   [spacer]                  ← plain spacer after result
 				addLines([...lines, plainSpacer]);
@@ -1145,12 +1152,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							<Overlay
 								title={overlayData.title}
 								accent={modeAccent}
+								content={overlayData.content}
 								lines={overlayData.lines}
 								footer={overlayData.footer}
 								onClose={handleOverlayClose}
 								columns={columns}
 								rows={rows}
 								scheme={scheme}
+								layout={layout}
 							/>
 						</>
 					);

@@ -8,7 +8,7 @@ import { isErrorResponse, isSuccessResponse } from "../hise.js";
 import type { CommandResult, TreeNode } from "../result.js";
 import {
 	errorResult,
-	tableResult,
+	markdownResult,
 	textResult,
 	treeResult,
 } from "../result.js";
@@ -61,15 +61,17 @@ export class InspectMode implements Mode {
 		const parts = trimmed.split(/\s+/);
 		const command = parts[0];
 
-		if (!command || command === "help") {
-			return tableResult(
-				["Command", "Description"],
-				[...INSPECT_COMMANDS.entries()].map(([cmd, desc]) => [
-					cmd,
-					desc,
-				]),
-			);
-		}
+	if (!command || command === "help") {
+		const rows = [...INSPECT_COMMANDS.entries()].map(([cmd, desc]) =>
+			`| \`${cmd}\` | ${desc} |`,
+		);
+		const markdown = `## Inspect Commands
+
+| Command | Description |
+|---------|-------------|
+${rows.join("\n")}`;
+		return markdownResult(markdown);
+	}
 
 		if (!INSPECT_COMMANDS.has(command)) {
 			return errorResult(
@@ -133,14 +135,15 @@ export function formatCpu(data: Record<string, unknown>): CommandResult {
 	const bufferSize =
 		typeof data.bufferSize === "number" ? data.bufferSize : 0;
 
-	return tableResult(
-		["Metric", "Value"],
-		[
-			["CPU Usage", `${cpu.toFixed(1)}%`],
-			["Sample Rate", `${sampleRate} Hz`],
-			["Buffer Size", `${bufferSize} samples`],
-		],
-	);
+	const markdown = `## CPU & Audio Buffer
+
+| Metric | Value |
+|--------|-------|
+| CPU Usage | ${cpu.toFixed(1)}% |
+| Sample Rate | ${sampleRate} Hz |
+| Buffer Size | ${bufferSize} samples |`;
+
+	return markdownResult(markdown);
 }
 
 export function formatVoices(
@@ -150,14 +153,15 @@ export function formatVoices(
 		typeof data.activeVoices === "number" ? data.activeVoices : 0;
 	const max = typeof data.maxVoices === "number" ? data.maxVoices : 256;
 
-	return tableResult(
-		["Metric", "Value"],
-		[
-			["Active Voices", `${active}`],
-			["Max Voices", `${max}`],
-			["Usage", `${((active / max) * 100).toFixed(1)}%`],
-		],
-	);
+	const markdown = `## Voice Count
+
+| Metric | Value |
+|--------|-------|
+| Active Voices | ${active} |
+| Max Voices | ${max} |
+| Usage | ${((active / max) * 100).toFixed(1)}% |`;
+
+	return markdownResult(markdown);
 }
 
 export function formatModules(
@@ -211,11 +215,12 @@ export function formatMemory(
 			? `${(data.preloadSize / (1024 * 1024)).toFixed(1)} MB`
 			: "N/A";
 
-	return tableResult(
-		["Metric", "Value"],
-		[
-			["Heap Size", heap],
-			["Preload Buffer", preload],
-		],
-	);
+	const markdown = `## Memory Usage
+
+| Metric | Value |
+|--------|-------|
+| Heap Size | ${heap} |
+| Preload Buffer | ${preload} |`;
+
+	return markdownResult(markdown);
 }

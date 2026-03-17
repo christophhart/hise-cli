@@ -13,6 +13,9 @@ import { Box, Text, useInput } from "ink";
 import type { DOMElement } from "ink";
 import { useOnWheel } from "@ink-tools/ink-mouse";
 import type { ColorScheme } from "../theme.js";
+import type { LayoutScale } from "../layout.js";
+import { parseMarkdown } from "../../engine/markdown/parser.js";
+import { renderMarkdownToLines } from "./MarkdownRenderer.js";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -21,8 +24,10 @@ export interface OverlayProps {
 	title: string;
 	/** Accent color (used for title text) */
 	accent: string;
-	/** Body content lines (pre-formatted text) */
-	lines: string[];
+	/** Markdown content (preferred) */
+	content?: string;
+	/** Legacy plain text lines (fallback) */
+	lines?: string[];
 	/** Optional footer text (right-aligned) */
 	footer?: string;
 	/** Called when overlay is dismissed (Escape) */
@@ -33,6 +38,8 @@ export interface OverlayProps {
 	rows?: number;
 	/** Color scheme */
 	scheme: ColorScheme;
+	/** Layout scale (for markdown rendering) */
+	layout?: LayoutScale;
 }
 
 // ── Constants ───────────────────────────────────────────────────────
@@ -47,15 +54,31 @@ const SCROLL_WHEEL_LINES = 3;
 export const Overlay = React.memo(function Overlay({
 	title,
 	accent,
-	lines,
+	content,
+	lines: legacyLines,
 	footer,
 	onClose,
 	columns,
 	rows: viewportRows,
 	scheme,
+	layout,
 }: OverlayProps) {
 	const [scrollOffset, setScrollOffset] = useState(0);
 	const boxRef = useRef<DOMElement>(null);
+
+	// Convert markdown to lines or use legacy lines
+	const lines: string[] = React.useMemo(() => {
+		if (content && layout) {
+			const ast = parseMarkdown(content);
+			const outputLines = renderMarkdownToLines(ast, scheme, layout, accent);
+			return outputLines.map(line => {
+				// Reconstruct full line with prefix if present
+				const prefix = line.prefix || "";
+				return prefix + line.text;
+			});
+		}
+		return legacyLines || [];
+	}, [content, legacyLines, scheme, layout, accent]);
 
 	// Layout: pad-top(1) + header(1) + spacer(1) + body + spacer(1) + footer(1) + pad-bottom(1) = body + 6
 	const bodyHeight = OVERLAY_HEIGHT - 6;

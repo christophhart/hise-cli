@@ -3,7 +3,7 @@
 import type { HiseResponse } from "../hise.js";
 import { isErrorResponse, isSuccessResponse } from "../hise.js";
 import type { CommandResult } from "../result.js";
-import { codeResult, errorResult, textResult } from "../result.js";
+import { codeResult, errorResult, markdownResult, textResult } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenize } from "../highlight/hisescript.js";
 import { tokenizeSlash } from "../highlight/slash.js";
@@ -120,26 +120,30 @@ export function formatReplResponse(
 		return errorResult(errorMessages);
 	}
 
-	// Build result from logs and value
-	const parts: string[] = [];
+	// Build markdown with blockquoted logs and plain return value
+	const sections: string[] = [];
 
-	// Console output (logs)
+	// Console output (logs) — blockquoted
 	if (response.logs.length > 0) {
-		parts.push(response.logs.join("\n"));
+		const quotedLogs = response.logs
+			.flatMap(log => log.split("\n"))  // Handle multi-line log entries
+			.map(line => `> ${line}`)
+			.join("\n");
+		sections.push(quotedLogs);
 	}
 
-	// Evaluation result — the value field contains the actual result
-	// (not the result field, which is a fixed status string like "REPL Evaluation OK")
+	// Evaluation result — plain (not blockquoted)
 	if (response.value !== undefined) {
 		const formatted = formatValue(response.value);
-		parts.push(formatted);
+		sections.push(formatted);
 	}
 
-	if (parts.length === 0) {
+	if (sections.length === 0) {
 		return textResult("(no output)");
 	}
 
-	return textResult(parts.join("\n"));
+	// Use blank line separator to prevent blockquote continuation
+	return markdownResult(sections.join("\n\n"));
 }
 
 function formatValue(value: unknown): string {

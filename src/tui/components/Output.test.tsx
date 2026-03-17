@@ -12,6 +12,7 @@ import {
 } from "./Output.js";
 import { defaultScheme } from "../theme.js";
 import { ThemeProvider } from "../theme-context.js";
+import { STANDARD } from "../layout.js";
 
 const accent = "#fd971f"; // builder orange
 const w = (el: React.ReactElement) => <ThemeProvider scheme={defaultScheme}>{el}</ThemeProvider>;
@@ -23,6 +24,7 @@ describe("resultToLines", () => {
 		const lines = resultToLines(
 			{ type: "text", content: "hello world" },
 			defaultScheme,
+			STANDARD,
 		);
 		expect(lines).toHaveLength(1);
 		expect(lines[0].text).toBe("hello world");
@@ -33,6 +35,7 @@ describe("resultToLines", () => {
 		const lines = resultToLines(
 			{ type: "text", content: "line 1\nline 2\nline 3" },
 			defaultScheme,
+			STANDARD,
 		);
 		expect(lines).toHaveLength(3);
 		expect(lines[0].text).toBe("line 1");
@@ -43,6 +46,7 @@ describe("resultToLines", () => {
 		const lines = resultToLines(
 			{ type: "error", message: "bad input" },
 			defaultScheme,
+			STANDARD,
 		);
 		expect(lines).toHaveLength(1);
 		expect(lines[0].text).toBe("bad input");
@@ -53,6 +57,7 @@ describe("resultToLines", () => {
 		const lines = resultToLines(
 			{ type: "error", message: "bad", detail: "extra info" },
 			defaultScheme,
+			STANDARD,
 		);
 		expect(lines).toHaveLength(2);
 		expect(lines[1].text).toBe("extra info");
@@ -66,11 +71,12 @@ describe("resultToLines", () => {
 				rows: [["AHDSR", "Modulator"], ["LFO", "Modulator"]],
 			},
 			defaultScheme,
+			STANDARD,
 		);
-		// header + divider + 2 data rows
-		expect(lines).toHaveLength(4);
-		expect(lines[0].text).toContain("Name");
-		expect(lines[0].text).toContain("Type");
+		// top border + header + divider + 2 data rows + bottom border
+		expect(lines).toHaveLength(6);
+		expect(lines[1].text).toContain("Name");
+		expect(lines[1].text).toContain("Type");
 	});
 
 	it("converts tree result", () => {
@@ -86,6 +92,7 @@ describe("resultToLines", () => {
 				},
 			},
 			defaultScheme,
+			STANDARD,
 		);
 		expect(lines.length).toBeGreaterThanOrEqual(4);
 		expect(lines[0].text).toContain("Root");
@@ -93,7 +100,7 @@ describe("resultToLines", () => {
 	});
 
 	it("returns empty array for empty result", () => {
-		const lines = resultToLines({ type: "empty" }, defaultScheme);
+		const lines = resultToLines({ type: "empty" }, defaultScheme, STANDARD);
 		expect(lines).toHaveLength(0);
 	});
 
@@ -101,6 +108,7 @@ describe("resultToLines", () => {
 		const lines = resultToLines(
 			{ type: "text", content: "test" },
 			defaultScheme,
+			STANDARD,
 		);
 		expect(lines[0].borderColor).toBeUndefined();
 	});

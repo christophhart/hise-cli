@@ -19,6 +19,10 @@ import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import { tokenize } from "../../engine/highlight/hisescript.js";
 import { tokenizeXml } from "../../engine/highlight/xml.js";
 import { LandingLogo } from "./LandingLogo.js";
+import { formatTable as formatTableShared } from "./table.js";
+import type { LayoutScale } from "../layout.js";
+import { parseMarkdown } from "../../engine/markdown/parser.js";
+import { renderMarkdownToLines } from "./MarkdownRenderer.js";
 
 // ── Output line model ───────────────────────────────────────────────
 
@@ -29,6 +33,7 @@ export interface OutputLine {
 	prefixColor?: string;
 	borderColor?: string;  // left border ▎ color (mode accent)
 	bgColor?: string;
+	bold?: boolean;  // render text in bold (does not affect prefix/border)
 	/** Pre-computed syntax highlighting spans. When present, rendered as
 	 *  per-token colored <Text> elements instead of a single flat color. */
 	spans?: TokenSpan[];
@@ -62,6 +67,7 @@ export function darkenOutputLines(
 export function resultToLines(
 	result: CommandResult,
 	scheme: ColorScheme,
+	layout: LayoutScale,
 ): OutputLine[] {
 	switch (result.type) {
 		case "empty":
@@ -106,48 +112,18 @@ export function resultToLines(
 			});
 		}
 		case "table":
-			return formatTable(result.headers, result.rows, scheme);
+			return formatTableShared(result.headers, result.rows, scheme, layout.density);
 		case "tree":
 			return formatTree(result.root, scheme);
-		case "markdown":
-			// Simplified markdown rendering — full marked renderer in Phase 2
-			return result.content.split("\n").map((line) => ({
-				text: line,
-				color: scheme.foreground.bright,
-			}));
+		case "markdown": {
+			const ast = parseMarkdown(result.content);
+			return renderMarkdownToLines(ast, scheme, layout, result.accent);
+		}
 		case "overlay":
 			// Overlay results are handled by App (shows Overlay component).
 			// If we get here, fall through to empty for non-TUI contexts.
 			return [];
 	}
-}
-
-function formatTable(
-	headers: string[],
-	rows: string[][],
-	scheme: ColorScheme,
-): OutputLine[] {
-	// Calculate column widths
-	const colWidths = headers.map((h, i) => {
-		const maxRow = rows.reduce((max, row) => Math.max(max, (row[i] ?? "").length), 0);
-		return Math.max(h.length, maxRow);
-	});
-
-	const separator = "\u2500"; // ─
-	const divider = colWidths.map((w) => separator.repeat(w + 2)).join("\u253C"); // ┼
-	const headerLine = headers.map((h, i) => ` ${h.padEnd(colWidths[i])} `).join("\u2502"); // │
-
-	const lines: OutputLine[] = [
-		{ text: headerLine, color: scheme.foreground.bright },
-		{ text: divider, color: scheme.foreground.muted },
-	];
-
-	for (const row of rows) {
-		const rowLine = row.map((cell, i) => ` ${(cell ?? "").padEnd(colWidths[i] ?? 0)} `).join("\u2502");
-		lines.push({ text: rowLine, color: scheme.foreground.default });
-	}
-
-	return lines;
 }
 
 function formatTree(
@@ -289,9 +265,9 @@ export const Output = React.memo(function Output({
 		const hasSpans = line.spans && line.spans.length > 0 && !truncated;
 		const textContent = hasSpans
 			? line.spans!.map((span, si) => (
-				<Text key={si} color={TOKEN_COLORS[span.token]}>{span.text}</Text>
+				<Text key={si} color={TOKEN_COLORS[span.token]} bold={line.bold}>{span.text}</Text>
 			))
-			: <Text color={line.color}>{displayText}</Text>;
+			: <Text color={line.color} bold={line.bold}>{displayText}</Text>;
 
 		renderedLines.push(
 			<Box key={i}>

@@ -5,6 +5,7 @@ import type { SessionContext } from "./mode.js";
 import type { HiseSuccessResponse } from "../hise.js";
 import { CompletionEngine, buildDatasets } from "../completion/engine.js";
 import type { ScriptingApi } from "../data.js";
+import { parseMarkdown } from "../markdown/parser.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -115,8 +116,8 @@ describe("ScriptMode REPL round-trip", () => {
 		const session = createMockSession(mock);
 		const result = await mode.parse("Engine.getSampleRate()", session);
 
-		expect(result.type).toBe("text");
-		if (result.type === "text") {
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
 			expect(result.content).toBe("44100");
 		}
 	});
@@ -164,9 +165,11 @@ describe("ScriptMode REPL round-trip", () => {
 		const session = createMockSession(mock);
 		const result = await mode.parse("Console.print(42)", session);
 
-		if (result.type === "text") {
-			expect(result.content).toContain("Log line 1");
-			expect(result.content).toContain("Log line 2");
+		if (result.type === "markdown") {
+			// Logs should be blockquoted
+			expect(result.content).toContain("> Log line 1");
+			expect(result.content).toContain("> Log line 2");
+			// Return value should NOT be blockquoted
 			expect(result.content).toContain("42");
 		}
 	});
@@ -221,8 +224,8 @@ describe("formatReplResponse", () => {
 			successResponse({ value: 44100 }),
 			"test",
 		);
-		expect(result.type).toBe("text");
-		if (result.type === "text") {
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
 			expect(result.content).toBe("44100");
 		}
 	});
@@ -232,7 +235,7 @@ describe("formatReplResponse", () => {
 			successResponse({ value: true }),
 			"test",
 		);
-		if (result.type === "text") {
+		if (result.type === "markdown") {
 			expect(result.content).toBe("true");
 		}
 	});
@@ -242,7 +245,7 @@ describe("formatReplResponse", () => {
 			successResponse({ value: { key: "val" } }),
 			"test",
 		);
-		if (result.type === "text") {
+		if (result.type === "markdown") {
 			expect(result.content).toContain('"key"');
 			expect(result.content).toContain('"val"');
 		}
@@ -263,6 +266,37 @@ describe("formatReplResponse", () => {
 		);
 		if (result.type === "text") {
 			expect(result.content).toBe("(no output)");
+		}
+	});
+
+	it("separates blockquoted logs from plain return value with blank line", () => {
+		// HISE returns the string "undefined" as value when expression returns undefined
+		const result = formatReplResponse(
+			successResponse({ value: "undefined", logs: ["1234"] }),
+			"Console.print(1234)",
+		);
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
+			// Should use blank line separator to prevent blockquote continuation
+			expect(result.content).toBe("> 1234\n\nundefined");
+			
+			// Verify AST structure: blockquote node + paragraph node (NOT nested)
+			const ast = parseMarkdown(result.content);
+			expect(ast.nodes).toHaveLength(2);
+			expect(ast.nodes[0].type).toBe("blockquote");
+			expect(ast.nodes[1].type).toBe("paragraph");
+		}
+	});
+
+	it("handles multiple log lines with return value", () => {
+		const result = formatReplResponse(
+			successResponse({ value: 42, logs: ["line1", "line2"] }),
+			"test",
+		);
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
+			// All logs blockquoted, then blank line, then return value
+			expect(result.content).toBe("> line1\n> line2\n\n42");
 		}
 	});
 });

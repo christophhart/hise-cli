@@ -101,7 +101,9 @@ describe("built-in slash commands", () => {
 		expect(result.type).toBe("overlay");
 		if (result.type === "overlay") {
 			expect(result.title).toContain("Help");
-			expect(result.lines.length).toBeGreaterThan(0);
+			// content is markdown string
+			expect(result.content).toBeDefined();
+			expect(result.content!.length).toBeGreaterThan(0);
 		}
 	});
 

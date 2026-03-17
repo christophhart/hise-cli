@@ -37,7 +37,7 @@ async function handleHelp(
 	const modeId = session.currentModeId as ModeId;
 	const commands = session.allCommands();
 	const help = generateHelp(modeId, commands);
-	return overlayResult(help.title, help.lines, help.footer);
+	return overlayResult(help.title, help.content, help.footer);
 }
 
 async function handleClear(

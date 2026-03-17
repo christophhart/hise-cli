@@ -52,17 +52,14 @@ describe("InspectMode", () => {
 	});
 
 	it("shows help table for help command", async () => {
-		const session = createMockSession();
+		const session = createMockSession({});
 		const mode = new InspectMode();
 		const result = await mode.parse("help", session);
-		expect(result.type).toBe("table");
-		if (result.type === "table") {
-			expect(result.headers).toContain("Command");
-			const commands = result.rows.map((r) => r[0]);
-			expect(commands).toContain("cpu");
-			expect(commands).toContain("voices");
-			expect(commands).toContain("modules");
-			expect(commands).toContain("memory");
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
+			expect(result.content).toContain("## Inspect Commands");
+			expect(result.content).toContain("|");
+			expect(result.content).toContain("cpu");
 		}
 	});
 
@@ -88,19 +85,18 @@ describe("InspectMode cpu", () => {
 		});
 		const mode = new InspectMode();
 		const result = await mode.parse("cpu", session);
-		expect(result.type).toBe("table");
-		if (result.type === "table") {
-			expect(result.rows[0][1]).toContain("12.3%");
-			expect(result.rows[1][1]).toContain("44100");
-			expect(result.rows[2][1]).toContain("512");
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
+			expect(result.content).toContain("## CPU & Audio Buffer");
+			expect(result.content).toContain("12.3%");
 		}
 	});
 
 	it("handles missing cpu data gracefully", () => {
 		const result = formatCpu({});
-		expect(result.type).toBe("table");
-		if (result.type === "table") {
-			expect(result.rows[0][1]).toBe("0.0%");
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
+			expect(result.content).toContain("0.0%");
 		}
 	});
 });
@@ -115,17 +111,18 @@ describe("InspectMode voices", () => {
 		});
 		const mode = new InspectMode();
 		const result = await mode.parse("voices", session);
-		expect(result.type).toBe("table");
-		if (result.type === "table") {
-			expect(result.rows[0][1]).toBe("8");
-			expect(result.rows[1][1]).toBe("256");
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
+			expect(result.content).toContain("## Voice Count");
+			expect(result.content).toContain("8");
+			expect(result.content).toContain("256");
 		}
 	});
 
 	it("handles zero voices", () => {
 		const result = formatVoices({ activeVoices: 0, maxVoices: 256 });
-		if (result.type === "table") {
-			expect(result.rows[2][1]).toBe("0.0%");
+		if (result.type === "markdown") {
+			expect(result.content).toContain("0.0%");
 		}
 	});
 });
@@ -168,10 +165,11 @@ describe("InspectMode memory", () => {
 			heapSize: 134217728, // 128 MB
 			preloadSize: 8388608, // 8 MB
 		});
-		expect(result.type).toBe("table");
-		if (result.type === "table") {
-			expect(result.rows[0][1]).toBe("128.0 MB");
-			expect(result.rows[1][1]).toBe("8.0 MB");
+		expect(result.type).toBe("markdown");
+		if (result.type === "markdown") {
+			expect(result.content).toContain("## Memory Usage");
+			expect(result.content).toContain("128.0 MB");
+			expect(result.content).toContain("8.0 MB");
 		}
 	});
 
