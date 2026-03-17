@@ -109,6 +109,10 @@ export class Session implements SessionContext, CommandSession {
 		return textResult(`Exited ${popped.name} mode.`);
 	}
 
+	requestQuit(): void {
+		this.quitRequested = true;
+	}
+
 	get shouldQuit(): boolean {
 		return this.quitRequested;
 	}

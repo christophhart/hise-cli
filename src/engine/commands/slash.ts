@@ -21,6 +21,15 @@ async function handleExit(
 	return session.popMode();
 }
 
+async function handleQuit(
+	_args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	// Force quit regardless of mode stack depth
+	session.requestQuit();
+	return textResult("Goodbye.");
+}
+
 async function handleHelp(
 	_args: string,
 	session: CommandSession,
@@ -80,6 +89,25 @@ async function handleWizard(
 	return errorResult(`Wizard "${args}" not yet implemented.`);
 }
 
+async function handleExpand(
+	args: string,
+	_session: CommandSession,
+): Promise<CommandResult> {
+	const pattern = args.trim() || "*";
+	// Actual expand is handled by the TUI layer (app.tsx) which
+	// intercepts this command and delegates to TreeSidebar.
+	return textResult(`Expanded: ${pattern}`);
+}
+
+async function handleCollapse(
+	args: string,
+	_session: CommandSession,
+): Promise<CommandResult> {
+	const pattern = args.trim() || "*";
+	// Actual collapse is handled by the TUI layer (app.tsx).
+	return textResult(`Collapsed: ${pattern}`);
+}
+
 const VALID_DENSITIES = ["auto", "compact", "standard", "spacious"];
 
 async function handleDensity(
@@ -109,8 +137,8 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 
 	registry.register({
 		name: "quit",
-		description: "Quit (alias for /exit)",
-		handler: handleExit,
+		description: "Quit the application",
+		handler: handleQuit,
 	});
 
 	registry.register({
@@ -189,5 +217,17 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "density",
 		description: "Set layout density (auto/compact/standard/spacious)",
 		handler: handleDensity,
+	});
+
+	registry.register({
+		name: "expand",
+		description: "Expand tree sidebar nodes (wildcard pattern, default: *)",
+		handler: handleExpand,
+	});
+
+	registry.register({
+		name: "collapse",
+		description: "Collapse tree sidebar nodes (wildcard pattern, default: *)",
+		handler: handleCollapse,
 	});
 }

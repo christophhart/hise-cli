@@ -614,6 +614,42 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 					scheme,
 				);
 				addLines([...densityLines, plainSpacer]);
+			} else if (result.type === "text" && input.trim().startsWith("/expand")) {
+				// Expand tree sidebar nodes matching pattern
+				const pattern = input.trim().slice("/expand".length).trim() || "*";
+				const handle = treeSidebarRef.current;
+				if (handle && sidebarVisible) {
+					const count = handle.expandMatching(pattern);
+					const expandLines = resultToLines(
+						{ type: "text", content: `Expanded ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
+						scheme,
+					);
+					addLines([...expandLines, plainSpacer]);
+				} else {
+					const expandLines = resultToLines(
+						{ type: "text", content: "Tree sidebar is not visible. Press Ctrl+B to open it." },
+						scheme,
+					);
+					addLines([...expandLines, plainSpacer]);
+				}
+			} else if (result.type === "text" && input.trim().startsWith("/collapse")) {
+				// Collapse tree sidebar nodes matching pattern
+				const pattern = input.trim().slice("/collapse".length).trim() || "*";
+				const handle = treeSidebarRef.current;
+				if (handle && sidebarVisible) {
+					const count = handle.collapseMatching(pattern);
+					const collapseLines = resultToLines(
+						{ type: "text", content: `Collapsed ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
+						scheme,
+					);
+					addLines([...collapseLines, plainSpacer]);
+				} else {
+					const collapseLines = resultToLines(
+						{ type: "text", content: "Tree sidebar is not visible. Press Ctrl+B to open it." },
+						scheme,
+					);
+					addLines([...collapseLines, plainSpacer]);
+				}
 			} else if (result.type === "empty" && input.startsWith("/")) {
 				// Slash commands that produce empty result (mode switches, clear)
 				// Check if it was /clear

@@ -8,6 +8,8 @@ import { errorResult } from "../result.js";
 export interface CommandSession {
 	pushMode(modeId: string): CommandResult | null;
 	popMode(): CommandResult;
+	/** Force quit the application regardless of mode stack depth */
+	requestQuit(): void;
 	readonly modeStackDepth: number;
 	readonly currentModeId: string;
 	allCommands(): CommandEntry[];

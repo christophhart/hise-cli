@@ -25,6 +25,7 @@ function createMockSession(): CommandSession {
 			modes.pop();
 			return textResult("Exited mode.");
 		},
+		requestQuit() {},
 	};
 }
 

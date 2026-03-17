@@ -228,8 +228,8 @@ describe("Session completion", () => {
 		const engine = new CompletionEngine();
 		const session = new Session(null, engine);
 		const result = session.complete("/", 1);
-		// Should have all 15 built-in commands (including /quit alias and /density)
-		expect(result.items.length).toBe(15);
+		// Should have all 17 built-in commands (including /quit, /density, /expand, /collapse)
+		expect(result.items.length).toBe(17);
 	});
 
 	it("returns empty for plain input in root mode (no mode complete)", () => {

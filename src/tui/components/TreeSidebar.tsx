@@ -47,6 +47,11 @@ export interface TreeSidebarHandle {
 	toggle(): void;
 	/** Get the path of the currently focused node */
 	getFocusedPath(): string[];
+	/** Expand all nodes whose label matches the glob pattern. Returns match count. */
+	expandMatching(pattern: string): number;
+	/** Collapse all nodes whose label matches the glob pattern. Returns match count.
+	 *  Root node is never collapsed. */
+	collapseMatching(pattern: string): number;
 }
 
 // ── Props ───────────────────────────────────────────────────────────
@@ -106,6 +111,19 @@ const CONN_BRANCH = "├─"; // has siblings below
 const CONN_LAST   = "└─"; // last child
 const CONN_VERT   = "│ "; // continuation from ancestor
 const CONN_SPACE  = "  "; // no continuation (ancestor was last child)
+
+// ── Simple glob matcher ─────────────────────────────────────────────
+// Supports only * as wildcard (matches any sequence of characters).
+// Case-insensitive. No need for picomatch for this simple use case.
+
+function globMatch(pattern: string, text: string): boolean {
+	const p = pattern.toLowerCase();
+	const t = text.toLowerCase();
+	if (p === "*") return true;
+	// Convert glob pattern to regex: escape special chars, replace * with .*
+	const escaped = p.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+	return new RegExp("^" + escaped + "$").test(t);
+}
 
 // ── Icons ───────────────────────────────────────────────────────────
 
@@ -379,7 +397,58 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			const row = rows[clampedCursor];
 			return (row && !row.separator) ? row.path.slice(1) : [];
 		},
-	}), [rows, clampedCursor, expandedSet, onSelect]);
+		expandMatching: (pattern: string) => {
+			if (!tree) return 0;
+			const toExpand: string[] = [];
+			const walk = (node: TreeNode, parentPath: string[]) => {
+				const path = [...parentPath, node.id ?? node.label];
+				const pathKey = path.join(".");
+				if (node.children && node.children.length > 0) {
+					if (globMatch(pattern, node.id ?? node.label)) {
+						toExpand.push(pathKey);
+					}
+					for (const child of node.children) {
+						walk(child, path);
+					}
+				}
+			};
+			walk(tree, []);
+			if (toExpand.length > 0) {
+				setExpandedSet((prev) => {
+					const next = new Set(prev);
+					for (const key of toExpand) next.add(key);
+					return next;
+				});
+			}
+			return toExpand.length;
+		},
+		collapseMatching: (pattern: string) => {
+			if (!tree) return 0;
+			const toCollapse: string[] = [];
+			const walk = (node: TreeNode, parentPath: string[], depth: number) => {
+				const path = [...parentPath, node.id ?? node.label];
+				const pathKey = path.join(".");
+				if (node.children && node.children.length > 0) {
+					// Root node (depth 0) is never collapsed
+					if (depth > 0 && globMatch(pattern, node.id ?? node.label)) {
+						toCollapse.push(pathKey);
+					}
+					for (const child of node.children) {
+						walk(child, path, depth + 1);
+					}
+				}
+			};
+			walk(tree, [], 0);
+			if (toCollapse.length > 0) {
+				setExpandedSet((prev) => {
+					const next = new Set(prev);
+					for (const key of toCollapse) next.delete(key);
+					return next;
+				});
+			}
+			return toCollapse.length;
+		},
+	}), [rows, clampedCursor, expandedSet, onSelect, tree]);
 
 	// ── Mouse interaction ──────────────────────────────────────
 

@@ -4,10 +4,12 @@ import { registerBuiltinCommands } from "./slash.js";
 import type { CommandResult } from "../result.js";
 import { textResult } from "../result.js";
 
-function createMockSession(): CommandSession & { modes: string[] } {
+function createMockSession(): CommandSession & { modes: string[]; quitRequested: boolean } {
 	const modes: string[] = [];
+	let quitRequested = false;
 	return {
 		modes,
+		get quitRequested() { return quitRequested; },
 		get modeStackDepth() {
 			return modes.length;
 		},
@@ -27,6 +29,9 @@ function createMockSession(): CommandSession & { modes: string[] } {
 			}
 			modes.pop();
 			return textResult("Exited mode.");
+		},
+		requestQuit() {
+			quitRequested = true;
 		},
 	};
 }
@@ -157,5 +162,65 @@ describe("built-in slash commands", () => {
 		if (result.type === "error") {
 			expect(result.message).toContain("broadcaster");
 		}
+	});
+
+	it("/quit sets quitRequested regardless of mode stack", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		session.modes.push("builder");
+		session.modes.push("script");
+
+		const result = await registry.dispatch("/quit", session);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("Goodbye");
+		}
+		// Mode stack is untouched — quit doesn't pop modes
+		expect(session.modes).toHaveLength(2);
+		expect(session.quitRequested).toBe(true);
+	});
+
+	it("/quit at root also sets quitRequested", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+
+		await registry.dispatch("/quit", session);
+		expect(session.quitRequested).toBe(true);
+	});
+
+	it("/expand returns text with default pattern", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		const result = await registry.dispatch("/expand", session);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("*");
+		}
+	});
+
+	it("/expand with pattern returns text with that pattern", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		const result = await registry.dispatch("/expand Sampler*", session);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("Sampler*");
+		}
+	});
+
+	it("/collapse returns text with default pattern", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		const result = await registry.dispatch("/collapse", session);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("*");
+		}
+	});
+
+	it("registers expand and collapse commands", () => {
+		const registry = createRegistry();
+		expect(registry.has("expand")).toBe(true);
+		expect(registry.has("collapse")).toBe(true);
 	});
 });
