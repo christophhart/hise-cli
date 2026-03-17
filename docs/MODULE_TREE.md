@@ -4,6 +4,14 @@ Reference for the HISE module hierarchy. Used by builder mode for
 pre-validation, tree sidebar display, and CLI tree queries. All data
 derived from `data/moduleList.json`.
 
+**Implementation references:**
+- `src/engine/modes/dummyTree.ts` — reference implementation of this hierarchy
+- `src/engine/modes/builder.ts` — `propagateChainColors()` resolves chain
+  colors, dot styles, dimming, and diff status on `TreeNode` for rendering
+- `data/moduleList.json` — modulation `colour` field: `"#be952c"` (gain),
+  `"#7559a4"` (pitch), `0` (inherit from parent). FX (`#3a6666`) and MIDI
+  (`#C65638`) chain colors are constants in builder.ts.
+
 ## Module categories
 
 | `type`         | `subtype`              | Count | Description                          |

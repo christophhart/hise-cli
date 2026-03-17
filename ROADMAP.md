@@ -262,12 +262,37 @@ Added filesystem-style navigation for the processor tree:
 engine through Session to the TUI. App manages completion state including ghost
 text computation, popup visibility, and selection index.
 
+### 3.6 Post-Phase-3 UX polish (completed)
+
+Significant additions made between Phase 3 and 3.5:
+
+- **Syntax highlighting**: per-mode tokenizers for input, output code blocks,
+  and command echo lines. `Mode.tokenizeInput()` on the interface. HiseScript,
+  builder, inspect, and slash tokenizers. Span splitting utilities for cursor
+  rendering. See `src/engine/highlight/`.
+- **Central key dispatch**: single `useInput` in `app.tsx` with priority chain
+  (Overlay > CompletionPopup > TreeSidebar > Input > App scroll). Components
+  expose imperative handles instead of their own `useInput`. Eliminates duplicate
+  key handling. See [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Central Key Dispatch.
+- **Tree sidebar**: left-side toggleable panel (`Ctrl+B`) showing the mode's
+  navigable tree. Connector lines, colored chain dots (○/●), diff indicators
+  (+/-/*), keyboard/mouse navigation, persistent state. Data-driven: `TreeNode`
+  carries visual properties (`colour`, `filledDot`, `dimmed`, `diff`) set by
+  `propagateChainColors()` in builder.ts. See `src/tui/components/TreeSidebar.tsx`
+  and [docs/MODULE_TREE.md](docs/MODULE_TREE.md) for chain structure.
+- **Landing logo**: animated ASCII "HISE" with gradient cycling through mode
+  accents. Build-time `__APP_VERSION__` injection. See `src/tui/components/LandingLogo.tsx`.
+- **Production DataLoader**: `nodeDataLoader.ts` wired in `index.ts`. Script
+  autocomplete works end-to-end.
+- **UX fixes**: `/quit` alias, `cd ..` exits mode at root, alt-screen cleanup,
+  skip menu on launch, auto-close completion on exact match, Enter deferred for
+  completion accept.
+- **`SessionContext.popMode()`**: modes can request exiting.
+
 **Phase 3 gate — results:**
-- `npm test` passes: all tests green. Completion engine returns correct
-  candidates for all modes, CompletionPopup renders in ink-testing-library,
-  Input cursor navigation + editing thoroughly tested.
+- `npm test` passes: all tests green.
 - `npm run build && npm run typecheck` pass.
-- `.tape` screencast tests for completion UX: **not yet implemented** (planned).
+- `.tape` screencast tests: **not yet implemented** (planned).
 
 ---
 
@@ -440,18 +465,30 @@ Full Chevrotain grammar from
 `bypass`/`enable`, `flush`. Clone commands use `brace-expansion` for
 `{2..10}` patterns.
 
-### 4.2 Module tree tracking
+### 4.2 Module tree tracking + tree sidebar integration
 
 Fetch from `GET /api/builder/tree` on mode entry (requires
 [#12](https://github.com/christoph-hart/hise-cli/issues/12)).
 Update locally as commands execute. Enables instance-level validation
 (module name exists, name uniqueness) without round-trips.
 
-### 4.3 Plan submode
+The tree sidebar (implemented in Phase 3.6) displays this tree via
+`Mode.getTree()` / `getSelectedPath()` / `selectNode()`. `cd` validates
+against the tree structure. `propagateChainColors()` resolves chain
+colors, dot styles, and dimming from `moduleList.json` data. Tree
+auto-updates after commands execute.
+
+### 4.3 Plan submode + diff indicators
 
 Record validated commands. `/execute` runs the plan. `/export` generates
 HiseScript using `builderPath` from `moduleList.json`. `/show` displays
 the plan. `/remove N` edits it. `/discard` returns to live mode.
+
+Plan mode uses the tree sidebar's `TreeNode.diff` property to visualize
+planned changes: `"added"` (green +) for modules to be created,
+`"removed"` (red -) for modules to be deleted, `"modified"` (amber *)
+for parameter changes. `added`/`removed` propagate to children
+automatically via the existing diff propagation in `propagateChainColors()`.
 
 HISE-side plan validation via `validate: true` flag requires
 [#12](https://github.com/christoph-hart/hise-cli/issues/12).
@@ -562,8 +599,9 @@ Subcommand aliases: `hise-cli setup` → `hise-cli wizard setup`.
 Tracks [#6](https://github.com/christoph-hart/hise-cli/issues/6).
 Chevrotain grammar for graph editing, nodes from `scriptnodeList.json`.
 Shares token types with builder mode grammar (quoted strings, dot-paths,
-identifiers, numbers). Requires
-[#12](https://github.com/christoph-hart/hise-cli/issues/12)
+identifiers, numbers). Tree sidebar shows the scriptnode network hierarchy
+(root network as single root node, containers and nodes as children).
+Requires [#12](https://github.com/christoph-hart/hise-cli/issues/12)
 for new dsp endpoints.
 
 ### 6.2 Script mode — full implementation
@@ -571,8 +609,10 @@ for new dsp endpoints.
 Tracks [#8](https://github.com/christoph-hart/hise-cli/issues/8).
 Multi-line support (unclosed brackets — detected via Lezer parse tree),
 `_` for last result, `/api` inline help (rendered as `markdown`
-CommandResult), syntax highlighting in input field (Lezer tokenizer →
-chalk-colored `<Text>` spans in custom input component).
+CommandResult). Input syntax highlighting already wired via the regex
+tokenizer (Phase 3.6); upgrade to Lezer grammar is a drop-in replacement.
+Tree sidebar shows namespace hierarchy from `scripting_api.json`. Diff
+indicators show variable changes between compilations.
 
 **Variable watch** (see
 [DESIGN.md — Script Mode / Variable Watch](DESIGN.md#variable-watch)):
@@ -600,11 +640,15 @@ fallback ships in 1.0; SSE upgrade is transparent when
 
 Tracks [#11](https://github.com/christoph-hart/hise-cli/issues/11).
 Selection-based workflow, sample map management, complex group manager.
+Tree sidebar shows sample map structure (samplemap ID as root, groups
+and zones as children).
 Requires [#12](https://github.com/christoph-hart/hise-cli/issues/12).
 
 ### 6.5 Project, Compile, Import modes
 
 Tracks [#9](https://github.com/christoph-hart/hise-cli/issues/9).
+Project mode uses the tree sidebar for folder structure (project folder
+as root). Diff indicators from git status (added/removed/modified files).
 
 **Phase 6 gate — all must pass:**
 - `npm test` passes with: DSP mode Chevrotain grammar, script mode
@@ -633,7 +677,9 @@ Broadcaster, export, compile-networks, install-package, update, migrate, nuke.
 File: `src/cli/index.ts`
 
 Non-interactive, argument-based invocation with structured JSON output.
-Uses the same `Session` and `Mode` infrastructure.
+Uses the same `Session` and `Mode` infrastructure. Tree data available
+via `--tree` flag, returning the same `TreeNode` hierarchy as JSON. LLM
+agents use this to understand project structure before issuing commands.
 
 ### 7.4 SSE event streaming
 

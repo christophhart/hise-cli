@@ -250,28 +250,31 @@ outputRows = terminalRows - TOP_BAR_ROWS - BOTTOM_BAR_ROWS
 | Without sidebar   | 60              | 24           | Sidebar auto-hides             |
 | Hard minimum      | 40              | 12           | Degraded but functional         |
 
-### 2.3 Sidebar
+### 2.3 Sidebar (TreeSidebar)
 
-- **Position**: right side, separated by a 1-character vertical divider (`│`) in
-  `foreground.muted`
-- **Width**: fixed 35 characters content + 1 divider = 36 columns total
-- **Background**: `backgrounds.sidebar`
-- **Toggle**: `Ctrl+B` or `/sidebar`. Auto-hides when terminal width < 80 columns.
-- **Header**: heading text in the mode's accent color, underlined with `foreground.muted`
+- **Position**: left side, separated by a 1-character gap in `backgrounds.darker`
+- **Width**: responsive — `max(20, min(40, floor(columns * 0.25)))`
+- **Background**: `backgrounds.sidebar` (darker than `standard`)
+- **Toggle**: `Ctrl+B`. Opens with focus, closes and returns focus to input.
+- **Full height**: spans from below TopBar to above StatusBar, alongside Output
+  and Input.
 
-**Sidebar content per mode:**
+The sidebar renders a `TreeNode` hierarchy provided by `Mode.getTree()`.
+Each mode provides its own tree (builder: module tree, script: namespace
+hierarchy, project: folder structure, DSP: network tree). Modes without a
+tree return `null` and the sidebar shows empty space.
 
-| Mode              | Heading     | Content                                          |
-|-------------------|-------------|--------------------------------------------------|
-| Builder (live)    | `TREE`      | Module tree hierarchy, updated on each command   |
-| Builder (plan)    | `PLAN`      | Numbered plan steps with `✓`/`…`/`✗` status     |
-| DSP               | `GRAPH`     | Node graph outline (nested containers)           |
-| Sampler           | `SELECTION` | Selection count, key range, velocity, layer info |
-| Script            | `API`       | Method list for last-referenced class            |
-| Inspect           | `MONITOR`   | Live CPU/voices/memory bars (SSE-driven)         |
-| Project           | `PROJECT`   | Asset counts, settings summary                   |
-| Compile           | `TARGETS`   | Build target list with status indicators         |
-| Import            | *(hidden)*  | No sidebar — simple command mode                 |
+**Visual elements** (see `src/tui/components/TreeSidebar.tsx`):
+- Connector lines (`├─ └─ │`) in dimmed color (`darkenHex(foreground.muted, 0.5)`)
+- Chain dots: `○` (unfilled) for chains, `●` (filled) for modules — colored
+  by chain type (gain amber, pitch purple, FX teal, MIDI rust). Data-driven
+  via `TreeNode.colour` and `TreeNode.filledDot`.
+- Diff indicators: `+`/`-`/`*` at column 0 with tinted background via
+  `mix(statusColor, sidebarBg, 0.9)`. Data-driven via `TreeNode.diff`.
+- Current root: `>` prefix, bold, bright white. Always-expanded root node.
+- Empty chains dimmed (label + dot). Data-driven via `TreeNode.dimmed`.
+- Expand/collapse triangles (`▾`/`▸`), scrollbar, persistent state across
+  close/reopen.
 
 ---
 
@@ -520,50 +523,33 @@ Centered floating panel triggered by `Ctrl+Space` or `/modes`.
 - **Navigation**: Up/Down arrows, Enter to select, Escape to dismiss
 - **Rendered as overlay**: floats above the output area, does not reflow content beneath
 
-### 3.8 Sidebar
+### 3.8 TreeSidebar
 
-Right-side panel with mode-determined content. See Section 2.3 for dimensions and toggle.
+Left-side panel rendering a `TreeNode` hierarchy. See Section 2.3 for layout
+and toggle. Full implementation in `src/tui/components/TreeSidebar.tsx`.
 
+**Row layout** (left to right):
 ```
-│  PLAN                          │  ← heading in mode accent, bold
-│  ───────────────────────────── │  ← underline in foreground.muted
-│  1 ✓ add StreamingSampler      │  ← ✓ in HISE_OK_COLOUR
-│      as "Sampler 1"            │
-│  2 ✓ add AHDSR                 │
-│      to Sampler1.gain          │
-│  3 … add LFO                   │  ← … in foreground.muted (pending)
-│      to Sampler1.pitch         │
-│                                │
+[>|+|-|*| ] [connectors] [▾|▸|  ] [●|○|  ] label
 ```
 
-| Element          | Color                          |
-|------------------|--------------------------------|
-| Heading          | Mode accent, bold              |
-| Underline        | `foreground.muted`             |
-| Step number      | `foreground.muted`             |
-| Step `✓`         | HISE_OK_COLOUR                 |
-| Step `✗`         | HISE_ERROR_COLOUR              |
-| Step `…`         | `foreground.muted`             |
-| Step text        | `foreground.default`           |
-| Tree connectors  | `foreground.muted` (`├`, `└`, `│`, `─`) |
+- Column 0: `>` (current root, bold bright), `+`/`-`/`*` (diff status in
+  brand color), or space
+- Connectors: `├─`/`└─`/`│ ` in `darkenHex(foreground.muted, 0.5)`
+- Expand icon: `▾`/`▸` or spaces for leaves
+- Dot: `●` (filled, modules) or `○` (unfilled, chains) in `TreeNode.colour`,
+  or spaces when no colour set (sound generators not in a chain)
+- Label: plain text, bold for current root, muted when `TreeNode.dimmed`
 
-Background: `backgrounds.sidebar`. Content is scrollable when it exceeds the available
-height. Scrollbar uses the same style as the Output scrollbar (SIGNAL_COLOUR thumb,
-`foreground.muted` track).
+**Interaction** (keyboard via central dispatch, mouse via `@ink-tools/ink-mouse`):
+- Tab: switch focus between sidebar and input
+- Up/Down: move cursor. Left: collapse/parent. Right: expand. Enter: select as root.
+  Space: toggle expand. Escape: return focus to input.
+- Single click: move cursor + grab focus. Double click: navigate into node.
+- Scroll wheel: scroll tree content.
 
-**Mode-specific sidebar rendering:**
-
-- **TREE** (Builder live): Indented module tree. Type abbreviations in `foreground.muted`.
-  Selected module highlighted with SIGNAL_COLOUR background.
-- **PLAN** (Builder plan): Numbered steps with status prefix as shown above.
-- **GRAPH** (DSP): Indented node tree with factory prefix in ScopedStatement color (`#88bec5`).
-- **SELECTION** (Sampler): Selection count, key range (e.g., `C1–C5`), velocity range,
-  active layers. Numbers in `foreground.bright`.
-- **API** (Script): Method list for the last-referenced class. Method names in Identifier
-  color (`#DDDDFF`), return types in `foreground.muted`.
-- **MONITOR** (Inspect): Live-updating metrics. See Section 3.9.
-- **TARGETS** (Compile): Target name + status (`✓` built, `…` building, `✗` failed, `—` pending).
-- **PROJECT**: Asset category counts (Samples: 142, Scripts: 8, Networks: 3, etc.)
+**State**: expand/collapse paths, cursor index, and scroll offset persist across
+sidebar close/reopen via `TreeSidebarState` ref in `app.tsx`.
 
 ### 3.9 LiveMonitor (Inspect Mode Sidebar)
 

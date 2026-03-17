@@ -36,28 +36,22 @@ without a round-trip to HISE.
 src/
   engine/          Shared core - zero UI dependencies
     commands/      Command registry, dispatcher, parsers
-    modes/         Mode definitions (builder, script, dsp, sampler, ...)
+    modes/         Mode definitions + dummy module tree for dev
     completion/    Tab completion engine
-    plan/          Plan mode state + script generation
-    validation/    Local type-level validation (moduleList.json)
-    wizard/        Wizard framework
-      definitions/ Wizard definitions (setup, broadcaster, export, ...)
-      phases/      Shared pipeline phases (compile, verify, git-ops, ...)
-      types.ts     WizardDefinition, WizardStep, etc.
-      runner.ts    WizardRunner (TUI step-by-step)
-      executor.ts  WizardExecutor (CLI single-shot)
-      pipeline.ts  PipelineExecutor (phase sequencing, abort, retry)
-      registry.ts  WizardRegistry
-    result.ts      CommandResult types
+    highlight/     Per-mode syntax highlighting tokenizers, span splitting
+    plan/          Plan mode state + script generation (planned)
+    validation/    Local type-level validation (planned)
+    wizard/        Wizard framework (planned — Phase 5)
+    result.ts      CommandResult + TreeNode types
     session.ts     Mode stack, history, session state
     hise.ts        HiseConnection interface + HTTP implementation
+    data.ts        DataLoader interface
   tui/             TUI frontend - Ink/React
-    app.tsx        Main TUI app
-    components/    Output, Input (with completion popup), Progress, Header
-    hooks/         React hooks wrapping engine
-
-  cli/             CLI frontend - pure Node.js
-    index.ts       Argument parsing, dispatch, JSON output
+    app.tsx        Main TUI app (central key dispatch)
+    components/    Output, Input, CompletionPopup, TreeSidebar, LandingLogo,
+                   TopBar, StatusBar, Overlay, scrollbar
+    nodeDataLoader.ts  Node.js DataLoader implementation
+  cli/             CLI frontend - pure Node.js (planned — Phase 7)
 ```
 
 The engine has **no dependency** on Ink, React, or any terminal UI library.
@@ -378,6 +372,13 @@ let the user enter a domain context where the grammar simplifies:
 Each mode defines its own parser, so the input language adapts to the domain.
 The builder uses natural-language verbs (`add X to Y`). The script mode passes
 everything as HiseScript. The sampler mode has selection-based workflows.
+
+The `Mode` interface (see `src/engine/modes/mode.ts`) also provides optional
+methods for syntax highlighting (`tokenizeInput`), tree sidebar data
+(`getTree`, `getSelectedPath`, `selectNode`), and tab completion (`complete`).
+The `TreeNode` type (see `src/engine/result.ts`) carries data-driven visual
+properties (`colour`, `filledDot`, `dimmed`, `diff`) resolved by mode-specific
+pipeline functions like `propagateChainColors()` in builder.ts.
 
 ### Entering Modes
 

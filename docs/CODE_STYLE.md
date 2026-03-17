@@ -56,7 +56,6 @@
 - **Named exports only** — no default exports: `export function App() { ... }`
 - **One component per file**
 - Props interfaces named `{ComponentName}Props`, defined immediately above the component
-- `useInput` (Ink hook) for keyboard handling
 - State is local `useState` or `useReducer` — no external state libraries
 - **`useReducer` for complex input state**: when multiple keystrokes can arrive before
   React re-renders (stale closures), use `useReducer` with atomic actions instead of
@@ -72,6 +71,37 @@
   derived value (e.g., `ghostForValue`) and only display the derived value when it matches
   the current source. This prevents one-frame stale renders.
 
+### Central Key Dispatch
+
+A single `useInput` handler in `app.tsx` with a strict priority chain:
+Overlay > Global hotkeys > CompletionPopup > TreeSidebar > Input > App scroll.
+
+Components like Input and TreeSidebar do **not** call `useInput` themselves.
+Instead they expose imperative handles (`InputHandle`, `TreeSidebarHandle`)
+via `useImperativeHandle`. The central dispatcher calls these methods in
+response to keys. This guarantees exactly one action per keystroke.
+
+See `src/tui/app.tsx` for the dispatcher and `src/tui/components/Input.tsx`,
+`src/tui/components/TreeSidebar.tsx` for the handle interfaces.
+
+### Data-Driven Tree Rendering
+
+`TreeNode` carries all visual properties (`colour`, `filledDot`, `dimmed`,
+`diff`). A mode-specific pipeline function (e.g. `propagateChainColors()` in
+`builder.ts`) walks the tree and resolves all visual properties before
+rendering. The `TreeSidebar` component is purely presentational — it reads
+the pre-computed data and renders it. No visual logic in the renderer.
+
+This separation means the same `TreeNode` data can be consumed by the CLI
+frontend (as JSON) or a future web frontend without any computation changes.
+
+### Mouse Events
+
+Mouse interaction uses `@ink-tools/ink-mouse`: `useOnClick` for click/
+double-click detection, `useOnWheel` for scroll, `useElementPosition` for
+coordinate mapping. Double-click detection is manual (timing-based, no
+native support). See `TreeSidebar.tsx` and `CompletionPopup.tsx` for examples.
+
 ## Engine Layer Patterns
 
 New engine code (`src/engine/`) must have **zero UI dependencies** — no Ink, React, or
@@ -82,15 +112,18 @@ by rendering output directly.
 - Mode-specific parsers in `engine/modes/`
 - Validation logic in `engine/validation/` using static JSON data
 - Tab completion in `engine/completion/` using static JSON data
-- `Mode.contextLabel` — optional dynamic string for path display in prompt (e.g.,
-  builder's `currentPath.join(".")`)
+- `Mode.contextLabel` — optional dynamic string for path display in prompt
+- `Mode.tokenizeInput()` — optional per-mode syntax highlighting tokenizer
+- `Mode.getTree()` / `getSelectedPath()` / `selectNode()` — tree sidebar data
+  providers. See `src/engine/modes/mode.ts` for the full interface.
 
 ## TUI Utility Functions
 
 - **Color manipulation** (`src/tui/theme.ts`): `darkenHex()`, `lightenHex()`,
-  `darkenScheme()`, `darkenBrand()` — used for overlay dimming and cursor highlight.
+  `lerpHex()`, `mix()`, `darkenScheme()`, `darkenBrand()` — used for overlay
+  dimming, cursor highlight, gradient animation, and diff tinting.
 - **Shared scrollbar** (`src/tui/components/scrollbar.ts`): `scrollbarChar()` —
-  used by Output, CompletionPopup, and any future scrollable panel.
+  used by Output, CompletionPopup, TreeSidebar.
 
 ## Error Handling
 
@@ -122,13 +155,7 @@ by rendering output directly.
 
 Terminal emulators vary in what escape sequences they send for key combos
 (e.g. Ghostty sends Ctrl+A/E for fn+Left/Right instead of Home/End). To
-diagnose key mapping issues:
-
-1. Set `DEBUG_KEYS = true` in `src/tui/components/Input.tsx` (search for
-   `const DEBUG_KEYS`)
-2. `npm run build`
-3. Run the app, press the keys in question, then quit
-4. Inspect `debug-keys.log` (project root, gitignored) — each line shows
-   the raw input, hex codes, and all Ink `key.*` flags that fired
-
-Flip `DEBUG_KEYS` back to `false` before committing.
+diagnose key mapping issues, add temporary logging to the central key
+dispatcher in `src/tui/app.tsx` (the single `useInput` handler). Log the
+raw `input` string, hex codes, and Ink `key.*` flags to a file. Remove
+the logging before committing.
