@@ -816,11 +816,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp }: AppProps) {
 	const modeTree = currentMode.getTree?.() ?? null;
 	const modeSelectedPath = currentMode.getSelectedPath?.() ?? [];
 
+	// Counter to force re-render after mode mutations (e.g. selectNode
+	// changes currentPath but React doesn't know about it).
+	const [, setRenderTick] = useState(0);
+
 	const handleTreeSelect = useCallback((path: string[]) => {
 		if (currentMode.selectNode) {
 			currentMode.selectNode(path);
-			// Force re-render by toggling a state update
-			setSidebarFocused((prev) => prev);
+			setRenderTick((prev) => prev + 1);
 		}
 	}, [currentMode]);
 

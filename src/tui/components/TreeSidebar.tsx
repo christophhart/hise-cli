@@ -270,7 +270,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	// Debounced single-click + double-click detection.
 	// Single click (after 250ms): toggle expand/collapse + move cursor.
 	// Double click (within 250ms): navigate into node (cd).
-	const DOUBLE_CLICK_MS = 250;
+	const DOUBLE_CLICK_MS = 150;
 	const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const lastClickRef = useRef<{ row: number; time: number } | null>(null);
 
