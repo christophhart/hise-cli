@@ -186,8 +186,15 @@ planned but not yet implemented.
 - `src/tui/components/Overlay.tsx` — Help overlay with dimmed backdrop
 - `src/index.ts` — Rewired entry point with HTTP probe
 
-**Screencasts**: infrastructure planned (`.tape` runner, asciicast writer),
-**not yet implemented**. See [DESIGN.md — Screencast Framework](DESIGN.md#screencast-framework).
+**Screencasts**: fully implemented. Pty-based runner (`node-pty` spawns
+`dist/index.js --mock --no-animation`), asciicast v2 writer with merge/dedup/gzip
+optimizations, vitest tester, `generate.py` post-processing (gzip + self-contained
+HTML preview). Region-based `Expect` assertions scope checks to `topbar`, `statusbar`,
+`sidebar`, `output`, or `input` regions of the screen (sidebar visibility detected
+via search icon `⌕`). 5 tape scripts with assertions: mode-switching, script-repl,
+builder-validation, tab-completion, builder-tree-expanded.
+See `src/tui/screencast/` for implementation, [docs/CODE_STYLE.md](docs/CODE_STYLE.md)
+§ Screencast Tests for writing conventions.
 
 **Phase 2 gate: passed.** Build, typecheck, all tests pass. Manual verification
 with live HISE completed (mode switching, script REPL, builder validation).
@@ -288,10 +295,12 @@ Significant additions made between Phase 3 and 3.5:
   key handling. See [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Central Key Dispatch.
 - **Tree sidebar**: left-side toggleable panel (`Ctrl+B`) showing the mode's
   navigable tree. Connector lines, colored chain dots (○/●), diff indicators
-  (+/-/*), keyboard/mouse navigation, persistent state. Data-driven: `TreeNode`
-  carries visual properties (`colour`, `filledDot`, `dimmed`, `diff`) set by
-  `propagateChainColors()` in builder.ts. See `src/tui/components/TreeSidebar.tsx`
-  and [docs/MODULE_TREE.md](docs/MODULE_TREE.md) for chain structure.
+  (+/-/*), keyboard/mouse navigation, persistent state. Fully expanded by
+  default on first open (all nodes visible); persisted state restored on
+  reopen. Data-driven: `TreeNode` carries visual properties (`colour`,
+  `filledDot`, `dimmed`, `diff`) set by `propagateChainColors()` in
+  builder.ts. See `src/tui/components/TreeSidebar.tsx` and
+  [docs/MODULE_TREE.md](docs/MODULE_TREE.md) for chain structure.
 - **Landing logo**: animated ASCII "HISE" with gradient cycling through mode
   accents. Build-time `__APP_VERSION__` injection. See `src/tui/components/LandingLogo.tsx`.
 - **Production DataLoader**: `nodeDataLoader.ts` wired in `index.ts`. Script
@@ -304,7 +313,8 @@ Significant additions made between Phase 3 and 3.5:
 **Phase 3 gate — results:**
 - `npm test` passes: all tests green.
 - `npm run build && npm run typecheck` pass.
-- `.tape` screencast tests: **not yet implemented** (planned).
+- 5 `.tape` screencast tests passing (mode-switching, script-repl,
+  builder-validation, tab-completion, builder-tree-expanded).
 
 ---
 
@@ -456,8 +466,7 @@ modes (Phase 6) when the HISE connection provides real processor tree data.
   `complete()` with correct offset translation, dot-notation dispatch enters
   mode with context, one-shot execution returns to root after single command
 - `npm run build && npm run typecheck` pass
-- `.tape` screencast tests: **not yet implemented** (planned alongside Phase 3
-  screencasts)
+- 5 `.tape` screencast tests passing (see Phase 3 gate)
 
 ---
 

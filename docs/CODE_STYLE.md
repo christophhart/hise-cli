@@ -159,3 +159,84 @@ diagnose key mapping issues, add temporary logging to the central key
 dispatcher in `src/tui/app.tsx` (the single `useInput` handler). Log the
 raw `input` string, hex codes, and Ink `key.*` flags to a file. Remove
 the logging before committing.
+
+## Screencast Tests
+
+Screencast tests (`.tape` files) are TUI integration tests that run the real
+app in a pseudo-terminal via `node-pty`, feed scripted keystrokes, and assert
+on the visible terminal output. They also produce `.cast` asciicast recordings
+as artifacts.
+
+### File layout
+
+- **Tape scripts**: `screencasts/*.tape`
+- **Generated artifacts**: `screencasts/*.cast` (gitignored), `screencasts/*.cast.gz`
+  (committed), `screencasts/index.html` (gitignored)
+- **Test registration**: `src/tui/screencast/tape-runner.test.ts`
+- **Runner, writer, tester**: `src/tui/screencast/`
+- **Parser + types** (isomorphic): `src/engine/screencast/`
+
+### Build before test
+
+The pty runner spawns `dist/index.js`, not source. Always run `npm run build`
+before running screencast tests. The test file documents this requirement.
+
+### Writing tape scripts
+
+Standard preamble for all tape tests:
+
+```tape
+Set Width 140
+Set Height 34
+Set Connection "mock"
+```
+
+This gives standard layout density (sidebar 35 cols, 25-row output viewport).
+`Set Connection "mock"` skips HISE probing and boots with `MockHiseConnection`.
+The runner also passes `--no-animation` to freeze the landing logo gradient.
+
+Use `Sleep` after `Enter` and `Ctrl+B` to allow rendering to settle before
+assertions. Typical values: `300ms` after mode switches, `500ms` after
+sidebar toggle.
+
+### Assertions
+
+| Command | Description |
+|---------|-------------|
+| `Expect "text"` | Assert text appears anywhere on the last rendered screen |
+| `Expect "text" region` | Assert text appears in a specific screen region |
+| `ExpectMode "builder"` | Assert current mode (checks last screen for mode indicators) |
+| `ExpectPrompt ">"` | Assert prompt text on the last screen |
+
+### Region-scoped assertions
+
+`Expect "text" region` restricts the search to a specific area of the terminal
+screen. The runner splits the last rendered frame into regions using the TUI
+layout geometry (computed from the tape's `Width` and `Height` settings).
+
+Available regions:
+
+| Region | What it covers |
+|--------|---------------|
+| `topbar` | Top chrome rows (brand, mode label, status) |
+| `statusbar` | Bottom chrome rows (hints, scroll info) |
+| `sidebar` | Tree sidebar columns (left side, when visible) |
+| `output` | Output viewport (main content area, right of sidebar) |
+| `input` | Input section (prompt + value, below output) |
+
+**Sidebar visibility detection**: the `sidebar` region uses content-based
+detection — it checks for the search icon `⌕` in the sidebar column range.
+If the sidebar is not open, `Expect "..." sidebar` automatically fails with
+"sidebar region is not visible". This prevents false positives from output
+text that happens to overlap with the sidebar column range when the sidebar
+is closed.
+
+### TDD workflow
+
+1. Create a `.tape` file with assertions for the desired behavior
+2. Register it in `tape-runner.test.ts`
+3. `npm run build && npx vitest run src/tui/screencast/tape-runner.test.ts -t "test-name"`
+4. Verify the test **fails** (red)
+5. Implement the fix
+6. `npm run build` and re-run — verify it **passes** (green)
+7. `npm run test` — verify no regressions

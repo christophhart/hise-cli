@@ -1033,7 +1033,7 @@ annotation commands for testing and documentation.
 
 | Command | Description |
 |---------|-------------|
-| `Expect "text"` | Assert screen contains text (test fails if not found) |
+| `Expect "text" [region]` | Assert screen contains text. Optional region: `topbar`, `statusbar`, `sidebar`, `output`, `input`. Without region, searches the full screen. Sidebar region auto-fails if sidebar is not visible (detected via `⌕` search icon). |
 | `ExpectMode "builder"` | Assert current mode |
 | `ExpectPrompt "[builder] >"` | Assert prompt text |
 | `Snapshot "name"` | Capture frame for snapshot testing (vitest snapshots) |
@@ -1118,18 +1118,20 @@ builder-intro.tape ─┼─── asciicast ───→ .cast file for HISE do
                          (Annotations shown as overlays)
 ```
 
-**vitest runner**: Parses the `.tape` file, creates a `Session` with
-`MockHiseConnection` (or real HISE for `Set Connection "live"`), renders
-the TUI in `ink-testing-library`'s virtual terminal, feeds keystrokes via
-`stdin.write()`, captures frames via `stdout.frames`, and checks `Expect` /
-`ExpectMode` / `Snapshot` assertions. Each `.tape` file is a vitest test.
+**vitest runner**: Parses the `.tape` file, spawns the real app in a
+pseudo-terminal via `node-pty` (with `--mock --no-animation`), feeds
+keystrokes character-by-character, captures raw terminal output (full ANSI,
+24-bit colors, cursor control), and checks `Expect` / `ExpectMode` /
+`ExpectPrompt` assertions against the last visible screen (`\x1b[2J`
+boundary). Region-scoped assertions (`Expect "text" sidebar`) extract
+specific screen regions using layout geometry. Each `.tape` file is a
+vitest test.
 
 **asciicast writer**: Same execution as the vitest runner, but additionally
-collects timestamped frames and writes them to the
+collects timestamped output events and writes them to the
 [asciicast v2 format](https://docs.asciinema.org/manual/asciicast/v2/)
-(`.cast` file). The format is trivially simple — a JSON header line
-followed by `[timestamp, "o", "text_with_ansi"]` lines per frame. A
-30-second screencast is ~5-10KB.
+(`.cast` file). Optimized with event merging (<5ms gaps), consecutive
+dedup, and gzip compression. A 3-second screencast is ~4-8KB compressed.
 
 **VHS (optional)**: The `.tape` files are a superset of VHS syntax. Running
 `vhs builder-intro.tape` against a real `hise-cli` binary produces a
@@ -1155,8 +1157,8 @@ src/engine/screencast/
   types.ts                TapeCommand type + extension commands
 
 src/tui/screencast/
-  runner.ts               Execute tape against ink-testing-library
-  writer.ts               Capture frames, write asciicast .cast files
+  runner.ts               Execute tape via node-pty (real pseudo-terminal)
+  writer.ts               Asciicast v2 writer with merge/dedup/gzip
   tester.ts               Wrap runner with vitest assertions
 
 screencasts/              Tape files + generated .cast outputs
