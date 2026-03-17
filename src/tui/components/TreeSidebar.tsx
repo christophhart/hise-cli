@@ -390,7 +390,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			bg = scheme.backgrounds.raised;
 		} else if (isCurrentRoot) {
 			fg = scheme.foreground.bright;
-		} else if (row.node.nodeKind === "chain") {
+		} else if (row.node.dimmed) {
 			fg = scheme.foreground.muted;
 		}
 
@@ -449,7 +449,8 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		// Dot indicator (data-driven: filledDot + colour set by propagateChainColors)
 		if (row.node.colour != null && row.node.filledDot != null) {
 			const dot = row.node.filledDot ? "● " : "○ ";
-			segments.push({ text: dot, color: row.node.colour });
+			const dotColor = row.node.dimmed ? scheme.foreground.muted : row.node.colour;
+			segments.push({ text: dot, color: dotColor });
 		} else {
 			// No dot (sound generator not in a chain) — alignment spacing
 			segments.push({ text: "  ", color: fg });

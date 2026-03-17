@@ -64,6 +64,8 @@ function propagateChainColors(
 
 		node.colour = colour;
 		node.filledDot = false; // unfilled ○
+		// Dim empty chains (no children or empty children array)
+		node.dimmed = !node.children || node.children.length === 0;
 
 		// Propagate to children
 		if (node.children) {

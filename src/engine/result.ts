@@ -20,6 +20,9 @@ export interface TreeNode {
 	/** Dot style: true = ● (filled, modules), false = ○ (unfilled, chains).
 	 *  undefined = no dot rendered (sound generators not in a chain). */
 	filledDot?: boolean;
+	/** When true, the node's label and dot are rendered in muted/dimmed color.
+	 *  Used for empty chains (no children) and bypassed modules. */
+	dimmed?: boolean;
 }
 
 export type CommandResult =
