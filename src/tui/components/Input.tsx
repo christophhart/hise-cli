@@ -382,9 +382,14 @@ export const Input = React.memo(function Input({
 	const ghostSpace = Math.max(0, maxInputWidth - beforeLen - 1 - afterLen);
 	const displayGhost = remainingGhost.slice(0, ghostSpace);
 
-	// Right padding to fill the row
-	const contentWidth = promptWidth + beforeLen + 1 + afterLen + displayGhost.length;
-	const inputPadRight = Math.max(0, columns - pad.length * 2 - contentWidth);
+	// Right padding to fill the row (separate calculation for disabled state
+	// to avoid overflow — "waiting for response..." has a different width than
+	// the value-based spans, and during async commands the value is already cleared)
+	const waitingText = "waiting for response...";
+	const normalContentWidth = promptWidth + beforeLen + 1 + afterLen + displayGhost.length;
+	const disabledContentWidth = promptWidth + waitingText.length;
+	const activeContentWidth = disabled ? disabledContentWidth : normalContentWidth;
+	const inputPadRight = Math.max(0, columns - pad.length * 2 - activeContentWidth);
 
 	// Helper: render a TokenSpan[] as colored <Text> elements
 	const renderSpans = (spans: TokenSpan[], keyPrefix: string) =>
@@ -411,7 +416,7 @@ export const Input = React.memo(function Input({
 					) : null}
 					<Text color={promptColor} bold>{promptChar}</Text>
 				{disabled ? (
-					<Text color={scheme.foreground.muted}>waiting for response...</Text>
+					<Text color={scheme.foreground.muted}>{waitingText}</Text>
 				) : (
 					<>
 						{renderSpans(beforeSpans, "b")}
