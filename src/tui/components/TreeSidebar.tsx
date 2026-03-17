@@ -449,7 +449,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		// Dot indicator (data-driven: filledDot + colour set by propagateChainColors)
 		if (row.node.colour != null && row.node.filledDot != null) {
 			const dot = row.node.filledDot ? "● " : "○ ";
-			const dotColor = row.node.dimmed ? darkenHex(row.node.colour, 0.4) : row.node.colour;
+			const dotColor = row.node.dimmed ? darkenHex(row.node.colour, 0.7) : row.node.colour;
 			segments.push({ text: dot, color: dotColor });
 		} else {
 			// No dot (sound generator not in a chain) — alignment spacing
