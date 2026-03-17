@@ -13,6 +13,7 @@ function chain(
 	label: string,
 	constrainer: string,
 	children?: TreeNode[],
+	colour?: string,
 ): TreeNode {
 	return {
 		label,
@@ -20,6 +21,7 @@ function chain(
 		nodeKind: "chain",
 		chainConstrainer: constrainer,
 		children,
+		colour,
 	};
 }
 
@@ -51,14 +53,23 @@ function synth(
 	};
 }
 
+// Chain colours — known constants for FX and MIDI, data-driven for modulation.
+// Gain/Pitch have explicit colours. Sub-chains (AttackTimeModulation, LFO
+// Intensity, etc.) have no colour — they inherit from their parent chain
+// via propagateChainColors() in builder.ts.
+const GAIN_COLOUR = "#be952c";
+const PITCH_COLOUR = "#7559a4";
+const FX_COLOUR = "#3a6666";
+// const MIDI_COLOUR = "#C65638"; // not used in dummy tree (no MIDI chains)
+
 export const DUMMY_MODULE_TREE: TreeNode = synth("Master", "SynthChain", [
 	chain("Gain Modulation", "TimeVariantModulator", [
 		mod("CC1", "MidiController"),
-	]),
+	], GAIN_COLOUR),
 	chain("FX Chain", "MasterEffect", [
 		mod("Output", "SimpleGain"),
 		mod("Hall", "SimpleReverb"),
-	]),
+	], FX_COLOUR),
 	synth("Oscillators", "SynthGroup", [
 		chain("Gain Modulation", "*", [
 			mod("Velocity", "Velocity"),
@@ -67,46 +78,44 @@ export const DUMMY_MODULE_TREE: TreeNode = synth("Master", "SynthChain", [
 					mod("KeyNumber", "KeyNumber"),
 				]),
 			]),
-		]),
+		], GAIN_COLOUR),
 		chain("Pitch Modulation", "*", [
 			mod("Vibrato", "LFO", [
 				chain("LFO Intensity Mod", "*"),
 				chain("LFO Frequency Mod", "*"),
 			]),
-		]),
+		], PITCH_COLOUR),
 		chain("Detune Modulation", "*"),
 		chain("Spread Modulation", "*"),
 		chain("FX Chain", "*", [
 			mod("LP", "PolyphonicFilter", [
-				chain("Frequency Modulation", "*", [
-					mod("Filter Env", "AHDSR"),
-				]),
+				chain("Frequency Modulation", "*"),
 				chain("Gain Modulation", "*"),
 				chain("Bipolar Freq Modulation", "*"),
 				chain("Q Modulation", "*"),
 			]),
-		]),
+		], FX_COLOUR),
 		synth("Osc 1", "SineSynth", [
-			chain("Gain Modulation", "*"),
-			chain("Pitch Modulation", "*"),
-			chain("FX Chain", "VoiceEffect"),
+			chain("Gain Modulation", "*", undefined, GAIN_COLOUR),
+			chain("Pitch Modulation", "*", undefined, PITCH_COLOUR),
+			chain("FX Chain", "VoiceEffect", undefined, FX_COLOUR),
 		]),
 		synth("Osc 2", "SineSynth", [
-			chain("Gain Modulation", "*"),
-			chain("Pitch Modulation", "*"),
-			chain("FX Chain", "VoiceEffect"),
+			chain("Gain Modulation", "*", undefined, GAIN_COLOUR),
+			chain("Pitch Modulation", "*", undefined, PITCH_COLOUR),
+			chain("FX Chain", "VoiceEffect", undefined, FX_COLOUR),
 		]),
 	]),
 	synth("Piano", "StreamingSampler", [
 		chain("Gain Modulation", "*", [
 			mod("Velocity", "Velocity"),
 			mod("Piano Env", "AHDSR"),
-		]),
-		chain("Pitch Modulation", "*"),
+		], GAIN_COLOUR),
+		chain("Pitch Modulation", "*", undefined, PITCH_COLOUR),
 		chain("Sample Start", "*"),
 		chain("Group Fade", "*"),
 		chain("FX Chain", "*", [
 			mod("Room", "Convolution"),
-		]),
+		], FX_COLOUR),
 	]),
 ]);

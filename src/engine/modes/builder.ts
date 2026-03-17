@@ -22,6 +22,81 @@ import { tokenizeBuilder } from "../highlight/builder.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 import { DUMMY_MODULE_TREE } from "./dummyTree.js";
+
+// ── Chain color constants (FX and MIDI are always fixed) ────────────
+
+const FX_CHAIN_COLOUR = "#3a6666";
+const MIDI_CHAIN_COLOUR = "#C65638";
+const FALLBACK_CHAIN_COLOUR = "#666666"; // grey for chains with no resolved colour
+
+/**
+ * Walk a TreeNode tree and propagate chain colors + dot styles.
+ *
+ * Rules:
+ * - Chain nodes: filledDot = false (○). colour = own colour, or
+ *   FX/MIDI constant, or inherited from parent chain, or grey fallback.
+ * - Module nodes inside a chain: filledDot = true (●). colour = inherited.
+ * - Sound generators (not in a chain): no dot (filledDot/colour undefined).
+ *   Their children start with a fresh colour context.
+ *
+ * Mutates the tree in place and returns it.
+ */
+function propagateChainColors(
+	node: TreeNode,
+	parentChainColour: string | null = null,
+): TreeNode {
+	if (node.nodeKind === "chain") {
+		// Resolve this chain's colour
+		let colour: string;
+		if (node.colour && typeof node.colour === "string" && node.colour.startsWith("#")) {
+			// Explicit hex colour from data
+			colour = node.colour;
+		} else if (node.label === "FX Chain") {
+			colour = FX_CHAIN_COLOUR;
+		} else if (node.label === "MIDI Processor Chain") {
+			colour = MIDI_CHAIN_COLOUR;
+		} else if (parentChainColour) {
+			// Inherit from parent chain (sub-chains like AttackTimeModulation)
+			colour = parentChainColour;
+		} else {
+			colour = FALLBACK_CHAIN_COLOUR;
+		}
+
+		node.colour = colour;
+		node.filledDot = false; // unfilled ○
+
+		// Propagate to children
+		if (node.children) {
+			for (const child of node.children) {
+				propagateChainColors(child, colour);
+			}
+		}
+	} else if (node.nodeKind === "module" && parentChainColour) {
+		// Module inside a chain — filled dot, inherited colour
+		node.colour = parentChainColour;
+		node.filledDot = true; // filled ●
+
+		// Module's children (e.g. AHDSR's sub-chains) inherit the same colour
+		if (node.children) {
+			for (const child of node.children) {
+				propagateChainColors(child, parentChainColour);
+			}
+		}
+	} else {
+		// Sound generator or module not in a chain — no dot
+		node.colour = undefined;
+		node.filledDot = undefined;
+
+		// Children start with fresh colour context (null)
+		if (node.children) {
+			for (const child of node.children) {
+				propagateChainColors(child, null);
+			}
+		}
+	}
+
+	return node;
+}
 import type { CompletionEngine } from "../completion/engine.js";
 import {
 	Add,
@@ -363,7 +438,8 @@ export class BuilderMode implements Mode {
 
 	getTree(): TreeNode | null {
 		// TODO: replace with live tree from HISE when connection is available
-		return DUMMY_MODULE_TREE;
+		// propagateChainColors sets filledDot + colour on every node
+		return propagateChainColors(DUMMY_MODULE_TREE);
 	}
 
 	getSelectedPath(): string[] {

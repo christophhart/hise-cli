@@ -87,9 +87,6 @@ const CONN_SPACE  = "  "; // no continuation (ancestor was last child)
 // ── Icons ───────────────────────────────────────────────────────────
 
 function nodeLabel(node: TreeNode): string {
-	if (node.nodeKind === "chain") {
-		return `[${node.label}]`;
-	}
 	return node.label;
 }
 
@@ -405,10 +402,17 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		if (row.depth === 0) {
 			// Root node: show > if current root, else expand triangle
 			if (isCurrentRoot) {
-				segments.push({ text: "> ", color: fg, bold: true });
+				segments.push({ text: ">", color: fg, bold: true });
 			} else {
-				const icon = row.expanded ? "▾ " : "▸ ";
+				const icon = row.expanded ? "▾" : "▸";
 				segments.push({ text: icon, color: fg });
+			}
+			// Root dot (sound generators typically have no dot, but respect data)
+			if (row.node.colour != null && row.node.filledDot != null) {
+				const dot = row.node.filledDot ? " ● " : " ○ ";
+				segments.push({ text: dot, color: row.node.colour });
+			} else {
+				segments.push({ text: " ", color: fg });
 			}
 		} else {
 			// Non-root: column 0 is > indicator or space
@@ -440,6 +444,15 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			} else {
 				segments.push({ text: "  ", color: fg });
 			}
+		}
+
+		// Dot indicator (data-driven: filledDot + colour set by propagateChainColors)
+		if (row.node.colour != null && row.node.filledDot != null) {
+			const dot = row.node.filledDot ? "● " : "○ ";
+			segments.push({ text: dot, color: row.node.colour });
+		} else {
+			// No dot (sound generator not in a chain) — alignment spacing
+			segments.push({ text: "  ", color: fg });
 		}
 
 		// Label

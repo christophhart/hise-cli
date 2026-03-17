@@ -14,6 +14,12 @@ export interface TreeNode {
 	/** For chain nodes: constrainer pattern controlling what subtypes are accepted
 	 *  (e.g. "*", "VoiceStartModulator", "MasterEffect"). See docs/MODULE_TREE.md. */
 	chainConstrainer?: string;
+	/** Hex color for the dot indicator. Set by the data pipeline (builder propagates
+	 *  chain colors to children). undefined = no dot rendered. */
+	colour?: string;
+	/** Dot style: true = ● (filled, modules), false = ○ (unfilled, chains).
+	 *  undefined = no dot rendered (sound generators not in a chain). */
+	filledDot?: boolean;
 }
 
 export type CommandResult =
