@@ -23,8 +23,6 @@ export interface ThemeContextValue {
 	brand: BrandColors;
 	statusColor: (status: ConnectionStatus) => string;
 	layout: LayoutScale;
-	/** When >0, components should darken accent/border props by this factor (overlay backdrop). */
-	dimFactor: number;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -39,9 +37,6 @@ export interface ThemeProviderProps {
 	statusColor?: (status: ConnectionStatus) => string;
 	/** Layout scale (defaults to COMPACT for backward compatibility) */
 	layout?: LayoutScale;
-	/** Dim factor for overlay backdrop (0 = normal, 0.65 = dimmed). Components
-	 *  use this to darken accent/border colors that are baked into props. */
-	dimFactor?: number;
 	children: React.ReactNode;
 }
 
@@ -50,7 +45,6 @@ export function ThemeProvider({
 	brand: brandOverride,
 	statusColor: statusColorOverride,
 	layout: layoutOverride,
-	dimFactor,
 	children,
 }: ThemeProviderProps): React.ReactElement {
 	const value: ThemeContextValue = {
@@ -58,7 +52,6 @@ export function ThemeProvider({
 		brand: brandOverride ?? defaultBrand,
 		statusColor: statusColorOverride ?? defaultStatusColor,
 		layout: layoutOverride ?? COMPACT,
-		dimFactor: dimFactor ?? 0,
 	};
 
 	return (

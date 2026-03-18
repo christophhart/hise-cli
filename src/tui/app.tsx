@@ -1091,7 +1091,6 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 								brand={darkenBrand(DIM_FACTOR)}
 								statusColor={snap.dimStatusColor}
 								layout={layout}
-								dimFactor={DIM_FACTOR}
 							>
 								{(() => {
 									const snapContentCols = columns - snap.sidebarW;

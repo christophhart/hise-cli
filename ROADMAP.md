@@ -17,7 +17,7 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
 | Phase 2 — TUI v2 Shell | [#2](https://github.com/christoph-hart/hise-cli/issues/2) | TUI components, entry point rewire, screencasts |
 | Phase 3 — Tab Completion | [#3](https://github.com/christoph-hart/hise-cli/issues/3) | Completion engine + popup |
 | Phase 3.5 — Dot-Notation Dispatch | [#3](https://github.com/christoph-hart/hise-cli/issues/3) | Mode cache, arg completion, one-shot execution |
-| Phase 3.7 — Markdown Renderer | — | Terminal markdown rendering (engine AST + TUI renderer) |
+| Phase 3.7 — Markdown Renderer | — | Terminal markdown rendering + virtualized output |
 | Phase 4 — Builder + Plan | [#5](https://github.com/christoph-hart/hise-cli/issues/5), [#4](https://github.com/christoph-hart/hise-cli/issues/4) | C++ builder endpoints, full grammar, module tree, plan submode |
 | Phase 5 — Wizards | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard framework + setup wizard |
 | Phase 6 — Remaining Modes | [#6](https://github.com/christoph-hart/hise-cli/issues/6), [#8](https://github.com/christoph-hart/hise-cli/issues/8), [#7](https://github.com/christoph-hart/hise-cli/issues/7), [#11](https://github.com/christoph-hart/hise-cli/issues/11), [#9](https://github.com/christoph-hart/hise-cli/issues/9) | DSP, script (full), inspect, sampler, project/compile/import |
@@ -492,54 +492,20 @@ modes (Phase 6) when the HISE connection provides real processor tree data.
 
 ---
 
-## Phase 3.7 — Terminal Markdown Renderer
+## Phase 3.7 - Terminal Markdown Renderer
 
-**Goal**: shared markdown rendering infrastructure for the TUI. Prerequisite for
-wizard step descriptions (Phase 5), API/module docs display (Phase 6), and builder
-help text. Currently the `type: "markdown"` result in Output.tsx is a stub that
-renders plain text.
+**Status: Complete** - Terminal markdown rendering using `marked` + `marked-terminal`
+for parsing and ANSI output, `cli-highlight` with a custom HiseScript language
+definition for syntax highlighting, and `cli-table3` (via `marked-terminal`) for
+tables. Output uses a virtualized viewport slicer - blocks are pre-rendered to ANSI
+string lines once, then sliced for display on scroll (no React reconciliation of
+off-screen content). Overlay dimming uses `dimAnsiLines()` to post-process ANSI
+escape codes. Scrollbar via `@byteland/ink-scroll-bar`.
 
-### 3.7.1 Engine layer (isomorphic)
-
-File: `src/engine/markdown/`
-
-Parse markdown to an intermediate AST using `marked` (or minimal custom parser).
-The AST is a plain data structure — no DOM, no terminal escapes, no Ink components.
-This keeps the engine layer isomorphic: the same AST feeds the TUI renderer (Ink),
-CLI renderer (plain text with ANSI), and future web renderer (`react-markdown`).
-
-### 3.7.2 TUI renderer
-
-File: `src/tui/components/MarkdownRenderer.tsx`
-
-Ink components that render the markdown AST:
-- **Headings**: bold + mode accent color, `##` level controls size/weight
-- **Bold/italic**: `<Text bold>` / `<Text italic>` (Ink native)
-- **Inline code**: dimmed background (`backgrounds.raised`), monospace
-- **Fenced code blocks**: syntax highlighted via existing tokenizers (HiseScript,
-  XML, builder). Language tag selects tokenizer. Falls back to plain monospace.
-- **Tables**: column-aligned with `─`/`┼` separators (reuses existing `table`
-  result rendering logic from Output.tsx)
-- **Lists**: bullet (`•`) and numbered, with indentation
-- **Horizontal rules**: `─` repeated to terminal width
-- **Paragraphs**: line-wrapped to available width
-- No images (terminal constraint), no clickable links (show URL in parens)
-
-Wire into `Output.tsx` replacing the stub `case "markdown":`.
-
-### 3.7.3 CLI renderer (planned)
-
-File: `src/cli/markdown.ts` (Phase 7)
-
-Plain text with optional ANSI escape codes. Consumes the same engine AST.
-Deferred to CLI frontend implementation.
-
-**Phase 3.7 gate — all must pass:**
-- `npm test` passes with: markdown AST parser handles all supported elements,
-  edge cases (nested formatting, empty code blocks, tables with varying column
-  counts)
-- TUI renders markdown results visually (manual verification)
-- `npm run build && npm run typecheck` pass
+Key files: `src/tui/components/Markdown.tsx` (renderer), `src/tui/components/Output.tsx`
+(viewport slicer), `src/tui/components/prerender.ts` (block pre-rendering),
+`src/tui/components/dim-ansi.ts` (ANSI color dimming),
+`src/engine/highlight/hisescript-hljs.ts` (highlight.js language definition).
 
 ---
 
@@ -684,11 +650,13 @@ from failed phase.
 
 Directory: `src/engine/wizard/phases/`
 
-Reusable building blocks extracted from `src/setup/phases.ts`. The
+Reusable building blocks extracted from legacy setup templates. The
 extraction must remove all TUI dependencies (Ink components, React hooks)
 from the phase logic. Prerequisite for Phase 5.7.
 
-Specific exports to extract from `src/setup/phases.ts`:
+Template source for extraction: `docs/LEGACY_SETUP_SCRIPTS.md`.
+
+Specific phase modules to implement:
 - `compile.ts` — Projucer + platform compiler (`runProjucer`, `runBuild`)
 - `verify.ts` — binary check (`verifyBinary`, `checkBuildFlags`)
 - `git-ops.ts` — clone, fetch, checkout (`gitClone`, `gitFetch`, `gitCheckout`)
@@ -699,7 +667,8 @@ Specific exports to extract from `src/setup/phases.ts`:
 File: `src/engine/wizard/definitions/setup.ts`
 
 The first real wizard. `standalone: true`. 5 steps (form → form → form →
-pipeline → preview). Reuses the 9 build phases from `src/setup/phases.ts`
+pipeline → preview). Reuses the 9 legacy build phases from
+`docs/LEGACY_SETUP_SCRIPTS.md`
 via shared pipeline phases. Source reference: `data/wizards/new_project.json`.
 
 ### 5.8 CLI commands
@@ -707,7 +676,8 @@ via shared pipeline phases. Source reference: `data/wizards/new_project.json`.
 `hise-cli wizard <id> --answers '<json>'` — single-shot execution.
 `hise-cli wizard <id> --schema` — dump parameter schema.
 `hise-cli wizard list` — list available wizards.
-Subcommand aliases: `hise-cli setup` → `hise-cli wizard setup`.
+No lifecycle subcommand aliases are kept before 1.0. Only explicit wizard
+commands should exist.
 
 **Phase 5 gate — all must pass:**
 - `npm test` passes with: WizardRunner step navigation (advance, back,
@@ -716,7 +686,7 @@ Subcommand aliases: `hise-cli setup` → `hise-cli wizard setup`.
   ink-testing-library overlay, CLI `--answers` and `--schema` work,
   `.tape` screencast for setup wizard walkthrough
 - `npm run build && npm run typecheck` pass
-- Manual: `hise-cli setup` opens standalone wizard overlay
+- Manual: `hise-cli wizard setup` opens standalone wizard overlay
 
 ---
 
@@ -1105,14 +1075,15 @@ or local validation against static datasets. Phase 6.1 (`/modules`) and
 | Current file | Status | Notes |
 |---|---|---|
 | `src/index.ts` | Modified in Phase 2.7 | Rewired to new TUI |
-| `src/app.tsx` | Reference | Legacy pipe-based REPL |
-| `src/pipe.ts` | Reference | Legacy named pipe transport |
-| `src/theme.ts` | Reference | Monokai colors → replaced by `src/tui/theme.ts` |
-| `src/hooks/usePipe.ts` | Reference | Legacy pipe hook |
-| `src/hooks/useCommands.ts` | Reference | History logic reused |
-| `src/menu/App.tsx` | Reference | Temporary menu until wizard menu (Phase 5) |
-| `src/components/*` | Reference | Scrollbar logic may be reused |
-| `src/setup/*` | Reference | Pipeline phases reused in Phase 5.6 |
-| `src/setup-core/*` | Reference | Types + GitHub helpers reused |
+| `src/app.tsx` | Removed | Legacy pipe-based REPL deleted |
+| `src/pipe.ts` | Removed | Legacy named pipe transport deleted |
+| `src/theme.ts` | Removed | Replaced by `src/tui/theme.ts` |
+| `src/hooks/usePipe.ts` | Removed | Legacy pipe hook deleted |
+| `src/hooks/useCommands.ts` | Removed | Legacy hook deleted |
+| `src/menu/App.tsx` | Removed | Legacy menu deleted |
+| `src/components/*` | Removed | Legacy components deleted |
+| `src/setup/*` | Removed | Legacy setup flow deleted |
+| `src/setup-core/*` | Removed | Legacy setup types/helpers deleted |
+| `docs/LEGACY_SETUP_SCRIPTS.md` | Reference | Preserved setup templates for reimplementation |
 
 <!-- All design questions resolved — see "Resolved Design Decisions" at top -->

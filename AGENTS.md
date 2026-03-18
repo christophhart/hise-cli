@@ -10,9 +10,7 @@ audio plugins. Two frontends (TUI for humans, CLI for LLMs) share one engine lay
 execution to HISE. See [DESIGN.md](DESIGN.md) for the full architecture.
 
 **HISE communication**: HTTP REST API on `localhost:1900` (request/response). SSE for
-push events is planned but not yet implemented in HISE C++ — polling is the 1.0 fallback.
-The legacy named pipe transport (`pipe.ts`, `usePipe.ts`) is superseded by HTTP but
-retained as reference until the entry point is fully rewired.
+push events is planned but not yet implemented in HISE C++ - polling is the 1.0 fallback.
 
 **Three-layer design** (v2, in progress): `engine/` (zero UI deps), `tui/` (Ink/React),
 `cli/` (JSON output). The engine layer must never import Ink, React, or terminal libraries.
@@ -29,9 +27,12 @@ See `src/engine/data.ts` for type definitions.
 **Wizard framework**: Declarative multi-step workflows for complex operations (broadcaster
 setup, asset payloads, monolith encoding, plugin export, HISE installation). Same
 definition serves TUI (step-by-step overlay) and CLI (single-shot with `--answers` JSON).
-Standalone wizards (setup, update, migrate, nuke) replace the current `src/setup/` and
-`src/menu/` code. Source wizard JSONs from HISE's C++ multipage dialogs live in
+Source wizard JSONs from HISE's C++ multipage dialogs live in
 `data/wizards/`. Conversion guide: [docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md).
+
+**Pre-1.0 policy**: Before `1.0.0`, stale systems are removed aggressively. Do not preserve
+backwards compatibility for obsolete commands, files, or APIs. Keep only explicit reference
+material when useful for reimplementation.
 
 **REST-first development**: Any mode requiring new HISE REST endpoints follows a strict
 sequence: design endpoint contract → implement in HISE C++ → write C++ unit tests →
@@ -43,10 +44,10 @@ only local data (`moduleList.json`, `scripting_api.json`) or existing endpoints
 (builder execution), Phase 6 (UI, expansions, DSP, sampler), and any future mode
 needing new endpoints. See [ROADMAP.md](ROADMAP.md) Principles.
 
-**Terminal markdown renderer**: Shared prerequisite (Phase 3.7) for wizard step
-descriptions (Phase 5), API/module docs rendering (Phase 6), and builder help text.
-Parses markdown with `marked` in the engine layer (isomorphic), renders via Ink in
-the TUI. Replaces the stub `case "markdown":` in `Output.tsx`.
+**Terminal markdown renderer** (Phase 3.7, complete): Renders markdown via
+`marked` + `marked-terminal` with syntax-highlighted code blocks. Output uses a
+virtualized viewport slicer - blocks are pre-rendered to ANSI strings once, then
+line-sliced for display on scroll.
 
 ## Build & Verify
 
@@ -65,48 +66,35 @@ is gitignored — it is a local reference, not tracked.
 
 ## Project Structure
 
-**Current** (legacy — functional, shipped as v0.x):
-```
-src/                   # TypeScript source (esbuild bundles to dist/)
-  index.ts             # Entry point (rewired in Phase 2)
-  app.tsx              # LEGACY — pipe-based REPL TUI
-  pipe.ts              # LEGACY — named pipe transport (removed in Phase 2)
-  theme.ts             # LEGACY — Monokai color constants
-  components/          # LEGACY — shared UI components
-  hooks/               # LEGACY — React hooks (useCommands history logic reusable)
-  menu/                # LEGACY — main menu (replaced by wizard menu)
-  setup/               # LEGACY — setup wizard (pipeline phases reused in Phase 5)
-  setup-core/          # LEGACY — types + GitHub helpers
-data/                  # Static JSON datasets (not in src/)
-  wizards/             # HISE C++ multipage dialog JSONs (conversion source)
-scripts/build.mjs      # esbuild config
-```
-
-**Target** (v2 — engine/ and tui/ implemented through Phase 3 + UX polish, cli/ pending):
 ```
 src/
-  engine/              # Shared core — zero UI deps, zero node: imports
+  index.ts             # Entry point (HTTP-only REPL)
+  engine/              # Shared core - zero UI deps, zero node: imports
     commands/          # Command registry, dispatcher, parsers
     modes/             # Mode definitions + dummy module tree for dev
     completion/        # Tab completion engine
-    wizard/            # Wizard framework (planned — Phase 5)
     highlight/         # Syntax highlighting: per-mode tokenizers, span splitting
     screencast/        # .tape parser (isomorphic)
     session.ts         # Mode stack, history, connection
     result.ts          # CommandResult + TreeNode types
     hise.ts            # HiseConnection interface + HttpHiseConnection + Mock
     data.ts            # DataLoader interface
-  tui/                 # TUI frontend — Ink/React
+  tui/                 # TUI frontend - Ink/React
     components/        # TopBar, Output, Input, CompletionPopup, StatusBar,
-                       #   Overlay, scrollbar, TreeSidebar, LandingLogo
+                       #   Overlay, Markdown, scrollbar, TreeSidebar, LandingLogo,
+                       #   prerender, dim-ansi
     theme.ts           # Color system, darkenHex, lightenHex, lerpHex, mix
     theme-context.tsx  # ThemeProvider, useTheme() hook
     app.tsx            # Main TUI shell (central key dispatch)
+    profiler.ts        # Conditional React.Profiler (--profile flag)
     nodeDataLoader.ts  # Node.js DataLoader implementation
-    screencast/        # Tape runner, asciicast writer, vitest tester (planned)
-  cli/                 # CLI frontend — JSON output (planned — Phase 7)
+    screencast/        # Tape runner, asciicast writer, vitest tester
+  cli/                 # CLI frontend - JSON output (planned, Phase 7)
   globals.d.ts         # Build-time constants (__APP_VERSION__)
-screencasts/           # VHS-derived .tape scripts (planned)
+data/                  # Static JSON datasets (not in src/)
+  wizards/             # HISE C++ multipage dialog JSONs (conversion source)
+scripts/build.mjs      # esbuild config
+screencasts/           # VHS-derived .tape scripts
 ```
 
 New code follows the `engine/` / `tui/` / `cli/` split.

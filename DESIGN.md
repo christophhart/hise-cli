@@ -222,11 +222,9 @@ client at a time (modal).
 ### Named Pipe: Scheduled for Removal
 
 The original REPL used JUCE `NamedPipe` for communication. The pipe
-transport is replaced by HTTP in the v2 architecture. The C++ REPL server
+transport was replaced by HTTP in the v2 architecture. The C++ REPL server
 code will be removed by reverting commit `28267c18a877`. The Node.js pipe
-client (`pipe.ts`, `usePipe.ts`) remains in the codebase as legacy code
-until Phase 2 rewires the entry point, at which point it is no longer
-imported.
+client (`pipe.ts`, `usePipe.ts`) has been deleted.
 
 Rationale: The REST API already exists and is battle-tested, HTTP gives free
 request-response correlation and standard tooling, SSE covers push use cases,
@@ -845,9 +843,9 @@ concern for a CLI tool (current bundle: 2.6MB, Node.js itself: ~40MB).
 | Library | Size | Purpose |
 |---------|------|---------|
 | `ink` + `chalk` + `ink-text-input` + `ink-spinner` | Existing | Core TUI framework |
-| `ink-select-input` | 17KB | Selection list logic (CompletionPopup, CommandPalette) |
-| `ink-box` | 5KB | Styled borders (wizard overlay, panels) |
-| `cli-table3` | 45KB | Unicode box-drawn table rendering (markdown tables + CommandResult tables) |
+| `marked` + `marked-terminal` | ~80KB | Markdown rendering for output and overlay |
+| `@byteland/ink-scroll-bar` | 5KB | Scrollbar for output and overlay |
+| `ink-scroll-view` | 10KB | Overlay body scrolling |
 | `ink-testing-library` (devDep) | 10KB | Ink component testing in vitest |
 
 ### Rationale
@@ -1511,7 +1509,6 @@ Wizards are registered in a `WizardRegistry` (engine layer):
 | CLI        | `hise-cli wizard <id> --answers '<json>'` | Single-shot execution |
 | CLI        | `hise-cli wizard <id> --schema` | Dump wizard parameter schema as JSON |
 | CLI        | `hise-cli wizard list` | List available wizards |
-| Alias      | `hise-cli setup` | Shorthand for `hise-cli wizard setup` (also: `update`, `migrate`, `nuke`) |
 
 Tab completion works on wizard IDs in both `/wizard` and mode-specific `wizard`
 contexts. The `--schema` flag is particularly valuable for LLMs — they can
@@ -1543,8 +1540,7 @@ installations (nuke). In standalone mode:
 - The wizard overlay renders using size presets from `Overlay.tsx`
   (`OVERLAY_SIZES`), centered on a plain `backgrounds.standard` fill
   (no REPL content behind it)
-- The entry point is `hise-cli wizard <id>` or a subcommand alias
-  (e.g., `hise-cli setup` → `hise-cli wizard setup`)
+- The entry point is `hise-cli wizard <id>`
 - Resolver functions receive no `HiseConnection` — they use local
   filesystem scanning, GitHub API calls, or static data instead
 
@@ -1571,31 +1567,24 @@ src/engine/wizard/phases/
 | `cleanup`      | nuke                               |
 
 The `compile` phase encapsulates the entire platform-aware C++ compilation
-pipeline from the current `src/setup/phases.ts` — Projucer project resave,
+pipeline from the legacy setup templates (`docs/LEGACY_SETUP_SCRIPTS.md`) —
+Projucer project resave,
 MSBuild (Windows) / xcodebuild (macOS) / make (Linux) invocation, build
 configuration selection. The same logic that builds HISE from source also
 builds plugins and DLL networks. Only the build target and configuration
 parameters differ, and those come from the wizard's answers.
 
-### Subcommand Aliases & Entry Point
+### Command Entry Point
 
-Lifecycle subcommands are aliases for wizard invocations:
-
-| Subcommand         | Equivalent                     |
-|--------------------|--------------------------------|
-| `hise-cli setup`   | `hise-cli wizard setup`        |
-| `hise-cli update`  | `hise-cli wizard update`       |
-| `hise-cli migrate` | `hise-cli wizard migrate`      |
-| `hise-cli nuke`    | `hise-cli wizard nuke`         |
+Lifecycle aliases were removed pre-1.0 as part of stale system cleanup.
+Use explicit wizard commands (`hise-cli wizard <id>`) when lifecycle wizards
+are implemented.
 
 When `hise-cli` runs with **no arguments**:
 
 1. Probe `localhost:1900` for a running HISE instance
 2. If reachable → launch the REPL
-3. If not → show a selection menu of standalone wizards (setup, update,
-   migrate, nuke) plus "Launch REPL anyway"
-
-This replaces the current custom menu in `src/menu/App.tsx`.
+3. If not → prompt for launching HISE Debug and continue with REPL startup
 
 ### Planned Wizards
 
@@ -1604,7 +1593,7 @@ Eight wizard definitions are planned. Four are standalone lifecycle wizards
 
 #### Standalone Lifecycle Wizards
 
-**Setup** (`id: "setup"`, standalone, replaces `src/setup/`):
+**Setup** (`id: "setup"`, standalone):
 
 | Step | Type     | Content |
 |------|----------|---------|
@@ -1870,8 +1859,9 @@ The `pipeline` step type enables code reuse across wizards that share
 heavyweight operations. The same `compile` phase (Projucer resave +
 MSBuild/xcodebuild/make) is used by the setup wizard (building HISE), the
 export wizard (building plugins), and the compile-networks wizard (building
-DLLs). Battle-tested platform-specific compilation logic from `src/setup/`
-becomes a shared building block rather than being locked inside one flow.
+DLLs). Battle-tested platform-specific compilation logic from legacy setup
+templates (see `docs/LEGACY_SETUP_SCRIPTS.md`) becomes a shared building
+block rather than being locked inside one flow.
 
 **Alternative rejected**: Separate TUI overlays and CLI commands per operation.
 This duplicates validation logic, option definitions, and help text across two

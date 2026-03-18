@@ -17,13 +17,13 @@
 - Node built-ins use `node:` prefix: `import * as fs from "node:fs"`
 - Use `import type` or inline `type` keyword for type-only imports:
   ```ts
-  import type { PipeConnection } from "./pipe.js";
-  import { type MenuChoice } from "../setup-core/types.js";
+  import type { HiseConnection } from "../engine/hise.js";
+  import { type ModeId } from "../engine/modes/mode.js";
   ```
 - **Import ordering**:
   1. Node built-in modules (`node:fs`, `node:path`, etc.)
   2. Third-party packages (`chalk`, `ink`, `react`)
-  3. Local/project imports (`./pipe.js`, `../theme.js`)
+  3. Local/project imports (`./session.js`, `../theme.js`)
 - Use namespace imports (`import * as fs`) for Node builtins; named destructuring
   for everything else
 
@@ -31,13 +31,13 @@
 
 | Kind | Convention | Examples |
 |------|-----------|----------|
-| Files (modules/hooks) | `camelCase.ts` | `usePipe.ts`, `detect.ts` |
-| Files (components) | `PascalCase.tsx` | `Header.tsx`, `ConfigScreen.tsx` |
-| Functions / hooks | `camelCase` | `sendCommand`, `usePipe` |
-| React components | `PascalCase` | `App`, `Header`, `RunScreen` |
-| Interfaces | `PascalCase` (no `I` prefix) | `AppProps`, `SetupConfig` |
-| Type aliases | `PascalCase` | `Platform`, `OutputLineType` |
-| Module-level constants | `SCREAMING_SNAKE_CASE` | `PIPE_PREFIX`, `MONOKAI` |
+| Files (modules/hooks) | `camelCase.ts` | `session.ts`, `detect.ts` |
+| Files (components) | `PascalCase.tsx` | `Output.tsx`, `ConfigScreen.tsx` |
+| Functions / hooks | `camelCase` | `renderMarkdown`, `useTheme` |
+| React components | `PascalCase` | `App`, `Output`, `Overlay` |
+| Interfaces | `PascalCase` (no `I` prefix) | `AppProps`, `CommandResult` |
+| Type aliases | `PascalCase` | `Platform`, `ModeId` |
+| Module-level constants | `SCREAMING_SNAKE_CASE` | `MODE_ACCENTS`, `DIM_FACTOR` |
 | Local constants | `camelCase` | `startTime`, `visibleLines` |
 
 ## Types
@@ -46,8 +46,8 @@
 - Use string literal unions instead of TypeScript `enum`
 - Use `as const` assertions for constant objects/arrays
 - In the v2 architecture, shared types live in `src/engine/` modules
-  (`result.ts`, `session.ts`, `hise.ts`). Legacy shared types are in
-  `setup-core/types.ts`. Co-locate types when only used by one module
+  (`result.ts`, `session.ts`, `hise.ts`). Co-locate types when only used
+  by one module
 - Return types are inferred — don't annotate unless the signature is ambiguous
 
 ## React / Ink Patterns

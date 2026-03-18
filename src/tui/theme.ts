@@ -18,9 +18,6 @@ export const brand = {
 
 export { MODE_ACCENTS } from "../engine/modes/mode.js";
 
-// Wizard accent (not a mode — UI chrome for wizard overlay)
-export const wizardAccent = "#e8a060";
-
 // ── Layer 4: Color Schemes ──────────────────────────────────────────
 
 export interface ColorScheme {

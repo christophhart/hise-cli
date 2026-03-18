@@ -130,16 +130,6 @@ function createModeHandler(modeId: ModeId): CommandHandler {
 	return handler;
 }
 
-async function handleWizard(
-	args: string,
-	_session: CommandSession,
-): Promise<CommandResult> {
-	if (!args) {
-		return errorResult("Usage: /wizard <id>. Wizard framework not yet implemented.");
-	}
-	return errorResult(`Wizard "${args}" not yet implemented.`);
-}
-
 async function handleExpand(
 	args: string,
 	_session: CommandSession,
@@ -256,12 +246,6 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "import",
 		description: "Enter import mode (asset import)",
 		handler: createModeHandler("import"),
-	});
-
-	registry.register({
-		name: "wizard",
-		description: "Run a wizard workflow",
-		handler: handleWizard,
 	});
 
 	registry.register({

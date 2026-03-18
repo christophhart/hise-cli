@@ -165,10 +165,9 @@ See `src/tui/theme-context.tsx` for the `ThemeContextValue` interface. Component
 call `useTheme()` to access `scheme`, `brand`, and `statusColor`.
 
 **Rule**: Components must never import `brand` or `statusColor` directly from
-`theme.ts` for rendering purposes. Always use `useTheme()`. The only exception
-is pure functions that bake colors into data structures at creation time (e.g.,
-`resultToLines` bakes `brand.error` into `OutputLine.color` — these baked colors
-are handled by `darkenOutputLines()` separately).
+`theme.ts` for rendering purposes. Always use `useTheme()`. Pure functions that
+pre-render ANSI strings (e.g., `renderEcho`, `renderError` in `prerender.ts`)
+may import `brand` directly since they run outside the React tree.
 
 ### 1.9 Overlay Dimming System
 
@@ -179,29 +178,24 @@ component re-render with darkened colors, not a semi-transparent CSS overlay
 
 **How it works:**
 
-1. **Snapshot**: When the overlay opens, the current UI state is captured
-   (output lines, scroll offset, mode label, accent, connection status, hints).
-2. **Darken**: All colors are darkened by `DIM_FACTOR` (see `src/tui/app.tsx`).
-   This applies to:
-   - The entire `ColorScheme` via `darkenScheme(scheme, factor)`
+1. **Snapshot**: When the overlay opens, the current visible output is captured
+   as pre-rendered ANSI lines, along with mode label, accent, connection status,
+   and hints.
+2. **Darken**: All colors are darkened by `DIM_FACTOR` (see `src/tui/app.tsx`):
+   - `ColorScheme` via `darkenScheme(scheme, factor)`
    - Brand colors via `darkenBrand(factor)`
-   - Status colors via a darkened resolver
-   - Mode accent colors via `darkenHex(accent, factor)`
-   - Baked `OutputLine` colors via `darkenOutputLines(lines, factor)`
-3. **Re-render**: The snapshot is rendered as an absolute-positioned layer at
-   `marginTop={0}` using a `<ThemeProvider>` with the darkened values. Components
-   inside this provider (TopBar, Output, Input, StatusBar) automatically render
-   with dimmed colors.
-4. **Overlay on top**: The modal panel renders at full brightness on top of the
-   dimmed backdrop.
+   - Status/accent colors via `darkenHex()`
+   - Pre-rendered ANSI output via `dimAnsiLines(lines, factor)` (post-processes
+     RGB values in ANSI escape codes, see `src/tui/components/dim-ansi.ts`)
+3. **Re-render**: The dimmed snapshot renders as an absolute-positioned layer
+   using a `<ThemeProvider>` with darkened values. Chrome components (TopBar,
+   Input, StatusBar) automatically render with dimmed colors. The output area
+   is a static `<Text>` with the pre-dimmed ANSI string.
+4. **Overlay on top**: The modal panel renders at full brightness on top.
 
-Color manipulation utilities (`darkenHex`, `lightenHex`, `darkenScheme`, etc.)
-are in `src/tui/theme.ts`.
-
-**Future-proofing**: Any new component that uses `useTheme()` automatically
-participates in the dimming system. No override props needed. The only manual
-work is extending `darkenOutputLines()` if new color fields are added to
-`OutputLine`.
+**Future-proofing**: Any new chrome component that uses `useTheme()` automatically
+participates in the dimming system. Pre-rendered ANSI output is handled by
+`dimAnsiLines()` which darkens all RGB values in escape sequences.
 
 ---
 
@@ -604,11 +598,12 @@ Continuously updating metrics driven by SSE push events from `GET /api/events`.
 | MIDI dots `●`  | SIGNAL_COLOUR (active), `foreground.muted` (inactive) |
 | MIDI log       | `foreground.muted`       |
 
-### 3.10 Wizard Overlay
+### 3.10 Wizard Overlay (Planned)
 
-Centered floating panel for multi-step guided workflows. Triggered by `/wizard <id>`
-or `wizard <id>` in a mode that registers the wizard. See [DESIGN.md](../DESIGN.md)
-"Wizard Framework" for the engine-layer architecture and type definitions.
+Planned centered floating panel for multi-step guided workflows. Wizard
+commands are not implemented in the current build. This section is a design
+spec for future implementation. See [DESIGN.md](../DESIGN.md) "Wizard
+Framework" for the engine-layer architecture and type definitions.
 
 **Dimensions**: Two size presets defined in `src/tui/components/Overlay.tsx`
 (`OVERLAY_SIZES`): `overlay_compact` (60×20) and `overlay_standard` (90×35).
@@ -616,8 +611,6 @@ Wizard overlays typically use `overlay_compact` for simple prompts; help overlay
 use `overlay_standard` for detailed content. Centered horizontally and vertically
 over the REPL using absolute positioning. The REPL remains visible behind the
 overlay, frozen and dimmed via the overlay dimming system (see Section 1.9).
-All underlying UI components re-render at `DIM_FACTOR` brightness inside a
-`ThemeProvider` with darkened colors.
 
 **Background**: `backgrounds.overlay` (at full brightness — only the backdrop
 dims). No border — solid filled rectangle matching the help overlay style.
@@ -785,10 +778,10 @@ When the user presses Enter to advance and validation fails (sync or async):
 │  Unknown parameter "Attack" for SimpleGain               │  ← HISE_ERROR_COLOUR
 ```
 
-#### Standalone Mode
+#### Standalone Mode (Planned)
 
-Wizards with `standalone: true` (setup, update, migrate, nuke) run without a
-REPL session. The overlay renders identically but on a bare background:
+Planned standalone wizards run without a REPL session. The overlay renders
+identically but on a bare background:
 
 - Terminal filled with `backgrounds.standard`
 - Wizard panel centered using overlay size preset (see `OVERLAY_SIZES` in

@@ -91,7 +91,6 @@ describe("built-in slash commands", () => {
 		expect(names).toContain("project");
 		expect(names).toContain("compile");
 		expect(names).toContain("import");
-		expect(names).toContain("wizard");
 	});
 
 	it("/help returns overlay", async () => {
@@ -179,23 +178,6 @@ describe("built-in slash commands", () => {
 		const session = createMockSession();
 		await registry.dispatch("/project", session);
 		expect(session.modes).toContain("project");
-	});
-
-	it("/wizard without args returns error", async () => {
-		const registry = createRegistry();
-		const session = createMockSession();
-		const result = await registry.dispatch("/wizard", session);
-		expect(result.type).toBe("error");
-	});
-
-	it("/wizard with id returns not-implemented error", async () => {
-		const registry = createRegistry();
-		const session = createMockSession();
-		const result = await registry.dispatch("/wizard broadcaster", session);
-		expect(result.type).toBe("error");
-		if (result.type === "error") {
-			expect(result.message).toContain("broadcaster");
-		}
 	});
 
 	it("/quit sets quitRequested regardless of mode stack", async () => {

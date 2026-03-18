@@ -54,11 +54,6 @@ describe("tokenizeSlash", () => {
 		expect(spans).toEqual([{ text: "/modes", token: "command" }]);
 	});
 
-	it("classifies /wizard as command token", () => {
-		const spans = tokenizeSlash("/wizard");
-		expect(spans).toEqual([{ text: "/wizard", token: "command" }]);
-	});
-
 	// ── Arguments are tokenized ─────────────────────────────────────
 
 	it("tokenizes arguments after mode command", () => {
@@ -71,11 +66,11 @@ describe("tokenizeSlash", () => {
 	});
 
 	it("tokenizes string arguments", () => {
-		const spans = tokenizeSlash('/wizard "setup"');
+		const spans = tokenizeSlash('/help "modes"');
 		expect(spans).toEqual([
-			{ text: "/wizard", token: "command" },
+			{ text: "/help", token: "command" },
 			{ text: " ", token: "plain" },
-			{ text: '"setup"', token: "string" },
+			{ text: '"modes"', token: "string" },
 		]);
 	});
 

@@ -7,7 +7,6 @@ import {
 	defaultScheme,
 	statusColor,
 	statusDot,
-	wizardAccent,
 	darkenHex,
 	lightenHex,
 	darkenScheme,
@@ -21,12 +20,6 @@ describe("theme — brand colors", () => {
 		expect(brand.ok).toBe("#4E8E35");
 		expect(brand.warning).toBe("#FFBA00");
 		expect(brand.error).toBe("#BB3434");
-	});
-});
-
-describe("theme — wizard accent", () => {
-	it("is copper", () => {
-		expect(wizardAccent).toBe("#e8a060");
 	});
 });
 

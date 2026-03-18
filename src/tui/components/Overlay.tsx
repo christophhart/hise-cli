@@ -1,7 +1,7 @@
 // ── Overlay — centered floating panel ───────────────────────────────
 
-// Generic reusable overlay panel. Used by /help (Phase 3) and wizard
-// (Phase 5). Renders centered over the REPL using absolute positioning.
+// Generic reusable overlay panel. Used by /help. Renders centered over
+// the REPL using absolute positioning.
 // No borders — solid filled rectangle with overlay background, sized
 // to OVERLAY_WIDTH and centered horizontally.
 //

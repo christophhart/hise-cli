@@ -15,10 +15,6 @@ contextual help powered by shipped static datasets.
 before sending them to HISE. Catches typos, invalid parameters, and wrong
 chain placements instantly without a round-trip.
 
-**Guided wizards** — declarative multi-step workflows for complex operations
-(HISE setup, plugin export, broadcaster configuration). Same definition
-serves the TUI (interactive overlay) and CLI (single-shot `--answers` JSON).
-
 **Dual frontend** — humans use the TUI (Ink/React terminal UI with colors,
 tab completion, progress bars). LLMs and automation use the CLI (structured
 JSON output).
@@ -39,18 +35,8 @@ npx @hise/cli
 ## Usage
 
 ```bash
-# Auto-detect: connects to HISE if running, otherwise shows wizard menu
+# Launch REPL
 hise-cli
-
-# Lifecycle wizards (run without HISE)
-hise-cli setup              # install HISE from source
-hise-cli update             # update existing installation
-hise-cli migrate            # migrate ZIP install to git
-hise-cli nuke               # remove installation
-
-# CLI mode (for LLMs and automation)
-hise-cli wizard setup --answers '{"installPath": "/opt/hise", ...}'
-hise-cli wizard setup --schema   # dump parameter schema as JSON
 ```
 
 ## Architecture
@@ -69,7 +55,7 @@ a future web frontend.
 ## Requirements
 
 - Node.js 18+
-- Internet connection for setup metadata (GitHub APIs)
+- Internet connection for commands that depend on remote APIs
 
 ## Documentation
 
