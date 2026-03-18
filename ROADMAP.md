@@ -668,8 +668,9 @@ File: `src/engine/wizard/executor.ts`
 
 File: `src/tui/wizard/WizardOverlay.tsx`
 
-60×20 fixed-size overlay, copper `#e8a060` border. Step renderers for
-select, text, toggle, form, preview, pipeline. Keyboard map per
+Fixed-size overlay using size presets from `Overlay.tsx` (`OVERLAY_SIZES`),
+copper `#e8a060` border. Step renderers for select, text, toggle, form,
+preview, pipeline. Keyboard map per
 [docs/TUI_STYLE.md — Section 4.5](docs/TUI_STYLE.md#45-wizard-keyboard-map).
 
 ### 5.5 Pipeline executor

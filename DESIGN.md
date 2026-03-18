@@ -1540,8 +1540,9 @@ connection. This covers operations that must work before HISE exists (setup),
 on installations that may be broken (update, migrate), or that destroy
 installations (nuke). In standalone mode:
 
-- The wizard overlay renders at the same 60×20 fixed size, centered on a
-  plain `backgrounds.standard` fill (no REPL content behind it)
+- The wizard overlay renders using size presets from `Overlay.tsx`
+  (`OVERLAY_SIZES`), centered on a plain `backgrounds.standard` fill
+  (no REPL content behind it)
 - The entry point is `hise-cli wizard <id>` or a subcommand alias
   (e.g., `hise-cli setup` → `hise-cli wizard setup`)
 - Resolver functions receive no `HiseConnection` — they use local

@@ -14,10 +14,15 @@ import type { DOMElement } from "ink";
 import { useOnWheel } from "@ink-tools/ink-mouse";
 import type { ColorScheme } from "../theme.js";
 import type { LayoutScale } from "../layout.js";
+import type { OutputLine } from "./Output.js";
+import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import { parseMarkdown } from "../../engine/markdown/parser.js";
 import { renderMarkdownToLines } from "./MarkdownRenderer.js";
+import { darkenHex } from "../theme.js";
 
 // ── Types ───────────────────────────────────────────────────────────
+
+export type OverlaySize = "overlay_compact" | "overlay_standard";
 
 export interface OverlayProps {
 	/** Title shown in header row */
@@ -40,12 +45,16 @@ export interface OverlayProps {
 	scheme: ColorScheme;
 	/** Layout scale (for markdown rendering) */
 	layout?: LayoutScale;
+	/** Overlay size preset (defaults to overlay_standard) */
+	size?: OverlaySize;
 }
 
 // ── Constants ───────────────────────────────────────────────────────
 
-const OVERLAY_WIDTH = 60;
-const OVERLAY_HEIGHT = 20;
+export const OVERLAY_SIZES = {
+	overlay_compact: { width: 60, height: 20 },
+	overlay_standard: { width: 90, height: 35 },
+} as const;
 const H_PAD = 2; // horizontal inner padding (chars)
 const SCROLL_WHEEL_LINES = 3;
 
@@ -62,29 +71,32 @@ export const Overlay = React.memo(function Overlay({
 	rows: viewportRows,
 	scheme,
 	layout,
+	size,
 }: OverlayProps) {
 	const [scrollOffset, setScrollOffset] = useState(0);
 	const boxRef = useRef<DOMElement>(null);
 
-	// Convert markdown to lines or use legacy lines
-	const lines: string[] = React.useMemo(() => {
+	// Get dimensions from size preset (defaults to overlay_standard)
+	const { width: overlayWidth, height: overlayHeight } = OVERLAY_SIZES[size || "overlay_standard"];
+
+	// Convert markdown to OutputLine[] or convert legacy string[] to OutputLine[]
+	const lines: OutputLine[] = React.useMemo(() => {
 		if (content && layout) {
 			const ast = parseMarkdown(content);
-			const outputLines = renderMarkdownToLines(ast, scheme, layout, accent);
-			return outputLines.map(line => {
-				// Reconstruct full line with prefix if present
-				const prefix = line.prefix || "";
-				return prefix + line.text;
-			});
+			return renderMarkdownToLines(ast, scheme, layout, accent, "overlay");
 		}
-		return legacyLines || [];
+		// Convert legacy string[] to OutputLine[] format
+		if (legacyLines) {
+			return legacyLines.map(text => ({ text, color: scheme.foreground.default }));
+		}
+		return [];
 	}, [content, legacyLines, scheme, layout, accent]);
 
-	// Layout: pad-top(1) + header(1) + spacer(1) + body + spacer(1) + footer(1) + pad-bottom(1) = body + 6
-	const bodyHeight = OVERLAY_HEIGHT - 6;
+	// Layout: pad-top(1) + header(1) + spacer(1) + content-pad(1) + body + spacer(1) + footer(1) + pad-bottom(1) = body + 7
+	const bodyHeight = overlayHeight - 7;
 	const maxScroll = Math.max(0, lines.length - bodyHeight);
 	// Usable content width inside horizontal padding
-	const contentWidth = OVERLAY_WIDTH - H_PAD * 2;
+	const contentWidth = overlayWidth - H_PAD * 2;
 
 	const scrollBy = useCallback(
 		(delta: number) => {
@@ -124,10 +136,11 @@ export const Overlay = React.memo(function Overlay({
 	});
 
 	const bg = scheme.backgrounds.overlay;
+	const headerBg = darkenHex(bg, 0.85); // Slightly darker for header area (keep 85% brightness = 15% darker)
 	const topPad = viewportRows
-		? Math.max(0, Math.floor((viewportRows - OVERLAY_HEIGHT) / 2))
+		? Math.max(0, Math.floor((viewportRows - overlayHeight) / 2))
 		: 0;
-	const leftMargin = Math.max(0, Math.floor((columns - OVERLAY_WIDTH) / 2));
+	const leftMargin = Math.max(0, Math.floor((columns - overlayWidth) / 2));
 	const pad = " ".repeat(H_PAD);
 
 	// Header
@@ -141,7 +154,7 @@ export const Overlay = React.memo(function Overlay({
 	// Visible body
 	const visibleLines = lines.slice(scrollOffset, scrollOffset + bodyHeight);
 	while (visibleLines.length < bodyHeight) {
-		visibleLines.push("");
+		visibleLines.push({ text: "", color: scheme.foreground.default });
 	}
 
 	// Scroll indicators
@@ -153,17 +166,18 @@ export const Overlay = React.memo(function Overlay({
 	const footerGap = Math.max(1, contentWidth - footerText.length);
 
 	// Helper: render a row that is exactly OVERLAY_WIDTH with bg, no left bleed
-	const row = (content: React.ReactNode, key?: string | number) => (
+	const row = (content: React.ReactNode, key?: string | number, rowBg?: string) => (
 		<Text key={key}>
-			<Text backgroundColor={bg}>
+			<Text backgroundColor={rowBg || bg}>
 				{pad}{content}{pad}
 			</Text>
 		</Text>
 	);
 
-	const emptyRow = (key: string) => row(
+	const emptyRow = (key: string, rowBg?: string) => row(
 		<Text>{" ".repeat(contentWidth)}</Text>,
 		key,
+		rowBg,
 	);
 
 	return (
@@ -175,45 +189,98 @@ export const Overlay = React.memo(function Overlay({
 				: {}
 			)}
 		>
-			{/* Top padding row */}
-			{emptyRow("pad-top")}
+		{/* Top padding row */}
+		{emptyRow("pad-top", headerBg)}
 
-			{/* Header row */}
-			{row(
-				<>
-					<Text color={accent} bold>{truncTitle}</Text>
-					<Text color={scheme.foreground.muted}>
-						{" ".repeat(headerGap)}{escHint}
-					</Text>
-				</>,
-				"header",
-			)}
+		{/* Header row */}
+		{row(
+			<>
+				<Text color={accent} bold>{truncTitle}</Text>
+				<Text color={scheme.foreground.muted}>
+					{" ".repeat(headerGap)}{escHint}
+				</Text>
+			</>,
+			"header",
+			headerBg,
+		)}
 
-			{/* Spacer between header and body */}
-			{emptyRow("spacer-top")}
+		{/* Spacer between header and content */}
+		{emptyRow("spacer-top", headerBg)}
 
-			{/* Body lines */}
-			{visibleLines.map((line, i) => {
-				const truncLine = line.length > contentWidth - 2
-					? line.slice(0, contentWidth - 3) + "\u2026"
-					: line;
+		{/* Content padding (1 line) */}
+		{emptyRow("content-pad")}
 
-				let rightIndicator = " ";
-				if (i === 0 && showUpArrow) rightIndicator = "\u25b2";
-				else if (i === bodyHeight - 1 && showDownArrow) rightIndicator = "\u25bc";
+		{/* Body lines */}
+	{visibleLines.map((line, i) => {
+		// Calculate the full line text (including prefix) for length check
+		// For span-based lines (text="", spans=[...]), use span content length
+		const prefix = line.prefix || "";
+		const spanTextLength = (line.spans && line.spans.length > 0)
+			? line.spans.reduce((sum, s) => sum + s.text.length, 0)
+			: 0;
+		const fullText = prefix + line.text;
+		const textLength = Math.max(fullText.length, prefix.length + spanTextLength);
 
-				const innerPad = Math.max(0, contentWidth - truncLine.length - 1); // -1 for indicator
+			// Check if truncation is needed
+			const needsTruncate = textLength > contentWidth - 2;
+			
+			// Scroll indicators
+			let rightIndicator = " ";
+			if (i === 0 && showUpArrow) rightIndicator = "\u25b2";
+			else if (i === bodyHeight - 1 && showDownArrow) rightIndicator = "\u25bc";
 
+			// If truncated, fall back to flat rendering
+			if (needsTruncate) {
+				const truncLine = fullText.slice(0, contentWidth - 3) + "\u2026";
+				const innerPad = Math.max(0, contentWidth - truncLine.length - 1);
 				return row(
 					<>
-						<Text color={scheme.foreground.default}>{truncLine}</Text>
+						<Text color={line.color || scheme.foreground.default}>{truncLine}</Text>
 						<Text color={scheme.foreground.muted}>
 							{" ".repeat(innerPad)}{rightIndicator}
 						</Text>
 					</>,
 					i,
 				);
-			})}
+			}
+
+			// Span-aware rendering when not truncated
+			const innerPad = Math.max(0, contentWidth - textLength - 1); // -1 for indicator
+
+			if (line.spans && line.spans.length > 0) {
+				// Render with spans
+				return row(
+					<>
+						<Text bold={line.bold}>
+							{prefix && <Text color={line.prefixColor || scheme.foreground.muted}>{prefix}</Text>}
+							{line.spans.map((span, si) => (
+								<Text key={si} color={span.color || TOKEN_COLORS[span.token] || scheme.foreground.default}>
+									{span.text}
+								</Text>
+							))}
+						</Text>
+						<Text color={scheme.foreground.muted}>
+							{" ".repeat(innerPad)}{rightIndicator}
+						</Text>
+					</>,
+					i,
+				);
+			}
+
+			// Flat rendering (no spans)
+			return row(
+				<>
+					{prefix && <Text color={line.prefixColor || scheme.foreground.muted}>{prefix}</Text>}
+					<Text color={line.color || scheme.foreground.default} bold={line.bold}>
+						{line.text}
+					</Text>
+					<Text color={scheme.foreground.muted}>
+						{" ".repeat(innerPad)}{rightIndicator}
+					</Text>
+				</>,
+				i,
+			);
+		})}
 
 			{/* Spacer between body and footer */}
 			{emptyRow("spacer-bottom")}

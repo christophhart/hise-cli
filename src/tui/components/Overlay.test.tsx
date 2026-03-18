@@ -6,6 +6,7 @@ import { render } from "ink-testing-library";
 import { MouseProvider } from "@ink-tools/ink-mouse";
 import { Overlay } from "./Overlay.js";
 import { defaultScheme } from "../theme.js";
+import { STANDARD } from "../layout.js";
 
 const scheme = defaultScheme;
 
@@ -109,5 +110,76 @@ describe("Overlay", () => {
 		));
 		const frame = lastFrame()!;
 		expect(frame).toContain("\u2026");
+	});
+
+	it("renders with overlay_standard size by default", () => {
+		const { lastFrame } = render(wrap(
+			<Overlay
+				title="Standard Size"
+				accent="#ffffff"
+				lines={["Test content"]}
+				onClose={() => {}}
+				columns={100}
+				scheme={scheme}
+			/>,
+		));
+		const frame = lastFrame()!;
+		// Should render successfully with default size (90x35)
+		expect(frame).toContain("Standard Size");
+		expect(frame).toContain("Test content");
+	});
+
+	it("renders with overlay_compact size when specified", () => {
+		const { lastFrame } = render(wrap(
+			<Overlay
+				title="Compact Size"
+				accent="#ffffff"
+				lines={["Test content"]}
+				onClose={() => {}}
+				columns={80}
+				scheme={scheme}
+				size="overlay_compact"
+			/>,
+		));
+		const frame = lastFrame()!;
+		// Should render successfully with compact size (60x20)
+		expect(frame).toContain("Compact Size");
+		expect(frame).toContain("Test content");
+	});
+
+	it("renders markdown content with proper formatting", () => {
+		const markdownContent = "This is **bold** and `code` text.";
+		const { lastFrame } = render(wrap(
+			<Overlay
+				title="Markdown Test"
+				accent="#ffffff"
+				content={markdownContent}
+				onClose={() => {}}
+				columns={80}
+				scheme={scheme}
+				layout={STANDARD}
+			/>,
+		));
+		const frame = lastFrame()!;
+		// The content should be present (markdown is rendered)
+		expect(frame).toContain("bold");
+		expect(frame).toContain("code");
+		expect(frame).toContain("text");
+	});
+
+	it("handles legacy string[] lines", () => {
+		const { lastFrame } = render(wrap(
+			<Overlay
+				title="Legacy"
+				accent="#ffffff"
+				lines={["String line 1", "String line 2"]}
+				onClose={() => {}}
+				columns={80}
+				scheme={scheme}
+			/>,
+		));
+		const frame = lastFrame()!;
+		expect(frame).toContain("String line 1");
+		expect(frame).toContain("String line 2");
 	});
 });

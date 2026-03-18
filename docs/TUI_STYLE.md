@@ -610,11 +610,14 @@ Centered floating panel for multi-step guided workflows. Triggered by `/wizard <
 or `wizard <id>` in a mode that registers the wizard. See [DESIGN.md](../DESIGN.md)
 "Wizard Framework" for the engine-layer architecture and type definitions.
 
-**Dimensions**: fixed 60 chars wide × 20 lines tall. Centered horizontally and
-vertically over the REPL content using absolute positioning. The REPL remains
-visible behind the overlay, frozen and dimmed via the overlay dimming system
-(see Section 1.9). All underlying UI components re-render at `DIM_FACTOR`
-brightness inside a `ThemeProvider` with darkened colors.
+**Dimensions**: Two size presets defined in `src/tui/components/Overlay.tsx`
+(`OVERLAY_SIZES`): `overlay_compact` (60×20) and `overlay_standard` (90×35).
+Wizard overlays typically use `overlay_compact` for simple prompts; help overlays
+use `overlay_standard` for detailed content. Centered horizontally and vertically
+over the REPL using absolute positioning. The REPL remains visible behind the
+overlay, frozen and dimmed via the overlay dimming system (see Section 1.9).
+All underlying UI components re-render at `DIM_FACTOR` brightness inside a
+`ThemeProvider` with darkened colors.
 
 **Background**: `backgrounds.overlay` (at full brightness — only the backdrop
 dims). No border — solid filled rectangle matching the help overlay style.
@@ -788,7 +791,8 @@ Wizards with `standalone: true` (setup, update, migrate, nuke) run without a
 REPL session. The overlay renders identically but on a bare background:
 
 - Terminal filled with `backgrounds.standard`
-- Wizard panel centered at the same 60×20 fixed size
+- Wizard panel centered using overlay size preset (see `OVERLAY_SIZES` in
+  `src/tui/components/Overlay.tsx`)
 - Top-left corner of terminal: `HISE` in `SIGNAL_COLOUR` (`#90FFB1`), bold
 - No top bar, no bottom bar, no sidebar — just the branded background and
   the wizard panel
