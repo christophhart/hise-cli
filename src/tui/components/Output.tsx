@@ -1,104 +1,72 @@
-// ── Output — scrollable output with component-based result blocks ────
+// ── Output — virtualized viewport slicer for pre-rendered blocks ────
+//
+// Renders command results as pre-rendered ANSI string lines. On each
+// scroll tick, only the visible line slice is joined and rendered as a
+// single <Text> element. No ControlledScrollView, no Yoga layout of
+// off-screen content. The ScrollBar component sits alongside.
+//
+// Performance: scroll renders cost <1ms React + minimal Ink overhead
+// because the component tree is always just one Box + one Text + one
+// ScrollBar, regardless of content size.
 
-// Renders command results as React component blocks inside ink-scroll-view.
-// Each result (text, error, code, table, markdown) is a self-contained
-// component. Scrolling is handled by ControlledScrollView. A vertical
-// scrollbar (via @byteland/ink-scroll-bar) is always rendered on the
-// right edge; its thumb is hidden when content fits the viewport.
-
-import React, { useEffect, useState } from "react";
-import { Box } from "ink";
-import { ControlledScrollView } from "ink-scroll-view";
-import type { ControlledScrollViewRef } from "ink-scroll-view";
+import React from "react";
+import { Box, Text } from "ink";
 import { ScrollBar } from "@byteland/ink-scroll-bar";
-import type { CommandResult } from "../../engine/result.js";
-import type { ColorScheme } from "../theme.js";
 import { useTheme } from "../theme-context.js";
 import { LandingLogo } from "./LandingLogo.js";
-import { Markdown } from "./Markdown.js";
-import { ErrorBlock } from "./ErrorBlock.js";
+import type { PrerenderedBlock } from "./prerender.js";
 
 // ── Constants ───────────────────────────────────────────────────────
 
 export const MAX_HISTORY_BLOCKS = 500;
 const SCROLLBAR_WIDTH = 1;
+/** Empty line between blocks (spacing margin) */
+const BLOCK_GAP = 1;
 
-// ── Result → markdown conversion helpers ────────────────────────────
+// ── Line buffer helpers ─────────────────────────────────────────────
 
-/** Convert a table (headers + rows) to a markdown table string. */
-function tableToMarkdown(headers: string[], rows: string[][]): string {
-	const headerRow = "| " + headers.join(" | ") + " |";
-	const divider = "| " + headers.map(h => "-".repeat(Math.max(h.length, 3))).join(" | ") + " |";
-	const dataRows = rows.map(row => "| " + row.join(" | ") + " |");
-	return [headerRow, divider, ...dataRows].join("\n");
-}
-
-/** Wrap code content in a fenced code block. */
-function codeToMarkdown(content: string, language?: string): string {
-	const lang = language || "hisescript";
-	return "```" + lang + "\n" + content + "\n```";
-}
-
-// ── ResultBlock — renders a single CommandResult ────────────────────
-
-export interface ResultBlockProps {
-	result: CommandResult;
-}
-
-export const ResultBlock = React.memo(function ResultBlock({ result }: ResultBlockProps) {
-	const { scheme } = useTheme();
-
-	switch (result.type) {
-		case "empty":
-			return null;
-		case "text":
-			return (
-				<Markdown scheme={scheme} accent={result.accent} context="output">
-					{result.content}
-				</Markdown>
-			);
-		case "error":
-			return <ErrorBlock message={result.message} detail={result.detail} />;
-		case "code":
-			return (
-				<Markdown scheme={scheme} accent={result.accent} context="output">
-					{codeToMarkdown(result.content, result.language)}
-				</Markdown>
-			);
-		case "table":
-			return (
-				<Markdown scheme={scheme} accent={result.accent} context="output">
-					{tableToMarkdown(result.headers, result.rows)}
-				</Markdown>
-			);
-		case "markdown":
-			return (
-				<Markdown scheme={scheme} accent={result.accent} context="output">
-					{result.content}
-				</Markdown>
-			);
-		case "overlay":
-			// Handled by App — never rendered in Output
-			return null;
-		default:
-			return null;
+/** Flatten blocks into a single line array with gap lines between blocks. */
+export function flattenBlocks(blocks: PrerenderedBlock[]): string[] {
+	if (blocks.length === 0) return [];
+	const result: string[] = [];
+	for (let i = 0; i < blocks.length; i++) {
+		if (i > 0) {
+			// Gap between blocks
+			for (let g = 0; g < BLOCK_GAP; g++) result.push("");
+		}
+		for (const line of blocks[i]!.lines) {
+			result.push(line);
+		}
 	}
-});
+	return result;
+}
+
+/** Compute total line count for blocks with gaps. */
+export function totalLineCount(blocks: PrerenderedBlock[]): number {
+	if (blocks.length === 0) return 0;
+	let count = 0;
+	for (const block of blocks) count += block.height;
+	// Add gaps between blocks
+	count += (blocks.length - 1) * BLOCK_GAP;
+	return count;
+}
 
 // ── Output component ────────────────────────────────────────────────
 
 export interface OutputProps {
-	/** Array of React nodes to render in the scrollable area */
-	blocks: React.ReactNode[];
+	/** Pre-rendered blocks */
+	blocks: PrerenderedBlock[];
+	/** Flattened line buffer (computed by parent, avoids re-flattening on scroll) */
+	allLines: string[];
+	/** Total line count */
+	totalLines: number;
 	/** Viewport height in terminal rows */
 	viewportHeight: number;
 	/** Total viewport width */
 	columns: number;
 	/** Show the landing logo when no blocks */
 	animate?: boolean;
-	/** Ref to expose scroll control to parent */
-	scrollRef?: React.RefObject<ControlledScrollViewRef | null>;
-	/** Controlled scroll offset (managed by parent) */
+	/** Controlled scroll offset (line index) */
 	scrollOffset: number;
 	/** Hide the scrollbar (e.g. when completion popup overlays it) */
 	hideScrollbar?: boolean;
@@ -106,22 +74,15 @@ export interface OutputProps {
 
 export const Output = React.memo(function Output({
 	blocks,
+	allLines,
+	totalLines,
 	viewportHeight,
 	columns,
 	animate,
-	scrollRef,
 	scrollOffset,
 	hideScrollbar,
 }: OutputProps) {
 	const { scheme, layout } = useTheme();
-
-	// Track content height for the scrollbar (read from ControlledScrollView
-	// after each render so the scrollbar thumb size stays in sync).
-	const [contentHeight, setContentHeight] = useState(viewportHeight);
-	useEffect(() => {
-		const h = scrollRef?.current?.getContentHeight() ?? viewportHeight;
-		setContentHeight(h);
-	});
 
 	if (blocks.length === 0) {
 		return (
@@ -134,30 +95,22 @@ export const Output = React.memo(function Output({
 		);
 	}
 
-	const pad = layout.horizontalPad;
 	const contentCols = columns - SCROLLBAR_WIDTH;
+	const pad = layout.horizontalPad;
+
+	// Slice visible lines from the flat buffer
+	const visibleSlice = allLines.slice(scrollOffset, scrollOffset + viewportHeight);
+	// Pad with empty lines if content is shorter than viewport
+	while (visibleSlice.length < viewportHeight) {
+		visibleSlice.push("");
+	}
+	const visibleText = visibleSlice.join("\n");
 
 	return (
 		<Box flexDirection="row" width={columns} height={viewportHeight} backgroundColor={scheme.backgrounds.standard}>
-			<ControlledScrollView
-				ref={scrollRef}
-				width={contentCols}
-				height={viewportHeight}
-				scrollOffset={scrollOffset}
-			>
-				<Box
-					flexDirection="column"
-					paddingX={pad}
-					width={contentCols}
-					backgroundColor={scheme.backgrounds.standard}
-				>
-					{blocks.map((block, i) => (
-						<Box key={i} flexDirection="column" marginBottom={1}>
-							{block}
-						</Box>
-					))}
-				</Box>
-			</ControlledScrollView>
+			<Box width={contentCols} height={viewportHeight} paddingX={pad}>
+				<Text>{visibleText}</Text>
+			</Box>
 			{hideScrollbar ? (
 				<Box width={SCROLLBAR_WIDTH} />
 			) : (
@@ -165,7 +118,7 @@ export const Output = React.memo(function Output({
 					placement="inset"
 					thumbChar={"\u2588"}
 					trackChar={"\u2502"}
-					contentHeight={contentHeight}
+					contentHeight={totalLines}
 					viewportHeight={viewportHeight}
 					scrollOffset={scrollOffset}
 					color={scheme.foreground.muted}

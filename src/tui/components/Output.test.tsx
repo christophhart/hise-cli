@@ -1,14 +1,16 @@
 // ── Output component tests ──────────────────────────────────────────
 
 import React from "react";
-import { Text } from "ink";
 import { describe, expect, it } from "vitest";
 import { render } from "ink-testing-library";
 import {
 	Output,
-	ResultBlock,
 	MAX_HISTORY_BLOCKS,
+	flattenBlocks,
+	totalLineCount,
 } from "./Output.js";
+import type { PrerenderedBlock } from "./prerender.js";
+import { renderResult, renderEcho, renderError } from "./prerender.js";
 import { defaultScheme } from "../theme.js";
 import { ThemeProvider } from "../theme-context.js";
 import { STANDARD } from "../layout.js";
@@ -17,70 +19,95 @@ const w = (el: React.ReactElement) => (
 	<ThemeProvider scheme={defaultScheme} layout={STANDARD}>{el}</ThemeProvider>
 );
 
-// ── ResultBlock tests ───────────────────────────────────────────────
+// ── Pre-render tests ────────────────────────────────────────────────
 
-describe("ResultBlock", () => {
+describe("renderResult", () => {
 	it("renders text result", () => {
-		const instance = render(w(
-			<ResultBlock result={{ type: "text", content: "hello world" }} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("hello world");
-		instance.unmount();
+		const block = renderResult({ type: "text", content: "hello world" }, defaultScheme, 80);
+		expect(block).not.toBeNull();
+		expect(block!.lines.join("\n")).toContain("hello world");
 	});
 
 	it("renders error result with cross prefix", () => {
-		const instance = render(w(
-			<ResultBlock result={{ type: "error", message: "bad input" }} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("bad input");
-		expect(frame).toContain("\u2717"); // ✗
-		instance.unmount();
+		const block = renderError("bad input", undefined, defaultScheme.foreground.muted);
+		expect(block.lines.join("\n")).toContain("bad input");
+		expect(block.lines.join("\n")).toContain("\u2717"); // ✗
 	});
 
 	it("renders error with detail", () => {
-		const instance = render(w(
-			<ResultBlock result={{ type: "error", message: "bad", detail: "extra info" }} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("bad");
-		expect(frame).toContain("extra info");
-		instance.unmount();
+		const block = renderError("bad", "extra info", defaultScheme.foreground.muted);
+		expect(block.lines.join("\n")).toContain("bad");
+		expect(block.lines.join("\n")).toContain("extra info");
 	});
 
 	it("returns null for empty result", () => {
-		const instance = render(w(
-			<ResultBlock result={{ type: "empty" }} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame.trim()).toBe("");
-		instance.unmount();
+		const block = renderResult({ type: "empty" }, defaultScheme, 80);
+		expect(block).toBeNull();
 	});
 
 	it("renders table result", () => {
-		const instance = render(w(
-			<ResultBlock result={{
-				type: "table",
-				headers: ["Name", "Type"],
-				rows: [["AHDSR", "Modulator"]],
-			}} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("Name");
-		expect(frame).toContain("Type");
-		expect(frame).toContain("AHDSR");
-		instance.unmount();
+		const block = renderResult({
+			type: "table",
+			headers: ["Name", "Type"],
+			rows: [["AHDSR", "Modulator"]],
+		}, defaultScheme, 80);
+		expect(block).not.toBeNull();
+		const text = block!.lines.join("\n");
+		expect(text).toContain("Name");
+		expect(text).toContain("Type");
+		expect(text).toContain("AHDSR");
 	});
 
 	it("renders code result as fenced block", () => {
-		const instance = render(w(
-			<ResultBlock result={{ type: "code", content: "var x = 5;" }} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("x");
-		expect(frame).toContain("5");
-		instance.unmount();
+		const block = renderResult({ type: "code", content: "var x = 5;" }, defaultScheme, 80);
+		expect(block).not.toBeNull();
+		const text = block!.lines.join("\n");
+		expect(text).toContain("x");
+		expect(text).toContain("5");
+	});
+});
+
+describe("renderEcho", () => {
+	it("renders echo with border and prompt", () => {
+		const block = renderEcho("test command", "#88bbcc", defaultScheme.backgrounds.darker, 80);
+		expect(block.lines.length).toBe(3); // top border, content, bottom border
+		const text = block.lines.join("\n");
+		expect(text).toContain("> ");
+		expect(text).toContain("test command");
+		expect(text).toContain("\u258E"); // ▎
+	});
+});
+
+// ── Line buffer helper tests ────────────────────────────────────────
+
+describe("flattenBlocks", () => {
+	it("returns empty for no blocks", () => {
+		expect(flattenBlocks([])).toEqual([]);
+	});
+
+	it("flattens single block", () => {
+		const block: PrerenderedBlock = { lines: ["a", "b"], height: 2 };
+		expect(flattenBlocks([block])).toEqual(["a", "b"]);
+	});
+
+	it("adds gap lines between blocks", () => {
+		const b1: PrerenderedBlock = { lines: ["a"], height: 1 };
+		const b2: PrerenderedBlock = { lines: ["b"], height: 1 };
+		const result = flattenBlocks([b1, b2]);
+		expect(result).toEqual(["a", "", "b"]); // 1 gap line
+	});
+});
+
+describe("totalLineCount", () => {
+	it("returns 0 for empty", () => {
+		expect(totalLineCount([])).toBe(0);
+	});
+
+	it("counts lines with gaps", () => {
+		const b1: PrerenderedBlock = { lines: ["a", "b"], height: 2 };
+		const b2: PrerenderedBlock = { lines: ["c"], height: 1 };
+		// 2 + 1 gap + 1 = 4
+		expect(totalLineCount([b1, b2])).toBe(4);
 	});
 });
 
@@ -89,20 +116,28 @@ describe("ResultBlock", () => {
 describe("Output component", () => {
 	it("shows landing logo when no blocks", () => {
 		const instance = render(w(
-			<Output blocks={[]} scrollOffset={0} viewportHeight={10} columns={80} />,
+			<Output blocks={[]} allLines={[]} totalLines={0} scrollOffset={0} viewportHeight={10} columns={80} />,
 		));
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("/help");
 		instance.unmount();
 	});
 
-	it("renders blocks", () => {
-		const blocks = [
-			<Text key="a">first block</Text>,
-			<Text key="b">second block</Text>,
+	it("renders blocks as text", () => {
+		const blocks: PrerenderedBlock[] = [
+			{ lines: ["first block"], height: 1 },
+			{ lines: ["second block"], height: 1 },
 		];
+		const allLines = flattenBlocks(blocks);
 		const instance = render(w(
-			<Output blocks={blocks} scrollOffset={0} viewportHeight={10} columns={80} />,
+			<Output
+				blocks={blocks}
+				allLines={allLines}
+				totalLines={totalLineCount(blocks)}
+				scrollOffset={0}
+				viewportHeight={10}
+				columns={80}
+			/>,
 		));
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("first block");

@@ -2,6 +2,10 @@
 
 // Renders markdown to ANSI-styled terminal output using marked + marked-terminal.
 // Builds rendering options from ColorScheme to match the TUI theme.
+//
+// Two APIs:
+//   renderMarkdown()  — pure function, returns ANSI string (for pre-rendering)
+//   <Markdown>        — React component wrapper (used by Overlay)
 
 import React from "react";
 import type { TerminalRendererOptions } from "marked-terminal";
@@ -21,16 +25,6 @@ import { markedTerminal } from "marked-terminal";
 // module (singleton) and register our custom language on it.
 import hljs from "highlight.js";
 hljs.registerLanguage("hisescript", hisescriptLanguage);
-
-interface MarkdownProps {
-	children: string;
-	scheme: ColorScheme;
-	accent?: string;
-	/** Content width for reflowing (defaults to 80) */
-	width?: number;
-	/** Context affects background color for code blocks */
-	context?: "overlay" | "output";
-}
 
 // ── cli-highlight theme mapped from our TOKEN_COLORS ────────────────
 
@@ -106,72 +100,98 @@ function buildOptions(
 	};
 }
 
-export function Markdown({ children, scheme, accent, width, context }: MarkdownProps) {
-	const rendered = React.useMemo(() => {
-		const options = buildOptions(scheme, accent, width);
-		
-		// Code block background color (15% darker than base)
-		const baseBg = context === "overlay" 
-			? scheme.backgrounds.overlay 
-			: scheme.backgrounds.standard;
-		const codeBg = darkenHex(baseBg, 0.85);
-		const codeBgChalk = chalk.bgHex(codeBg);
-		const codeIndent = "  "; // indent for code text within the bg rectangle
-		
-		const processed = children;
-		
-		// Create a fresh marked instance to avoid polluting global state
-		const localMarked = new Marked();
-		
-		// Configure with terminal renderer extension
-		localMarked.use(markedTerminal(options, { theme: highlightTheme } as any) as any);
-		
-		// Override the code renderer to add background color
-		// Background rectangle spans the full content width (edge to edge)
-		const codeBlockWidth = width || 80;
-		
-		localMarked.use({
-			renderer: {
-				code({ text, lang }: { text: string; lang?: string }) {
-					// Syntax highlight the code
-					let highlighted: string;
-					try {
-						highlighted = highlightCli(text, {
-							language: lang || '',
-							theme: highlightTheme,
-						});
-					} catch {
-						// Fallback: just use bright foreground
-						highlighted = chalk.hex(scheme.foreground.bright)(text);
-					}
-					
-					// Pad each line to full width so background fills a rectangle
-					// Code text is indented within the bg rectangle
-					const lines = highlighted.split('\n');
-					const withBg = lines.map(line => {
-						// Strip ANSI codes to measure visible length
-						const visible = line.replace(/\x1b\[[0-9;]*m/g, '');
-						const padding = Math.max(0, codeBlockWidth - codeIndent.length - visible.length);
-						return codeBgChalk(codeIndent + line + ' '.repeat(padding));
-					}).join('\n');
-					
-					// Blank padding lines with background (full-width rectangle)
-					const padLine = codeBgChalk(' '.repeat(codeBlockWidth));
-					return '\n' + padLine + '\n' + withBg + '\n' + padLine + '\n\n';
-				}
-			}
-		});
-		
-		// Parse markdown to ANSI-styled string
-		let result = localMarked.parse(processed, { async: false }) as string;
-		
-		// Workaround for marked-terminal bug #371: bold/italic not applied in list items.
-		// Post-process any remaining **text** and *text* markers into ANSI bold/italic.
-		result = result.replace(/\*\*(.+?)\*\*/g, (_, text) => chalk.bold(text));
-		result = result.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, (_, text) => chalk.italic(text));
-		
-		return result;
-	}, [children, scheme, accent, width, context]);
+// ── Pure rendering function ─────────────────────────────────────────
+
+export interface RenderMarkdownOptions {
+	scheme: ColorScheme;
+	accent?: string;
+	width?: number;
+	context?: "overlay" | "output";
+}
+
+/** Render markdown to an ANSI-styled string. Pure function, no React. */
+export function renderMarkdown(source: string, opts: RenderMarkdownOptions): string {
+	const { scheme, accent, width, context } = opts;
+	const options = buildOptions(scheme, accent, width);
 	
-	return <Text>{rendered.trim()}</Text>;
+	// Code block background color (15% darker than base)
+	const baseBg = context === "overlay" 
+		? scheme.backgrounds.overlay 
+		: scheme.backgrounds.standard;
+	const codeBg = darkenHex(baseBg, 0.85);
+	const codeBgChalk = chalk.bgHex(codeBg);
+	const codeIndent = "  "; // indent for code text within the bg rectangle
+	
+	// Create a fresh marked instance to avoid polluting global state
+	const localMarked = new Marked();
+	
+	// Configure with terminal renderer extension
+	localMarked.use(markedTerminal(options, { theme: highlightTheme } as any) as any);
+	
+	// Override the code renderer to add background color
+	// Background rectangle spans the full content width (edge to edge)
+	const codeBlockWidth = width || 80;
+	
+	localMarked.use({
+		renderer: {
+			code({ text, lang }: { text: string; lang?: string }) {
+				// Syntax highlight the code
+				let highlighted: string;
+				try {
+					highlighted = highlightCli(text, {
+						language: lang || '',
+						theme: highlightTheme,
+					});
+				} catch {
+					// Fallback: just use bright foreground
+					highlighted = chalk.hex(scheme.foreground.bright)(text);
+				}
+				
+				// Pad each line to full width so background fills a rectangle
+				// Code text is indented within the bg rectangle
+				const lines = highlighted.split('\n');
+				const withBg = lines.map(line => {
+					// Strip ANSI codes to measure visible length
+					const visible = line.replace(/\x1b\[[0-9;]*m/g, '');
+					const padding = Math.max(0, codeBlockWidth - codeIndent.length - visible.length);
+					return codeBgChalk(codeIndent + line + ' '.repeat(padding));
+				}).join('\n');
+				
+				// Blank padding lines with background (full-width rectangle)
+				const padLine = codeBgChalk(' '.repeat(codeBlockWidth));
+				return '\n' + padLine + '\n' + withBg + '\n' + padLine + '\n\n';
+			}
+		}
+	});
+	
+	// Parse markdown to ANSI-styled string
+	let result = localMarked.parse(source, { async: false }) as string;
+	
+	// Workaround for marked-terminal bug #371: bold/italic not applied in list items.
+	// Post-process any remaining **text** and *text* markers into ANSI bold/italic.
+	result = result.replace(/\*\*(.+?)\*\*/g, (_, text) => chalk.bold(text));
+	result = result.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, (_, text) => chalk.italic(text));
+	
+	return result.trim();
+}
+
+// ── React component (used by Overlay) ───────────────────────────────
+
+interface MarkdownProps {
+	children: string;
+	scheme: ColorScheme;
+	accent?: string;
+	/** Content width for reflowing (defaults to 80) */
+	width?: number;
+	/** Context affects background color for code blocks */
+	context?: "overlay" | "output";
+}
+
+export function Markdown({ children, scheme, accent, width, context }: MarkdownProps) {
+	const rendered = React.useMemo(
+		() => renderMarkdown(children, { scheme, accent, width, context }),
+		[children, scheme, accent, width, context],
+	);
+	
+	return <Text>{rendered}</Text>;
 }
