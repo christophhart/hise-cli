@@ -10,10 +10,17 @@ import { highlight as highlightCli } from "cli-highlight";
 import type { ColorScheme } from "../theme.js";
 import { darkenHex, lerpHex } from "../theme.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
+import { hisescriptLanguage } from "../../engine/highlight/hisescript-hljs.js";
 
 import { Marked } from "marked";
 import { Text } from "ink";
 import { markedTerminal } from "marked-terminal";
+
+// Register HiseScript with highlight.js (via cli-highlight's shared instance).
+// cli-highlight uses require("highlight.js") internally - we import the same
+// module (singleton) and register our custom language on it.
+import hljs from "highlight.js";
+hljs.registerLanguage("hisescript", hisescriptLanguage);
 
 interface MarkdownProps {
 	children: string;
@@ -111,8 +118,7 @@ export function Markdown({ children, scheme, accent, width, context }: MarkdownP
 		const codeBgChalk = chalk.bgHex(codeBg);
 		const codeIndent = "  "; // indent for code text within the bg rectangle
 		
-		// Map hisescript language tags to javascript for cli-highlight
-		const processed = children.replace(/```hisescript/g, '```javascript');
+		const processed = children;
 		
 		// Create a fresh marked instance to avoid polluting global state
 		const localMarked = new Marked();
