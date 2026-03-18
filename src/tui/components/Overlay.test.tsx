@@ -152,13 +152,12 @@ describe("Overlay", () => {
 		const { lastFrame } = render(wrap(
 			<Overlay
 				title="Markdown Test"
-				accent="#ffffff"
-				content={markdownContent}
-				onClose={() => {}}
-				columns={80}
-				scheme={scheme}
-				layout={STANDARD}
-			/>,
+			accent="#ffffff"
+			content={markdownContent}
+			onClose={() => {}}
+			columns={80}
+			scheme={scheme}
+		/>,
 		));
 		const frame = lastFrame()!;
 		// The content should be present (markdown is rendered)

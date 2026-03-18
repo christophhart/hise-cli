@@ -115,10 +115,10 @@ export function resultToLines(
 			return formatTableShared(result.headers, result.rows, scheme, layout.density);
 		case "tree":
 			return formatTree(result.root, scheme);
-		case "markdown": {
-			const ast = parseMarkdown(result.content);
-			return renderMarkdownToLines(ast, scheme, layout, result.accent);
-		}
+	case "markdown": {
+		const ast = parseMarkdown(result.content);
+		return renderMarkdownToLines(ast, scheme, layout, result.accent);
+	}
 		case "overlay":
 			// Overlay results are handled by App (shows Overlay component).
 			// If we get here, fall through to empty for non-TUI contexts.

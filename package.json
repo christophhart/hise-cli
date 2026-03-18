@@ -44,6 +44,7 @@
     "@lezer/common": "^1.5.1",
     "@lezer/highlight": "^1.2.3",
     "@lezer/lr": "^1.4.8",
+    "@types/marked-terminal": "^6.1.1",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/terminal-link": "^1.1.0",
@@ -59,7 +60,7 @@
     "ink-spinner": "^5.0.0",
     "ink-testing-library": "^4.0.0",
     "ink-text-input": "^6.0.0",
-    "marked": "^17.0.4",
+    "marked": "15.0.0",
     "node-pty": "^1.1.0",
     "picomatch": "^4.0.3",
     "react": "^19.0.0",
@@ -69,6 +70,9 @@
   },
   "dependencies": {
     "@ink-tools/ink-mouse": "^2.1.0",
+    "ink-markdown": "1.0.4",
+    "ink-scroll-view": "^0.3.6",
+    "marked-terminal": "7.3.0",
     "terminal-link": "^5.0.0"
   }
 }

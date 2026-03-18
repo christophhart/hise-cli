@@ -48,7 +48,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#272822",
 			sidebar: "#22231f",
 			raised: "#32342d",
-			overlay: "#3e3f38",
+			overlay: "#302f2a",
 		},
 		foreground: {
 			default: "#a0a09a",
@@ -63,7 +63,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#282a36",
 			sidebar: "#242531",
 			raised: "#343746",
-			overlay: "#414558",
+			overlay: "#30323e",
 		},
 		foreground: {
 			default: "#a0a4b8",
@@ -78,7 +78,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#2e3440",
 			sidebar: "#282e39",
 			raised: "#3b4252",
-			overlay: "#4c566a",
+			overlay: "#353b48",
 		},
 		foreground: {
 			default: "#9aa3b6",
@@ -93,7 +93,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#1a1b26",
 			sidebar: "#181922",
 			raised: "#24283b",
-			overlay: "#33375a",
+			overlay: "#21222e",
 		},
 		foreground: {
 			default: "#9098b8",
@@ -108,7 +108,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#282c34",
 			sidebar: "#23272d",
 			raised: "#323842",
-			overlay: "#3e4452",
+			overlay: "#30343c",
 		},
 		foreground: {
 			default: "#9aa2b1",
@@ -123,7 +123,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#1e1e2e",
 			sidebar: "#1b1b29",
 			raised: "#313244",
-			overlay: "#45475a",
+			overlay: "#262636",
 		},
 		foreground: {
 			default: "#9399b2",
@@ -139,7 +139,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#eff1f5",
 			sidebar: "#e8eaef",
 			raised: "#ccd0da",
-			overlay: "#bcc0cc",
+			overlay: "#e2e4ea",
 		},
 		foreground: {
 			default: "#5c5f77",
@@ -155,7 +155,7 @@ export const schemes: Record<string, ColorScheme> = {
 			standard: "#fdf6e3",
 			sidebar: "#f5efdd",
 			raised: "#e8e1ce",
-			overlay: "#d6cfbc",
+			overlay: "#f0e9d8",
 		},
 		foreground: {
 			default: "#586e75",

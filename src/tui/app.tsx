@@ -1152,15 +1152,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							<Overlay
 								title={overlayData.title}
 								accent={modeAccent}
-								content={overlayData.content}
-								lines={overlayData.lines}
-								footer={overlayData.footer}
-								onClose={handleOverlayClose}
-								columns={columns}
-								rows={rows}
-								scheme={scheme}
-								layout={layout}
-							/>
+							content={overlayData.content}
+							lines={overlayData.lines}
+							footer={overlayData.footer}
+							onClose={handleOverlayClose}
+							columns={columns}
+							rows={rows}
+							scheme={scheme}
+						/>
 						</>
 					);
 				})()}
