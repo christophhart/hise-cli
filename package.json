@@ -69,10 +69,9 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
+    "@byteland/ink-scroll-bar": "^1.0.0",
     "@ink-tools/ink-mouse": "^2.1.0",
-    "ink-markdown": "1.0.4",
     "ink-scroll-view": "^0.3.6",
-    "marked-terminal": "7.3.0",
-    "terminal-link": "^5.0.0"
+    "marked-terminal": "7.3.0"
   }
 }

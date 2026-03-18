@@ -8,12 +8,13 @@
 // Escape dismisses, Up/Down/PgUp/PgDn/mouse wheel scrolls body content.
 // Captures all input while visible — parent must gate input.
 
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useInput } from "ink";
 import type { DOMElement } from "ink";
 import { useOnWheel } from "@ink-tools/ink-mouse";
 import { ControlledScrollView } from "ink-scroll-view";
 import type { ControlledScrollViewRef } from "ink-scroll-view";
+import { ScrollBar } from "@byteland/ink-scroll-bar";
 import type { ColorScheme } from "../theme.js";
 import { Markdown } from "./Markdown.js";
 import { darkenHex } from "../theme.js";
@@ -72,14 +73,22 @@ export const Overlay = React.memo(function Overlay({
 	const boxRef = useRef<DOMElement>(null);
 	const scrollRef = useRef<ControlledScrollViewRef>(null);
 	const [scrollOffset, setScrollOffset] = useState(0);
+	const [contentHeight, setContentHeight] = useState(0);
+
+	// Track content height for the scrollbar
+	useEffect(() => {
+		setContentHeight(scrollRef.current?.getContentHeight() ?? 0);
+	});
 
 	// Get dimensions from size preset (defaults to overlay_standard)
 	const { width: overlayWidth, height: overlayHeight } = OVERLAY_SIZES[size || "overlay_standard"];
 
 	// Layout: pad-top(1) + header(1) + spacer(1) + content-pad(1) + body + spacer(1) + footer(1) + pad-bottom(1) = body + 7
 	const bodyHeight = overlayHeight - 7;
-	// Usable content width inside horizontal padding
+	// Usable content width inside horizontal padding (used for header/footer)
 	const contentWidth = overlayWidth - H_PAD * 2;
+	// Body content width (narrower by 1 for scrollbar)
+	const bodyContentWidth = contentWidth - 1;
 
 	// Scroll with proper clamping to bottomOffset (workaround for ink-scroll-view bug)
 	const scrollBy = useCallback((delta: number) => {
@@ -154,7 +163,7 @@ export const Overlay = React.memo(function Overlay({
 	// Build body content
 	const bodyContent = content
 		? (
-			<Markdown scheme={scheme} accent={accent} width={contentWidth} context="overlay">
+			<Markdown scheme={scheme} accent={accent} width={bodyContentWidth} context="overlay">
 				{content}
 			</Markdown>
 		)
@@ -192,13 +201,22 @@ export const Overlay = React.memo(function Overlay({
 		{/* Content padding (1 line breathing room) */}
 		{emptyRow("content-pad")}
 
-		{/* Body - scrollable content */}
-		<Box width={overlayWidth} height={bodyHeight} backgroundColor={bg}>
-			<ControlledScrollView ref={scrollRef} scrollOffset={scrollOffset} width={overlayWidth} height={bodyHeight}>
-				<Box paddingX={H_PAD} width={overlayWidth}>
+		{/* Body - scrollable content with scrollbar */}
+		<Box flexDirection="row" width={overlayWidth} height={bodyHeight} backgroundColor={bg}>
+			<ControlledScrollView ref={scrollRef} scrollOffset={scrollOffset} width={overlayWidth - 1} height={bodyHeight}>
+				<Box paddingX={H_PAD} width={overlayWidth - 1}>
 					{bodyContent}
 				</Box>
 			</ControlledScrollView>
+			<ScrollBar
+				placement="inset"
+				thumbChar={"\u2588"}
+				trackChar={"\u2502"}
+				contentHeight={contentHeight}
+				viewportHeight={bodyHeight}
+				scrollOffset={scrollOffset}
+				color={scheme.foreground.muted}
+			/>
 		</Box>
 
 			{/* Spacer between body and footer */}

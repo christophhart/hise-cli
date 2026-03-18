@@ -5,7 +5,7 @@ import type { SessionContext } from "./mode.js";
 import type { HiseSuccessResponse } from "../hise.js";
 import { CompletionEngine, buildDatasets } from "../completion/engine.js";
 import type { ScriptingApi } from "../data.js";
-import { parseMarkdown } from "../markdown/parser.js";
+
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -279,12 +279,9 @@ describe("formatReplResponse", () => {
 		if (result.type === "markdown") {
 			// Should use blank line separator to prevent blockquote continuation
 			expect(result.content).toBe("> 1234\n\nundefined");
-			
-			// Verify AST structure: blockquote node + paragraph node (NOT nested)
-			const ast = parseMarkdown(result.content);
-			expect(ast.nodes).toHaveLength(2);
-			expect(ast.nodes[0].type).toBe("blockquote");
-			expect(ast.nodes[1].type).toBe("paragraph");
+			// Blockquoted log line + blank separator + return value
+			expect(result.content).toContain("> 1234");
+			expect(result.content).toContain("undefined");
 		}
 	});
 

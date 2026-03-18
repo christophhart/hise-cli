@@ -14,13 +14,10 @@ import { BuilderMode } from "../engine/modes/builder.js";
 import { TopBar } from "./components/TopBar.js";
 import {
 	Output,
-	resultToLines,
-	commandEchoLine,
-	spacerLine,
-	darkenOutputLines,
-	MAX_HISTORY_LINES,
-	type OutputLine,
+	ResultBlock,
+	MAX_HISTORY_BLOCKS,
 } from "./components/Output.js";
+import { CommandEcho } from "./components/CommandEcho.js";
 import { Input, type InputHandle } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { Overlay } from "./components/Overlay.js";
@@ -56,7 +53,7 @@ const DIM_FACTOR = 0.65; // overlay backdrop brightness (0 = black, 1 = normal)
 // ── Overlay backdrop snapshot ───────────────────────────────────────
 
 interface OverlaySnapshot {
-	outputLines: OutputLine[];
+	outputBlocks: React.ReactNode[];
 	scrollOffset: number;
 	modeLabel: string;
 	modeAccent: string;
@@ -64,9 +61,11 @@ interface OverlaySnapshot {
 	connectionStatus: ConnectionStatus;
 	modeHint: string;
 	scrollInfo: string;
+	sidebarVisible: boolean;
+	sidebarW: number;
+	treeLabel?: string;
 	// Pre-computed dimmed values:
 	dimScheme: ColorScheme;
-	dimOutputLines: OutputLine[];
 	dimModeAccent: string;
 	dimStatusColor: (status: ConnectionStatus) => string;
 }
@@ -145,7 +144,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const [searchText, setSearchText] = useState("");
 
 	// State
-	const [outputLines, setOutputLines] = useState<OutputLine[]>([]);
+	const [outputBlocks, setOutputBlocks] = useState<React.ReactNode[]>([]);
 	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
 		connection ? "connected" : "error",
 	);
@@ -157,8 +156,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const [scrollOffset, setScrollOffset] = useState(0);
 
 	// Refs tracking latest state values (for snapshot capture in async callbacks)
-	const outputLinesRef = useRef(outputLines);
-	outputLinesRef.current = outputLines;
+	const outputBlocksRef = useRef(outputBlocks);
+	outputBlocksRef.current = outputBlocks;
 	const scrollOffsetRef = useRef(scrollOffset);
 	scrollOffsetRef.current = scrollOffset;
 	const sidebarVisibleRef = useRef(sidebarVisible);
@@ -205,12 +204,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// ── Scroll helpers ──────────────────────────────────────────────
 
+	// Scroll ref for ControlledScrollView
+	const outputScrollRef = useRef<import("ink-scroll-view").ControlledScrollViewRef | null>(null);
+
 	const maxScrollOffset = useCallback(
-		(lineCount?: number) => {
-			const total = lineCount ?? outputLines.length;
-			return Math.max(0, total - outputHeight);
+		() => {
+			return outputScrollRef.current?.getBottomOffset() ?? 0;
 		},
-		[outputLines.length, outputHeight],
+		[],
 	);
 
 	const scrollBy = useCallback(
@@ -233,8 +234,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	const scrollToTop = useCallback(() => {
 		setScrollOffset(0);
-		userScrolledRef.current = outputLines.length > outputHeight;
-	}, [outputLines.length, outputHeight]);
+		userScrolledRef.current = outputBlocks.length > 0;
+	}, [outputBlocks.length]);
 
 	// ── Central key dispatcher — single useInput, priority chain ────
 	//
@@ -612,11 +613,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// ── Input handler ───────────────────────────────────────────────
 
-	const addLines = useCallback((newLines: OutputLine[]) => {
-		setOutputLines((prev) => {
-			const combined = [...prev, ...newLines];
-			if (combined.length > MAX_HISTORY_LINES) {
-				combined.splice(0, combined.length - MAX_HISTORY_LINES);
+	const addBlocks = useCallback((newBlocks: React.ReactNode[]) => {
+		setOutputBlocks((prev) => {
+			const combined = [...prev, ...newBlocks];
+			if (combined.length > MAX_HISTORY_BLOCKS) {
+				combined.splice(0, combined.length - MAX_HISTORY_BLOCKS);
 			}
 			return combined;
 		});
@@ -624,16 +625,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	const handleSubmit = useCallback(async (input: string) => {
 		// Layout per message:
-		//   ▎                            ← 1. accent spacer (darker bg)
-		//   ▎ > input                    ← 2. echo (darker bg, accent border)
-		//   ▎                            ← 3. accent spacer (darker bg)
-		//                                ← 4. plain spacer (standard bg)
-		//   result line(s)               ← 5. result (standard bg, no border)
-		//                                ← 6. plain spacer (standard bg)
+		//   ▎                            <- 1. accent spacer (darker bg)
+		//   ▎ > input                    <- 2. echo (darker bg, accent border)
+		//   ▎                            <- 3. accent spacer (darker bg)
+		//                                <- 4. plain spacer
+		//   result block                 <- 5. result component
+		//                                <- 6. plain spacer
 		const mode = session.currentMode();
 		const currentAccent = mode.accent;
-		const darkerBg = scheme.backgrounds.darker;
-		const plainSpacer = spacerLine(scheme);
 		const echoSpans = mode.tokenizeInput?.(input);
 
 		disabledRef.current = true;
@@ -644,43 +643,43 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			
 			// Use result.accent if provided (one-shot/mode-switch), otherwise current mode
 			const accent = result.accent ?? currentAccent;
-			const darkAccentSpacer = spacerLine(scheme, accent, darkerBg);
-			const echo = commandEchoLine(input, accent, scheme, echoSpans);
-			addLines([darkAccentSpacer, echo, darkAccentSpacer, plainSpacer]);
+
+			// Command echo block (self-contained: includes border padding rows)
+			addBlocks([
+				<CommandEcho key={`echo-${Date.now()}`} input={input} accent={accent} spans={echoSpans} />,
+			]);
 
 			if (result.type === "overlay") {
 				// Capture a snapshot of the current UI for the dimmed backdrop.
-				// Read from refs to get latest state (closure may be stale).
-				const snapLines = outputLinesRef.current;
+				const snapBlocks = outputBlocksRef.current;
 				const snapScroll = scrollOffsetRef.current;
 				const snapMode = session.currentMode();
 				const snapModeLabel = snapMode.id === "root"
 					? "root"
 					: snapMode.prompt.replace(/[\[\]>]/g, "").trim();
 				const snapModeAccent = snapMode.accent || scheme.foreground.default;
-				const snapScrollHint = snapLines.length > outputHeight ? "PgUp/PgDn scroll" : "";
 				const snapModeHint = snapMode.id === "root"
-					? `/help for commands  /script /builder /inspect to enter modes${snapScrollHint ? `  ${snapScrollHint}` : ""}`
-					: `/exit to leave ${snapMode.name}  /help for commands${snapScrollHint ? `  ${snapScrollHint}` : ""}`;
-				const snapTotalLines = snapLines.length;
-				const snapIsAtBottom = snapScroll >= snapTotalLines - outputHeight;
-				const snapScrollInfo = snapTotalLines <= outputHeight
-					? ""
-					: snapIsAtBottom ? "live" : `\u2191 ${snapTotalLines - snapScroll - outputHeight} lines`;
+					? "/help for commands  /script /builder /inspect to enter modes"
+					: `/exit to leave ${snapMode.name}  /help for commands`;
 
 				const dimScheme = darkenScheme(scheme, DIM_FACTOR);
 
+				const snapSidebarVisible = sidebarVisibleRef.current;
+				const snapSidebarW = snapSidebarVisible ? calcSidebarWidth(layout, columns) : 0;
+
 				snapshotRef.current = {
-					outputLines: [...snapLines],
+					outputBlocks: [...snapBlocks],
 					scrollOffset: snapScroll,
 					modeLabel: snapModeLabel,
 					modeAccent: snapModeAccent,
 					contextLabel: snapMode.contextLabel ?? "",
 					connectionStatus,
 					modeHint: snapModeHint,
-					scrollInfo: snapScrollInfo,
+					scrollInfo: "",
+					sidebarVisible: snapSidebarVisible,
+					sidebarW: snapSidebarW,
+					treeLabel: snapSidebarVisible ? snapMode.treeLabel : undefined,
 					dimScheme,
-					dimOutputLines: darkenOutputLines(snapLines, DIM_FACTOR),
 					dimModeAccent: darkenHex(snapModeAccent, DIM_FACTOR),
 					dimStatusColor: (status: ConnectionStatus) =>
 						darkenHex(defaultStatusColor(status), DIM_FACTOR),
@@ -694,7 +693,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					footer: result.footer,
 				});
 			} else if (result.type === "text" && input.trim().startsWith("/density")) {
-				// Density command — intercept to apply TUI-side state change
+				// Density command - intercept to apply TUI-side state change
 				const arg = input.trim().slice("/density".length).trim().toLowerCase();
 				const validDensities = ["compact", "standard", "spacious"] as const;
 				type D = typeof validDensities[number];
@@ -703,69 +702,40 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				} else if (validDensities.includes(arg as D)) {
 					setDensityOverride(arg as LayoutDensity);
 				}
-				// Show the result with actual applied density info
 				const applied = arg === "" || arg === "auto"
 					? `auto (${computeLayout(columns, rows).density})`
 					: arg;
-				const densityLines = resultToLines(
-					{ type: "text", content: `Density: ${applied} (${columns}x${rows})` },
-					scheme,
-					layout,
-				);
-				addLines([...densityLines, plainSpacer]);
+				addBlocks([
+					<ResultBlock key={`density-${Date.now()}`} result={{ type: "text", content: `Density: ${applied} (${columns}x${rows})` }} />,
+				]);
 			} else if (result.type === "text" && input.trim().startsWith("/expand")) {
-				// Expand tree sidebar nodes matching pattern
 				const pattern = input.trim().slice("/expand".length).trim() || "*";
 				const handle = treeSidebarRef.current;
-				if (handle && sidebarVisibleRef.current) {
-					const count = handle.expandMatching(pattern);
-					const expandLines = resultToLines(
-						{ type: "text", content: `Expanded ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
-						scheme,
-						layout,
-					);
-					addLines([...expandLines, plainSpacer]);
-				} else {
-					const expandLines = resultToLines(
-						{ type: "text", content: "Tree sidebar is not visible. Press Ctrl+B to open it." },
-						scheme,
-						layout,
-					);
-					addLines([...expandLines, plainSpacer]);
-				}
+				const msg = (handle && sidebarVisibleRef.current)
+					? `Expanded ${handle.expandMatching(pattern)} node(s) matching "${pattern}"`
+					: "Tree sidebar is not visible. Press Ctrl+B to open it.";
+				addBlocks([
+					<ResultBlock key={`expand-${Date.now()}`} result={{ type: "text", content: msg }} />,
+				]);
 			} else if (result.type === "text" && input.trim().startsWith("/collapse")) {
-				// Collapse tree sidebar nodes matching pattern
 				const pattern = input.trim().slice("/collapse".length).trim() || "*";
 				const handle = treeSidebarRef.current;
-				if (handle && sidebarVisibleRef.current) {
-					const count = handle.collapseMatching(pattern);
-					const collapseLines = resultToLines(
-						{ type: "text", content: `Collapsed ${count} node${count !== 1 ? "s" : ""} matching "${pattern}"` },
-						scheme,
-						layout,
-					);
-					addLines([...collapseLines, plainSpacer]);
-				} else {
-					const collapseLines = resultToLines(
-						{ type: "text", content: "Tree sidebar is not visible. Press Ctrl+B to open it." },
-						scheme,
-						layout,
-					);
-					addLines([...collapseLines, plainSpacer]);
-				}
+				const msg = (handle && sidebarVisibleRef.current)
+					? `Collapsed ${handle.collapseMatching(pattern)} node(s) matching "${pattern}"`
+					: "Tree sidebar is not visible. Press Ctrl+B to open it.";
+				addBlocks([
+					<ResultBlock key={`collapse-${Date.now()}`} result={{ type: "text", content: msg }} />,
+				]);
 			} else if (result.type === "empty" && input.startsWith("/")) {
-				// Slash commands that produce empty result (mode switches, clear)
-				// Check if it was /clear
 				if (input.trim() === "/clear") {
-					setOutputLines([]);
+					setOutputBlocks([]);
 					setScrollOffset(0);
 					userScrolledRef.current = false;
 				}
 			} else if (result.type !== "empty") {
-				const lines = resultToLines(result, scheme, layout);
-				//   result line(s)            ← result (standard bg, no border)
-				//   [spacer]                  ← plain spacer after result
-				addLines([...lines, plainSpacer]);
+				addBlocks([
+					<ResultBlock key={`result-${Date.now()}`} result={result} />,
+				]);
 			}
 
 			// Check for quit
@@ -774,10 +744,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				return;
 			}
 		} catch (err) {
-			addLines([{
-				text: String(err),
-				color: scheme.foreground.muted,
-			}]);
+			addBlocks([
+				<Text key={`err-${Date.now()}`} color={scheme.foreground.muted}>{String(err)}</Text>,
+			]);
 		} finally {
 			disabledRef.current = false;
 			setDisabled(false);
@@ -785,13 +754,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 		// Auto-scroll to bottom if user hasn't manually scrolled up
 		if (!userScrolledRef.current) {
-			setOutputLines((current) => {
-				const newOffset = Math.max(0, current.length - outputHeight);
-				setScrollOffset(newOffset);
-				return current;
-			});
+			// Defer so ControlledScrollView has measured the new content
+			setTimeout(() => {
+				const bottom = outputScrollRef.current?.getBottomOffset() ?? 0;
+				setScrollOffset(bottom);
+			}, 0);
 		}
-	}, [session, scheme, addLines, outputHeight, exit]);
+	}, [session, scheme, addBlocks, exit, connectionStatus, columns, rows]);
 
 	// ── Mode label ──────────────────────────────────────────────────
 
@@ -821,17 +790,19 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// ── Scroll info ─────────────────────────────────────────────────
 
-	const totalLines = outputLines.length;
-	const isAtBottom = scrollOffset >= totalLines - outputHeight;
-	const scrollInfo = totalLines <= outputHeight
+	// Scroll info - simplified for block-based output
+	const contentHeight = outputScrollRef.current?.getContentHeight() ?? 0;
+	const bottomOffset = outputScrollRef.current?.getBottomOffset() ?? 0;
+	const isAtBottom = scrollOffset >= bottomOffset;
+	const scrollInfo = contentHeight <= outputHeight
 		? ""
 		: isAtBottom
 			? "live"
-			: `\u2191 ${totalLines - scrollOffset - outputHeight} lines`;
+			: `\u2191 scroll`;
 
 	// ── Mode hints ──────────────────────────────────────────────────
 
-	const scrollHint = totalLines > outputHeight ? "PgUp/PgDn scroll" : "";
+	const scrollHint = contentHeight > outputHeight ? "PgUp/PgDn scroll" : "";
 	const modeHint = currentMode.id === "root"
 		? `/help for commands  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
 		: `/exit to leave ${currentMode.name}  /help for commands${scrollHint ? `  ${scrollHint}` : ""}`;
@@ -1043,13 +1014,15 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					)}
 					<Box ref={outputRef} flexDirection="column" flexGrow={1}>
 						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
-						<Output
-							lines={outputLines}
-							scrollOffset={scrollOffset}
-							viewportHeight={outputHeight}
-							columns={contentColumns}
-							animate={animate}
-						/>
+					<Output
+						blocks={outputBlocks}
+						scrollOffset={scrollOffset}
+						scrollRef={outputScrollRef}
+						viewportHeight={outputHeight}
+						columns={contentColumns}
+						animate={animate}
+						hideScrollbar={completionState?.visible}
+					/>
 						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
 					{completionState?.visible && (
 						<CompletionPopup
@@ -1103,51 +1076,68 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 								brand={darkenBrand(DIM_FACTOR)}
 								statusColor={snap.dimStatusColor}
 								layout={layout}
+								dimFactor={DIM_FACTOR}
 							>
-								<Box
-									position="absolute"
-									marginLeft={0}
-									marginTop={0}
-									flexDirection="column"
-									height={rows}
-								>
-									<TopBar
-										modeLabel={snap.modeLabel}
-										modeAccent={snap.dimModeAccent}
-										connectionStatus={snap.connectionStatus}
-										columns={columns}
-									/>
-									<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
-										{" ".repeat(columns)}
-									</Text>
-									<Box flexDirection="column" height={outputHeight}>
-										<Output
-											lines={snap.dimOutputLines}
-											scrollOffset={snap.scrollOffset}
-											viewportHeight={outputHeight}
+								{(() => {
+									const snapContentCols = columns - snap.sidebarW;
+									return (
+									<Box
+										position="absolute"
+										marginLeft={0}
+										marginTop={0}
+										width={columns}
+										flexDirection="column"
+										height={rows}
+									>
+										<TopBar
+											modeLabel={snap.modeLabel}
+											modeAccent={snap.dimModeAccent}
+											connectionStatus={snap.connectionStatus}
 											columns={columns}
-											animate={false}
+											treeLabel={snap.treeLabel}
+										/>
+										<Box flexDirection="row" height={mainAreaHeight}>
+											{snap.sidebarVisible && (
+												<Box
+													width={snap.sidebarW}
+													height={mainAreaHeight}
+													backgroundColor={snap.dimScheme.backgrounds.sidebar}
+												/>
+											)}
+											<Box flexDirection="column" flexGrow={1}>
+												<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
+													{" ".repeat(snapContentCols)}
+												</Text>
+												<Output
+													blocks={snap.outputBlocks}
+													scrollOffset={snap.scrollOffset}
+													viewportHeight={outputHeight}
+													columns={snapContentCols}
+													animate={false}
+												/>
+												<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
+													{" ".repeat(snapContentCols)}
+												</Text>
+												<Input
+													modeLabel={snap.modeLabel}
+													modeAccent={snap.dimModeAccent}
+													contextLabel={snap.contextLabel}
+													focused={false}
+													columns={snapContentCols}
+													disabled={true}
+													onSubmit={() => {}}
+												/>
+											</Box>
+										</Box>
+										<StatusBar
+											connectionStatus={snap.connectionStatus}
+											modeHint={snap.modeHint}
+											scrollInfo={snap.scrollInfo}
+											columns={columns}
 										/>
 									</Box>
-									<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
-										{" ".repeat(columns)}
-									</Text>
-									<Input
-										modeLabel={snap.modeLabel}
-										modeAccent={snap.dimModeAccent}
-										contextLabel={snap.contextLabel}
-										focused={false}
-										columns={columns}
-										disabled={true}
-										onSubmit={() => {}}
-									/>
-									<StatusBar
-										connectionStatus={snap.connectionStatus}
-										modeHint={snap.modeHint}
-										scrollInfo={snap.scrollInfo}
-										columns={columns}
-									/>
-								</Box>
+									);
+								})()}
 							</ThemeProvider>
 							<Overlay
 								title={overlayData.title}

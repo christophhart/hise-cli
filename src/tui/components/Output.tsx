@@ -1,209 +1,129 @@
-// ── Output — virtual scrolling output with result rendering ─────────
+// ── Output — scrollable output with component-based result blocks ────
 
-// Performance rules from DESIGN.md:
-// - History is a plain array, not React state
-// - Only visible slice enters the React tree
-// - Scroll offset is a useRef (no re-render on scroll)
-// - Syntax highlighting is pre-computed (cached ANSI strings)
-// - React.memo on the component
-// - Cap at 10,000 lines
+// Renders command results as React component blocks inside ink-scroll-view.
+// Each result (text, error, code, table, markdown) is a self-contained
+// component. Scrolling is handled by ControlledScrollView. A vertical
+// scrollbar (via @byteland/ink-scroll-bar) is always rendered on the
+// right edge; its thumb is hidden when content fits the viewport.
 
-import React from "react";
-import { Box, Text } from "ink";
-import type { CommandResult, TreeNode } from "../../engine/result.js";
-import { brand, darkenHex, type ColorScheme } from "../theme.js";
+import React, { useEffect, useState } from "react";
+import { Box } from "ink";
+import { ControlledScrollView } from "ink-scroll-view";
+import type { ControlledScrollViewRef } from "ink-scroll-view";
+import { ScrollBar } from "@byteland/ink-scroll-bar";
+import type { CommandResult } from "../../engine/result.js";
+import type { ColorScheme } from "../theme.js";
 import { useTheme } from "../theme-context.js";
-import { scrollbarChar } from "./scrollbar.js";
-import type { TokenSpan } from "../../engine/highlight/tokens.js";
-import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
-import { tokenize } from "../../engine/highlight/hisescript.js";
-import { tokenizeXml } from "../../engine/highlight/xml.js";
 import { LandingLogo } from "./LandingLogo.js";
-import { formatTable as formatTableShared } from "./table.js";
-import type { LayoutScale } from "../layout.js";
-import { parseMarkdown } from "../../engine/markdown/parser.js";
-import { renderMarkdownToLines } from "./MarkdownRenderer.js";
+import { Markdown } from "./Markdown.js";
+import { ErrorBlock } from "./ErrorBlock.js";
 
-// ── Output line model ───────────────────────────────────────────────
+// ── Constants ───────────────────────────────────────────────────────
 
-export interface OutputLine {
-	text: string;
-	color: string;
-	prefix?: string;
-	prefixColor?: string;
-	borderColor?: string;  // left border ▎ color (mode accent)
-	bgColor?: string;
-	bold?: boolean;  // render text in bold (does not affect prefix/border)
-	/** Pre-computed syntax highlighting spans. When present, rendered as
-	 *  per-token colored <Text> elements instead of a single flat color. */
-	spans?: TokenSpan[];
+export const MAX_HISTORY_BLOCKS = 500;
+const SCROLLBAR_WIDTH = 1;
+
+// ── Result → markdown conversion helpers ────────────────────────────
+
+/** Convert a table (headers + rows) to a markdown table string. */
+function tableToMarkdown(headers: string[], rows: string[][]): string {
+	const headerRow = "| " + headers.join(" | ") + " |";
+	const divider = "| " + headers.map(h => "-".repeat(Math.max(h.length, 3))).join(" | ") + " |";
+	const dataRows = rows.map(row => "| " + row.join(" | ") + " |");
+	return [headerRow, divider, ...dataRows].join("\n");
 }
 
-export const MAX_HISTORY_LINES = 10000;
-
-/**
- * Darken all colors in an OutputLine array.
- * Returns a new array with every color field darkened by the factor.
- */
-export function darkenOutputLines(
-	lines: OutputLine[],
-	factor: number,
-): OutputLine[] {
-	return lines.map((line) => ({
-		text: line.text,
-		color: darkenHex(line.color, factor),
-		prefix: line.prefix,
-		prefixColor: line.prefixColor ? darkenHex(line.prefixColor, factor) : undefined,
-		borderColor: line.borderColor ? darkenHex(line.borderColor, factor) : undefined,
-		bgColor: line.bgColor ? darkenHex(line.bgColor, factor) : undefined,
-		// Drop spans in dimmed lines — TOKEN_COLORS are static and can't be
-		// dimmed per-span. Falls back to the already-darkened flat color.
-		spans: undefined,
-	}));
+/** Wrap code content in a fenced code block. */
+function codeToMarkdown(content: string, language?: string): string {
+	const lang = language || "hisescript";
+	return "```" + lang + "\n" + content + "\n```";
 }
 
-// ── Result → OutputLine conversion ──────────────────────────────────
+// ── ResultBlock — renders a single CommandResult ────────────────────
 
-export function resultToLines(
-	result: CommandResult,
-	scheme: ColorScheme,
-	layout: LayoutScale,
-): OutputLine[] {
+export interface ResultBlockProps {
+	result: CommandResult;
+}
+
+export const ResultBlock = React.memo(function ResultBlock({ result }: ResultBlockProps) {
+	const { scheme } = useTheme();
+
 	switch (result.type) {
 		case "empty":
-			return [];
+			return null;
 		case "text":
-			return result.content.split("\n").map((line) => ({
-				text: line,
-				color: scheme.foreground.bright,
-			}));
+			return (
+				<Markdown scheme={scheme} accent={result.accent} context="output">
+					{result.content}
+				</Markdown>
+			);
 		case "error":
-			return [
-				{
-					text: result.message,
-					color: brand.error,
-					prefix: "\u2717 ",
-					prefixColor: brand.error,
-				},
-				...(result.detail
-					? result.detail.split("\n").map((line) => ({
-						text: line,
-						color: scheme.foreground.muted,
-					}))
-					: []),
-			];
-		case "code": {
-			// Select tokenizer by language
-			const codeTokenizer = result.language === "xml"
-				? tokenizeXml
-				: (result.language === "hisescript" || result.language === "javascript")
-					? tokenize
-					: null;
-
-			return result.content.split("\n").map((line) => {
-				if (codeTokenizer && line.length > 0) {
-					return {
-						text: line,
-						color: scheme.foreground.bright,
-						spans: codeTokenizer(line),
-					};
-				}
-				return { text: line, color: scheme.foreground.bright };
-			});
-		}
+			return <ErrorBlock message={result.message} detail={result.detail} />;
+		case "code":
+			return (
+				<Markdown scheme={scheme} accent={result.accent} context="output">
+					{codeToMarkdown(result.content, result.language)}
+				</Markdown>
+			);
 		case "table":
-			return formatTableShared(result.headers, result.rows, scheme, layout.density);
-		case "tree":
-			return formatTree(result.root, scheme);
-	case "markdown": {
-		const ast = parseMarkdown(result.content);
-		return renderMarkdownToLines(ast, scheme, layout, result.accent);
-	}
+			return (
+				<Markdown scheme={scheme} accent={result.accent} context="output">
+					{tableToMarkdown(result.headers, result.rows)}
+				</Markdown>
+			);
+		case "markdown":
+			return (
+				<Markdown scheme={scheme} accent={result.accent} context="output">
+					{result.content}
+				</Markdown>
+			);
 		case "overlay":
-			// Overlay results are handled by App (shows Overlay component).
-			// If we get here, fall through to empty for non-TUI contexts.
-			return [];
+			// Handled by App — never rendered in Output
+			return null;
+		default:
+			return null;
 	}
-}
-
-function formatTree(
-	node: TreeNode,
-	scheme: ColorScheme,
-	prefix = "",
-	isLast = true,
-): OutputLine[] {
-	const connector = isLast ? "\u2514\u2500\u2500 " : "\u251C\u2500\u2500 "; // └── or ├──
-	const label = node.type
-		? `${node.label} (${node.type})`
-		: node.label;
-
-	const lines: OutputLine[] = [
-		{
-			text: prefix ? `${prefix}${connector}${label}` : label,
-			color: scheme.foreground.bright,
-		},
-	];
-
-	if (node.children) {
-		const childPrefix = prefix + (isLast ? "    " : "\u2502   "); // │
-		node.children.forEach((child, i) => {
-			const childIsLast = i === node.children!.length - 1;
-			lines.push(...formatTree(child, scheme, childPrefix, childIsLast));
-		});
-	}
-
-	return lines;
-}
-
-// ── Spacer line (empty row for vertical breathing room) ─────────────
-
-export function spacerLine(scheme: ColorScheme, borderColor?: string, bgColor?: string): OutputLine {
-	return {
-		text: "",
-		color: scheme.foreground.default,
-		borderColor,
-		bgColor,
-	};
-}
-
-// ── Command echo line ───────────────────────────────────────────────
-
-export function commandEchoLine(
-	input: string,
-	accent: string,
-	scheme: ColorScheme,
-	spans?: TokenSpan[],
-): OutputLine {
-	return {
-		text: input,
-		color: accent || scheme.foreground.default,
-		prefix: "> ",
-		prefixColor: accent || scheme.foreground.default,
-		borderColor: accent,
-		bgColor: scheme.backgrounds.darker,
-		spans,
-	};
-}
+});
 
 // ── Output component ────────────────────────────────────────────────
 
 export interface OutputProps {
-	lines: OutputLine[];
-	scrollOffset: number;
+	/** Array of React nodes to render in the scrollable area */
+	blocks: React.ReactNode[];
+	/** Viewport height in terminal rows */
 	viewportHeight: number;
+	/** Total viewport width */
 	columns: number;
+	/** Show the landing logo when no blocks */
 	animate?: boolean;
+	/** Ref to expose scroll control to parent */
+	scrollRef?: React.RefObject<ControlledScrollViewRef | null>;
+	/** Controlled scroll offset (managed by parent) */
+	scrollOffset: number;
+	/** Hide the scrollbar (e.g. when completion popup overlays it) */
+	hideScrollbar?: boolean;
 }
 
 export const Output = React.memo(function Output({
-	lines,
-	scrollOffset,
+	blocks,
 	viewportHeight,
 	columns,
 	animate,
+	scrollRef,
+	scrollOffset,
+	hideScrollbar,
 }: OutputProps) {
 	const { scheme, layout } = useTheme();
-	if (lines.length === 0) {
+
+	// Track content height for the scrollbar (read from ControlledScrollView
+	// after each render so the scrollbar thumb size stays in sync).
+	const [contentHeight, setContentHeight] = useState(viewportHeight);
+	useEffect(() => {
+		const h = scrollRef?.current?.getContentHeight() ?? viewportHeight;
+		setContentHeight(h);
+	});
+
+	if (blocks.length === 0) {
 		return (
 			<LandingLogo
 				viewportHeight={viewportHeight}
@@ -214,87 +134,43 @@ export const Output = React.memo(function Output({
 		);
 	}
 
-	const pad = " ".repeat(layout.horizontalPad);
-	const visible = lines.slice(scrollOffset, scrollOffset + viewportHeight);
-	const showScrollbar = lines.length > viewportHeight;
-	// Content width: total - left pad - right pad - scrollbar (1 char + 1 space gap)
-	const scrollbarWidth = showScrollbar ? 2 : 0;
-	const contentWidth = columns - pad.length - pad.length - scrollbarWidth;
-
-	const renderedLines: React.ReactNode[] = [];
-
-	for (let i = 0; i < viewportHeight; i++) {
-		const line = visible[i];
-		const scrollChar = showScrollbar
-			? scrollbarChar(i, viewportHeight, lines.length, scrollOffset, scheme)
-			: null;
-
-		if (!line) {
-			// Empty row to fill viewport
-			const emptyWidth = columns - scrollbarWidth;
-			renderedLines.push(
-				<Box key={i}>
-					<Text backgroundColor={scheme.backgrounds.standard}>
-						{" ".repeat(emptyWidth)}
-					</Text>
-					{scrollChar ? (
-						<Text backgroundColor={scheme.backgrounds.standard}>
-							<Text color={scrollChar.color}> {scrollChar.char}</Text>
-						</Text>
-					) : null}
-				</Box>,
-			);
-			continue;
-		}
-
-		const border = line.borderColor ? "\u258E " : "  "; // ▎ + space, or 2 spaces
-		const prefix = line.prefix ?? "";
-		const maxTextWidth = Math.max(0, contentWidth - border.length - prefix.length);
-		const truncated = line.text.length > maxTextWidth;
-		const displayText = truncated
-			? line.text.slice(0, maxTextWidth - 1) + "\u2026" // …
-			: line.text;
-		const usedWidth = border.length + prefix.length + displayText.length;
-		const padRight = Math.max(0, contentWidth - usedWidth);
-
-		const lineBg = line.bgColor ?? scheme.backgrounds.standard;
-		const stdBg = scheme.backgrounds.standard;
-
-		// Render text content: use spans for highlighted lines, flat color otherwise.
-		// When truncated, fall back to flat color (truncation mid-span is complex).
-		const hasSpans = line.spans && line.spans.length > 0 && !truncated;
-		const textContent = hasSpans
-			? line.spans!.map((span, si) => (
-				<Text key={si} color={span.color || TOKEN_COLORS[span.token]} bold={line.bold}>{span.text}</Text>
-			))
-			: <Text color={line.color} bold={line.bold}>{displayText}</Text>;
-
-		renderedLines.push(
-			<Box key={i}>
-				<Text backgroundColor={stdBg}>{pad}</Text>
-				<Text backgroundColor={lineBg}>
-					{line.borderColor ? (
-						<Text color={line.borderColor}>{border}</Text>
-					) : (
-						<Text>{border}</Text>
-					)}
-					{prefix ? <Text color={line.prefixColor ?? line.color}>{prefix}</Text> : null}
-					{textContent}
-					<Text>{" ".repeat(padRight)}</Text>
-				</Text>
-				<Text backgroundColor={stdBg}>{pad}</Text>
-				{scrollChar ? (
-					<Text backgroundColor={stdBg}>
-						<Text color={scrollChar.color}> {scrollChar.char}</Text>
-					</Text>
-				) : null}
-			</Box>,
-		);
-	}
+	const pad = layout.horizontalPad;
+	const contentCols = columns - SCROLLBAR_WIDTH;
 
 	return (
-		<Box flexDirection="column">
-			{renderedLines}
+		<Box flexDirection="row" width={columns} height={viewportHeight} backgroundColor={scheme.backgrounds.standard}>
+			<ControlledScrollView
+				ref={scrollRef}
+				width={contentCols}
+				height={viewportHeight}
+				scrollOffset={scrollOffset}
+			>
+				<Box
+					flexDirection="column"
+					paddingX={pad}
+					width={contentCols}
+					backgroundColor={scheme.backgrounds.standard}
+				>
+					{blocks.map((block, i) => (
+						<Box key={i} flexDirection="column" marginBottom={1}>
+							{block}
+						</Box>
+					))}
+				</Box>
+			</ControlledScrollView>
+			{hideScrollbar ? (
+				<Box width={SCROLLBAR_WIDTH} />
+			) : (
+				<ScrollBar
+					placement="inset"
+					thumbChar={"\u2588"}
+					trackChar={"\u2502"}
+					contentHeight={contentHeight}
+					viewportHeight={viewportHeight}
+					scrollOffset={scrollOffset}
+					color={scheme.foreground.muted}
+				/>
+			)}
 		</Box>
 	);
 });

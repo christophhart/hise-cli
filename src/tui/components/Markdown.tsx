@@ -1,7 +1,7 @@
-// ── Markdown — themed ink-markdown wrapper ─────────────────────────
+// ── Markdown — themed terminal markdown renderer ────────────────────
 
-// Wraps marked + marked-terminal with hise-cli color scheme customization.
-// Builds marked-terminal options from ColorScheme to match TUI theme.
+// Renders markdown to ANSI-styled terminal output using marked + marked-terminal.
+// Builds rendering options from ColorScheme to match the TUI theme.
 
 import React from "react";
 import type { TerminalRendererOptions } from "marked-terminal";

@@ -1,193 +1,120 @@
 // ── Output component tests ──────────────────────────────────────────
 
 import React from "react";
+import { Text } from "ink";
 import { describe, expect, it } from "vitest";
 import { render } from "ink-testing-library";
 import {
 	Output,
-	resultToLines,
-	commandEchoLine,
-	MAX_HISTORY_LINES,
-	type OutputLine,
+	ResultBlock,
+	MAX_HISTORY_BLOCKS,
 } from "./Output.js";
 import { defaultScheme } from "../theme.js";
 import { ThemeProvider } from "../theme-context.js";
 import { STANDARD } from "../layout.js";
 
-const accent = "#fd971f"; // builder orange
-const w = (el: React.ReactElement) => <ThemeProvider scheme={defaultScheme}>{el}</ThemeProvider>;
+const w = (el: React.ReactElement) => (
+	<ThemeProvider scheme={defaultScheme} layout={STANDARD}>{el}</ThemeProvider>
+);
 
-// ── resultToLines tests ─────────────────────────────────────────────
+// ── ResultBlock tests ───────────────────────────────────────────────
 
-describe("resultToLines", () => {
-	it("converts text result to lines", () => {
-		const lines = resultToLines(
-			{ type: "text", content: "hello world" },
-			defaultScheme,
-			STANDARD,
-		);
-		expect(lines).toHaveLength(1);
-		expect(lines[0].text).toBe("hello world");
-		expect(lines[0].color).toBe(defaultScheme.foreground.bright);
+describe("ResultBlock", () => {
+	it("renders text result", () => {
+		const instance = render(w(
+			<ResultBlock result={{ type: "text", content: "hello world" }} />,
+		));
+		const frame = instance.lastFrame() ?? "";
+		expect(frame).toContain("hello world");
+		instance.unmount();
 	});
 
-	it("converts multi-line text", () => {
-		const lines = resultToLines(
-			{ type: "text", content: "line 1\nline 2\nline 3" },
-			defaultScheme,
-			STANDARD,
-		);
-		expect(lines).toHaveLength(3);
-		expect(lines[0].text).toBe("line 1");
-		expect(lines[2].text).toBe("line 3");
+	it("renders error result with cross prefix", () => {
+		const instance = render(w(
+			<ResultBlock result={{ type: "error", message: "bad input" }} />,
+		));
+		const frame = instance.lastFrame() ?? "";
+		expect(frame).toContain("bad input");
+		expect(frame).toContain("\u2717"); // ✗
+		instance.unmount();
 	});
 
-	it("converts error result with prefix", () => {
-		const lines = resultToLines(
-			{ type: "error", message: "bad input" },
-			defaultScheme,
-			STANDARD,
-		);
-		expect(lines).toHaveLength(1);
-		expect(lines[0].text).toBe("bad input");
-		expect(lines[0].prefix).toBe("\u2717 "); // ✗
+	it("renders error with detail", () => {
+		const instance = render(w(
+			<ResultBlock result={{ type: "error", message: "bad", detail: "extra info" }} />,
+		));
+		const frame = instance.lastFrame() ?? "";
+		expect(frame).toContain("bad");
+		expect(frame).toContain("extra info");
+		instance.unmount();
 	});
 
-	it("converts error with detail", () => {
-		const lines = resultToLines(
-			{ type: "error", message: "bad", detail: "extra info" },
-			defaultScheme,
-			STANDARD,
-		);
-		expect(lines).toHaveLength(2);
-		expect(lines[1].text).toBe("extra info");
+	it("returns null for empty result", () => {
+		const instance = render(w(
+			<ResultBlock result={{ type: "empty" }} />,
+		));
+		const frame = instance.lastFrame() ?? "";
+		expect(frame.trim()).toBe("");
+		instance.unmount();
 	});
 
-	it("converts table result", () => {
-		const lines = resultToLines(
-			{
+	it("renders table result", () => {
+		const instance = render(w(
+			<ResultBlock result={{
 				type: "table",
 				headers: ["Name", "Type"],
-				rows: [["AHDSR", "Modulator"], ["LFO", "Modulator"]],
-			},
-			defaultScheme,
-			STANDARD,
-		);
-		// top border + header + divider + 2 data rows + bottom border
-		expect(lines).toHaveLength(6);
-		expect(lines[1].text).toContain("Name");
-		expect(lines[1].text).toContain("Type");
+				rows: [["AHDSR", "Modulator"]],
+			}} />,
+		));
+		const frame = instance.lastFrame() ?? "";
+		expect(frame).toContain("Name");
+		expect(frame).toContain("Type");
+		expect(frame).toContain("AHDSR");
+		instance.unmount();
 	});
 
-	it("converts tree result", () => {
-		const lines = resultToLines(
-			{
-				type: "tree",
-				root: {
-					label: "Root",
-					children: [
-						{ label: "Child1" },
-						{ label: "Child2", children: [{ label: "Grandchild" }] },
-					],
-				},
-			},
-			defaultScheme,
-			STANDARD,
-		);
-		expect(lines.length).toBeGreaterThanOrEqual(4);
-		expect(lines[0].text).toContain("Root");
-		expect(lines[1].text).toContain("Child1");
-	});
-
-	it("returns empty array for empty result", () => {
-		const lines = resultToLines({ type: "empty" }, defaultScheme, STANDARD);
-		expect(lines).toHaveLength(0);
-	});
-
-	it("result lines have no border color", () => {
-		const lines = resultToLines(
-			{ type: "text", content: "test" },
-			defaultScheme,
-			STANDARD,
-		);
-		expect(lines[0].borderColor).toBeUndefined();
-	});
-});
-
-// ── commandEchoLine tests ───────────────────────────────────────────
-
-describe("commandEchoLine", () => {
-	it("creates a command echo with prefix", () => {
-		const line = commandEchoLine("/help", accent, defaultScheme);
-		expect(line.text).toBe("/help");
-		expect(line.prefix).toBe("> ");
-		expect(line.borderColor).toBe(accent);
-		expect(line.bgColor).toBe(defaultScheme.backgrounds.darker);
+	it("renders code result as fenced block", () => {
+		const instance = render(w(
+			<ResultBlock result={{ type: "code", content: "var x = 5;" }} />,
+		));
+		const frame = instance.lastFrame() ?? "";
+		expect(frame).toContain("x");
+		expect(frame).toContain("5");
+		instance.unmount();
 	});
 });
 
 // ── Output component rendering tests ────────────────────────────────
 
 describe("Output component", () => {
-	it("shows empty state when no lines", () => {
+	it("shows landing logo when no blocks", () => {
 		const instance = render(w(
-			<Output lines={[]} scrollOffset={0} viewportHeight={10} columns={80} />,
+			<Output blocks={[]} scrollOffset={0} viewportHeight={10} columns={80} />,
 		));
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("/help");
 		instance.unmount();
 	});
 
-	it("renders visible lines", () => {
-		const lines: OutputLine[] = [
-			{ text: "first line", color: defaultScheme.foreground.bright },
-			{ text: "second line", color: defaultScheme.foreground.bright },
+	it("renders blocks", () => {
+		const blocks = [
+			<Text key="a">first block</Text>,
+			<Text key="b">second block</Text>,
 		];
 		const instance = render(w(
-			<Output lines={lines} scrollOffset={0} viewportHeight={10} columns={80} />,
+			<Output blocks={blocks} scrollOffset={0} viewportHeight={10} columns={80} />,
 		));
 		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("first line");
-		expect(frame).toContain("second line");
-		instance.unmount();
-	});
-
-	it("virtual scrolling shows correct slice", () => {
-		const lines: OutputLine[] = Array.from({ length: 50 }, (_, i) => ({
-			text: `line-${i}`,
-			color: defaultScheme.foreground.bright,
-		}));
-
-		const instance = render(w(
-			<Output lines={lines} scrollOffset={20} viewportHeight={10} columns={80} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toContain("line-20");
-		expect(frame).toContain("line-29");
-		expect(frame).not.toContain("line-19");
-		expect(frame).not.toContain("line-30");
-		instance.unmount();
-	});
-
-	it("shows scrollbar when content exceeds viewport", () => {
-		const lines: OutputLine[] = Array.from({ length: 50 }, (_, i) => ({
-			text: `line-${i}`,
-			color: defaultScheme.foreground.bright,
-		}));
-
-		const instance = render(w(
-			<Output lines={lines} scrollOffset={0} viewportHeight={10} columns={80} />,
-		));
-		const frame = instance.lastFrame() ?? "";
-		expect(frame).toMatch(/[\u2588\u2502]/); // █ or │
+		expect(frame).toContain("first block");
+		expect(frame).toContain("second block");
 		instance.unmount();
 	});
 });
 
 // ── History cap test ────────────────────────────────────────────────
 
-describe("MAX_HISTORY_LINES", () => {
-	it("is 10000", () => {
-		expect(MAX_HISTORY_LINES).toBe(10000);
+describe("MAX_HISTORY_BLOCKS", () => {
+	it("is 500", () => {
+		expect(MAX_HISTORY_BLOCKS).toBe(500);
 	});
 });
