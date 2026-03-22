@@ -1,29 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { InspectMode, formatCpu, formatVoices, formatModules, formatMemory } from "./inspect.js";
+import { InspectMode, extractStatusPayload, formatProject, formatVersion } from "./inspect.js";
 import { MockHiseConnection } from "../hise.js";
 import type { SessionContext } from "./mode.js";
 import { CompletionEngine } from "../completion/engine.js";
+import { createDefaultMockRuntime } from "../../mock/runtime.js";
 
-// ── Helpers ─────────────────────────────────────────────────────────
-
-function createStatusResponse(data: Record<string, unknown> = {}) {
-	return {
-		success: true as const,
-		result: JSON.stringify(data),
-		logs: [] as string[],
-		errors: [] as Array<{ errorMessage: string; callstack: string[] }>,
-		...data,
+function createMockSession(overrides: Partial<ReturnType<typeof createDefaultMockRuntime>["status"]> = {}): SessionContext {
+	const runtime = createDefaultMockRuntime();
+	const status = {
+		...runtime.status,
+		...overrides,
 	};
-}
-
-function createMockSession(
-	statusData: Record<string, unknown> = {},
-): SessionContext {
 	const mock = new MockHiseConnection();
 	mock.onGet("/api/status", () => ({
 		success: true as const,
-		result: statusData as unknown as string,
-		value: statusData,
+		result: JSON.stringify(status),
+		value: status,
 		logs: [],
 		errors: [],
 	}));
@@ -32,8 +24,6 @@ function createMockSession(
 		popMode: () => ({ type: "text", content: "Exited Inspect mode." }),
 	};
 }
-
-// ── InspectMode identity ────────────────────────────────────────────
 
 describe("InspectMode", () => {
 	it("has correct identity", () => {
@@ -44,170 +34,81 @@ describe("InspectMode", () => {
 		expect(mode.prompt).toBe("[inspect] > ");
 	});
 
-	it("shows help for unknown commands", async () => {
-		const session = createMockSession();
-		const mode = new InspectMode();
-		const result = await mode.parse("nonexistent", session);
-		expect(result.type).toBe("error");
-	});
-
 	it("shows help table for help command", async () => {
-		const session = createMockSession({});
-		const mode = new InspectMode();
-		const result = await mode.parse("help", session);
+		const result = await new InspectMode().parse("help", createMockSession());
 		expect(result.type).toBe("markdown");
 		if (result.type === "markdown") {
-			expect(result.content).toContain("## Inspect Commands");
-			expect(result.content).toContain("|");
-			expect(result.content).toContain("cpu");
+			expect(result.content).toContain("version");
+			expect(result.content).toContain("project");
 		}
 	});
 
-	it("returns error when no connection", async () => {
-		const mode = new InspectMode();
-		const session: SessionContext = {
-			connection: null,
-			popMode: () => ({ type: "text", content: "Exited Inspect mode." }),
-		};
-		const result = await mode.parse("cpu", session);
+	it("shows error for unknown commands", async () => {
+		const result = await new InspectMode().parse("cpu", createMockSession());
 		expect(result.type).toBe("error");
 	});
+
+	it("extracts a contract-valid status payload from mock runtime", async () => {
+		const runtime = createDefaultMockRuntime();
+		const response = await runtime.connection.get("/api/status");
+		if (!("success" in response) || !response.success) throw new Error("Expected success response");
+		expect(extractStatusPayload(response)).toEqual(runtime.status);
+	});
 });
 
-// ── CPU formatting ──────────────────────────────────────────────────
-
-describe("InspectMode cpu", () => {
-	it("parses cpu data from status", async () => {
-		const session = createMockSession({
-			cpuUsage: 12.3,
-			sampleRate: 44100,
-			bufferSize: 512,
-		});
-		const mode = new InspectMode();
-		const result = await mode.parse("cpu", session);
+describe("InspectMode version", () => {
+	it("formats version data", async () => {
+		const result = await new InspectMode().parse("version", createMockSession());
 		expect(result.type).toBe("markdown");
 		if (result.type === "markdown") {
-			expect(result.content).toContain("## CPU & Audio Buffer");
-			expect(result.content).toContain("12.3%");
+			expect(result.content).toContain("## Server Version");
+			expect(result.content).toContain("4.1.0-mock");
 		}
 	});
 
-	it("handles missing cpu data gracefully", () => {
-		const result = formatCpu({});
+	it("formats version helper directly", () => {
+		const result = formatVersion(createDefaultMockRuntime().status);
+		if (result.type === "markdown") {
+			expect(result.content).toContain("Compile Timeout");
+		}
+	});
+});
+
+describe("InspectMode project", () => {
+	it("formats project data", async () => {
+		const result = await new InspectMode().parse("project", createMockSession());
 		expect(result.type).toBe("markdown");
 		if (result.type === "markdown") {
-			expect(result.content).toContain("0.0%");
+			expect(result.content).toContain("## Project");
+			expect(result.content).toContain("Mock Project");
+			expect(result.content).toContain("Interface");
 		}
 	});
-});
 
-// ── Voices formatting ───────────────────────────────────────────────
-
-describe("InspectMode voices", () => {
-	it("formats voice count", async () => {
-		const session = createMockSession({
-			activeVoices: 8,
-			maxVoices: 256,
-		});
-		const mode = new InspectMode();
-		const result = await mode.parse("voices", session);
-		expect(result.type).toBe("markdown");
+	it("formats project helper directly", () => {
+		const result = formatProject(createDefaultMockRuntime().status);
 		if (result.type === "markdown") {
-			expect(result.content).toContain("## Voice Count");
-			expect(result.content).toContain("8");
-			expect(result.content).toContain("256");
-		}
-	});
-
-	it("handles zero voices", () => {
-		const result = formatVoices({ activeVoices: 0, maxVoices: 256 });
-		if (result.type === "markdown") {
-			expect(result.content).toContain("0.0%");
+			expect(result.content).toContain("Script Processors");
 		}
 	});
 });
-
-// ── Modules formatting ──────────────────────────────────────────────
-
-describe("InspectMode modules", () => {
-	it("formats module tree", () => {
-		const result = formatModules({
-			modules: [
-				{
-					name: "Sampler1",
-					type: "StreamingSampler",
-					children: [
-						{ name: "AHDSR1", type: "AHDSR" },
-					],
-				},
-			],
-		});
-		expect(result.type).toBe("tree");
-		if (result.type === "tree") {
-			expect(result.root.label).toBe("Root");
-			expect(result.root.children).toHaveLength(1);
-			expect(result.root.children![0].label).toBe("Sampler1");
-			expect(result.root.children![0].children).toHaveLength(1);
-		}
-	});
-
-	it("handles missing modules gracefully", () => {
-		const result = formatModules({});
-		expect(result.type).toBe("text");
-	});
-});
-
-// ── Memory formatting ───────────────────────────────────────────────
-
-describe("InspectMode memory", () => {
-	it("formats memory data", () => {
-		const result = formatMemory({
-			heapSize: 134217728, // 128 MB
-			preloadSize: 8388608, // 8 MB
-		});
-		expect(result.type).toBe("markdown");
-		if (result.type === "markdown") {
-			expect(result.content).toContain("## Memory Usage");
-			expect(result.content).toContain("128.0 MB");
-			expect(result.content).toContain("8.0 MB");
-		}
-	});
-
-	it("shows N/A for missing data", () => {
-		const result = formatMemory({});
-		if (result.type === "table") {
-			expect(result.rows[0][1]).toBe("N/A");
-			expect(result.rows[1][1]).toBe("N/A");
-		}
-	});
-});
-
-// ── InspectMode completion ──────────────────────────────────────────
 
 describe("InspectMode completion", () => {
 	it("returns empty without engine", () => {
-		const mode = new InspectMode();
-		const result = mode.complete!("c", 1);
+		const result = new InspectMode().complete!("v", 1);
 		expect(result.items).toHaveLength(0);
 	});
 
 	it("returns all commands for empty input", () => {
-		const engine = new CompletionEngine();
-		const mode = new InspectMode(engine);
-		const result = mode.complete!("", 0);
-		expect(result.items).toHaveLength(5);
+		const result = new InspectMode(new CompletionEngine()).complete!("", 0);
 		const labels = result.items.map((i) => i.label);
-		expect(labels).toContain("cpu");
-		expect(labels).toContain("voices");
-		expect(labels).toContain("modules");
-		expect(labels).toContain("memory");
+		expect(labels).toContain("version");
+		expect(labels).toContain("project");
 		expect(labels).toContain("help");
 	});
 
 	it("filters by prefix", () => {
-		const engine = new CompletionEngine();
-		const mode = new InspectMode(engine);
-		const result = mode.complete!("vo", 2);
-		expect(result.items.some((i) => i.label === "voices")).toBe(true);
+		const result = new InspectMode(new CompletionEngine()).complete!("pro", 3);
+		expect(result.items.some((i) => i.label === "project")).toBe(true);
 	});
 });

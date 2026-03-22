@@ -645,13 +645,13 @@ describe("CompletionEngine", () => {
 	describe("completeInspect", () => {
 		it("returns all commands for empty prefix", () => {
 			const items = engine.completeInspect("");
-			expect(items).toHaveLength(5);
+			expect(items).toHaveLength(3);
 		});
 
 		it("filters by prefix", () => {
-			const items = engine.completeInspect("cpu");
+			const items = engine.completeInspect("proj");
 			expect(items).toHaveLength(1);
-			expect(items[0].label).toBe("cpu");
+			expect(items[0].label).toBe("project");
 		});
 	});
 

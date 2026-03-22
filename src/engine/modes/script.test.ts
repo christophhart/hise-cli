@@ -5,6 +5,8 @@ import type { SessionContext } from "./mode.js";
 import type { HiseSuccessResponse } from "../hise.js";
 import { CompletionEngine, buildDatasets } from "../completion/engine.js";
 import type { ScriptingApi } from "../data.js";
+import { createDefaultMockRuntime } from "../../mock/runtime.js";
+import { normalizeReplResponse } from "../../mock/contracts/repl.js";
 
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -68,7 +70,7 @@ describe("ScriptMode", () => {
 
 // ── REPL round-trip (with MockHiseConnection) ───────────────────────
 
-describe("ScriptMode REPL round-trip", () => {
+	describe("ScriptMode REPL round-trip", () => {
 	it("sends expression to POST /api/repl", async () => {
 		const mock = new MockHiseConnection();
 		mock.onPost("/api/repl", () =>
@@ -174,6 +176,21 @@ describe("ScriptMode REPL round-trip", () => {
 		}
 	});
 
+	it("extracts a contract-valid repl payload from mock runtime", async () => {
+		const runtime = createDefaultMockRuntime();
+		const response = await runtime.connection.post("/api/repl", {
+			expression: "Console.print(1234)",
+			moduleId: "Interface",
+		});
+
+		const normalized = normalizeReplResponse(response);
+		expect(normalized.kind).toBe("success");
+		if (normalized.kind === "success") {
+			expect(normalized.logs).toEqual(["1234"]);
+			expect(normalized.value).toBe("undefined");
+		}
+	});
+
 	it("handles script errors", async () => {
 		const mock = new MockHiseConnection();
 		mock.onPost("/api/repl", () =>
@@ -195,6 +212,17 @@ describe("ScriptMode REPL round-trip", () => {
 		if (result.type === "error") {
 			expect(result.message).toContain("Syntax error");
 			expect(result.message).toContain("Line 1");
+		}
+	});
+
+	it("formats missing component error like live HISE", async () => {
+		const runtime = createDefaultMockRuntime();
+		const mode = new ScriptMode();
+		const session = createMockSession(runtime.connection as MockHiseConnection);
+		const result = await mode.parse('Content.getComponent("x")', session);
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("Component with name x wasn't found.");
 		}
 	});
 

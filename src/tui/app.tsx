@@ -5,12 +5,10 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type { DOMElement } from "ink";
 import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
 import { PROFILING_ENABLED, onRenderCallback } from "./profiler.js";
-import { Session } from "../engine/session.js";
 import type { CommandResult } from "../engine/result.js";
+import type { TreeNode } from "../engine/result.js";
 import type { HiseConnection } from "../engine/hise.js";
 import type { DataLoader } from "../engine/data.js";
-import { ScriptMode } from "../engine/modes/script.js";
-import { InspectMode } from "../engine/modes/inspect.js";
 import { BuilderMode } from "../engine/modes/builder.js";
 import { TopBar } from "./components/TopBar.js";
 import {
@@ -48,6 +46,9 @@ import {
 	INPUT_SECTION_ROWS,
 	type LayoutDensity,
 } from "./layout.js";
+import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
+import { startObserverServer, type ObserverEvent } from "./observer.js";
+import { MODE_ACCENTS } from "../engine/modes/mode.js";
 
 // ── Layout constants (non-scaling) ──────────────────────────────────
 
@@ -79,6 +80,7 @@ interface OverlaySnapshot {
 export interface AppProps {
 	connection: HiseConnection | null;
 	dataLoader?: DataLoader;
+	builderTree?: TreeNode | null;
 	scheme?: ColorScheme;
 	width?: number;  // override stdout.columns (for screencast runner)
 	height?: number; // override stdout.rows (for screencast runner)
@@ -95,7 +97,7 @@ export function App(props: AppProps) {
 	);
 }
 
-function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, animate }: AppProps) {
+function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, width, height, animate }: AppProps) {
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
@@ -119,14 +121,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const moduleListRef = useRef<import("../engine/data.js").ModuleList | undefined>(undefined);
 
 	// Session — created once, stored in ref
-	const sessionRef = useRef<Session | null>(null);
+	const sessionRef = useRef<ReturnType<typeof createSession>["session"] | null>(null);
 	if (!sessionRef.current) {
-		const session = new Session(connection, completionEngine);
-		// Register available modes with completion engine
-		session.registerMode("script", (ctx) => new ScriptMode(ctx, completionEngine));
-		session.registerMode("inspect", () => new InspectMode(completionEngine));
-		session.registerMode("builder", (ctx) => new BuilderMode(moduleListRef.current, completionEngine, ctx));
-		sessionRef.current = session;
+		sessionRef.current = createSession({
+			connection,
+			completionEngine,
+			getModuleList: () => moduleListRef.current,
+			getBuilderTree: () => builderTree,
+		}).session;
 	}
 	const session = sessionRef.current;
 
@@ -594,11 +596,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		async function load() {
 			if (!dataLoader || cancelled) return;
 			try {
-				// Load datasets for completion engine
-				await completionEngine.init(dataLoader);
-
-				const moduleList = await dataLoader.loadModuleList();
+				const moduleList = await loadSessionDatasets(dataLoader, completionEngine);
 				if (!cancelled) {
+					if (!moduleList) return;
 					// Store for future builder mode instances
 					moduleListRef.current = moduleList;
 					// Update existing builder mode instances with module data
@@ -629,6 +629,50 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			return combined;
 		});
 	}, []);
+
+	const renderContextRef = useRef({
+		scheme,
+		columns: contentColumns,
+		layout,
+	});
+	renderContextRef.current = { scheme, columns: contentColumns, layout };
+
+	const handleObserverEvent = useCallback((event: ObserverEvent) => {
+		const { scheme: currentScheme, columns: currentContentColumns, layout: currentLayout } = renderContextRef.current;
+		const innerW = currentContentColumns - 1 - 2 * currentLayout.horizontalPad;
+
+		if (event.type === "command.start") {
+			const accent = MODE_ACCENTS[event.mode as keyof typeof MODE_ACCENTS] ?? currentScheme.foreground.default;
+			addBlocks([
+				renderEcho(event.command, accent, currentScheme.backgrounds.darker, innerW, undefined, {
+					prefix: "[LLM] ",
+					prefixColor: currentScheme.foreground.muted,
+				}),
+			]);
+			return;
+		}
+
+		if (event.type === "command.progress") {
+			const parts = [event.phase, event.percent !== undefined ? `${event.percent}%` : undefined, event.message]
+				.filter(Boolean)
+				.join(" ");
+			if (parts) {
+				const block = renderResult({ type: "text", content: parts }, currentScheme, innerW);
+				if (block) addBlocks([block]);
+			}
+			return;
+		}
+
+		const block = renderResult(event.result, currentScheme, innerW);
+		if (block) addBlocks([block]);
+	}, [addBlocks]);
+
+	useEffect(() => {
+		const server = startObserverServer(handleObserverEvent);
+		return () => {
+			server.close();
+		};
+	}, [handleObserverEvent]);
 
 	const handleSubmit = useCallback(async (input: string) => {
 		const mode = session.currentMode();

@@ -2,8 +2,6 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	resolve: {
-		// Node16 module resolution requires .js extensions on local imports,
-		// but vitest needs to resolve them to .ts source files.
 		extensions: [".ts", ".tsx", ".js", ".jsx"],
 		conditions: ["import", "module", "default"],
 	},
@@ -36,13 +34,8 @@ export default defineConfig({
 		},
 	],
 	test: {
-		include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-		exclude: [
-			"**/node_modules/**",
-			"**/dist/**",
-			"src/tui/screencast/tape-runner.test.ts",
-			"src/live-contract/**/*.live.test.ts",
-		],
+		include: ["src/live-contract/**/*.live.test.ts"],
+		exclude: ["**/node_modules/**", "**/dist/**"],
 		environment: "node",
 		passWithNoTests: true,
 	},

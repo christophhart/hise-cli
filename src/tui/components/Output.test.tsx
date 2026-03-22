@@ -76,6 +76,20 @@ describe("renderEcho", () => {
 		expect(text).toContain("test command");
 		expect(text).toContain("\u258E"); // ▎
 	});
+
+	it("renders a dimmable prefix before the command text", () => {
+		const block = renderEcho(
+			"/script Engine.getSampleRate()",
+			"#88bbcc",
+			defaultScheme.backgrounds.darker,
+			80,
+			undefined,
+			{ prefix: "[LLM] ", prefixColor: defaultScheme.foreground.muted },
+		);
+		const text = block.lines.join("\n");
+		expect(text).toContain("[LLM]");
+		expect(text).toContain("/script Engine.getSampleRate()");
+	});
 });
 
 // ── Line buffer helper tests ────────────────────────────────────────

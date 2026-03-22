@@ -35,6 +35,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live-contract": "vitest run --config vitest.live.config.ts",
+    "test:live-contract:inspect": "vitest run --config vitest.live.config.ts src/live-contract/inspect.live.test.ts",
+    "test:live-contract:script": "vitest run --config vitest.live.config.ts src/live-contract/script.live.test.ts",
     "test:screencasts": "vitest run src/tui/screencast/tape-runner.test.ts",
     "prepack": "npm run build",
     "start": "node dist/index.js",
@@ -62,8 +65,10 @@
   "dependencies": {
     "@byteland/ink-scroll-bar": "^1.0.0",
     "@ink-tools/ink-mouse": "^2.1.0",
+    "cli-highlight": "^2.1.11",
+    "highlight.js": "^11.11.1",
     "ink-scroll-view": "^0.3.6",
-    "marked-terminal": "7.3.0",
+    "marked-terminal": "^7.3.0",
     "react-devtools-core": "^7.0.1"
   }
 }

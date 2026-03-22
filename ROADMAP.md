@@ -35,20 +35,15 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
 - **Engine-first, TUI-validated**: every feature starts as tested engine code
   (zero UI deps), then gets a TUI rendering. The TUI is the integration test
   you can feel.
-- **TDD**: vitest for all engine code. `MockHiseConnection` doubles as the
-  living API contract ([DESIGN.md — Decision #9](DESIGN.md#9-tests-as-api-contract)).
-- **Live HISE early**: script mode (`POST /api/repl`) works against the real
-  REST API from Phase 1. No mock-only development.
+- **TDD**: vitest for all engine code. Mode implementation workflow, mock
+  contracts, and live parity testing are defined in [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md).
+- **Live HISE early**: existing endpoints like `POST /api/repl` and
+  `GET /api/status` are wired early, but mode work still follows the mock-first
+  contract pipeline in [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md).
 - **REST-first for HISE-connected modes**: any mode requiring new HISE REST
-  endpoints follows a strict sequence: design endpoint contract → implement in
-  HISE C++ → write C++ unit tests → verify behavior → build validated dummy
-  data in hise-cli → implement CLI mode. Dummy data must match the validated
-  C++ test response structures — it acts as a contract bridge ensuring
-  TypeScript tests and C++ tests agree on response shapes. Modes using only
-  local data (`moduleList.json`, `scripting_api.json`) or existing endpoints
-  (`POST /api/repl`, `GET /api/status`) skip the C++ steps. This applies to
-  Phase 4 (builder execution), Phase 6 (UI, expansions, DSP, sampler), and
-  any future mode needing new endpoints.
+  endpoints follows the implementation sequence documented in
+  [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md), plus the C++ endpoint work tracked
+  in this roadmap.
 - **Clean break**: existing code in `src/` stays as reference. New code goes
   into `src/engine/`, `src/tui/`, `src/cli/`. Entry point (`src/index.ts`)
   is rewired in Phase 2.
@@ -548,9 +543,10 @@ verify gone, set_attributes → verify parameter changed, clone → verify
 copy exists, move → verify new parent. Test error cases: invalid module
 type, duplicate name, invalid chain target, out-of-range parameter.
 
-**4.0.4 — Update dummy data**: `dummyTree.ts` response structure must match
-the validated `GET /api/builder/tree` response from C++ tests. The dummy
-data acts as the contract bridge between C++ and TypeScript test suites.
+**4.0.4 — Update mock contract data**: builder mock payloads and contract
+normalizers must match the validated `GET /api/builder/tree` response from C++
+tests. Follow [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md) for the mock-first
+contract workflow and live parity test requirements.
 
 ### 4.1 Builder parser
 
@@ -1039,8 +1035,8 @@ regression tests alongside their HISE projects.
 [#12](https://github.com/christoph-hart/hise-cli/issues/12) tracks all new
 REST API endpoints. Following the REST-first principle, each group of
 endpoints is implemented and tested in C++ before the corresponding
-CLI-side mode code is written. The dummy data in hise-cli must match
-the validated C++ test response structures.
+CLI-side mode code is written. The mode-side workflow, including mock runtime
+contracts and live parity tests, is defined in [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md).
 
 | hise-cli feature | Required HISE endpoint | Phase blocked |
 |------------------|----------------------|---------------|

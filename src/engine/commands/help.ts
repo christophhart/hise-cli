@@ -102,14 +102,12 @@ Use **Tab** to complete module types and parameters.`,
 
 	inspect: `# INSPECT MODE
 
-Runtime monitor — view CPU, voices, memory, modules.
+	Runtime monitor — inspect the live HISE status payload.
 
-## Available Commands
+	## Available Commands
 
-- \`cpu\` — CPU usage and buffer info
-- \`voices\` — Active voice count
-- \`modules\` — Module tree
-- \`memory\` — Memory usage`,
+	- \`version\` — HISE server version and compile timeout
+	- \`project\` — Current project paths and script processors`,
 
 	dsp: `# DSP MODE
 

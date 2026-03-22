@@ -6,7 +6,7 @@ import type { TokenSpan, TokenType } from "./tokens.js";
 import { tokenizeSlash } from "./slash.js";
 
 const INSPECT_KEYWORDS = new Set([
-	"cpu", "voices", "modules", "memory", "help",
+	"version", "project", "help",
 ]);
 
 const ARG_RULES: Array<{ pattern: RegExp; token: TokenType }> = [
@@ -20,8 +20,8 @@ const ARG_RULES: Array<{ pattern: RegExp; token: TokenType }> = [
 
 /**
  * Tokenize inspect mode input.
- * "cpu" → [cpu=keyword]
- * "modules" → [modules=keyword]
+ * "version" → [version=keyword]
+ * "project" → [project=keyword]
  *
  * Delegates to tokenizeSlash for "/" prefixed input.
  */

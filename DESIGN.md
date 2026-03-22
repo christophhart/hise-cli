@@ -1808,13 +1808,16 @@ adds complexity with two transports to maintain.
 
 ### 9. Tests as API contract
 
-**Decision**: MockHiseConnection-based tests serve as the living specification
-for HISE's C++ REST endpoints.
+**Decision**: Mode contracts are defined through the shared mock runtime,
+contract normalizers, and live parity tests.
 
-**Rationale**: The mock responses document exactly what request format HISE
-needs to accept and what response format it should return. When implementing
-the C++ side, match the test expectations. This eliminates the need for a
-separate protocol specification document that can drift from reality.
+**Rationale**: The mock runtime defines the stable payloads the engine builds
+against, while live parity tests verify that real HISE responses still conform
+to those contracts. This avoids drift between mock mode, engine behavior, and
+live REST integrations.
+
+**Workflow**: See [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md) for the canonical
+mode implementation pipeline.
 
 ### 10. Dual frontends from day one
 

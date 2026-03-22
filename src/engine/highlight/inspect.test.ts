@@ -4,13 +4,13 @@ import { tokenizeInspect } from "./inspect.js";
 describe("tokenizeInspect", () => {
 	// ── Keywords ────────────────────────────────────────────────────
 
-	it("classifies cpu as keyword", () => {
-		const spans = tokenizeInspect("cpu");
-		expect(spans).toEqual([{ text: "cpu", token: "keyword" }]);
+	it("classifies version as keyword", () => {
+		const spans = tokenizeInspect("version");
+		expect(spans).toEqual([{ text: "version", token: "keyword" }]);
 	});
 
 	it("classifies all inspect commands as keywords", () => {
-		for (const cmd of ["cpu", "voices", "modules", "memory", "help"]) {
+		for (const cmd of ["version", "project", "help"]) {
 			const spans = tokenizeInspect(cmd);
 			expect(spans[0]!.token).toBe("keyword");
 		}

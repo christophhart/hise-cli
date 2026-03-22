@@ -1,7 +1,7 @@
 // ── TUI App integration tests ───────────────────────────────────────
 
 import React from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { render } from "ink-testing-library";
 import { App } from "./app.js";
 import { MockHiseConnection } from "../engine/hise.js";
@@ -10,6 +10,24 @@ import { defaultScheme } from "./theme.js";
 // Strip ANSI escape codes for plain text assertions
 function stripAnsi(s: string): string {
 	return s.replace(/\x1b\[[0-9;]*m/g, "");
+}
+
+const observerEnv = process.env.HISE_TUI_OBSERVER_PORT;
+
+afterEach(() => {
+	if (observerEnv === undefined) {
+		delete process.env.HISE_TUI_OBSERVER_PORT;
+	} else {
+		process.env.HISE_TUI_OBSERVER_PORT = observerEnv;
+	}
+});
+
+async function postObserverEvent(port: number, payload: unknown): Promise<void> {
+	await fetch(`http://127.0.0.1:${port}/observer/events`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(payload),
+	});
 }
 
 describe("App", () => {
@@ -118,6 +136,42 @@ describe("App", () => {
 		const frame = instance.lastFrame() ?? "";
 		// StatusBar should show "live" when at bottom
 		expect(frame).toContain("live");
+
+		instance.unmount();
+	});
+
+	it("mirrors observer calls as prompt-style output with results", async () => {
+		process.env.HISE_TUI_OBSERVER_PORT = "19115";
+		const instance = render(
+			React.createElement(App, {
+				connection: new MockHiseConnection(),
+				scheme: defaultScheme,
+			}),
+		);
+
+		await new Promise((r) => setTimeout(r, 50));
+		await postObserverEvent(19115, {
+			id: "cmd-1",
+			type: "command.start",
+			source: "llm",
+			command: "/script Engine.getSampleRate()",
+			mode: "script",
+			timestamp: Date.now(),
+		});
+		await postObserverEvent(19115, {
+			id: "cmd-1",
+			type: "command.end",
+			source: "llm",
+			ok: true,
+			result: { type: "markdown", content: "48000", accent: "#C65638" },
+			timestamp: Date.now(),
+		});
+		await new Promise((r) => setTimeout(r, 100));
+
+		const plain = stripAnsi(instance.lastFrame() ?? "");
+		expect(plain).toContain("[LLM]");
+		expect(plain).toContain("/script Engine.getSampleRate()");
+		expect(plain).toContain("48000");
 
 		instance.unmount();
 	});

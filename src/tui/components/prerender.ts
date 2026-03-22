@@ -71,10 +71,13 @@ export function renderEcho(
 	darkerBg: string,
 	contentWidth: number,
 	spans?: TokenSpan[],
+	options?: { prefix?: string; prefixColor?: string },
 ): PrerenderedBlock {
 	const border = "\u258E "; // ▎ + space
 	const bg = bgHex(darkerBg);
 	const fg = fgHex(accent);
+	const prefix = options?.prefix ?? "";
+	const prefixColor = options?.prefixColor ? fgHex(options.prefixColor) : "";
 
 	// Build the content line with optional syntax spans
 	let contentLine: string;
@@ -83,9 +86,9 @@ export function renderEcho(
 			const c = span.color || TOKEN_COLORS[span.token];
 			return fgHex(c) + span.text;
 		}).join("");
-		contentLine = bg + fg + border + "> " + spanText + RESET;
+		contentLine = bg + fg + border + "> " + prefixColor + prefix + spanText + RESET;
 	} else {
-		contentLine = bg + fg + border + "> " + input + RESET;
+		contentLine = bg + fg + border + "> " + prefixColor + prefix + input + RESET;
 	}
 
 	// Pad each line to fill contentWidth with darker bg
@@ -93,9 +96,10 @@ export function renderEcho(
 	// Pad the border-only lines to full width
 	const padBorder = bg + fg + border + RESET + bg + " ".repeat(Math.max(0, contentWidth - 2)) + RESET;
 	// Pad the content line to full width
-	const visibleContent = 2 + 2 + input.length; // border(2) + "> "(2) + text
+	const visibleContent = 2 + 2 + prefix.length + input.length; // border(2) + "> "(2) + text
 	const padContent = " ".repeat(Math.max(0, contentWidth - visibleContent));
 	const paddedContent = bg + fg + border + "> " +
+		(prefix ? prefixColor + prefix : "") +
 		(spans && spans.length > 0
 			? spans.map(span => {
 				const c = span.color || TOKEN_COLORS[span.token];

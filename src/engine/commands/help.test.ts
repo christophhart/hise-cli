@@ -37,7 +37,7 @@ describe("generateHelp", () => {
 		const help = generateHelp("inspect", mockCommands);
 		expect(help.title).toContain("inspect");
 		expect(help.content).toContain("# INSPECT MODE");
-		expect(help.content).toContain("cpu");
+		expect(help.content).toContain("version");
 	});
 
 	it("includes navigation hints", () => {

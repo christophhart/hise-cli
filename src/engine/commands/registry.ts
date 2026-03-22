@@ -28,6 +28,17 @@ export interface CommandEntry {
 	name: string;
 	description: string;
 	handler: CommandHandler;
+	surfaces?: CommandSurface[];
+	kind?: "command" | "mode";
+}
+
+export type CommandSurface = "tui" | "cli";
+
+export function supportsSurface(
+	entry: CommandEntry,
+	surface: CommandSurface,
+): boolean {
+	return entry.surfaces ? entry.surfaces.includes(surface) : true;
 }
 
 export class CommandRegistry {

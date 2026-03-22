@@ -21,7 +21,6 @@ import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenizeBuilder } from "../highlight/builder.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
-import { DUMMY_MODULE_TREE } from "./dummyTree.js";
 
 // ── Chain color constants (FX and MIDI are always fixed) ────────────
 
@@ -442,10 +441,12 @@ export class BuilderMode implements Mode {
 	private moduleList: ModuleList | null = null;
 	private readonly completionEngine: CompletionEngine | null;
 	private currentPath: string[] = [];
+	private treeRoot: TreeNode | null = null;
 
-	constructor(moduleList?: ModuleList, completionEngine?: CompletionEngine, initialPath?: string) {
+	constructor(moduleList?: ModuleList, completionEngine?: CompletionEngine, initialPath?: string, treeRoot?: TreeNode | null) {
 		this.moduleList = moduleList ?? null;
 		this.completionEngine = completionEngine ?? null;
+		this.treeRoot = treeRoot ?? null;
 		if (initialPath) {
 			this.currentPath = initialPath.split(".").filter((s) => s !== "");
 		}
@@ -458,9 +459,8 @@ export class BuilderMode implements Mode {
 	// ── Tree sidebar support ────────────────────────────────────
 
 	getTree(): TreeNode | null {
-		// TODO: replace with live tree from HISE when connection is available
-		// propagateChainColors sets filledDot + colour on every node
-		return propagateChainColors(DUMMY_MODULE_TREE);
+		if (!this.treeRoot) return null;
+		return propagateChainColors(structuredClone(this.treeRoot));
 	}
 
 	getSelectedPath(): string[] {
@@ -482,6 +482,10 @@ export class BuilderMode implements Mode {
 
 	setModuleList(moduleList: ModuleList): void {
 		this.moduleList = moduleList;
+	}
+
+	setTreeRoot(treeRoot: TreeNode | null): void {
+		this.treeRoot = treeRoot;
 	}
 
 	complete(input: string, _cursor: number): CompletionResult {

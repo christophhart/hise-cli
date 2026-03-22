@@ -8,31 +8,13 @@ import chalk from "chalk";
 import { render } from "ink";
 import React from "react";
 import { App as TuiApp } from "./tui/app.js";
-import { HttpHiseConnection, MockHiseConnection } from "./engine/hise.js";
+import { HttpHiseConnection } from "./engine/hise.js";
 import { createNodeDataLoader } from "./tui/nodeDataLoader.js";
-
-// ── Subcommand parsing ──────────────────────────────────────────────
-
-type Subcommand = "repl";
-
-function parseArgs(argv: string[]): {
-	subcommand: Subcommand | null;
-	rest: string[];
-} {
-	const args = argv.slice(2);
-
-	const first = args[0]?.toLowerCase();
-
-	if (!first || first.startsWith("-")) {
-		return { subcommand: "repl", rest: args };
-	}
-
-	if (first === "repl") {
-		return { subcommand: "repl", rest: args.slice(1) };
-	}
-
-	return { subcommand: null, rest: args };
-}
+import { createSession } from "./session-bootstrap.js";
+import { executeCliCommand } from "./cli/run.js";
+import { renderCliHelp } from "./cli/help.js";
+import { listCliCommands } from "./cli/commands.js";
+import { createDefaultMockRuntime } from "./mock/runtime.js";
 
 // ── Alt-screen helpers ──────────────────────────────────────────────
 
@@ -182,7 +164,7 @@ const dataLoader = createNodeDataLoader(dataDir);
 
 async function launchTui(
 	connection: import("./engine/hise.js").HiseConnection,
-	options?: { animate?: boolean },
+	options?: { animate?: boolean; builderTree?: import("./engine/result.js").TreeNode | null },
 ): Promise<void> {
 	const restoreAltScreen = setupAltScreen();
 
@@ -190,6 +172,7 @@ async function launchTui(
 		React.createElement(TuiApp, {
 			connection,
 			dataLoader,
+			builderTree: options?.builderTree,
 			animate: options?.animate,
 		}),
 		{
@@ -213,9 +196,11 @@ async function launchRepl(
 	// with a mock connection. Useful for exploring the CLI without
 	// HISE running, for demos, and for screencast recording.
 	if (args.includes("--mock")) {
-		const mock = new MockHiseConnection();
-		mock.setProbeResult(true);
-		await launchTui(mock, { animate: !noAnimation });
+		const mockRuntime = createDefaultMockRuntime();
+		await launchTui(mockRuntime.connection, {
+			animate: !noAnimation,
+			builderTree: mockRuntime.builderTree,
+		});
 		return;
 	}
 
@@ -292,22 +277,26 @@ async function launchRepl(
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-	const { subcommand, rest } = parseArgs(process.argv);
+	const bootstrap = createSession({ connection: null });
+	const cliCommands = listCliCommands(bootstrap.session.allCommands());
+	const cliResult = await executeCliCommand(process.argv, cliCommands, dataLoader);
 
-	if (subcommand === null) {
-		const attempted = rest[0] ?? "";
-		console.error(chalk.red(`Unknown subcommand: ${attempted}`));
+	if (cliResult.kind === "help") {
+		console.log(renderCliHelp(cliCommands));
+		return;
+	}
+
+	if (cliResult.kind === "error") {
+		console.error(chalk.red(cliResult.message));
 		process.exit(1);
 	}
 
-	switch (subcommand) {
-		case "repl":
-			await launchRepl(rest);
-			break;
-		default:
-			await launchRepl(rest);
-			break;
+	if (cliResult.kind === "json") {
+		console.log(JSON.stringify(cliResult.payload, null, 2));
+		process.exit(cliResult.payload.ok ? 0 : 1);
 	}
+
+	await launchRepl(cliResult.args);
 }
 
 void main();

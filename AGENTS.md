@@ -34,15 +34,10 @@ Source wizard JSONs from HISE's C++ multipage dialogs live in
 backwards compatibility for obsolete commands, files, or APIs. Keep only explicit reference
 material when useful for reimplementation.
 
-**REST-first development**: Any mode requiring new HISE REST endpoints follows a strict
-sequence: design endpoint contract → implement in HISE C++ → write C++ unit tests →
-verify behavior → build validated dummy data in hise-cli → implement CLI mode. Dummy
-data must match the validated C++ test response structures — it acts as a contract
-bridge ensuring TypeScript tests and C++ tests agree on response shapes. Modes using
-only local data (`moduleList.json`, `scripting_api.json`) or existing endpoints
-(`POST /api/repl`, `GET /api/status`) skip the C++ steps. This applies to Phase 4
-(builder execution), Phase 6 (UI, expansions, DSP, sampler), and any future mode
-needing new endpoints. See [ROADMAP.md](ROADMAP.md) Principles.
+**REST-first development**: Follow [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md) for the
+canonical mode workflow: contract probing, shared mock runtime support, engine work
+against normalized mock payloads, and live parity tests. For new HISE REST endpoints,
+pair that workflow with the C++ endpoint work tracked in [ROADMAP.md](ROADMAP.md).
 
 **Terminal markdown renderer** (Phase 3.7, complete): Renders markdown via
 `marked` + `marked-terminal` with syntax-highlighted code blocks. Output uses a

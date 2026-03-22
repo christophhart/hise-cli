@@ -174,95 +174,115 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "exit",
 		description: "Exit current mode (or quit at root)",
 		handler: handleExit,
+		kind: "command",
 	});
 
 	registry.register({
 		name: "quit",
 		description: "Quit the application",
 		handler: handleQuit,
+		kind: "command",
 	});
 
 	registry.register({
 		name: "help",
 		description: "Show available commands and help topics",
 		handler: handleHelp,
+		kind: "command",
 	});
 
 	registry.register({
 		name: "clear",
 		description: "Clear the output",
 		handler: handleClear,
+		kind: "command",
+		surfaces: ["tui"],
 	});
 
 	registry.register({
 		name: "modes",
 		description: "List available modes",
 		handler: handleModes,
+		kind: "command",
 	});
 
 	registry.register({
 		name: "builder",
 		description: "Enter builder mode (module tree)",
 		handler: createModeHandler("builder"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "script",
 		description: "Enter script mode (HiseScript REPL)",
 		handler: createModeHandler("script"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "dsp",
 		description: "Enter DSP mode (scriptnode)",
 		handler: createModeHandler("dsp"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "sampler",
 		description: "Enter sampler mode",
 		handler: createModeHandler("sampler"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "inspect",
 		description: "Enter inspect mode (runtime monitor)",
 		handler: createModeHandler("inspect"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "project",
 		description: "Enter project mode (settings)",
 		handler: createModeHandler("project"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "compile",
 		description: "Enter compile mode (build targets)",
 		handler: createModeHandler("compile"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "import",
 		description: "Enter import mode (asset import)",
 		handler: createModeHandler("import"),
+		kind: "mode",
 	});
 
 	registry.register({
 		name: "density",
 		description: "Set layout density (auto/compact/standard/spacious)",
 		handler: handleDensity,
+		kind: "command",
+		surfaces: ["tui"],
 	});
 
 	registry.register({
 		name: "expand",
 		description: "Expand tree sidebar nodes (wildcard pattern, default: *)",
 		handler: handleExpand,
+		kind: "command",
+		surfaces: ["tui"],
 	});
 
 	registry.register({
 		name: "collapse",
 		description: "Collapse tree sidebar nodes (wildcard pattern, default: *)",
 		handler: handleCollapse,
+		kind: "command",
+		surfaces: ["tui"],
 	});
 }

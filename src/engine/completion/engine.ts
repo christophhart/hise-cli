@@ -360,10 +360,8 @@ export class CompletionEngine {
 	 */
 	completeInspect(prefix: string): CompletionItem[] {
 		const items: CompletionItem[] = [
-			{ label: "cpu", detail: "Show CPU usage and buffer info" },
-			{ label: "voices", detail: "Show active voice count" },
-			{ label: "modules", detail: "Show module tree" },
-			{ label: "memory", detail: "Show memory usage" },
+			{ label: "version", detail: "Show HISE server version information" },
+			{ label: "project", detail: "Show current project information" },
 			{ label: "help", detail: "Show inspect mode commands" },
 		];
 		return fuzzyFilter(prefix, items);
