@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { startObserverServer, type ObserverEvent } from "./observer.js";
+import { OBSERVER_ROUTE } from "../observer/protocol.js";
 
 const servers = new Set<import("node:http").Server>();
 
@@ -11,7 +12,7 @@ afterEach(() => {
 });
 
 async function postEvent(port: number, payload: unknown): Promise<Response> {
-	return fetch(`http://127.0.0.1:${port}/observer/events`, {
+	return fetch(`http://127.0.0.1:${port}${OBSERVER_ROUTE}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -47,7 +48,7 @@ describe("observer server", () => {
 		const server = startObserverServer(() => {}, port);
 		servers.add(server);
 
-		const response = await fetch(`http://127.0.0.1:${port}/observer/events`, {
+		const response = await fetch(`http://127.0.0.1:${port}${OBSERVER_ROUTE}`, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: "{bad-json",

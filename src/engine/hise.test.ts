@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
 	HttpHiseConnection,
 	MockHiseConnection,
+	isEnvelopeResponse,
 	isErrorResponse,
 	isSuccessResponse,
 	type HiseErrorResponse,
+	type HiseEnvelopeResponse,
 	type HiseSuccessResponse,
 } from "./hise.js";
 
@@ -18,7 +20,21 @@ describe("response type guards", () => {
 			logs: [],
 			errors: [],
 		};
+		expect(isEnvelopeResponse(response)).toBe(true);
 		expect(isSuccessResponse(response)).toBe(true);
+		expect(isErrorResponse(response)).toBe(false);
+	});
+
+	it("recognizes execution envelopes that failed evaluation", () => {
+		const response: HiseEnvelopeResponse = {
+			success: false,
+			result: "Error at REPL Evaluation",
+			value: "undefined",
+			logs: [],
+			errors: [{ errorMessage: "This expression is not a function!", callstack: [] }],
+		};
+		expect(isEnvelopeResponse(response)).toBe(true);
+		expect(isSuccessResponse(response)).toBe(false);
 		expect(isErrorResponse(response)).toBe(false);
 	});
 

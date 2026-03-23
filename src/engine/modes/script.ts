@@ -1,7 +1,7 @@
 // ── Script mode — HiseScript REPL via POST /api/repl ────────────────
 
 import type { HiseResponse } from "../hise.js";
-import { isErrorResponse, isSuccessResponse } from "../hise.js";
+import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
 import type { CommandResult } from "../result.js";
 import { codeResult, errorResult, markdownResult, textResult } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
@@ -102,7 +102,7 @@ export function formatReplResponse(
 		return errorResult(response.message);
 	}
 
-	if (!isSuccessResponse(response)) {
+	if (!isEnvelopeResponse(response)) {
 		return errorResult("Unexpected response from HISE");
 	}
 
@@ -118,6 +118,10 @@ export function formatReplResponse(
 			})
 			.join("\n");
 		return errorResult(errorMessages);
+	}
+
+	if (!response.success) {
+		return errorResult(response.result || "REPL evaluation failed");
 	}
 
 	// Build markdown with blockquoted logs and plain return value

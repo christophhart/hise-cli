@@ -1,4 +1,4 @@
-import { HttpHiseConnection, isErrorResponse, isSuccessResponse } from "../engine/hise.js";
+import { HttpHiseConnection, isEnvelopeResponse, isErrorResponse, isSuccessResponse } from "../engine/hise.js";
 
 export async function requireLiveHiseConnection(): Promise<HttpHiseConnection> {
 	const connection = new HttpHiseConnection();
@@ -45,7 +45,7 @@ export async function postLiveRepl(
 	if (isErrorResponse(response)) {
 		throw new Error(response.message);
 	}
-	if (!isSuccessResponse(response)) {
+	if (!isEnvelopeResponse(response)) {
 		throw new Error("Unexpected HISE repl response");
 	}
 	return response;

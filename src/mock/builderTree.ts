@@ -1,13 +1,12 @@
-// ── Dummy module tree — realistic HISE hierarchy for development ────
+// Mock builder tree - realistic HISE hierarchy for --mock mode.
 //
-// Used by BuilderMode when no live HISE connection is available.
 // Structure follows the rules documented in docs/MODULE_TREE.md:
 // - Chains are first-class navigable nodes (nodeKind: "chain")
 // - Modulators go inside modulation chains, not directly under synths
 // - Constrainer patterns control what subtypes a chain accepts
 // - SynthGroup's child_fx_constrainer overrides child FX chains
 
-import type { TreeNode } from "../result.js";
+import type { TreeNode } from "../engine/result.js";
 
 type DiffStatus = "added" | "removed" | "modified";
 
@@ -61,16 +60,16 @@ function synth(
 	};
 }
 
-// Chain colours — known constants for FX and MIDI, data-driven for modulation.
+// Chain colours - known constants for FX and MIDI, data-driven for modulation.
 // Gain/Pitch have explicit colours. Sub-chains (AttackTimeModulation, LFO
-// Intensity, etc.) have no colour — they inherit from their parent chain
+// Intensity, etc.) have no colour - they inherit from their parent chain
 // via propagateChainColors() in builder.ts.
 const GAIN_COLOUR = "#be952c";
 const PITCH_COLOUR = "#7559a4";
 const FX_COLOUR = "#3a6666";
-// const MIDI_COLOUR = "#C65638"; // not used in dummy tree (no MIDI chains)
+// const MIDI_COLOUR = "#C65638"; // not used in mock tree (no MIDI chains)
 
-export const DUMMY_MODULE_TREE: TreeNode = synth("Master", "SynthChain", [
+export const MOCK_BUILDER_TREE: TreeNode = synth("Master", "SynthChain", [
 	chain("Gain Modulation", "TimeVariantModulator", [
 		mod("CC1", "MidiController"),
 	], GAIN_COLOUR),
@@ -117,7 +116,9 @@ export const DUMMY_MODULE_TREE: TreeNode = synth("Master", "SynthChain", [
 	synth("Piano", "StreamingSampler", [
 		chain("Gain Modulation", "*", [
 			mod("Velocity", "Velocity"),
-			mod("Piano Env", "AHDSR"),
+			mod("Piano Env", "AHDSR", [
+				chain("AttackTimeModulation", "VoiceStartModulator"),
+			]),
 		], GAIN_COLOUR),
 		chain("Pitch Modulation", "*", undefined, PITCH_COLOUR),
 		chain("Sample Start", "*"),

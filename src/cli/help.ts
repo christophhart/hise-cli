@@ -7,7 +7,7 @@ export function renderCliHelp(commands: CommandEntry[]): string {
 	const lines = [
 		"HISE CLI",
 		"",
-		"One-shot automation frontend with JSON output.",
+		"One-shot automation frontend with compact JSON output.",
 		"Run without arguments or use `repl` to open the TUI.",
 		"",
 		"Usage:",
@@ -29,7 +29,8 @@ export function renderCliHelp(commands: CommandEntry[]): string {
 		"",
 		"Notes:",
 		"  - One-shot mode commands require a command or expression tail.",
-		"  - Results are printed as JSON to stdout.",
+		"  - `-script` emits semantic REPL output (`logs`, `value`, `error`).",
+		"  - Other commands emit `{ ok, result }` JSON to stdout.",
 	];
 
 	return lines.join("\n");

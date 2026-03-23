@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ScriptMode, extractLastToken, formatReplResponse } from "./script.js";
 import { MockHiseConnection } from "../hise.js";
 import type { SessionContext } from "./mode.js";
-import type { HiseSuccessResponse } from "../hise.js";
+import type { HiseEnvelopeResponse, HiseSuccessResponse } from "../hise.js";
 import { CompletionEngine, buildDatasets } from "../completion/engine.js";
 import type { ScriptingApi } from "../data.js";
 import { createDefaultMockRuntime } from "../../mock/runtime.js";
@@ -23,6 +23,18 @@ function createMockSession(
 function successResponse(
 	overrides: Partial<HiseSuccessResponse> = {},
 ): HiseSuccessResponse {
+	return {
+		success: true,
+		result: "REPL Evaluation OK",
+		logs: [],
+		errors: [],
+		...overrides,
+	};
+}
+
+function envelopeResponse(
+	overrides: Partial<HiseEnvelopeResponse> = {},
+): HiseEnvelopeResponse {
 	return {
 		success: true,
 		result: "REPL Evaluation OK",
@@ -226,6 +238,19 @@ describe("ScriptMode", () => {
 		}
 	});
 
+	it("handles evaluation-failed envelopes with script errors", async () => {
+		const runtime = createDefaultMockRuntime();
+		const mode = new ScriptMode();
+		const session = createMockSession(runtime.connection as MockHiseConnection);
+		const result = await mode.parse("someErrorStuff()", session);
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("This expression is not a function!");
+			expect(result.message).toContain("Interface.js:1:1");
+			expect(result.message).not.toContain("Unexpected response from HISE");
+		}
+	});
+
 	it("handles connection-level errors", async () => {
 		const mock = new MockHiseConnection();
 		mock.onPost("/api/repl", () => ({
@@ -310,6 +335,26 @@ describe("formatReplResponse", () => {
 			// Blockquoted log line + blank separator + return value
 			expect(result.content).toContain("> 1234");
 			expect(result.content).toContain("undefined");
+		}
+	});
+
+	it("formats evaluation-failed repl envelopes as script errors", () => {
+		const result = formatReplResponse(
+			envelopeResponse({
+				success: false,
+				result: "Error at REPL Evaluation",
+				value: "undefined",
+				errors: [{
+					errorMessage: "This expression is not a function!",
+					callstack: ["eval() at Interface.js:1:1"],
+				}],
+			}),
+			"someErrorStuff()",
+		);
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("This expression is not a function!");
+			expect(result.message).not.toContain("Unexpected response from HISE");
 		}
 	});
 

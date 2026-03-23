@@ -18,7 +18,7 @@ import {
 	totalLineCount,
 } from "./components/Output.js";
 import type { PrerenderedBlock } from "./components/prerender.js";
-import { renderEcho, renderResult } from "./components/prerender.js";
+import { renderEcho, renderResult, truncateAnsi } from "./components/prerender.js";
 import { dimAnsiLines } from "./components/dim-ansi.js";
 import { Input, type InputHandle } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
@@ -54,6 +54,7 @@ import { MODE_ACCENTS } from "../engine/modes/mode.js";
 
 const SCROLL_WHEEL_LINES = 3; // lines per mouse wheel tick
 const DIM_FACTOR = 0.65; // overlay backdrop brightness (0 = black, 1 = normal)
+const ENTER_ACCEPTS_COMPLETION = false; // true = Enter accepts popup selection, false = Enter submits typed text
 
 // ── Overlay backdrop snapshot ───────────────────────────────────────
 
@@ -318,7 +319,10 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 
 		// ── Priority 3: Completion popup (when visible) ────────────
 		if (completionState?.visible) {
-			if (key.return || key.tab) {
+			if (key.return && !ENTER_ACCEPTS_COMPLETION) {
+				setCompletionState(null);
+				// Fall through to Priority 5 (submit typed text as-is)
+			} else if (key.tab || (key.return && ENTER_ACCEPTS_COMPLETION)) {
 				const item = completionState.result.items[completionState.selectedIndex];
 				if (item) {
 					acceptCompletion(item, completionState.result);
@@ -642,7 +646,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 		const innerW = currentContentColumns - 1 - 2 * currentLayout.horizontalPad;
 
 		if (event.type === "command.start") {
-			const accent = MODE_ACCENTS[event.mode as keyof typeof MODE_ACCENTS] ?? currentScheme.foreground.default;
+			const accent = MODE_ACCENTS[event.mode as keyof typeof MODE_ACCENTS] || currentScheme.foreground.default;
 			addBlocks([
 				renderEcho(event.command, accent, currentScheme.backgrounds.darker, innerW, undefined, {
 					prefix: "[LLM] ",
@@ -687,8 +691,9 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 		try {
 			const result: CommandResult = await session.handleInput(input);
 			
-			// Use result.accent if provided (one-shot/mode-switch), otherwise current mode
-			const accent = result.accent ?? currentAccent;
+			// Use result.accent if provided (one-shot/mode-switch), otherwise current mode.
+			// Root mode has accent="" so use || to skip empty strings → scheme default.
+			const accent = result.accent || currentAccent || scheme.foreground.default;
 
 			// Pre-render the command echo
 			const echoBlock = renderEcho(input, accent, scheme.backgrounds.darker, innerW, echoSpans);
@@ -797,13 +802,6 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 			setDisabled(false);
 		}
 
-		// Auto-scroll to bottom if user hasn't manually scrolled up.
-		// Defer so the new blocks are in state and totalLinesRef is updated.
-		if (!userScrolledRef.current) {
-			setTimeout(() => {
-				setScrollOffset(maxScrollOffset());
-			}, 0);
-		}
 	}, [session, scheme, addBlocks, exit, connectionStatus, columns, rows, contentColumns, layout, maxScrollOffset]);
 
 	// ── Mode label ──────────────────────────────────────────────────
@@ -815,6 +813,31 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 	const modeAccent = currentMode.accent || scheme.foreground.default;
 	const contextLabel = currentMode.contextLabel ?? "";
 	const treeLabel = sidebarVisible ? currentMode.treeLabel : undefined;
+
+	// Truncate output lines when sidebar visibility toggles (blocks are
+	// width-baked at creation time, so old blocks may be too wide/narrow)
+	const sidebarMountedRef = useRef(true);
+	useEffect(() => {
+		if (sidebarMountedRef.current) {
+			sidebarMountedRef.current = false;
+			return;
+		}
+		const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+		setOutputBlocks((prev) =>
+			prev.map((block) => ({
+				lines: block.lines.map((l) => truncateAnsi(l, innerW)),
+				height: block.height,
+			})),
+		);
+	}, [sidebarVisible]);
+
+	// Auto-scroll to bottom when new content arrives.
+	// Uses useEffect so totalLines is already committed (replaces stale setTimeout).
+	useEffect(() => {
+		if (!userScrolledRef.current) {
+			setScrollOffset(maxScrollOffset());
+		}
+	}, [totalLines, maxScrollOffset]);
 
 	// Clear search when mode changes (tree changes)
 	const currentModeId = currentMode.id;

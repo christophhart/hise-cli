@@ -22,7 +22,7 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
 | Phase 5 — Wizards | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard framework + setup wizard |
 | Phase 6 — Remaining Modes | [#6](https://github.com/christoph-hart/hise-cli/issues/6), [#8](https://github.com/christoph-hart/hise-cli/issues/8), [#7](https://github.com/christoph-hart/hise-cli/issues/7), [#11](https://github.com/christoph-hart/hise-cli/issues/11), [#9](https://github.com/christoph-hart/hise-cli/issues/9) | DSP, script (full), inspect, sampler, project/compile/import |
 | Phase 6 — New Modes | [#16](https://github.com/christoph-hart/hise-cli/issues/16), [#17](https://github.com/christoph-hart/hise-cli/issues/17), [#18](https://github.com/christoph-hart/hise-cli/issues/18), [#19](https://github.com/christoph-hart/hise-cli/issues/19) | `/modules` reference, `/api` docs, `/ui` component CRUD, `/expansions` manager |
-| Phase 7 — Polish | [#10](https://github.com/christoph-hart/hise-cli/issues/10), [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Command palette, remaining wizards, CLI frontend |
+| Phase 7 — Polish | [#10](https://github.com/christoph-hart/hise-cli/issues/10), [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Command palette, remaining wizards, CLI polish |
 | HISE C++ (parallel) | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | New REST endpoints + SSE |
 | Post-1.0 — Web Frontend | — | Browser frontend, live screencast replay |
 | Future | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Wave editing + sample analysis |
@@ -130,7 +130,7 @@ stubs (script, inspect, builder) implemented with full test coverage.
 - `src/engine/commands/slash.ts` — Built-in handlers (see source for current list)
 - `src/engine/modes/root.ts` — Root mode (slash commands only)
 - `src/engine/modes/script.ts` — Script mode (`POST /api/repl`, processor ID)
-- `src/engine/modes/inspect.ts` — Inspect mode stub (cpu, memory, voices, modules)
+- `src/engine/modes/inspect.ts` — Inspect mode MVP (`version`, `project`)
 - `src/engine/modes/builder.ts` — Builder mode (Chevrotain parser: `add`, `show`, `set`)
 - `src/engine/modes/tokens.ts` — Shared Chevrotain token types
 
@@ -589,7 +589,7 @@ HISE-side plan validation via `validate: true` flag on `POST /api/builder/add`.
   for all grammar forms (`add`, `clone`, `remove`, `clear`, `move`, `set`,
   `connect`, `show`, `select`, `bypass`/`enable`, `flush`), plan submode
   records/shows/removes/exports commands, module tree tracking validates
-  against dummy data matching the C++ response structure, `.tape` screencast
+  against mock runtime data matching the C++ response structure, `.tape` screencast
   for builder workflow
 - `npm run build && npm run typecheck` pass
 - **Integration**: builder commands execute correctly against live HISE
@@ -881,14 +881,14 @@ Filterable overlay showing all modes and commands.
 Tracks [#15](https://github.com/christoph-hart/hise-cli/issues/15).
 Broadcaster, export, compile-networks, install-package, update, migrate, nuke.
 
-### 7.3 CLI frontend
+### 7.3 CLI polish
 
-File: `src/cli/index.ts`
+Files: `src/index.ts`, `src/cli/run.ts`
 
-Non-interactive, argument-based invocation with structured JSON output.
-Uses the same `Session` and `Mode` infrastructure. Tree data available
-via `--tree` flag, returning the same `TreeNode` hierarchy as JSON. LLM
-agents use this to understand project structure before issuing commands.
+The baseline one-shot CLI already exists and uses the same `Session` and
+`Mode` infrastructure as the TUI. Remaining work here is polish: richer
+introspection flags like `--tree`, additional automation-oriented output,
+and any follow-up ergonomics discovered during live usage.
 
 ### 7.4 SSE event streaming
 
@@ -901,7 +901,8 @@ delivers the `GET /api/events` endpoint.
 - `npm run build && npm run typecheck && npm test` all pass
 - All modes have tests and at least one `.tape` screencast
 - Command palette opens and filters correctly
-- CLI frontend `src/cli/index.ts` produces structured JSON output
+- CLI polish work keeps structured JSON output intact while adding any new
+  automation-oriented flags
 - Remaining wizards (broadcaster, export, compile-networks) render and
   execute in both TUI and CLI modes
 - Manual: full end-to-end walkthrough with live HISE covering all modes

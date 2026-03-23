@@ -36,7 +36,7 @@ without a round-trip to HISE.
 src/
   engine/          Shared core - zero UI dependencies
     commands/      Command registry, dispatcher, parsers
-    modes/         Mode definitions + dummy module tree for dev
+    modes/         Mode definitions
     completion/    Tab completion engine
     highlight/     Per-mode syntax highlighting tokenizers, span splitting
     plan/          Plan mode state + script generation (planned)
@@ -51,7 +51,7 @@ src/
     components/    Output, Input, CompletionPopup, TreeSidebar, LandingLogo,
                    TopBar, StatusBar, Overlay, scrollbar
     nodeDataLoader.ts  Node.js DataLoader implementation
-  cli/             CLI frontend - pure Node.js (planned — Phase 7)
+  cli/             CLI helpers for one-shot JSON output
 ```
 
 The engine has **no dependency** on Ink, React, or any terminal UI library.

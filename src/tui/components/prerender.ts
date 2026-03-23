@@ -51,16 +51,40 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 function fgHex(hex: string): string {
+	if (!hex || hex.length < 7) return "";
 	const [r, g, b] = hexToRgb(hex);
 	return `\x1b[38;2;${r};${g};${b}m`;
 }
 
 function bgHex(hex: string): string {
+	if (!hex || hex.length < 7) return "";
 	const [r, g, b] = hexToRgb(hex);
 	return `\x1b[48;2;${r};${g};${b}m`;
 }
 
 const RESET = "\x1b[0m";
+
+/** Truncate an ANSI-styled line to a maximum visible width.
+ *  Escape sequences are preserved but don't count towards the width. */
+export function truncateAnsi(line: string, maxVisibleWidth: number): string {
+	let visible = 0;
+	let i = 0;
+	while (i < line.length && visible < maxVisibleWidth) {
+		if (line[i] === "\x1b") {
+			const end = line.indexOf("m", i);
+			i = end !== -1 ? end + 1 : i + 1;
+		} else {
+			visible++;
+			i++;
+		}
+	}
+	// Preserve any trailing escape sequences (e.g. RESET) right after the cut point
+	while (i < line.length && line[i] === "\x1b") {
+		const end = line.indexOf("m", i);
+		i = end !== -1 ? end + 1 : i + 1;
+	}
+	return line.slice(0, i) + RESET;
+}
 
 // ── Echo renderer ───────────────────────────────────────────────────
 
@@ -112,6 +136,18 @@ export function renderEcho(
 	return { lines, height: lines.length };
 }
 
+// ── Plain-text wrap helper ──────────────────────────────────────────
+
+/** Wrap plain text (no ANSI) at a fixed character width. */
+function wrapPlain(text: string, width: number): string[] {
+	if (width <= 0 || text.length <= width) return [text];
+	const result: string[] = [];
+	for (let i = 0; i < text.length; i += width) {
+		result.push(text.slice(i, i + width));
+	}
+	return result;
+}
+
 // ── Error renderer ──────────────────────────────────────────────────
 
 /** Render an error block to ANSI lines. */
@@ -119,15 +155,25 @@ export function renderError(
 	message: string,
 	detail: string | undefined,
 	mutedColor: string,
+	width?: number,
 ): PrerenderedBlock {
 	const errorFg = fgHex(brand.error);
 	const mutedFg = fgHex(mutedColor);
-	const lines: string[] = [
-		errorFg + "\u2717 " + message + RESET,
-	];
+	const lines: string[] = [];
+	const w = width ?? Infinity;
+	// Split message by embedded newlines, then wrap each line
+	const msgLines = message.split("\n");
+	for (let i = 0; i < msgLines.length; i++) {
+		const pre = i === 0 ? "\u2717 " : "  ";
+		for (const part of wrapPlain(pre + msgLines[i]!, w)) {
+			lines.push(errorFg + part + RESET);
+		}
+	}
 	if (detail) {
-		for (const line of detail.split("\n")) {
-			lines.push(mutedFg + line + RESET);
+		for (const raw of detail.split("\n")) {
+			for (const part of wrapPlain(raw, w)) {
+				lines.push(mutedFg + part + RESET);
+			}
 		}
 	}
 	return { lines, height: lines.length };
@@ -152,7 +198,7 @@ export function renderResult(
 			break;
 
 		case "error":
-			return renderError(result.message, result.detail, scheme.foreground.muted);
+			return renderError(result.message, result.detail, scheme.foreground.muted, width);
 
 		case "code":
 			source = codeToMarkdown(result.content, result.language);

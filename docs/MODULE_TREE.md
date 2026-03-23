@@ -5,7 +5,7 @@ pre-validation, tree sidebar display, and CLI tree queries. All data
 derived from `data/moduleList.json`.
 
 **Implementation references:**
-- `src/engine/modes/dummyTree.ts` — reference implementation of this hierarchy
+- `src/mock/builderTree.ts` — mock-runtime reference implementation of this hierarchy
 - `src/engine/modes/builder.ts` — `propagateChainColors()` resolves chain
   colors, dot styles, dimming, and diff status on `TreeNode` for rendering
 - `data/moduleList.json` — modulation `colour` field: `"#be952c"` (gain),

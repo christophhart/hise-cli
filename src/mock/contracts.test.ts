@@ -21,6 +21,23 @@ describe("mock contracts", () => {
 		});
 	});
 
+	it("normalizes repl evaluation-failed envelopes", () => {
+		const normalized = normalizeReplResponse({
+			success: false,
+			result: "Error at REPL Evaluation",
+			value: "undefined",
+			moduleId: "Interface",
+			logs: [],
+			errors: [{ errorMessage: "This expression is not a function!", callstack: ["eval() at Interface.js:1:1"] }],
+		});
+
+		expect(normalized).toMatchObject({
+			kind: "success",
+			success: false,
+			moduleId: "Interface",
+		});
+	});
+
 	it("normalizes status payloads", () => {
 		const normalized = normalizeStatusPayload({
 			server: { version: "4.1.0", compileTimeout: "20.0" },

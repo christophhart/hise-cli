@@ -6,6 +6,7 @@ import { render } from "ink-testing-library";
 import { App } from "./app.js";
 import { MockHiseConnection } from "../engine/hise.js";
 import { defaultScheme } from "./theme.js";
+import { OBSERVER_ROUTE } from "../observer/protocol.js";
 
 // Strip ANSI escape codes for plain text assertions
 function stripAnsi(s: string): string {
@@ -23,7 +24,7 @@ afterEach(() => {
 });
 
 async function postObserverEvent(port: number, payload: unknown): Promise<void> {
-	await fetch(`http://127.0.0.1:${port}/observer/events`, {
+	await fetch(`http://127.0.0.1:${port}${OBSERVER_ROUTE}`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(payload),
@@ -136,6 +137,92 @@ describe("App", () => {
 		const frame = instance.lastFrame() ?? "";
 		// StatusBar should show "live" when at bottom
 		expect(frame).toContain("live");
+
+		instance.unmount();
+	});
+
+	it("does not produce NaN ANSI escapes for root mode commands", async () => {
+		const instance = render(
+			React.createElement(App, {
+				connection: new MockHiseConnection(),
+				scheme: defaultScheme,
+			}),
+		);
+
+		// Submit an unknown command in root mode (accent is "")
+		instance.stdin.write("/doesnotexist");
+		await new Promise((r) => setTimeout(r, 5));
+		instance.stdin.write("\r");
+		await new Promise((r) => setTimeout(r, 100));
+
+		const frame = instance.lastFrame() ?? "";
+		expect(frame).not.toContain("NaN");
+
+		instance.unmount();
+	});
+
+	it("preserves output but truncates lines when sidebar toggles", async () => {
+		const instance = render(
+			React.createElement(App, {
+				connection: new MockHiseConnection(),
+				scheme: defaultScheme,
+			}),
+		);
+
+		// Submit a command to produce an echo output block
+		instance.stdin.write("testcmd");
+		await new Promise((r) => setTimeout(r, 5));
+		instance.stdin.write("\r");
+		await new Promise((r) => setTimeout(r, 100));
+
+		const frameBefore = instance.lastFrame() ?? "";
+		// Echo block should show the command with border character ▎
+		expect(stripAnsi(frameBefore)).toContain("\u258E");
+
+		// Toggle sidebar with Ctrl+B
+		instance.stdin.write("\x02"); // Ctrl+B
+		await new Promise((r) => setTimeout(r, 100));
+
+		const frameAfter = instance.lastFrame() ?? "";
+		const plain = stripAnsi(frameAfter);
+		// Output history is preserved (echo border still present)
+		expect(plain).toContain("\u258E");
+
+		instance.unmount();
+	});
+
+	it("shows mode switch text after multiple builder errors", async () => {
+		const instance = render(
+			React.createElement(App, {
+				connection: new MockHiseConnection(),
+				scheme: defaultScheme,
+			}),
+		);
+
+		// Enter builder mode
+		instance.stdin.write("/builder");
+		await new Promise((r) => setTimeout(r, 5));
+		instance.stdin.write("\r");
+		await new Promise((r) => setTimeout(r, 100));
+
+		// Submit 5 gibberish commands that produce errors
+		for (let i = 1; i <= 5; i++) {
+			instance.stdin.write(`something something ${i}`);
+			await new Promise((r) => setTimeout(r, 5));
+			instance.stdin.write("\r");
+			await new Promise((r) => setTimeout(r, 100));
+		}
+
+		// Switch to script mode
+		instance.stdin.write("/script");
+		await new Promise((r) => setTimeout(r, 5));
+		instance.stdin.write("\r");
+		await new Promise((r) => setTimeout(r, 100));
+
+		const frame = instance.lastFrame() ?? "";
+		const plain = stripAnsi(frame);
+		// The /script echo block should be visible (not truncated by scroll)
+		expect(plain).toContain("/script");
 
 		instance.unmount();
 	});

@@ -2,30 +2,26 @@ import { randomUUID } from "node:crypto";
 import type { DataLoader } from "../engine/data.js";
 import { HttpHiseConnection, type HiseConnection } from "../engine/hise.js";
 import type { CommandEntry } from "../engine/commands/registry.js";
-import type { CommandResult } from "../engine/result.js";
 import { parseCliArgs } from "./args.js";
 import { ObserverClient } from "./observer.js";
+import { CapturingHiseConnection } from "./capture.js";
+import { serializeCliOutput, type CliOutputPayload } from "./output.js";
 import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { createDefaultMockRuntime } from "../mock/runtime.js";
-
-export interface CliExecutionResult {
-	ok: boolean;
-	command: string;
-	mode: string;
-	result: CommandResult;
-}
 
 export async function executeCliCommand(
 	argv: string[],
 	commands: CommandEntry[],
 	dataLoader: DataLoader,
 	connectionOverride?: HiseConnection,
-): Promise<{ kind: "tui"; args: string[] } | { kind: "help" } | { kind: "error"; message: string } | { kind: "json"; payload: CliExecutionResult }> {
+): Promise<{ kind: "tui"; args: string[] } | { kind: "help" } | { kind: "error"; message: string } | { kind: "json"; payload: CliOutputPayload }> {
 	const parsed = parseCliArgs(argv, commands);
 	if (parsed.kind !== "execute") return parsed;
 
 	const mockRuntime = !connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
-	const connection = connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection();
+	const connection = new CapturingHiseConnection(
+		connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
+	);
 	const { session, completionEngine } = createSession({
 		connection,
 		getModuleList: () => moduleList,
@@ -51,18 +47,13 @@ export async function executeCliCommand(
 
 	try {
 		const result = await session.handleInput(parsed.canonicalCommand);
-		const payload = {
-			ok: result.type !== "error",
-			command: parsed.canonicalCommand,
-			mode: parsed.mode,
-			result,
-		};
+		const payload = serializeCliOutput(parsed.mode, result, connection.getLastReplResponse());
 
 		await observer.emit({
 			id: commandId,
 			type: "command.end",
 			source: "llm",
-			ok: payload.ok,
+			ok: result.type !== "error",
 			result,
 			timestamp: Date.now(),
 		});

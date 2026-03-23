@@ -52,4 +52,17 @@ describe("live contract parity — script /api/repl", () => {
 			expect(sanitizeFormattingSnapshot(liveResult.message)).toBe(sanitizeFormattingSnapshot(mockResult.message));
 		}
 	});
+
+	it("formats evaluation-failed repl envelopes as script errors", async () => {
+		const expression = "someErrorStuff()";
+		const liveResponse = await postLiveRepl(connection, expression);
+		const mockResponse = createMockReplResponse({ expression, moduleId: "Interface" });
+		const liveResult = formatReplResponse(liveResponse, expression);
+		const mockResult = formatReplResponse(mockResponse, expression);
+		expect(liveResult.type).toBe("error");
+		expect(mockResult.type).toBe("error");
+		if (liveResult.type === "error" && mockResult.type === "error") {
+			expect(sanitizeFormattingSnapshot(liveResult.message)).toBe(sanitizeFormattingSnapshot(mockResult.message));
+		}
+	});
 });

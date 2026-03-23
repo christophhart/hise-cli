@@ -1,41 +1,16 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { CommandResult } from "../engine/result.js";
+import { OBSERVER_ROUTE, type ObserverEvent } from "../observer/protocol.js";
 
 export const OBSERVER_PORT = 1902;
 
-export type ObserverEvent =
-	| {
-		id: string;
-		type: "command.start";
-		source: "llm";
-		command: string;
-		mode: string;
-		timestamp: number;
-	}
-	| {
-		id: string;
-		type: "command.progress";
-		source: "llm";
-		phase?: string;
-		percent?: number;
-		message?: string;
-		timestamp: number;
-	}
-	| {
-		id: string;
-		type: "command.end";
-		source: "llm";
-		ok: boolean;
-		result: CommandResult;
-		timestamp: number;
-	};
+export type { ObserverEvent };
 
 export function startObserverServer(
 	onEvent: (event: ObserverEvent) => void,
 	port = Number(process.env.HISE_TUI_OBSERVER_PORT || OBSERVER_PORT),
 ): Server {
 	const server = createServer(async (req, res) => {
-		if (req.method !== "POST" || req.url !== "/observer/events") {
+		if (req.method !== "POST" || req.url !== OBSERVER_ROUTE) {
 			respond(res, 404);
 			return;
 		}

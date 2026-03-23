@@ -292,7 +292,7 @@ async function main(): Promise<void> {
 	}
 
 	if (cliResult.kind === "json") {
-		console.log(JSON.stringify(cliResult.payload, null, 2));
+		console.log(JSON.stringify(cliResult.payload));
 		process.exit(cliResult.payload.ok ? 0 : 1);
 	}
 

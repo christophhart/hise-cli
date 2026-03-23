@@ -1,30 +1,63 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { executeCliCommand } from "./run.js";
 import { createSession } from "../session-bootstrap.js";
 import { MockHiseConnection } from "../engine/hise.js";
-import type { DataLoader } from "../engine/data.js";
+import type { DataLoader, ModuleList } from "../engine/data.js";
 import { listCliCommands } from "./commands.js";
 
 function getCliCommands() {
 	return listCliCommands(createSession({ connection: null }).session.allCommands());
 }
 
-function createDataLoader(): DataLoader {
+afterEach(() => {
+	vi.restoreAllMocks();
+});
+
+function mockObserverFetch() {
+	return vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 204 }));
+}
+
+function createModuleList(): ModuleList {
+	return {
+		version: "test",
+		categories: { modulation: "Modulation" },
+		modules: [
+			{
+				id: "LFO",
+				prettyName: "LFO",
+				description: "Low-frequency oscillator",
+				type: "Modulator",
+				subtype: "TimeVariantModulator",
+				category: ["modulation"],
+				builderPath: "b.Modulators.LFO",
+				hasChildren: false,
+				hasFX: false,
+				metadataType: "core",
+				parameters: [],
+				modulation: [],
+				interfaces: [],
+			},
+		],
+	};
+}
+
+function createDataLoader(moduleList = createModuleList()): DataLoader {
 	return {
 		async loadModuleList() {
-			return { modules: [], categories: {} } as never;
+			return moduleList;
 		},
 		async loadScriptingApi() {
-			return { classes: [] } as never;
+			return { version: "test", generated: "now", enrichedClasses: [], classes: {} };
 		},
 		async loadScriptnodeList() {
-			return { factories: [], nodes: [] } as never;
+			return {};
 		},
 	};
 }
 
 describe("executeCliCommand", () => {
-	it("returns JSON envelope for script expressions", async () => {
+	it("returns compact semantic JSON for script values", async () => {
+		mockObserverFetch();
 		const connection = new MockHiseConnection()
 			.setProbeResult(true)
 			.onPost("/api/repl", () => ({
@@ -45,15 +78,12 @@ describe("executeCliCommand", () => {
 		expect(result.kind).toBe("json");
 		if (result.kind === "json") {
 			expect(result.payload.ok).toBe(true);
-			expect(result.payload.command).toBe("/script Console.print(234)");
-			expect(result.payload.result.type).toBe("markdown");
-			if (result.payload.result.type === "markdown") {
-				expect(result.payload.result.content).toContain("234");
-			}
+			expect(result.payload).toEqual({ ok: true, value: 234 });
 		}
 	});
 
 	it("serializes root slash commands through the same path", async () => {
+		mockObserverFetch();
 		const result = await executeCliCommand(
 			["node", "hise-cli", "-modes"],
 			getCliCommands(),
@@ -63,8 +93,143 @@ describe("executeCliCommand", () => {
 
 		expect(result.kind).toBe("json");
 		if (result.kind === "json") {
-			expect(result.payload.command).toBe("/modes");
-			expect(result.payload.result.type).toBe("table");
+			expect(result.payload.ok).toBe(true);
+			expect(result.payload).toMatchObject({
+				ok: true,
+				result: {
+					type: "table",
+				},
+			});
 		}
+	});
+
+	it("uses the shared mock runtime for --mock one-shot execution", async () => {
+		mockObserverFetch();
+		const result = await executeCliCommand(
+			["node", "hise-cli", "--mock", "-script", "Engine.getSampleRate()"],
+			getCliCommands(),
+			createDataLoader(),
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload).toEqual({ ok: true, value: 48000 });
+		}
+	});
+
+	it("executes builder one-shot commands through the shared session path", async () => {
+		mockObserverFetch();
+		const result = await executeCliCommand(
+			["node", "hise-cli", "-builder", "add", "LFO"],
+			getCliCommands(),
+			createDataLoader(),
+			new MockHiseConnection().setProbeResult(true),
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload).toMatchObject({
+				ok: true,
+				result: {
+					type: "text",
+					content: expect.stringContaining("Parsed: add LFO"),
+				},
+			});
+			if ("result" in result.payload) {
+				expect(result.payload.result).not.toHaveProperty("accent");
+			}
+		}
+	});
+
+	it("returns script logs without undefined value noise", async () => {
+		mockObserverFetch();
+		const connection = new MockHiseConnection()
+			.setProbeResult(true)
+			.onPost("/api/repl", () => ({
+				success: true,
+				result: "ok",
+				value: "undefined",
+				logs: ["2134"],
+				errors: [],
+			}));
+
+		const result = await executeCliCommand(
+			["node", "hise-cli", "-script", "Console.print(2134)"],
+			getCliCommands(),
+			createDataLoader(),
+			connection,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload).toEqual({ ok: true, logs: ["2134"] });
+		}
+	});
+
+	it("flattens evaluation-failed script envelopes into a compact error payload", async () => {
+		mockObserverFetch();
+		const connection = new MockHiseConnection()
+			.setProbeResult(true)
+			.onPost("/api/repl", () => ({
+				success: false,
+				result: "Error at REPL Evaluation",
+				value: "undefined",
+				logs: [],
+				errors: [{ errorMessage: "Component with name x wasn't found.", callstack: [] }],
+			}));
+
+		const result = await executeCliCommand(
+			["node", "hise-cli", "-script", 'Content.getComponent("x")'],
+			getCliCommands(),
+			createDataLoader(),
+			connection,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload).toEqual({
+				ok: false,
+				error: "Component with name x wasn't found.",
+			});
+		}
+	});
+
+	it("emits observer start and end events around command execution", async () => {
+		const fetchSpy = mockObserverFetch();
+		const connection = new MockHiseConnection()
+			.setProbeResult(true)
+			.onPost("/api/repl", () => ({
+				success: true,
+				result: "ok",
+				value: 48000,
+				logs: [],
+				errors: [],
+			}));
+
+		await executeCliCommand(
+			["node", "hise-cli", "-script", "Engine.getSampleRate()"],
+			getCliCommands(),
+			createDataLoader(),
+			connection,
+		);
+
+		expect(fetchSpy).toHaveBeenCalledTimes(2);
+		const startPayload = JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body));
+		const endPayload = JSON.parse(String(fetchSpy.mock.calls[1]?.[1]?.body));
+
+		expect(startPayload).toMatchObject({
+			type: "command.start",
+			source: "llm",
+			command: "/script Engine.getSampleRate()",
+			mode: "script",
+		});
+		expect(endPayload).toMatchObject({
+			type: "command.end",
+			source: "llm",
+			ok: true,
+			result: {
+				type: "markdown",
+			},
+		});
 	});
 });

@@ -1,18 +1,8 @@
-import type { CommandResult } from "../engine/result.js";
+import { OBSERVER_ROUTE, type ObserverEvent } from "../observer/protocol.js";
 
-const DEFAULT_URL = "http://127.0.0.1:1902/observer/events";
+const DEFAULT_URL = `http://127.0.0.1:1902${OBSERVER_ROUTE}`;
 
-export interface ObserverEventBase {
-	id: string;
-	type: "command.start" | "command.progress" | "command.end";
-	source: "llm";
-	timestamp: number;
-}
-
-export type ObserverEvent =
-	| (ObserverEventBase & { type: "command.start"; command: string; mode: string })
-	| (ObserverEventBase & { type: "command.progress"; phase?: string; percent?: number; message?: string })
-	| (ObserverEventBase & { type: "command.end"; ok: boolean; result: CommandResult });
+export type { ObserverEvent };
 
 export class ObserverClient {
 	private readonly url: string;

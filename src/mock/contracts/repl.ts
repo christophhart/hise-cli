@@ -1,7 +1,8 @@
-import type { HiseResponse, HiseSuccessResponse } from "../../engine/hise.js";
+import type { HiseEnvelopeResponse, HiseResponse } from "../../engine/hise.js";
 
 export interface NormalizedReplSuccess {
 	kind: "success";
+	success: boolean;
 	result: string;
 	value?: unknown;
 	moduleId?: string;
@@ -27,12 +28,13 @@ export function normalizeReplResponse(response: HiseResponse): NormalizedReplRes
 		};
 	}
 
-	return normalizeReplSuccess(response as HiseSuccessResponse);
+	return normalizeReplSuccess(response as HiseEnvelopeResponse);
 }
 
-export function normalizeReplSuccess(response: HiseSuccessResponse): NormalizedReplSuccess {
-	if (response.success !== true) {
-		throw new Error("REPL success response success flag must be true");
+
+export function normalizeReplSuccess(response: HiseEnvelopeResponse): NormalizedReplSuccess {
+	if (typeof response.success !== "boolean") {
+		throw new Error("REPL response success flag must be a boolean");
 	}
 	if (typeof response.result !== "string") {
 		throw new Error("REPL success response result must be a string");
@@ -49,6 +51,7 @@ export function normalizeReplSuccess(response: HiseSuccessResponse): NormalizedR
 
 	return {
 		kind: "success",
+		success: response.success,
 		result: response.result,
 		value: response.value,
 		moduleId: response.moduleId,

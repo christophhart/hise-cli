@@ -2,8 +2,8 @@
 
 // Response types matching the HISE REST API (verified against RestHelpers.cpp)
 
-export interface HiseSuccessResponse {
-	success: true;
+export interface HiseEnvelopeResponse {
+	success: boolean;
 	result: string;
 	value?: unknown;
 	moduleId?: string;
@@ -11,12 +11,14 @@ export interface HiseSuccessResponse {
 	errors: Array<{ errorMessage: string; callstack: string[] }>;
 }
 
+export type HiseSuccessResponse = HiseEnvelopeResponse & { success: true };
+
 export interface HiseErrorResponse {
 	error: true;
 	message: string;
 }
 
-export type HiseResponse = HiseSuccessResponse | HiseErrorResponse;
+export type HiseResponse = HiseEnvelopeResponse | HiseErrorResponse;
 
 export function isErrorResponse(
 	response: HiseResponse,
@@ -27,7 +29,17 @@ export function isErrorResponse(
 export function isSuccessResponse(
 	response: HiseResponse,
 ): response is HiseSuccessResponse {
-	return "success" in response && response.success === true;
+	return isEnvelopeResponse(response) && response.success === true;
+}
+
+export function isEnvelopeResponse(
+	response: HiseResponse,
+): response is HiseEnvelopeResponse {
+	return "success" in response
+		&& typeof response.success === "boolean"
+		&& typeof response.result === "string"
+		&& Array.isArray(response.logs)
+		&& Array.isArray(response.errors);
 }
 
 // ── HiseConnection interface ────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { MockHiseConnection, type HiseConnection, type HiseResponse } from "../engine/hise.js";
 import type { TreeNode } from "../engine/result.js";
-import { DUMMY_MODULE_TREE } from "../engine/modes/dummyTree.js";
+import { MOCK_BUILDER_TREE } from "./builderTree.js";
 import {
 	normalizeStatusPayload,
 	type StatusPayload,
@@ -15,8 +15,8 @@ export interface MockRuntimeProfile {
 }
 
 export function createDefaultMockRuntime(): MockRuntimeProfile {
-	const builderTree = structuredClone(DUMMY_MODULE_TREE);
-	const status = createMockStatusPayload(builderTree);
+	const builderTree = structuredClone(MOCK_BUILDER_TREE);
+	const status = createMockStatusPayload();
 	const connection = new MockHiseConnection();
 	connection.setProbeResult(true);
 	connection.onGet("/api/status", () => ({
@@ -36,8 +36,7 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 	};
 }
 
-export function createMockStatusPayload(builderTree: TreeNode): StatusPayload {
-	void builderTree;
+export function createMockStatusPayload(): StatusPayload {
 	return normalizeStatusPayload({
 		server: {
 			version: "4.1.0-mock",
@@ -70,6 +69,11 @@ export function createMockReplResponse(body?: object): HiseResponse {
 	const response = expression === "Engine.getSampleRate()"
 		? successResponse(48000, moduleId)
 		: matchConsolePrint(expression, moduleId)
+			?? (expression === "someErrorStuff()"
+				? replFailureResponse("Error at REPL Evaluation", "This expression is not a function!", moduleId, [
+					"eval() at Interface.js:1:1",
+				])
+				: null)
 			?? (expression === 'Content.getComponent("x")'
 				? scriptErrorResponse("Component with name x wasn't found.", moduleId)
 				: successResponse("undefined", moduleId));
@@ -112,6 +116,22 @@ function scriptErrorResponse(message: string, moduleId: string): HiseResponse {
 		moduleId,
 		logs: [],
 		errors: [{ errorMessage: message, callstack: [] }],
+	};
+}
+
+function replFailureResponse(
+	result: string,
+	message: string,
+	moduleId: string,
+	callstack: string[] = [],
+): HiseResponse {
+	return {
+		success: false,
+		result,
+		value: "undefined",
+		moduleId,
+		logs: [],
+		errors: [{ errorMessage: message, callstack }],
 	};
 }
 

@@ -63,10 +63,10 @@ is gitignored — it is a local reference, not tracked.
 
 ```
 src/
-  index.ts             # Entry point (HTTP-only REPL)
+  index.ts             # Entry point (TUI launcher + one-shot CLI)
   engine/              # Shared core - zero UI deps, zero node: imports
     commands/          # Command registry, dispatcher, parsers
-    modes/             # Mode definitions + dummy module tree for dev
+    modes/             # Mode definitions
     completion/        # Tab completion engine
     highlight/         # Syntax highlighting: per-mode tokenizers, span splitting
     screencast/        # .tape parser (isomorphic)
@@ -84,7 +84,7 @@ src/
     profiler.ts        # Conditional React.Profiler (--profile flag)
     nodeDataLoader.ts  # Node.js DataLoader implementation
     screencast/        # Tape runner, asciicast writer, vitest tester
-  cli/                 # CLI frontend - JSON output (planned, Phase 7)
+  cli/                 # CLI execution, args, help, observer client
   globals.d.ts         # Build-time constants (__APP_VERSION__)
 data/                  # Static JSON datasets (not in src/)
   wizards/             # HISE C++ multipage dialog JSONs (conversion source)
