@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, Profiler } from "react";
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type { DOMElement } from "ink";
-import { MouseProvider, useOnWheel } from "@ink-tools/ink-mouse";
+import { MouseProvider, useOnWheel, useOnPress, useOnDrag, getBoundingClientRect } from "@ink-tools/ink-mouse";
 import { PROFILING_ENABLED, onRenderCallback } from "./profiler.js";
 import type { CommandResult } from "../engine/result.js";
 import type { TreeNode } from "../engine/result.js";
@@ -133,8 +133,47 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 	}
 	const session = sessionRef.current;
 
-	// Input imperative handle
+	// Input imperative handle + mouse support
 	const inputHandleRef = useRef<InputHandle>(null);
+	const inputBoxRef = useRef<DOMElement>(null);
+	const DOUBLE_CLICK_MS = 300;
+	const lastInputClickRef = useRef<{ x: number; time: number } | null>(null);
+
+	/** Convert absolute terminal x to character offset in the input value.
+	 *  Uses getBoundingClientRect at call time for fresh position (survives sidebar toggle). */
+	const inputXToCharOffset = useCallback((absX: number) => {
+		const handle = inputHandleRef.current;
+		if (!handle) return 0;
+		const rect = getBoundingClientRect(inputBoxRef.current);
+		const boxLeft = rect?.left ?? 0;
+		const { padLen, promptWidth, scrollStart } = handle.getLayoutMetrics();
+		const relX = absX - boxLeft - padLen - promptWidth;
+		const len = handle.getValue().length;
+		return Math.max(0, Math.min(len, relX + scrollStart));
+	}, []);
+
+	useOnPress(inputBoxRef, useCallback((event: { x: number }) => {
+		const handle = inputHandleRef.current;
+		if (!handle) return;
+		const charPos = inputXToCharOffset(event.x);
+		const now = Date.now();
+		const last = lastInputClickRef.current;
+
+		if (last && Math.abs(last.x - event.x) <= 1 && now - last.time < DOUBLE_CLICK_MS) {
+			lastInputClickRef.current = null;
+			handle.selectAll();
+		} else {
+			lastInputClickRef.current = { x: event.x, time: now };
+			handle.setCursorAt(charPos);
+		}
+	}, [inputXToCharOffset]));
+
+	useOnDrag(inputBoxRef, useCallback((event: { x: number }) => {
+		const handle = inputHandleRef.current;
+		if (!handle) return;
+		const charPos = inputXToCharOffset(event.x);
+		handle.setCursorAt(charPos, true);
+	}, [inputXToCharOffset]));
 
 	// Tree sidebar
 	const treeSidebarRef = useRef<TreeSidebarHandle>(null);
@@ -467,13 +506,13 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 		if (key.shift && (key.upArrow || key.downArrow)) {
 			// fall through to scroll handler
 		}
-		// Meta+Arrow → jump to start/end of line
+		// Meta+Arrow → jump to start/end of line (Shift extends selection)
 		else if (key.meta && key.leftArrow) {
-			handle.moveCursor("home");
+			handle.moveCursor("home", key.shift);
 			return;
 		}
 		else if (key.meta && key.rightArrow) {
-			handle.moveCursor("end");
+			handle.moveCursor("end", key.shift);
 			return;
 		}
 		// Option+Left/Right — word boundary jump (macOS: ESC+b / ESC+f)
@@ -485,22 +524,30 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 			handle.moveCursor("wordRight");
 			return;
 		}
-		// Ctrl+A / Ctrl+E — start/end of line (readline style)
+		// Ctrl+A — start of line (readline style)
 		else if (key.ctrl && input === "a") {
 			handle.moveCursor("home");
+			return;
+		}
+		// Ctrl+C — copy selection to clipboard via OSC 52
+		else if (key.ctrl && input === "c") {
+			const sel = handle.getSelection();
+			if (sel) {
+				process.stdout.write(`\x1b]52;c;${Buffer.from(sel.text).toString("base64")}\x07`);
+			}
 			return;
 		}
 		else if (key.ctrl && input === "e") {
 			handle.moveCursor("end");
 			return;
 		}
-		// Home / End
+		// Home / End (Shift extends selection)
 		else if (key.home) {
-			handle.moveCursor("home");
+			handle.moveCursor("home", key.shift);
 			return;
 		}
 		else if (key.end) {
-			handle.moveCursor("end");
+			handle.moveCursor("end", key.shift);
 			return;
 		}
 		// Up/Down — history navigation (only when popup not visible)
@@ -512,13 +559,13 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 			handle.historyDown();
 			return;
 		}
-		// Left/Right — cursor movement
+		// Left/Right — cursor movement (Shift extends selection)
 		else if (key.leftArrow) {
-			handle.moveCursor("left");
+			handle.moveCursor("left", key.shift);
 			return;
 		}
 		else if (key.rightArrow) {
-			handle.moveCursor("right");
+			handle.moveCursor("right", key.shift);
 			return;
 		}
 		// Backspace / Delete
@@ -1123,6 +1170,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 							bottomOffset={INPUT_SECTION_ROWS + botH}
 						/>
 					)}
+					<Box ref={inputBoxRef}>
 						<Input
 							modeLabel={modeLabel}
 							modeAccent={modeAccent}
@@ -1140,6 +1188,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 							inputRef={inputHandleRef}
 							tokenize={modeTokenizer}
 						/>
+					</Box>
 					</Box>
 				</Box>
 				<StatusBar

@@ -185,6 +185,181 @@ describe("Input component", () => {
 	});
 });
 
+// ── Selection tests ─────────────────────────────────────────────────
+
+describe("Input selection", () => {
+	it("selectAll selects entire value", async () => {
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
+		));
+
+		for (const ch of "hello") ref.current!.insertChar(ch);
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.selectAll();
+		await new Promise((r) => setTimeout(r, 50));
+
+		const sel = ref.current!.getSelection();
+		expect(sel).toEqual({ start: 0, end: 5, text: "hello" });
+
+		instance.unmount();
+	});
+
+	it("Shift+Right extends selection one char", async () => {
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
+		));
+
+		for (const ch of "hello") ref.current!.insertChar(ch);
+		ref.current!.moveCursor("home");
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.moveCursor("right", true);
+		ref.current!.moveCursor("right", true);
+		await new Promise((r) => setTimeout(r, 50));
+
+		const sel = ref.current!.getSelection();
+		expect(sel).toEqual({ start: 0, end: 2, text: "he" });
+
+		instance.unmount();
+	});
+
+	it("Shift+Left extends selection left", async () => {
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
+		));
+
+		for (const ch of "hello") ref.current!.insertChar(ch);
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.moveCursor("left", true);
+		ref.current!.moveCursor("left", true);
+		await new Promise((r) => setTimeout(r, 50));
+
+		const sel = ref.current!.getSelection();
+		expect(sel).toEqual({ start: 3, end: 5, text: "lo" });
+
+		instance.unmount();
+	});
+
+	it("Shift+End selects from cursor to end", async () => {
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
+		));
+
+		for (const ch of "hello") ref.current!.insertChar(ch);
+		ref.current!.moveCursor("home");
+		ref.current!.moveCursor("right");
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.moveCursor("end", true);
+		await new Promise((r) => setTimeout(r, 50));
+
+		const sel = ref.current!.getSelection();
+		expect(sel).toEqual({ start: 1, end: 5, text: "ello" });
+
+		instance.unmount();
+	});
+
+	it("non-shift move clears selection", async () => {
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
+		));
+
+		for (const ch of "hello") ref.current!.insertChar(ch);
+		ref.current!.selectAll();
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.moveCursor("left");
+		await new Promise((r) => setTimeout(r, 50));
+
+		expect(ref.current!.getSelection()).toBeNull();
+
+		instance.unmount();
+	});
+
+	it("backspace deletes selection", async () => {
+		const submitted: string[] = [];
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} inputRef={ref} />,
+		));
+
+		for (const ch of "hello world") ref.current!.insertChar(ch);
+		// Select "world" (last 5 chars)
+		for (let i = 0; i < 5; i++) ref.current!.moveCursor("left", true);
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.deleteBackward();
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.submit();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(submitted).toEqual(["hello"]);
+
+		instance.unmount();
+	});
+
+	it("typing replaces selection", async () => {
+		const submitted: string[] = [];
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={(v: string) => submitted.push(v)} inputRef={ref} />,
+		));
+
+		for (const ch of "hello") ref.current!.insertChar(ch);
+		ref.current!.selectAll();
+		await new Promise((r) => setTimeout(r, 50));
+
+		for (const ch of "bye") ref.current!.insertChar(ch);
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.submit();
+		await new Promise((r) => setTimeout(r, 50));
+		expect(submitted).toEqual(["bye"]);
+
+		instance.unmount();
+	});
+
+	it("getSelection returns null when no selection", async () => {
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
+		));
+
+		for (const ch of "hello") ref.current!.insertChar(ch);
+		await new Promise((r) => setTimeout(r, 50));
+
+		expect(ref.current!.getSelection()).toBeNull();
+
+		instance.unmount();
+	});
+
+	it("Shift+wordRight extends selection by word", async () => {
+		const ref = React.createRef<InputHandle>();
+		const instance = render(w(
+			<Input modeLabel="root" modeAccent="" columns={80} onSubmit={() => {}} inputRef={ref} />,
+		));
+
+		for (const ch of "hello world") ref.current!.insertChar(ch);
+		ref.current!.moveCursor("home");
+		await new Promise((r) => setTimeout(r, 50));
+
+		ref.current!.moveCursor("wordRight", true);
+		await new Promise((r) => setTimeout(r, 50));
+
+		const sel = ref.current!.getSelection();
+		expect(sel).toEqual({ start: 0, end: 6, text: "hello " });
+
+		instance.unmount();
+	});
+});
+
 // ── useCommandHistory tests (pure logic) ────────────────────────────
 
 describe("useCommandHistory", () => {

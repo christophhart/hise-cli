@@ -11,8 +11,9 @@ import React, {
 // Note: useInput intentionally NOT imported — Input is fully controlled
 // by the central key dispatcher in app.tsx via imperative methods.
 import { Box, Text } from "ink";
+
 import { useTheme } from "../theme-context.js";
-import { lightenHex } from "../theme.js";
+import { lightenHex, lerpHex } from "../theme.js";
 import type { TokenSpan } from "../../engine/highlight/tokens.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import { sliceSpans, splitSpansAtCursor } from "../../engine/highlight/split.js";
@@ -43,83 +44,108 @@ export function wordBoundaryRight(text: string, pos: number): number {
 interface InputState {
 	value: string;
 	cursorOffset: number;
+	selectionAnchor: number | null;
 }
 
 type InputAction =
 	| { type: "insert"; text: string }
 	| { type: "delete" }
 	| { type: "delete-forward" }
-	| { type: "move-left" }
-	| { type: "move-right" }
-	| { type: "move-start" }
-	| { type: "move-end" }
-	| { type: "move-word-left" }
-	| { type: "move-word-right" }
+	| { type: "move"; dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight"; select?: boolean }
+	| { type: "select-all" }
+	| { type: "set-cursor"; offset: number; select?: boolean }
 	| { type: "set-value"; value: string; cursorOffset?: number };
+
+/** Compute the destination cursor position for a move direction. */
+function computeMoveDest(state: InputState, dir: string): number {
+	switch (dir) {
+		case "left": return Math.max(0, state.cursorOffset - 1);
+		case "right": return Math.min(state.value.length, state.cursorOffset + 1);
+		case "home": return 0;
+		case "end": return state.value.length;
+		case "wordLeft": return wordBoundaryLeft(state.value, state.cursorOffset);
+		case "wordRight": return wordBoundaryRight(state.value, state.cursorOffset);
+		default: return state.cursorOffset;
+	}
+}
+
+/** Delete the selected range and return the resulting state. */
+function deleteSelection(state: InputState): InputState {
+	const selStart = Math.min(state.selectionAnchor!, state.cursorOffset);
+	const selEnd = Math.max(state.selectionAnchor!, state.cursorOffset);
+	return {
+		value: state.value.slice(0, selStart) + state.value.slice(selEnd),
+		cursorOffset: selStart,
+		selectionAnchor: null,
+	};
+}
 
 function inputReducer(state: InputState, action: InputAction): InputState {
 	switch (action.type) {
 		case "insert": {
+			if (state.selectionAnchor !== null) {
+				const cleared = deleteSelection(state);
+				return {
+					value: cleared.value.slice(0, cleared.cursorOffset) + action.text + cleared.value.slice(cleared.cursorOffset),
+					cursorOffset: cleared.cursorOffset + action.text.length,
+					selectionAnchor: null,
+				};
+			}
 			return {
-				value:
-					state.value.slice(0, state.cursorOffset) +
-					action.text +
-					state.value.slice(state.cursorOffset),
+				value: state.value.slice(0, state.cursorOffset) + action.text + state.value.slice(state.cursorOffset),
 				cursorOffset: state.cursorOffset + action.text.length,
+				selectionAnchor: null,
 			};
 		}
 		case "delete": {
+			if (state.selectionAnchor !== null) return deleteSelection(state);
 			if (state.cursorOffset <= 0) return state;
 			return {
-				value:
-					state.value.slice(0, state.cursorOffset - 1) +
-					state.value.slice(state.cursorOffset),
+				value: state.value.slice(0, state.cursorOffset - 1) + state.value.slice(state.cursorOffset),
 				cursorOffset: state.cursorOffset - 1,
+				selectionAnchor: null,
 			};
 		}
 		case "delete-forward": {
+			if (state.selectionAnchor !== null) return deleteSelection(state);
 			if (state.cursorOffset >= state.value.length) return state;
 			return {
-				value:
-					state.value.slice(0, state.cursorOffset) +
-					state.value.slice(state.cursorOffset + 1),
+				value: state.value.slice(0, state.cursorOffset) + state.value.slice(state.cursorOffset + 1),
 				cursorOffset: state.cursorOffset,
+				selectionAnchor: null,
 			};
 		}
-		case "move-left": {
-			return {
-				...state,
-				cursorOffset: Math.max(0, state.cursorOffset - 1),
-			};
+		case "move": {
+			const dest = computeMoveDest(state, action.dir);
+			if (action.select) {
+				return {
+					...state,
+					cursorOffset: dest,
+					selectionAnchor: state.selectionAnchor ?? state.cursorOffset,
+				};
+			}
+			return { ...state, cursorOffset: dest, selectionAnchor: null };
 		}
-		case "move-right": {
-			return {
-				...state,
-				cursorOffset: Math.min(state.value.length, state.cursorOffset + 1),
-			};
+		case "select-all": {
+			if (state.value.length === 0) return state;
+			return { ...state, selectionAnchor: 0, cursorOffset: state.value.length };
 		}
-		case "move-start": {
-			return { ...state, cursorOffset: 0 };
-		}
-		case "move-end": {
-			return { ...state, cursorOffset: state.value.length };
-		}
-		case "move-word-left": {
-			return {
-				...state,
-				cursorOffset: wordBoundaryLeft(state.value, state.cursorOffset),
-			};
-		}
-		case "move-word-right": {
-			return {
-				...state,
-				cursorOffset: wordBoundaryRight(state.value, state.cursorOffset),
-			};
+		case "set-cursor": {
+			const offset = Math.max(0, Math.min(state.value.length, action.offset));
+			if (action.select) {
+				return {
+					...state,
+					cursorOffset: offset,
+					selectionAnchor: state.selectionAnchor ?? state.cursorOffset,
+				};
+			}
+			return { ...state, cursorOffset: offset, selectionAnchor: null };
 		}
 		case "set-value": {
 			return {
 				value: action.value,
 				cursorOffset: action.cursorOffset ?? action.value.length,
+				selectionAnchor: null,
 			};
 		}
 	}
@@ -191,7 +217,12 @@ export interface InputHandle {
 	insertChar(ch: string): void;
 	deleteBackward(): void;
 	deleteForward(): void;
-	moveCursor(direction: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight"): void;
+	moveCursor(direction: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight", select?: boolean): void;
+	setCursorAt(offset: number, select?: boolean): void;
+	selectAll(): void;
+	getSelection(): { start: number; end: number; text: string } | null;
+	/** Returns layout metrics for converting mouse x to char offset. */
+	getLayoutMetrics(): { padLen: number; promptWidth: number; scrollStart: number };
 	submit(): void;
 	historyUp(): void;
 	historyDown(): void;
@@ -242,6 +273,7 @@ export const Input = React.memo(function Input({
 	const [state, dispatch] = useReducer(inputReducer, {
 		value: "",
 		cursorOffset: 0,
+		selectionAnchor: null,
 	});
 
 	const {
@@ -249,6 +281,9 @@ export const Input = React.memo(function Input({
 		historyUp,
 		historyDown,
 	} = useCommandHistory();
+
+	// Layout metrics ref — updated each render, read by getLayoutMetrics()
+	const layoutRef = useRef({ padLen: 0, promptWidth: 0, scrollStart: 0 });
 
 	// Notify parent of value changes via useEffect (replaces queueMicrotask).
 	const prevValueRef = useRef(state.value);
@@ -269,16 +304,20 @@ export const Input = React.memo(function Input({
 		insertChar: (ch: string) => dispatch({ type: "insert", text: ch }),
 		deleteBackward: () => dispatch({ type: "delete" }),
 		deleteForward: () => dispatch({ type: "delete-forward" }),
-		moveCursor: (dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight") => {
-			const actionMap = {
-				left: "move-left",
-				right: "move-right",
-				home: "move-start",
-				end: "move-end",
-				wordLeft: "move-word-left",
-				wordRight: "move-word-right",
-			} as const;
-			dispatch({ type: actionMap[dir] });
+		moveCursor: (dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight", select?: boolean) => {
+			dispatch({ type: "move", dir, select });
+		},
+		setCursorAt: (offset: number, select?: boolean) => {
+			dispatch({ type: "set-cursor", offset, select });
+		},
+		selectAll: () => dispatch({ type: "select-all" }),
+		getLayoutMetrics: () => layoutRef.current,
+		getSelection: () => {
+			if (state.selectionAnchor === null) return null;
+			const start = Math.min(state.selectionAnchor, state.cursorOffset);
+			const end = Math.max(state.selectionAnchor, state.cursorOffset);
+			if (start === end) return null;
+			return { start, end, text: state.value.slice(start, end) };
 		},
 		submit: () => {
 			const trimmed = state.value.trim();
@@ -299,7 +338,7 @@ export const Input = React.memo(function Input({
 				dispatch({ type: "set-value", value: next });
 			}
 		},
-	}), [state.value, state.cursorOffset, disabled, addToHistory, onSubmit, historyUp, historyDown]);
+	}), [state.value, state.cursorOffset, state.selectionAnchor, disabled, addToHistory, onSubmit, historyUp, historyDown]);
 
 	// ── Rendering ──────────────────────────────────────────────────
 
@@ -318,7 +357,8 @@ export const Input = React.memo(function Input({
 	// was computed for the current value (prevents one-frame jitter on typing).
 	const atEnd = state.cursorOffset >= state.value.length;
 	const ghostValid = !ghostForValue || ghostForValue === state.value;
-	const ghost = (atEnd && ghostText && ghostValid) ? ghostText : "";
+	const hasSelection = state.selectionAnchor !== null && state.selectionAnchor !== state.cursorOffset;
+	const ghost = (atEnd && ghostText && ghostValid && !hasSelection) ? ghostText : "";
 
 	// ── Scroll window — keep cursor visible when value exceeds width ──
 	const totalChars = state.value.length + 1; // +1 for the cursor slot
@@ -330,6 +370,7 @@ export const Input = React.memo(function Input({
 		));
 	}
 	const relCursorPos = state.cursorOffset - scrollStart;
+	layoutRef.current = { padLen: pad.length, promptWidth, scrollStart };
 
 	// Cursor colors
 	const cursorBg = lightenHex(scheme.backgrounds.raised, CURSOR_LIGHTEN);
@@ -382,6 +423,32 @@ export const Input = React.memo(function Input({
 	const ghostSpace = Math.max(0, maxInputWidth - beforeLen - 1 - afterLen);
 	const displayGhost = remainingGhost.slice(0, ghostSpace);
 
+	// ── Selection segments ────────────────────────────────────────
+	// Split before/after spans at selection boundary for highlight rendering.
+	const selectionBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.5) : undefined;
+	let seg1 = beforeSpans;      // before selection (normal)
+	let seg2: TokenSpan[] = [];   // selected before cursor
+	let seg4: TokenSpan[] = [];   // selected after cursor
+	let seg5 = afterSpans;       // after selection (normal)
+
+	if (hasSelection) {
+		const absSelStart = Math.min(state.selectionAnchor!, state.cursorOffset);
+		const absSelEnd = Math.max(state.selectionAnchor!, state.cursorOffset);
+		const relSelStart = Math.max(0, absSelStart - scrollStart);
+		const relSelEnd = Math.min(maxInputWidth, absSelEnd - scrollStart);
+
+		if (state.selectionAnchor! < state.cursorOffset) {
+			// Selection extends left of cursor
+			seg1 = sliceSpans(beforeSpans, 0, relSelStart);
+			seg2 = sliceSpans(beforeSpans, relSelStart, relCursorPos - relSelStart);
+		} else {
+			// Selection extends right of cursor
+			const selWidth = Math.max(0, relSelEnd - relCursorPos - 1);
+			seg4 = sliceSpans(afterSpans, 0, selWidth);
+			seg5 = sliceSpans(afterSpans, selWidth, afterLen - selWidth);
+		}
+	}
+
 	// Right padding to fill the row (separate calculation for disabled state
 	// to avoid overflow — "waiting for response..." has a different width than
 	// the value-based spans, and during async commands the value is already cleared)
@@ -392,9 +459,9 @@ export const Input = React.memo(function Input({
 	const inputPadRight = Math.max(0, columns - pad.length * 2 - activeContentWidth);
 
 	// Helper: render a TokenSpan[] as colored <Text> elements
-	const renderSpans = (spans: TokenSpan[], keyPrefix: string) =>
+	const renderSpans = (spans: TokenSpan[], keyPrefix: string, bg?: string) =>
 		spans.map((span, i) => (
-			<Text key={`${keyPrefix}-${i}`} color={tokenize ? TOKEN_COLORS[span.token] : scheme.foreground.bright}>
+			<Text key={`${keyPrefix}-${i}`} color={tokenize ? TOKEN_COLORS[span.token] : scheme.foreground.bright} backgroundColor={bg}>
 				{span.text}
 			</Text>
 		));
@@ -419,9 +486,11 @@ export const Input = React.memo(function Input({
 					<Text color={scheme.foreground.muted}>{waitingText}</Text>
 				) : (
 					<>
-						{renderSpans(beforeSpans, "b")}
+						{renderSpans(seg1, "b")}
+						{seg2.length > 0 && renderSpans(seg2, "sb", selectionBg)}
 						<Text color={cursorTokenColor} backgroundColor={cursorBg}>{cursorChar}</Text>
-						{renderSpans(afterSpans, "a")}
+						{seg4.length > 0 && renderSpans(seg4, "sa", selectionBg)}
+						{renderSpans(seg5, "a")}
 						{displayGhost ? (
 							<Text color={scheme.foreground.muted}>{displayGhost}</Text>
 						) : null}

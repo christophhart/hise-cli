@@ -358,7 +358,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	// ── Search bar visibility ─────────────────────────────────
 	// Compact: only show if search is focused or filter is active
 	// Standard/spacious: always show
-	const searchBarVisible = layout.density !== "compact" || searchFocused || filterPattern !== "";
+	const searchBarVisible = true;
 	const searchBarHeight = searchBarVisible ? 1 : 0;
 	const treeHeight = height - searchBarHeight;
 
@@ -670,21 +670,52 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	const leftPad = sidebarLeftPad > 0 ? " ".repeat(sidebarLeftPad) : "";
 
 	if (!tree) {
-		// No tree — render empty sidebar
+		// No tree — render empty sidebar with search bar and "no items" placeholder
 		const emptyRows: React.ReactNode[] = [];
 		for (let i = 0; i < treeHeight; i++) {
-			emptyRows.push(
-				<Box key={i}>
-					<Text backgroundColor={scheme.backgrounds.sidebar}>
-						{leftPad}{" ".repeat(contentWidth)}
-					</Text>
-					<Text backgroundColor={scheme.backgrounds.sidebar}>
-						{" ".repeat(GAP_WIDTH)}
-					</Text>
-				</Box>,
-			);
+			if (i === 0) {
+				// "no items" placeholder in dimmed text
+				const label = "no items";
+				const padRight = Math.max(0, contentWidth - leftPad.length - label.length);
+				emptyRows.push(
+					<Box key={i}>
+						<Text backgroundColor={scheme.backgrounds.sidebar}>
+							{leftPad}<Text color={scheme.foreground.muted}>{label}</Text>{" ".repeat(padRight)}
+						</Text>
+						<Text backgroundColor={scheme.backgrounds.sidebar}>
+							{" ".repeat(GAP_WIDTH)}
+						</Text>
+					</Box>,
+				);
+			} else {
+				emptyRows.push(
+					<Box key={i}>
+						<Text backgroundColor={scheme.backgrounds.sidebar}>
+							{leftPad}{" ".repeat(contentWidth)}
+						</Text>
+						<Text backgroundColor={scheme.backgrounds.sidebar}>
+							{" ".repeat(GAP_WIDTH)}
+						</Text>
+					</Box>,
+				);
+			}
 		}
-		return <Box ref={boxRef} flexDirection="column">{emptyRows}</Box>;
+		// Build a minimal search bar for the empty state
+		const emptySearchBg = scheme.backgrounds.sidebar;
+		const emptyIconColor = scheme.foreground.muted;
+		const emptySearchRow = (
+			<Box key="search-bar">
+				<Text backgroundColor={emptySearchBg}>
+					{leftPad}
+					<Text color={emptyIconColor}>{SEARCH_ICON} </Text>
+					<Text>{" ".repeat(Math.max(0, contentWidth - SEARCH_ICON.length - 1))}</Text>
+				</Text>
+				<Text backgroundColor={scheme.backgrounds.darker}>
+					{" ".repeat(GAP_WIDTH)}
+				</Text>
+			</Box>
+		);
+		return <Box ref={boxRef} flexDirection="column">{emptySearchRow}{emptyRows}</Box>;
 	}
 
 	// Slice visible indices for the current scroll window
