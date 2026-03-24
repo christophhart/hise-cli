@@ -36,8 +36,6 @@ export interface CompletionPopupProps {
 	label?: string;
 	/** Max visible items */
 	maxVisible?: number;
-	/** Max inner width of the popup content */
-	maxWidth?: number;
 	/** Total viewport rows (for absolute positioning) */
 	rows?: number;
 	/** Total viewport columns (for filling background) */
@@ -64,7 +62,6 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	scheme,
 	label,
 	maxVisible = DEFAULT_MAX_VISIBLE,
-	maxWidth: maxWidthProp,
 	rows: viewportRows,
 	columns: viewportColumns,
 	bottomOffset = 4,
@@ -84,6 +81,8 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 	// Scrollbar: only shown when items overflow
 	const showScrollbar = items.length > visibleCount;
 
+	const totalCols = viewportColumns ?? 80;
+
 	// Calculate column widths
 	const maxLabelWidth = Math.max(
 		...items.map((i) => i.label.length),
@@ -93,8 +92,10 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 		...items.map((i) => (i.detail?.length ?? 0)),
 		0,
 	);
+	const scrollbarSpace = showScrollbar ? 1 : 0;
+	const availableWidth = totalCols - leftOffset - scrollbarSpace;
 	const contentWidth = maxLabelWidth + 2 + (maxDetailWidth > 0 ? maxDetailWidth + 2 : 0);
-	const innerWidth = Math.min(contentWidth, maxWidthProp ?? 50);
+	const innerWidth = Math.min(contentWidth, availableWidth);
 
 	// Note: keyboard input is handled by the central key dispatcher
 	// in app.tsx which calls onSelect/onAccept/onDismiss as needed.
@@ -120,7 +121,6 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 		? Math.max(0, viewportRows - bottomOffset - popupHeight)
 		: undefined;
 
-	const totalCols = viewportColumns ?? 80;
 	const bg = scheme.backgrounds.overlay;
 
 	return (
@@ -131,9 +131,9 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 		>
 			{label ? (
 				<Text backgroundColor={bg}>
-					<Text backgroundColor={bg}>{" ".repeat(leftOffset)}</Text>
+					<Text backgroundColor={bg}>{" ".repeat(Math.max(0, leftOffset - 1))}</Text>
 					<Text color={scheme.foreground.muted}> {label}</Text>
-					<Text>{" ".repeat(Math.max(0, totalCols - leftOffset - label.length - 2))}</Text>
+					<Text>{" ".repeat(Math.max(0, totalCols - leftOffset - label.length - 1))}</Text>
 				</Text>
 			) : null}
 			{visibleItems.map((item, i) => {
@@ -149,7 +149,6 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 						: item.detail)
 					: "";
 				const lineContent = " " + paddedLabel + detail + " ";
-				const scrollbarSpace = showScrollbar ? 1 : 0;
 				const rightPad = Math.max(0, totalCols - leftOffset - lineContent.length - scrollbarSpace);
 
 				// Scrollbar character for this row
@@ -159,7 +158,7 @@ export const CompletionPopup = React.memo(function CompletionPopup({
 
 				return (
 					<Text key={actualIndex} backgroundColor={bg}>
-						<Text backgroundColor={bg}>{" ".repeat(leftOffset)}</Text>
+						<Text backgroundColor={bg}>{" ".repeat(Math.max(0, leftOffset - 1))}</Text>
 						<Text color={fgName}> {paddedLabel}</Text>
 						<Text color={fgDetail}>{detail} </Text>
 						<Text>{" ".repeat(rightPad)}</Text>

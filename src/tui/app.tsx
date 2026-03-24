@@ -1164,7 +1164,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 							scheme={scheme}
 							label={completionState.result.label}
 							maxVisible={layout.completionMaxVisible}
-							maxWidth={layout.completionMaxWidth}
+
 							rows={rows}
 							columns={contentColumns}
 							bottomOffset={INPUT_SECTION_ROWS + botH}

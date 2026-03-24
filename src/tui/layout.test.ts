@@ -110,10 +110,6 @@ describe("compact preset matches original values", () => {
 		expect(COMPACT.completionMaxVisible).toBe(8);
 	});
 
-	it("completionMaxWidth = 50", () => {
-		expect(COMPACT.completionMaxWidth).toBe(50);
-	});
-
 	it("minOutputRows = 4 (was MIN_OUTPUT_ROWS)", () => {
 		expect(COMPACT.minOutputRows).toBe(4);
 	});
@@ -173,7 +169,6 @@ describe("spacious preset", () => {
 
 	it("has largest completion popup", () => {
 		expect(SPACIOUS.completionMaxVisible).toBe(14);
-		expect(SPACIOUS.completionMaxWidth).toBe(70);
 	});
 });
 

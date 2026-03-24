@@ -44,9 +44,6 @@ export interface LayoutScale {
 	/** Maximum visible items in the completion popup */
 	completionMaxVisible: number;
 
-	/** Maximum inner width of the completion popup */
-	completionMaxWidth: number;
-
 	/** Minimum output viewport height (safety floor) */
 	minOutputRows: number;
 }
@@ -75,7 +72,6 @@ export const COMPACT: LayoutScale = {
 	sidebarTopMargin: false,
 	sidebarBottomPad: 0,
 	completionMaxVisible: 8,
-	completionMaxWidth: 50,
 	minOutputRows: 4,
 };
 
@@ -91,7 +87,6 @@ export const STANDARD: LayoutScale = {
 	sidebarTopMargin: false,
 	sidebarBottomPad: 0,
 	completionMaxVisible: 10,
-	completionMaxWidth: 60,
 	minOutputRows: 4,
 };
 
@@ -107,7 +102,6 @@ export const SPACIOUS: LayoutScale = {
 	sidebarTopMargin: true,
 	sidebarBottomPad: 1,
 	completionMaxVisible: 14,
-	completionMaxWidth: 70,
 	minOutputRows: 4,
 };
 
