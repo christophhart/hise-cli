@@ -14,17 +14,11 @@ import { highlight as highlightCli } from "cli-highlight";
 import type { ColorScheme } from "../theme.js";
 import { darkenHex, lerpHex } from "../theme.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
-import { hisescriptLanguage } from "../../engine/highlight/hisescript-hljs.js";
+import { tokenize as tokenizeHiseScript } from "../../engine/highlight/hisescript.js";
 
 import { Marked } from "marked";
 import { Text } from "ink";
 import { markedTerminal } from "marked-terminal";
-
-// Register HiseScript with highlight.js (via cli-highlight's shared instance).
-// cli-highlight uses require("highlight.js") internally - we import the same
-// module (singleton) and register our custom language on it.
-import hljs from "highlight.js";
-hljs.registerLanguage("hisescript", hisescriptLanguage);
 
 // ── cli-highlight theme mapped from our TOKEN_COLORS ────────────────
 
@@ -134,14 +128,24 @@ export function renderMarkdown(source: string, opts: RenderMarkdownOptions): str
 			code({ text, lang }: { text: string; lang?: string }) {
 				// Syntax highlight the code
 				let highlighted: string;
-				try {
-					highlighted = highlightCli(text, {
-						language: lang || '',
-						theme: highlightTheme,
-					});
-				} catch {
-					// Fallback: just use bright foreground
-					highlighted = chalk.hex(scheme.foreground.bright)(text);
+				if (lang === 'hisescript' || lang === 'hise') {
+					// Use our own tokenizer — cli-highlight bundles a separate
+					// highlight.js instance so registered languages don't reach it.
+					const spans = tokenizeHiseScript(text);
+					highlighted = spans.map(span => {
+						const color = span.color || TOKEN_COLORS[span.token];
+						return chalk.hex(color)(span.text);
+					}).join('');
+				} else {
+					try {
+						highlighted = highlightCli(text, {
+							language: lang || '',
+							theme: highlightTheme,
+						});
+					} catch {
+						// Fallback: just use bright foreground
+						highlighted = chalk.hex(scheme.foreground.bright)(text);
+					}
 				}
 				
 				// Pad each line to full width so background fills a rectangle

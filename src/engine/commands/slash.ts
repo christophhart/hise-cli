@@ -37,7 +37,9 @@ async function handleHelp(
 	const commands = session.allCommands();
 	const help = generateHelp(modeId, commands);
 
-	return textResult(help.content);
+	const result = textResult(help.content);
+	result.accent = modeId === "root" ? "#90FFB1" : MODE_ACCENTS[modeId];
+	return result;
 }
 
 async function handleClear(

@@ -80,7 +80,7 @@ Type any HiseScript expression to evaluate it.
 
 ## Examples
 
-\`\`\`
+\`\`\`hisescript
 Engine.getSampleRate()
 Synth.addNoteOn(1, 64, 127, 0)
 Console.print("hello")
