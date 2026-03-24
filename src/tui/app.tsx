@@ -1165,9 +1165,9 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 							label={completionState.result.label}
 							maxVisible={layout.completionMaxVisible}
 
-							rows={rows}
+							rows={mainAreaHeight}
 							columns={contentColumns}
-							bottomOffset={INPUT_SECTION_ROWS + botH}
+							bottomOffset={INPUT_SECTION_ROWS}
 						/>
 					)}
 					<Box ref={inputBoxRef}>
