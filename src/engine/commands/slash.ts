@@ -37,7 +37,11 @@ async function handleHelp(
 	const modeId = session.currentModeId as ModeId;
 	const commands = session.allCommands();
 	const help = generateHelp(modeId, commands);
-	return overlayResult(help.title, help.content, help.footer);
+
+	return textResult(help.content);
+
+	// TODO: remove the ENTIRE OVERLAY SYSTEM!!!
+	//return overlayResult(help.title, help.content, help.footer);
 }
 
 async function handleClear(

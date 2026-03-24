@@ -12,7 +12,7 @@ const w = (el: React.ReactElement) => <ThemeProvider scheme={defaultScheme}>{el}
 describe("StatusBar", () => {
 	it("shows connected status", () => {
 		const instance = render(w(
-			<StatusBar connectionStatus="connected" modeHint="/help for commands" scrollInfo="live" columns={80} />,
+			<StatusBar connectionStatus="connected" modeHint="/help for commands  [escape] for context menu" scrollInfo="live" columns={80} />,
 		));
 		const frame = instance.lastFrame() ?? "";
 		expect(frame).toContain("connected");

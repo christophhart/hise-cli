@@ -762,7 +762,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 					: snapMode.prompt.replace(/[\[\]>]/g, "").trim();
 				const snapModeAccent = snapMode.accent || scheme.foreground.default;
 				const snapModeHint = snapMode.id === "root"
-					? "/help for commands  /script /builder /inspect to enter modes"
+					? "/help for commands  [escape] for context menu  /script /builder /inspect to enter modes"
 					: `/exit to leave ${snapMode.name}  /help for commands`;
 
 				const dimScheme = darkenScheme(scheme, DIM_FACTOR);
@@ -917,8 +917,8 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 
 	const scrollHint = totalLines > outputHeight ? "PgUp/PgDn scroll" : "";
 	const modeHint = currentMode.id === "root"
-		? `/help for commands  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
-		: `/exit to leave ${currentMode.name}  /help for commands${scrollHint ? `  ${scrollHint}` : ""}`;
+		? `/help for commands    [escape] for context menu  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
+		: `/exit to leave ${currentMode.name}  /help for commands  [escape] for context menu${scrollHint ? `  ${scrollHint}` : ""}`;
 
 	const handleOverlayClose = useCallback(() => {
 		setOverlayData(null);

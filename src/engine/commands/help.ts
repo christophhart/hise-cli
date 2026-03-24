@@ -27,25 +27,30 @@ export function generateHelp(
 		sections.push(modeHelp);
 		sections.push("");
 	}
+	
+	if(modeId == "root")
+	{
+		// Slash commands section
+		sections.push("## Commands");
+		sections.push("");
+		sections.push("| Command | Description |");
+		sections.push("|---------|-------------|");
+		for (const cmd of commands) {
+			const name = `**/${cmd.name}**`;
+			sections.push(`| ${name} | ${cmd.description} |`);
+		}
+		sections.push("");
 
-	// Slash commands section
-	sections.push("## Commands");
-	sections.push("");
-	sections.push("| Command | Description |");
-	sections.push("|---------|-------------|");
-	for (const cmd of commands) {
-		const name = `**/${cmd.name}**`;
-		sections.push(`| ${name} | ${cmd.description} |`);
+		// Navigation hints
+		sections.push("## Navigation");
+		sections.push("");
+		sections.push("- **Tab**: ....... Complete command or argument");
+		sections.push("- **Cmd+B**: ..... Show / hide side bar with tree view");
+		sections.push("- **Escape**: .... Open / close the autocomplete list");
+		sections.push("- **Up/Down**: ... Command history");
+		sections.push("- **PgUp/PgDn**: . Scroll output");
+		sections.push("- **Shift+Up/Dn**: Scroll one line");
 	}
-	sections.push("");
-
-	// Navigation hints
-	sections.push("## Navigation");
-	sections.push("");
-	sections.push("- **Tab**: Complete command or argument");
-	sections.push("- **Up/Down**: Command history");
-	sections.push("- **PgUp/PgDn**: Scroll output");
-	sections.push("- **Shift+Up/Dn**: Scroll one line");
 
 	return {
 		title: `Help — ${modeId === "root" ? "HISE CLI" : modeId}`,
@@ -77,7 +82,7 @@ Type any HiseScript expression to evaluate it.
 
 ## Examples
 
-\`\`\`hisescript
+\`\`\`
 Engine.getSampleRate()
 Synth.addNoteOn(1, 64, 127, 0)
 Console.print("hello")
