@@ -92,16 +92,13 @@ describe("built-in slash commands", () => {
 		expect(names).toContain("compile");
 	});
 
-	it("/help returns overlay", async () => {
+	it("/help returns text", async () => {
 		const registry = createRegistry();
 		const session = createMockSession();
 		const result = await registry.dispatch("/help", session);
-		expect(result.type).toBe("overlay");
-		if (result.type === "overlay") {
-			expect(result.title).toContain("Help");
-			// content is markdown string
-			expect(result.content).toBeDefined();
-			expect(result.content!.length).toBeGreaterThan(0);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content.length).toBeGreaterThan(0);
 		}
 	});
 

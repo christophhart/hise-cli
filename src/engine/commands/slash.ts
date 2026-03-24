@@ -4,7 +4,6 @@ import type { CommandResult } from "../result.js";
 import {
 	emptyResult,
 	errorResult,
-	overlayResult,
 	tableResult,
 	textResult,
 } from "../result.js";
@@ -39,9 +38,6 @@ async function handleHelp(
 	const help = generateHelp(modeId, commands);
 
 	return textResult(help.content);
-
-	// TODO: remove the ENTIRE OVERLAY SYSTEM!!!
-	//return overlayResult(help.title, help.content, help.footer);
 }
 
 async function handleClear(

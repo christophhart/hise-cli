@@ -41,7 +41,6 @@ export type CommandResult =
 	| { type: "table"; headers: string[]; rows: string[][]; accent?: string }
 	| { type: "tree"; root: TreeNode; accent?: string }
 	| { type: "markdown"; content: string; accent?: string }
-	| { type: "overlay"; title: string; content?: string; lines?: string[]; footer?: string; accent?: string }
 	| { type: "empty"; accent?: string };
 
 // ── Result factory helpers ──────────────────────────────────────────
@@ -77,17 +76,6 @@ export function treeResult(root: TreeNode): CommandResult {
 
 export function markdownResult(content: string): CommandResult {
 	return { type: "markdown", content };
-}
-
-export function overlayResult(
-	title: string,
-	contentOrLines: string | string[],
-	footer?: string,
-): CommandResult {
-	if (typeof contentOrLines === "string") {
-		return { type: "overlay", title, content: contentOrLines, footer };
-	}
-	return { type: "overlay", title, lines: contentOrLines, footer };
 }
 
 export function emptyResult(): CommandResult {

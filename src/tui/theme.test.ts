@@ -9,8 +9,6 @@ import {
 	statusDot,
 	darkenHex,
 	lightenHex,
-	darkenScheme,
-	darkenBrand,
 	type ColorScheme,
 } from "./theme.js";
 
@@ -133,46 +131,4 @@ describe("lightenHex", () => {
 	});
 });
 
-describe("darkenScheme", () => {
-	it("darkens all background colors", () => {
-		const dim = darkenScheme(defaultScheme, 0.5);
-		// Every background should differ from original
-		expect(dim.backgrounds.standard).not.toBe(defaultScheme.backgrounds.standard);
-		expect(dim.backgrounds.darker).not.toBe(defaultScheme.backgrounds.darker);
-		expect(dim.backgrounds.overlay).not.toBe(defaultScheme.backgrounds.overlay);
-	});
 
-	it("darkens all foreground colors", () => {
-		const dim = darkenScheme(defaultScheme, 0.5);
-		expect(dim.foreground.default).not.toBe(defaultScheme.foreground.default);
-		expect(dim.foreground.bright).not.toBe(defaultScheme.foreground.bright);
-		expect(dim.foreground.muted).not.toBe(defaultScheme.foreground.muted);
-	});
-
-	it("preserves the scheme name", () => {
-		const dim = darkenScheme(defaultScheme, 0.5);
-		expect(dim.name).toBe(defaultScheme.name);
-	});
-
-	it("factor 1.0 produces identical scheme", () => {
-		const dim = darkenScheme(defaultScheme, 1.0);
-		expect(dim.backgrounds.standard).toBe(defaultScheme.backgrounds.standard);
-		expect(dim.foreground.bright).toBe(defaultScheme.foreground.bright);
-	});
-});
-
-describe("darkenBrand", () => {
-	it("darkens all brand colors", () => {
-		const dim = darkenBrand(0.35);
-		expect(dim.signal).not.toBe(brand.signal);
-		expect(dim.ok).not.toBe(brand.ok);
-		expect(dim.warning).not.toBe(brand.warning);
-		expect(dim.error).not.toBe(brand.error);
-	});
-
-	it("factor 1.0 preserves colors", () => {
-		const dim = darkenBrand(1.0);
-		expect(dim.signal).toBe(brand.signal.toLowerCase());
-		expect(dim.ok).toBe(brand.ok.toLowerCase());
-	});
-});

@@ -1,16 +1,12 @@
 // ── ThemeContext — centralized color provider ───────────────────────
 
 // All TUI components read colors from this context instead of importing
-// brand/statusColor directly or receiving scheme as props. When the
-// dimmed overlay backdrop renders, it wraps the tree in a ThemeProvider
-// with darkened values — every component automatically gets the dimmed
-// colors without any override props.
+// brand/statusColor directly or receiving scheme as props.
 
 import React, { createContext, useContext } from "react";
 import {
-	brand as defaultBrand,
-	statusColor as defaultStatusColor,
-	type BrandColors,
+	brand,
+	statusColor,
 	type ColorScheme,
 	type ConnectionStatus,
 } from "./theme.js";
@@ -20,7 +16,7 @@ import { COMPACT, type LayoutScale } from "./layout.js";
 
 export interface ThemeContextValue {
 	scheme: ColorScheme;
-	brand: BrandColors;
+	brand: { signal: string; ok: string; warning: string; error: string };
 	statusColor: (status: ConnectionStatus) => string;
 	layout: LayoutScale;
 }
@@ -31,10 +27,6 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export interface ThemeProviderProps {
 	scheme: ColorScheme;
-	/** Override brand colors (e.g. darkened for overlay backdrop) */
-	brand?: BrandColors;
-	/** Override status color resolver */
-	statusColor?: (status: ConnectionStatus) => string;
 	/** Layout scale (defaults to COMPACT for backward compatibility) */
 	layout?: LayoutScale;
 	children: React.ReactNode;
@@ -42,15 +34,13 @@ export interface ThemeProviderProps {
 
 export function ThemeProvider({
 	scheme,
-	brand: brandOverride,
-	statusColor: statusColorOverride,
 	layout: layoutOverride,
 	children,
 }: ThemeProviderProps): React.ReactElement {
 	const value: ThemeContextValue = {
 		scheme,
-		brand: brandOverride ?? defaultBrand,
-		statusColor: statusColorOverride ?? defaultStatusColor,
+		brand,
+		statusColor,
 		layout: layoutOverride ?? COMPACT,
 	};
 
@@ -63,11 +53,7 @@ export function ThemeProvider({
 
 // ── Hook ────────────────────────────────────────────────────────────
 
-/**
- * Read the current theme colors. Must be called inside a ThemeProvider.
- * Returns scheme, brand, and statusColor — all of which may be darkened
- * when rendered inside the overlay backdrop layer.
- */
+/** Read the current theme colors. Must be called inside a ThemeProvider. */
 export function useTheme(): ThemeContextValue {
 	const ctx = useContext(ThemeContext);
 	if (!ctx) {

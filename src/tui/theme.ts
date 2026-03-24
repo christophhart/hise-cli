@@ -248,46 +248,4 @@ export function lightenHex(hex: string, amount: number): string {
 	);
 }
 
-/**
- * Darken all colors in a ColorScheme.
- * Returns a new scheme with every background and foreground color darkened.
- */
-export function darkenScheme(scheme: ColorScheme, factor: number): ColorScheme {
-	return {
-		name: scheme.name,
-		light: scheme.light,
-		backgrounds: {
-			darker: darkenHex(scheme.backgrounds.darker, factor),
-			standard: darkenHex(scheme.backgrounds.standard, factor),
-			sidebar: darkenHex(scheme.backgrounds.sidebar, factor),
-			raised: darkenHex(scheme.backgrounds.raised, factor),
-			overlay: darkenHex(scheme.backgrounds.overlay, factor),
-		},
-		foreground: {
-			default: darkenHex(scheme.foreground.default, factor),
-			bright: darkenHex(scheme.foreground.bright, factor),
-			muted: darkenHex(scheme.foreground.muted, factor),
-		},
-	};
-}
 
-/** Brand colors as plain strings (not const literals). */
-export interface BrandColors {
-	signal: string;
-	ok: string;
-	warning: string;
-	error: string;
-}
-
-/**
- * Darken the brand colors.
- * Returns a new brand-like object with all colors darkened.
- */
-export function darkenBrand(factor: number): BrandColors {
-	return {
-		signal: darkenHex(brand.signal, factor),
-		ok: darkenHex(brand.ok, factor),
-		warning: darkenHex(brand.warning, factor),
-		error: darkenHex(brand.error, factor),
-	};
-}

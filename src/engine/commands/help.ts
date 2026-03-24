@@ -1,6 +1,6 @@
 // ── Help content — mode-specific help text ──────────────────────────
 
-// Generates structured help content for the /help overlay.
+// Generates structured help content for the /help command.
 // Content varies based on the current mode.
 
 import type { ModeId } from "../modes/mode.js";
@@ -11,7 +11,6 @@ import type { CommandEntry } from "./registry.js";
 export interface HelpContent {
 	title: string;
 	content: string;  // markdown formatted
-	footer: string;
 }
 
 /** Generate help content for the current mode and available commands. */
@@ -55,7 +54,6 @@ export function generateHelp(
 	return {
 		title: `Help — ${modeId === "root" ? "HISE CLI" : modeId}`,
 		content: sections.join("\n"),
-		footer: "\u2191\u2193 scroll  Esc close",
 	};
 }
 

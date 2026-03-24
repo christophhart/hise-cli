@@ -5,7 +5,7 @@
 //
 // Two APIs:
 //   renderMarkdown()  — pure function, returns ANSI string (for pre-rendering)
-//   <Markdown>        — React component wrapper (used by Overlay)
+//   <Markdown>        — React component wrapper
 
 import React from "react";
 import type { TerminalRendererOptions } from "marked-terminal";
@@ -106,18 +106,15 @@ export interface RenderMarkdownOptions {
 	scheme: ColorScheme;
 	accent?: string;
 	width?: number;
-	context?: "overlay" | "output";
 }
 
 /** Render markdown to an ANSI-styled string. Pure function, no React. */
 export function renderMarkdown(source: string, opts: RenderMarkdownOptions): string {
-	const { scheme, accent, width, context } = opts;
+	const { scheme, accent, width } = opts;
 	const options = buildOptions(scheme, accent, width);
 	
 	// Code block background color (15% darker than base)
-	const baseBg = context === "overlay" 
-		? scheme.backgrounds.overlay 
-		: scheme.backgrounds.standard;
+	const baseBg = scheme.backgrounds.standard;
 	const codeBg = darkenHex(baseBg, 0.85);
 	const codeBgChalk = chalk.bgHex(codeBg);
 	const codeIndent = "  "; // indent for code text within the bg rectangle
@@ -175,7 +172,7 @@ export function renderMarkdown(source: string, opts: RenderMarkdownOptions): str
 	return result.trim();
 }
 
-// ── React component (used by Overlay) ───────────────────────────────
+// ── React component ─────────────────────────────────────────────────
 
 interface MarkdownProps {
 	children: string;
@@ -183,14 +180,12 @@ interface MarkdownProps {
 	accent?: string;
 	/** Content width for reflowing (defaults to 80) */
 	width?: number;
-	/** Context affects background color for code blocks */
-	context?: "overlay" | "output";
 }
 
-export function Markdown({ children, scheme, accent, width, context }: MarkdownProps) {
+export function Markdown({ children, scheme, accent, width }: MarkdownProps) {
 	const rendered = React.useMemo(
-		() => renderMarkdown(children, { scheme, accent, width, context }),
-		[children, scheme, accent, width, context],
+		() => renderMarkdown(children, { scheme, accent, width }),
+		[children, scheme, accent, width],
 	);
 	
 	return <Text>{rendered}</Text>;

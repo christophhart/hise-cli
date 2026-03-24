@@ -19,20 +19,14 @@ import {
 } from "./components/Output.js";
 import type { PrerenderedBlock } from "./components/prerender.js";
 import { renderEcho, renderResult, truncateAnsi } from "./components/prerender.js";
-import { dimAnsiLines } from "./components/dim-ansi.js";
 import { Input, type InputHandle } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
-import { Overlay } from "./components/Overlay.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
 import { TreeSidebar, type TreeSidebarHandle, type TreeSidebarState } from "./components/TreeSidebar.js";
 import { CompletionEngine } from "../engine/completion/engine.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import {
 	defaultScheme,
-	darkenHex,
-	darkenBrand,
-	darkenScheme,
-	statusColor as defaultStatusColor,
 	type ColorScheme,
 	type ConnectionStatus,
 } from "./theme.js";
@@ -53,28 +47,7 @@ import { MODE_ACCENTS } from "../engine/modes/mode.js";
 // ── Layout constants (non-scaling) ──────────────────────────────────
 
 const SCROLL_WHEEL_LINES = 3; // lines per mouse wheel tick
-const DIM_FACTOR = 0.65; // overlay backdrop brightness (0 = black, 1 = normal)
 const ENTER_ACCEPTS_COMPLETION = false; // true = Enter accepts popup selection, false = Enter submits typed text
-
-// ── Overlay backdrop snapshot ───────────────────────────────────────
-
-interface OverlaySnapshot {
-	/** Dimmed visible output lines (pre-rendered ANSI, dimmed, viewport-sized) */
-	dimmedOutputText: string;
-	modeLabel: string;
-	modeAccent: string;
-	contextLabel: string;
-	connectionStatus: ConnectionStatus;
-	modeHint: string;
-	scrollInfo: string;
-	sidebarVisible: boolean;
-	sidebarW: number;
-	treeLabel?: string;
-	// Pre-computed dimmed values:
-	dimScheme: ColorScheme;
-	dimModeAccent: string;
-	dimStatusColor: (status: ConnectionStatus) => string;
-}
 
 // ── App props ───────────────────────────────────────────────────────
 
@@ -208,13 +181,6 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 	scrollOffsetRef.current = scrollOffset;
 	const sidebarVisibleRef = useRef(sidebarVisible);
 	sidebarVisibleRef.current = sidebarVisible;
-	const [overlayData, setOverlayData] = useState<{
-		title: string;
-		content?: string;  // markdown content
-		lines?: string[];  // legacy plain text lines
-		footer?: string;
-	} | null>(null);
-	const snapshotRef = useRef<OverlaySnapshot | null>(null);
 	const [completionState, setCompletionState] = useState<{
 		result: CompletionResult;
 		selectedIndex: number;
@@ -292,7 +258,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 	// consume the event (return true) or pass it to the next handler
 	// (return false). This guarantees exactly one action per keystroke.
 	//
-	// Priority: Overlay > Global hotkeys > CompletionPopup >
+	// Priority: Global hotkeys > CompletionPopup >
 	//           TreeSidebar (focused) > Input > App (scroll)
 
 	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
@@ -301,14 +267,6 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 	const MOUSE_SEQ_RE = /^\[?<\d+;\d+;\d+[Mm]$/;
 
 	useInput((input, key) => {
-		// ── Priority 1: Overlay (consumes everything when visible) ──
-		if (overlayData) {
-			if (key.escape || key.return) {
-				handleOverlayClose();
-			}
-			return; // overlay eats all keys
-		}
-
 		if (disabledRef.current) return;
 
 		// ── Priority 2: Global hotkeys ────────────────────────────
@@ -602,7 +560,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 	// ── Mouse wheel scrolling ───────────────────────────────────────
 
 	useOnWheel(outputRef, (event) => {
-		if (overlayData || completionState?.visible) return;
+		if (completionState?.visible) return;
 		if (event.button === "wheel-up") {
 			scrollBy(-SCROLL_WHEEL_LINES);
 		} else if (event.button === "wheel-down") {
@@ -746,55 +704,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 			const echoBlock = renderEcho(input, accent, scheme.backgrounds.darker, innerW, echoSpans);
 			addBlocks([echoBlock]);
 
-			if (result.type === "overlay") {
-				// Capture a snapshot of the current UI for the dimmed backdrop.
-				// Pre-render the visible output slice with dimmed colors.
-				const snapScroll = scrollOffsetRef.current;
-				const snapLines = flattenBlocks(outputBlocksRef.current);
-				const visibleSlice = snapLines.slice(snapScroll, snapScroll + outputHeight);
-				while (visibleSlice.length < outputHeight) visibleSlice.push("");
-				const dimmedLines = dimAnsiLines(visibleSlice, DIM_FACTOR);
-				const dimmedOutputText = dimmedLines.join("\n");
-
-				const snapMode = session.currentMode();
-				const snapModeLabel = snapMode.id === "root"
-					? "root"
-					: snapMode.prompt.replace(/[\[\]>]/g, "").trim();
-				const snapModeAccent = snapMode.accent || scheme.foreground.default;
-				const snapModeHint = snapMode.id === "root"
-					? "/help for commands  [escape] for context menu  /script /builder /inspect to enter modes"
-					: `/exit to leave ${snapMode.name}  /help for commands`;
-
-				const dimScheme = darkenScheme(scheme, DIM_FACTOR);
-
-				const snapSidebarVisible = sidebarVisibleRef.current;
-				const snapSidebarW = snapSidebarVisible ? calcSidebarWidth(layout, columns) : 0;
-
-				snapshotRef.current = {
-					dimmedOutputText,
-					modeLabel: snapModeLabel,
-					modeAccent: snapModeAccent,
-					contextLabel: snapMode.contextLabel ?? "",
-					connectionStatus,
-					modeHint: snapModeHint,
-					scrollInfo: "",
-					sidebarVisible: snapSidebarVisible,
-					sidebarW: snapSidebarW,
-					treeLabel: snapSidebarVisible ? snapMode.treeLabel : undefined,
-					dimScheme,
-					dimModeAccent: darkenHex(snapModeAccent, DIM_FACTOR),
-					dimStatusColor: (status: ConnectionStatus) =>
-						darkenHex(defaultStatusColor(status), DIM_FACTOR),
-				};
-
-				// Show overlay
-				setOverlayData({
-					title: result.title,
-					content: result.content,
-					lines: result.lines,
-					footer: result.footer,
-				});
-			} else if (result.type === "text" && input.trim().startsWith("/density")) {
+			if (result.type === "text" && input.trim().startsWith("/density")) {
 				// Density command - intercept to apply TUI-side state change
 				const arg = input.trim().slice("/density".length).trim().toLowerCase();
 				const validDensities = ["compact", "standard", "spacious"] as const;
@@ -920,11 +830,6 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 		? `/help for commands    [escape] for context menu  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
 		: `/exit to leave ${currentMode.name}  /help for commands  [escape] for context menu${scrollHint ? `  ${scrollHint}` : ""}`;
 
-	const handleOverlayClose = useCallback(() => {
-		setOverlayData(null);
-		snapshotRef.current = null;
-	}, []);
-
 	// ── Completion handlers ────────────────────────────────────────
 
 	// Compute ghost text from the current input value and completion result.
@@ -946,8 +851,6 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 	);
 
 	const handleInputValueChange = useCallback((value: string, cursorPos: number) => {
-		if (overlayData) return; // Don't complete while overlay is visible
-
 		if (value.length < 1) {
 			setCompletionState(null);
 			return;
@@ -985,7 +888,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 		} else {
 			setCompletionState(null);
 		}
-	}, [session, overlayData, computeGhostText]);
+	}, [session, computeGhostText]);
 
 	const handleTab = useCallback(() => {
 		if (!completionState) {
@@ -1176,7 +1079,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 							modeAccent={modeAccent}
 							contextLabel={contextLabel}
 							columns={contentColumns}
-							disabled={disabled || overlayData !== null}
+							disabled={disabled}
 							focused={!sidebarFocused}
 							onSubmit={(v) => {
 								setCompletionState(null);
@@ -1197,89 +1100,7 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 					scrollInfo={scrollInfo}
 					columns={columns}
 				/>
-				{overlayData && snapshotRef.current && (() => {
-					const snap = snapshotRef.current!;
-					return (
-						<>
-							{/* Dimmed snapshot — wrapped in ThemeProvider with darkened colors */}
-							<ThemeProvider
-								scheme={snap.dimScheme}
-								brand={darkenBrand(DIM_FACTOR)}
-								statusColor={snap.dimStatusColor}
-								layout={layout}
-							>
-								{(() => {
-									const snapContentCols = columns - snap.sidebarW;
-									return (
-									<Box
-										position="absolute"
-										marginLeft={0}
-										marginTop={0}
-										width={columns}
-										flexDirection="column"
-										height={rows}
-									>
-										<TopBar
-											modeLabel={snap.modeLabel}
-											modeAccent={snap.dimModeAccent}
-											connectionStatus={snap.connectionStatus}
-											columns={columns}
-											treeLabel={snap.treeLabel}
-										/>
-										<Box flexDirection="row" height={mainAreaHeight}>
-											{snap.sidebarVisible && (
-												<Box
-													width={snap.sidebarW}
-													height={mainAreaHeight}
-													backgroundColor={snap.dimScheme.backgrounds.sidebar}
-												/>
-											)}
-											<Box flexDirection="column" flexGrow={1}>
-												<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
-													{" ".repeat(snapContentCols)}
-												</Text>
-												<Box width={snapContentCols} height={outputHeight} backgroundColor={snap.dimScheme.backgrounds.standard}>
-													<Text>{snap.dimmedOutputText}</Text>
-												</Box>
-												<Text backgroundColor={snap.dimScheme.backgrounds.standard}>
-													{" ".repeat(snapContentCols)}
-												</Text>
-												<Input
-													modeLabel={snap.modeLabel}
-													modeAccent={snap.dimModeAccent}
-													contextLabel={snap.contextLabel}
-													focused={false}
-													columns={snapContentCols}
-													disabled={true}
-													onSubmit={() => {}}
-												/>
-											</Box>
-										</Box>
-										<StatusBar
-											connectionStatus={snap.connectionStatus}
-											modeHint={snap.modeHint}
-											scrollInfo={snap.scrollInfo}
-											columns={columns}
-										/>
-									</Box>
-									);
-								})()}
-							</ThemeProvider>
-							<Overlay
-								title={overlayData.title}
-								accent={modeAccent}
-							content={overlayData.content}
-							lines={overlayData.lines}
-							footer={overlayData.footer}
-							onClose={handleOverlayClose}
-							columns={columns}
-							rows={rows}
-							scheme={scheme}
-						/>
-						</>
-					);
-				})()}
-			</Box>
+		</Box>
 		</ThemeProvider>
 	);
 }

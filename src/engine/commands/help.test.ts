@@ -16,7 +16,7 @@ describe("generateHelp", () => {
 		expect(help.title).toContain("HISE CLI");
 		expect(help.content).toContain("## Commands");
 		expect(help.content).toContain("**/help**");
-		expect(help.footer).toContain("Esc");
+		expect(help.content).toContain("## Navigation");
 	});
 
 	it("generates script mode help", () => {

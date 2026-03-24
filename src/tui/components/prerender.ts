@@ -212,9 +212,6 @@ export function renderResult(
 			source = result.content;
 			break;
 
-		case "overlay":
-			return null;
-
 		default:
 			return null;
 	}
@@ -223,7 +220,6 @@ export function renderResult(
 		scheme,
 		accent: result.accent,
 		width,
-		context: "output",
 	});
 	const lines = rendered.split("\n");
 	return { lines, height: lines.length };
