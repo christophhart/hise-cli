@@ -137,10 +137,4 @@ Project settings and configuration.
 Build targets and export settings.
 
 *(Implementation pending — Phase 4)*`,
-
-	import: `# IMPORT MODE
-
-Asset import workflows.
-
-*(Implementation pending — Phase 4)*`,
 };

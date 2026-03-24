@@ -63,7 +63,6 @@ async function handleModes(
 		["inspect", "Runtime monitor", MODE_ACCENTS.inspect],
 		["project", "Project settings", MODE_ACCENTS.project],
 		["compile", "Build targets", MODE_ACCENTS.compile],
-		["import", "Asset import", MODE_ACCENTS.import],
 	];
 
 	return tableResult(
@@ -256,13 +255,6 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "compile",
 		description: "Enter compile mode (build targets)",
 		handler: createModeHandler("compile"),
-		kind: "mode",
-	});
-
-	registry.register({
-		name: "import",
-		description: "Enter import mode (asset import)",
-		handler: createModeHandler("import"),
 		kind: "mode",
 	});
 

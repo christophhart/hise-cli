@@ -919,7 +919,6 @@ The prompt appears in both the **Top Bar** (mode label) and the **Input** (befor
 | Inspect           | `[inspect]`          | `[inspect] > `                 | Purple     |
 | Project           | `[project]`          | `[project] > `                 | Yellow     |
 | Compile           | `[compile]`          | `[compile] > `                 | Magenta    |
-| Import            | `[import]`           | `[import] > `                  | Mint       |
 
 In the Input, brackets and mode text are `foreground.muted`. The `>` character uses the
 mode accent color. In the Top Bar, the entire `[mode:context]` label uses the mode accent

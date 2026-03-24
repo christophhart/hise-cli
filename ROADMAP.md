@@ -20,9 +20,9 @@ ROADMAP phases are canonical. GitHub issues use descriptive titles.
 | Phase 3.7 — Markdown Renderer | — | Terminal markdown rendering + virtualized output |
 | Phase 4 — Builder + Plan | [#5](https://github.com/christoph-hart/hise-cli/issues/5), [#4](https://github.com/christoph-hart/hise-cli/issues/4) | C++ builder endpoints, full grammar, module tree, plan submode |
 | Phase 5 — Wizards | [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Wizard framework + setup wizard |
-| Phase 6 — Remaining Modes | [#6](https://github.com/christoph-hart/hise-cli/issues/6), [#8](https://github.com/christoph-hart/hise-cli/issues/8), [#7](https://github.com/christoph-hart/hise-cli/issues/7), [#11](https://github.com/christoph-hart/hise-cli/issues/11), [#9](https://github.com/christoph-hart/hise-cli/issues/9) | DSP, script (full), inspect, sampler, project/compile/import |
-| Phase 6 — New Modes | [#16](https://github.com/christoph-hart/hise-cli/issues/16), [#17](https://github.com/christoph-hart/hise-cli/issues/17), [#18](https://github.com/christoph-hart/hise-cli/issues/18), [#19](https://github.com/christoph-hart/hise-cli/issues/19) | `/modules` reference, `/api` docs, `/ui` component CRUD, `/expansions` manager |
-| Phase 7 — Polish | [#10](https://github.com/christoph-hart/hise-cli/issues/10), [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Command palette, remaining wizards, CLI polish |
+| Phase 6 — Remaining Modes | [#6](https://github.com/christoph-hart/hise-cli/issues/6), [#8](https://github.com/christoph-hart/hise-cli/issues/8), [#7](https://github.com/christoph-hart/hise-cli/issues/7), [#11](https://github.com/christoph-hart/hise-cli/issues/11), [#9](https://github.com/christoph-hart/hise-cli/issues/9) | DSP, script (full), inspect, sampler, project/compile |
+| Phase 6 — New Modes | [#16](https://github.com/christoph-hart/hise-cli/issues/16), [#17](https://github.com/christoph-hart/hise-cli/issues/17), [#18](https://github.com/christoph-hart/hise-cli/issues/18), [#19](https://github.com/christoph-hart/hise-cli/issues/19), [#20](https://github.com/christoph-hart/hise-cli/issues/20), [#21](https://github.com/christoph-hart/hise-cli/issues/21) | `/modules` reference, `/api` docs, `/ui` component CRUD, `/expansions` manager, `/assets` HISE asset manager, `/presets` user preset manager |
+| Phase 7 — Polish | [#10](https://github.com/christoph-hart/hise-cli/issues/10), [#15](https://github.com/christoph-hart/hise-cli/issues/15) | Command palette, remaining wizards, CLI frontend |
 | HISE C++ (parallel) | [#12](https://github.com/christoph-hart/hise-cli/issues/12) | New REST endpoints + SSE |
 | Post-1.0 — Web Frontend | — | Browser frontend, live screencast replay |
 | Future | [#13](https://github.com/christoph-hart/hise-cli/issues/13) | Wave editing + sample analysis |
@@ -688,9 +688,11 @@ commands should exist.
 
 ## Phase 6 — Remaining Modes
 
-New `ModeId` entries for Phase 6: `ui`, `api`, `expansions`, `modules`.
+New `ModeId` entries for Phase 6: `ui`, `api`, `expansions`, `modules`,
+`assets`, `presets`.
 Accent colors: `ui: "#66d9ef"` (cyan), `api: "#b8bb26"` (warm green),
-`expansions: "#d4879c"` (muted pink), `modules: "#83a598"` (soft teal).
+`expansions: "#d4879c"` (muted pink), `modules: "#83a598"` (soft teal),
+`assets: "#d8c86f"` (golden yellow), `presets: "#d7a65f"` (warm amber).
 Added to `MODE_ACCENTS` in `src/engine/modes/mode.ts` and shared
 Chevrotain tokens in `src/engine/modes/tokens.ts` (new keywords: `At`,
 `Remove`, `Move`, `Rename` for the UI grammar extension).
@@ -764,6 +766,9 @@ value`, `move name to x y`. Tree sidebar shows component hierarchy from
 against `scripting_api.json` `category: "component"` (14 types).
 Navigation: `cd` into components, `ls` lists children. Completion:
 component type names, existing component IDs, property names.
+
+Validation ownership in this phase: `validate parameters` belongs to `/ui`
+(moved out of `/project`).
 
 Full specification in GitHub issue (see cross-reference table).
 
@@ -851,15 +856,42 @@ Selection-based workflow, sample map management, complex group manager.
 Tree sidebar shows sample map structure (samplemap ID as root, groups
 and zones as children).
 
-### 6.9 Project, Compile, Import modes
+Validation ownership in this phase: `validate samples` belongs to `/sampler`
+(moved out of `/project`).
+
+### 6.9 Project and Compile modes
 
 Tracks [#9](https://github.com/christoph-hart/hise-cli/issues/9).
 Project mode uses the tree sidebar for folder structure (project folder
 as root). Diff indicators from git status (added/removed/modified files).
+Project mode scope is limited to project inspection and settings.
+
+### 6.10 HISE asset manager (`/assets`) — C++ first
+
+Tracks [#20](https://github.com/christoph-hart/hise-cli/issues/20).
+**REST-first**: requires `GET/POST /api/assets/*` endpoints for HISE asset
+manager operations (list, install, update, uninstall, cleanup, versions,
+local sources, dry-run test).
+
+Manage HISE asset payloads with list/search/install/update/uninstall flows,
+version browsing, and local source management. Full specification in GitHub
+issue (see cross-reference table). Alias: `/assets create` invokes
+`/wizard create_asset_payload`.
+
+### 6.11 User preset manager (`/presets`) — C++ first
+
+Tracks [#21](https://github.com/christoph-hart/hise-cli/issues/21).
+**REST-first**: requires `GET/POST /api/presets/*` endpoints for listing,
+loading, saving, default preset management, and validation.
+
+Manage user presets as first-class objects with natural language commands
+(`load`, `save`, `set default`, `reset`, `validate`). Tree sidebar mirrors
+the `UserPresets` folder hierarchy. `reset` must hard-fail if no default
+user preset is configured.
 
 **Phase 6 gate — all must pass:**
 - **C++ gate**: all new endpoints (UI mutations, expansions, DSP, sampler,
-  watch_variables) pass unit tests in `ServerUnitTests.cpp`
+  HISE asset manager, user presets, watch_variables) pass unit tests in `ServerUnitTests.cpp`
 - **hise-cli gate**: `npm test` passes with all mode parsers, tree
   building, search, completion, and markdown docs rendering
 - All modes have at least one `.tape` screencast test
@@ -879,7 +911,8 @@ Filterable overlay showing all modes and commands.
 ### 7.2 Remaining wizards
 
 Tracks [#15](https://github.com/christoph-hart/hise-cli/issues/15).
-Broadcaster, export, compile-networks, install-package, update, migrate, nuke.
+Broadcaster, export, compile-networks, install-package,
+create_asset_payload, update, migrate, nuke.
 
 ### 7.3 CLI polish
 
@@ -901,10 +934,9 @@ delivers the `GET /api/events` endpoint.
 - `npm run build && npm run typecheck && npm test` all pass
 - All modes have tests and at least one `.tape` screencast
 - Command palette opens and filters correctly
-- CLI polish work keeps structured JSON output intact while adding any new
-  automation-oriented flags
-- Remaining wizards (broadcaster, export, compile-networks) render and
-  execute in both TUI and CLI modes
+- CLI frontend `src/cli/index.ts` produces structured JSON output
+- Remaining wizards (broadcaster, export, compile-networks,
+  create_asset_payload) render and execute in both TUI and CLI modes
 - Manual: full end-to-end walkthrough with live HISE covering all modes
 
 ---
@@ -1049,6 +1081,7 @@ contracts and live parity tests, is defined in [MODE_DEVELOPMENT.md](MODE_DEVELO
 | Connection probe | `GET /api/status` (exists, returns 503 while loading) | None — works now |
 | UI browsing | `GET /api/list_components` (exists) | None — works now |
 | UI properties | `GET/POST /api/*_component_properties` (exists) | None — works now |
+| UI parameter validation | `POST /api/ui/validate_parameters` | Phase 6.3 |
 | Module reference (`/modules`) | None — local `moduleList.json` | None |
 | API docs (`/api`) | None — local `scripting_api.json` | None |
 | Builder execution | `POST /api/builder/add`, `/remove`, `/move`, `/set_attributes` | Phase 4 (4.0) |
@@ -1057,8 +1090,10 @@ contracts and live parity tests, is defined in [MODE_DEVELOPMENT.md](MODE_DEVELO
 | UI component CRUD | `POST /api/ui/add_component`, `/remove_component`, `/rename_component`, `/move_component`, `/reparent_component` | Phase 6.3 |
 | Expansion management | `GET /api/expansions/list`, `/assets`; `POST /api/expansions/switch`, `/create`, `/encode`, `/refresh` | Phase 6.4 |
 | DSP mode | `POST /api/dsp/*` | Phase 6.5 |
+| HISE asset manager (`/assets`) | `GET /api/assets/list`, `/versions`; `POST /api/assets/install`, `/update`, `/uninstall`, `/cleanup`, `/add_local`, `/remove_local`, `/test` | Phase 6.10 |
+| User preset manager (`/presets`) | `GET /api/presets/list`, `/get_default`; `POST /api/presets/load`, `/save`, `/set_default`, `/clear_default`, `/reset_to_default`, `/validate`, `/validate_all` | Phase 6.11 |
 | Variable watch | `GET /api/inspect/watch_variables` (new) | Phase 6.6 |
-| Sampler mode | `POST /api/sampler/*` | Phase 6.8 |
+| Sampler mode | `POST /api/sampler/*`, `/validate_maps` | Phase 6.8 |
 | SSE events | `GET /api/events` (not yet implemented in C++) | Phase 6-7 |
 
 Phases 0–3 require **no new C++ endpoints**. Everything uses existing APIs

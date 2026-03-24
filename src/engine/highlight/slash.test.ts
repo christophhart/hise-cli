@@ -25,7 +25,7 @@ describe("tokenizeSlash", () => {
 	});
 
 	it("classifies all mode IDs correctly", () => {
-		const modes = ["builder", "script", "dsp", "sampler", "inspect", "project", "compile", "import"];
+		const modes = ["builder", "script", "dsp", "sampler", "inspect", "project", "compile"];
 		for (const mode of modes) {
 			const spans = tokenizeSlash(`/${mode}`);
 			expect(spans[0]!.token).toBe(mode);

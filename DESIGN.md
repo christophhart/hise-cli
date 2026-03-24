@@ -263,7 +263,7 @@ the MCP server / AI agent workflow (programmatic script editing).
 
 New endpoints follow the same conventions as the existing API.
 Categories: `builder`, `sampler`, `dsp`, `workspace`, `inspect`, `compile`,
-`project`, `settings`, `packages`, `tools`, `meta`.
+`project`, `settings`, `assets`, `presets`, `tools`, `meta`.
 
 The `validate` flag on builder and dsp endpoints enables dry-run validation
 through the same code path (same pattern as `compile: false` on `set_script`).
@@ -387,7 +387,6 @@ pipeline functions like `propagateChainColors()` in builder.ts.
 | `/workspace <module>`      | Switch HISE workspace + enter contextual mode     |
 | `/compile`                 | Enter compile mode                                |
 | `/project`                 | Enter project mode                                |
-| `/import`                  | Enter import mode                                 |
 | `/inspect`                 | Enter inspect mode                                |
 
 `/workspace` is the **primary navigation command** - it tells HISE to switch
@@ -422,7 +421,6 @@ HISE, never recorded in plan mode.
 | `/workspace <mod>`   | Switch HISE workspace + enter mode                  |
 | `/compile`           | Enter compile mode                                  |
 | `/project`           | Enter project mode                                  |
-| `/import`            | Enter import mode                                   |
 | `/inspect`           | Enter inspect mode                                  |
 | `/wizard [id]`       | Open wizard (or list available wizards)              |
 | `/clear`             | Clear output                                        |
@@ -727,20 +725,12 @@ action.
 
 ### Project Mode
 
-Project inspection, settings, and **package management** (HISE Asset Manager).
+Project inspection and settings.
 
 ```
 # Assets
 info | samples | scripts | images | networks | presets
-settings [<key>] [<value>] | validate
-
-# Packages
-packages | packages available | packages search <query> | packages outdated
-install <pkg> [<version>] | update <pkg> | update all
-uninstall <pkg> | cleanup <pkg>
-versions <pkg> | revert <pkg> to <version>
-packages add local <path> | packages remove local <path>
-packages init | packages test
+settings [<key>] [<value>]
 ```
 
 ### Compile Mode
@@ -751,13 +741,31 @@ status | cancel | log | clean
 export samples | export resources
 ```
 
-### Import Mode
+### HISE Asset Manager Mode (`/assets`)
 
 ```
-samples|images <path|glob> | filmstrip <path> [--frames N]
-impulse|midi|sfz|presets <path>
-monolith <map> | wavetable <path>
+list [installed|available|outdated]
+install <name> [version] | update <name>
+uninstall <name> | cleanup <name>
+versions <name>
+add-local <path> | remove-local <path>
+test [archive] | create
 ```
+
+`create` is a command alias to `/wizard create_asset_payload`.
+
+### User Preset Manager Mode (`/presets`)
+
+```
+load <preset>
+save <preset> | save as <preset>
+set default <preset> | default | clear default
+reset
+validate <preset> | validate all
+ls [path] | cd <path> | pwd | search <term>
+```
+
+`reset` hard-fails if no default user preset is configured.
 
 ---
 
@@ -888,7 +896,7 @@ regex tokenizer for `<tag attr="value">` patterns). Code blocks in other
 languages render without highlighting.
 
 **picomatch**: Zero-dependency glob matching. Used in variable watch
-filters (`/watch myVar*`), sampler import paths, and import mode. Simple
+filters (`/watch myVar*`) and preset path filtering in `/presets`. Simple
 `*`/`?` globbing is a 10-line function, but picomatch handles edge cases
 (brace expansion, character classes, negation) that would accumulate bugs.
 

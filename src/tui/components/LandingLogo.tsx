@@ -36,7 +36,6 @@ const GRADIENT_COLORS = [
 	MODE_ACCENTS.compile,  // #f92672 pink
 	MODE_ACCENTS.inspect,  // #ae81ff purple
 	MODE_ACCENTS.dsp,      // #3a6666 teal
-	MODE_ACCENTS.import,   // #2de0a5 mint
 	MODE_ACCENTS.sampler,  // #a6e22e green
 	MODE_ACCENTS.project,  // #e6db74 yellow
 	MODE_ACCENTS.script,   // #C65638 rust

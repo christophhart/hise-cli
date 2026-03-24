@@ -407,6 +407,18 @@ Get current sample map statistics.
 
 ---
 
+### POST /api/sampler/validate_maps
+
+Validate sample maps for issues.
+
+**JSON Body**:
+
+| Field      | Required | Description |
+|------------|----------|-------------|
+| `moduleId` | No       | Validate one sampler map context (omit for all) |
+
+---
+
 ### POST /api/sampler/import
 
 Import audio files into the current sample map.
@@ -1318,11 +1330,11 @@ Cancel a running compilation.
 
 ---
 
-## Packages (Asset Manager)
+## HISE Asset Manager
 
-### GET /api/packages/list
+### GET /api/assets/list
 
-List packages.
+List HISE asset payloads.
 
 **Query Parameters**:
 
@@ -1335,7 +1347,7 @@ List packages.
 {
   "success": true,
   "result": {
-    "packages": [
+    "assets": [
       {"name": "synth_building_blocks", "version": "1.2.0", "status": "up_to_date", "source": "store", "vendor": "HISE"},
       {"name": "my_ui_framework", "version": "2.0.1", "status": "update_available", "latestVersion": "2.1.0", "source": "local", "vendor": "Me"}
     ]
@@ -1347,15 +1359,15 @@ List packages.
 
 ---
 
-### POST /api/packages/install
+### POST /api/assets/install
 
-Install a package.
+Install an asset payload.
 
 **JSON Body**:
 
 | Field     | Required | Description                         |
 |-----------|----------|-------------------------------------|
-| `name`    | Yes      | Package name                        |
+| `name`    | Yes      | Asset name                          |
 | `version` | No       | Specific version (default: latest)  |
 
 **Response**:
@@ -1377,27 +1389,27 @@ Install a package.
 
 ---
 
-### POST /api/packages/update
+### POST /api/assets/update
 
-Update a package to the latest version.
+Update an asset payload to the latest version.
 
 **JSON Body**:
 
 | Field  | Required | Description    |
 |--------|----------|----------------|
-| `name` | Yes      | Package name   |
+| `name` | Yes      | Asset name     |
 
 ---
 
-### POST /api/packages/uninstall
+### POST /api/assets/uninstall
 
-Uninstall a package. Modified files are preserved.
+Uninstall an asset payload. Modified files are preserved.
 
 **JSON Body**:
 
 | Field  | Required | Description    |
 |--------|----------|----------------|
-| `name` | Yes      | Package name   |
+| `name` | Yes      | Asset name     |
 
 **Response**:
 ```json
@@ -1415,7 +1427,7 @@ Uninstall a package. Modified files are preserved.
 
 ---
 
-### POST /api/packages/cleanup
+### POST /api/assets/cleanup
 
 Force-delete preserved files from a previous uninstall.
 
@@ -1423,19 +1435,19 @@ Force-delete preserved files from a previous uninstall.
 
 | Field  | Required | Description    |
 |--------|----------|----------------|
-| `name` | Yes      | Package name   |
+| `name` | Yes      | Asset name     |
 
 ---
 
-### GET /api/packages/versions
+### GET /api/assets/versions
 
-List available versions for a package.
+List available versions for an asset payload.
 
 **Query Parameters**:
 
 | Parameter | Required | Description    |
 |-----------|----------|----------------|
-| `name`    | Yes      | Package name   |
+| `name`    | Yes      | Asset name     |
 
 **Response**:
 ```json
@@ -1451,21 +1463,9 @@ List available versions for a package.
 
 ---
 
-### POST /api/packages/add_local
+### POST /api/assets/add_local
 
-Add a local folder as a package source.
-
-**JSON Body**:
-
-| Field  | Required | Description                      |
-|--------|----------|----------------------------------|
-| `path` | Yes      | Path to the local HISE project   |
-
----
-
-### POST /api/packages/remove_local
-
-Remove a local folder package source.
+Add a local folder as an asset payload source.
 
 **JSON Body**:
 
@@ -1475,7 +1475,19 @@ Remove a local folder package source.
 
 ---
 
-### POST /api/packages/test
+### POST /api/assets/remove_local
+
+Remove a local folder asset payload source.
+
+**JSON Body**:
+
+| Field  | Required | Description                      |
+|--------|----------|----------------------------------|
+| `path` | Yes      | Path to the local HISE project   |
+
+---
+
+### POST /api/assets/test
 
 Dry-run install simulation.
 
@@ -1648,30 +1660,6 @@ Save the current preset as XML.
 
 ---
 
-### POST /api/project/validate/samplemaps
-
-Validate all sample maps for issues.
-
-**JSON Body**: `{}` (empty)
-
----
-
-### POST /api/project/validate/parameters
-
-Validate plugin parameters for sanity.
-
-**JSON Body**: `{}` (empty)
-
----
-
-### POST /api/project/validate/presets
-
-Validate all user presets.
-
-**JSON Body**: `{}` (empty)
-
----
-
 ### GET /api/project/unused_images
 
 Find images not referenced by the project.
@@ -1719,6 +1707,103 @@ Import a HISE snippet.
 | Field     | Required | Description              |
 |-----------|----------|--------------------------|
 | `snippet` | Yes      | HISE snippet string      |
+
+---
+
+## Presets
+
+### GET /api/presets/list
+
+List user presets as a folder hierarchy mirroring the `UserPresets` directory.
+
+**Query Parameters**:
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `path`    | No       | Subfolder path to list (default: root) |
+| `flat`    | No       | `true` for flat list, `false` for tree (default: `false`) |
+
+---
+
+### POST /api/presets/load
+
+Load a user preset by name or relative path.
+
+**JSON Body**:
+
+| Field    | Required | Description |
+|----------|----------|-------------|
+| `preset` | Yes      | Preset name or relative path under `UserPresets` |
+
+---
+
+### POST /api/presets/save
+
+Save the current state as a user preset.
+
+**JSON Body**:
+
+| Field       | Required | Description |
+|-------------|----------|-------------|
+| `preset`    | Yes      | Preset name or relative path under `UserPresets` |
+| `overwrite` | No       | Overwrite existing preset (default: `true`) |
+
+---
+
+### GET /api/presets/get_default
+
+Get the configured default user preset.
+
+---
+
+### POST /api/presets/set_default
+
+Set the default user preset.
+
+**JSON Body**:
+
+| Field    | Required | Description |
+|----------|----------|-------------|
+| `preset` | Yes      | Preset name or relative path under `UserPresets` |
+
+---
+
+### POST /api/presets/clear_default
+
+Clear the configured default user preset.
+
+**JSON Body**: `{}` (empty)
+
+---
+
+### POST /api/presets/reset_to_default
+
+Load the configured default user preset.
+
+**Behavior**:
+- If no default user preset is configured, return an error.
+
+**JSON Body**: `{}` (empty)
+
+---
+
+### POST /api/presets/validate
+
+Validate a specific user preset.
+
+**JSON Body**:
+
+| Field    | Required | Description |
+|----------|----------|-------------|
+| `preset` | Yes      | Preset name or relative path under `UserPresets` |
+
+---
+
+### POST /api/presets/validate_all
+
+Validate all user presets.
+
+**JSON Body**: `{}` (empty)
 
 ---
 
@@ -1832,6 +1917,18 @@ Endpoints for creating, removing, and reorganizing UI components from the
 interface designer. Complements the existing read/property endpoints
 (`GET /api/list_components`, `GET/POST /api/*_component_properties`,
 `GET/POST /api/*_component_value`). Used by the `/ui` mode (Phase 6.3).
+
+### POST /api/ui/validate_parameters
+
+Validate UI parameter bindings and ranges.
+
+**JSON Body**:
+
+| Field      | Required | Description |
+|------------|----------|-------------|
+| `moduleId` | Yes      | Script processor ID (eg `Interface`) |
+
+---
 
 ### POST /api/ui/add_component
 

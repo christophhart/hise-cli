@@ -90,7 +90,6 @@ describe("built-in slash commands", () => {
 		expect(names).toContain("inspect");
 		expect(names).toContain("project");
 		expect(names).toContain("compile");
-		expect(names).toContain("import");
 	});
 
 	it("/help returns overlay", async () => {

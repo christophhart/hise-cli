@@ -13,7 +13,6 @@ export const MODE_ACCENTS = {
 	inspect: "#ae81ff",
 	project: "#e6db74",
 	compile: "#f92672",
-	import: "#2de0a5",
 } as const;
 
 export type ModeId =
@@ -24,8 +23,7 @@ export type ModeId =
 	| "sampler"
 	| "inspect"
 	| "project"
-	| "compile"
-	| "import";
+	| "compile";
 
 export interface CompletionItem {
 	label: string;
