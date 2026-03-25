@@ -31,6 +31,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -236,7 +237,7 @@
           "description": "Modulates the attack time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 1,
@@ -247,7 +248,7 @@
           "description": "Modulates the attack level per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -258,7 +259,7 @@
           "description": "Modulates the decay time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 3,
@@ -269,7 +270,7 @@
           "description": "Modulates the sustain level per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 4,
@@ -280,7 +281,7 @@
           "description": "Modulates the release time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -336,7 +337,8 @@
           },
           "defaultValue": 8192.0
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "Arpeggiator",
@@ -710,7 +712,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "ArrayModulator",
@@ -727,7 +730,9 @@
       "metadataType": "static",
       "interfaces": [
         "SliderPackProcessor"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "AudioLooper",
@@ -937,7 +942,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -947,7 +952,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -965,6 +970,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -1000,7 +1006,8 @@
           "mode": "Discrete",
           "unit": ""
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "CCSwapper",
@@ -1015,6 +1022,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -1048,7 +1056,8 @@
           "mode": "Discrete",
           "unit": ""
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "ChannelFilter",
@@ -1064,6 +1073,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -1113,7 +1123,8 @@
           "mode": "Discrete",
           "unit": ""
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "ChannelSetter",
@@ -1129,6 +1140,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -1146,7 +1158,8 @@
           "mode": "Discrete",
           "unit": ""
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "ChokeGroupProcessor",
@@ -1161,6 +1174,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -1228,7 +1242,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "Chorus",
@@ -1311,7 +1326,8 @@
           "mode": "NormalizedPercentage",
           "unit": "%"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "Constant",
@@ -1325,7 +1341,10 @@
       "builderPath": "b.Modulators.Constant",
       "hasChildren": false,
       "hasFX": false,
-      "metadataType": "static"
+      "metadataType": "static",
+      "interfaces": [],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "Convolution",
@@ -1510,7 +1529,8 @@
           "mode": "Discrete",
           "unit": ""
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "CurveEq",
@@ -1529,7 +1549,9 @@
       "interfaces": [
         "RoutingMatrix",
         "DisplayBufferSource"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "Delay",
@@ -1680,7 +1702,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "Dynamics",
@@ -2002,7 +2025,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "EmptyFX",
@@ -2019,7 +2043,9 @@
       "metadataType": "static",
       "interfaces": [
         "RoutingMatrix"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "EventDataEnvelope",
@@ -2034,6 +2060,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -2120,7 +2147,8 @@
           "mode": "Time",
           "unit": "ms"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "EventDataModulator",
@@ -2135,6 +2163,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -2168,7 +2197,8 @@
           "mode": "NormalizedPercentage",
           "unit": "%"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "FlexAHDSR",
@@ -2400,7 +2430,7 @@
           "description": "Modulates the attack time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 1,
@@ -2410,7 +2440,7 @@
           "description": "Modulates the attack level per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -2420,7 +2450,7 @@
           "description": "Modulates the decay time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 3,
@@ -2430,7 +2460,7 @@
           "description": "Modulates the sustain level per voice",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 4,
@@ -2440,7 +2470,7 @@
           "description": "Modulates the release time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -2533,7 +2563,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "GlobalModulatorContainer",
@@ -2628,7 +2659,7 @@
           "description": "The modulation sources that can be picked up using GlobalModulators",
           "constrainer": "!GlobalEnvelopeModulator|!GlobalVoiceStartModulator|!GlobalTimeVariantModulator|!GlobalStaticTimeVariantModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -2638,7 +2669,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#808080"
         }
       ]
     },
@@ -2695,7 +2726,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "GlobalTimeVariantModulator",
@@ -2750,7 +2782,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "GlobalVoiceStartModulator",
@@ -2805,7 +2838,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "HardcodedEnvelopeModulator",
@@ -2864,7 +2898,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "HardcodedMasterFX",
@@ -2886,7 +2921,9 @@
         "SliderPackProcessor",
         "AudioSampleProcessor",
         "DisplayBufferSource"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "HardcodedPolyphonicFX",
@@ -2908,7 +2945,9 @@
         "SliderPackProcessor",
         "AudioSampleProcessor",
         "DisplayBufferSource"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "HardcodedSynth",
@@ -3009,7 +3048,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -3019,7 +3058,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -3042,7 +3081,9 @@
         "SliderPackProcessor",
         "AudioSampleProcessor",
         "DisplayBufferSource"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "HarmonicFilter",
@@ -3142,7 +3183,7 @@
           "description": "Modulates the crossfade position between A and B configurations",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -3244,7 +3285,7 @@
           "description": "Modulates the crossfade position between A and B configurations",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -3264,7 +3305,9 @@
       "metadataType": "static",
       "interfaces": [
         "TableProcessor"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "LFO",
@@ -3494,7 +3537,7 @@
           "description": "Modulates the intensity of the LFO output",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 1,
@@ -3505,7 +3548,7 @@
           "description": "Modulates the frequency of the LFO",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -3521,7 +3564,10 @@
       "builderPath": "b.MidiProcessors.LegatoWithRetrigger",
       "hasChildren": false,
       "hasFX": false,
-      "metadataType": "static"
+      "metadataType": "static",
+      "interfaces": [],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "MPEModulator",
@@ -3646,7 +3692,8 @@
           "mode": "NormalizedPercentage",
           "unit": "%"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "MacroModulationSource",
@@ -3741,7 +3788,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#808080"
         },
         {
           "chainIndex": 2,
@@ -3751,7 +3798,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#808080"
         },
         {
           "chainIndex": 4,
@@ -3761,7 +3808,7 @@
           "description": "Modulation source for macro control 1",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 5,
@@ -3771,7 +3818,7 @@
           "description": "Modulation source for macro control 2",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 6,
@@ -3781,7 +3828,7 @@
           "description": "Modulation source for macro control 3",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 7,
@@ -3791,7 +3838,7 @@
           "description": "Modulation source for macro control 4",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 8,
@@ -3801,7 +3848,7 @@
           "description": "Modulation source for macro control 5",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 9,
@@ -3811,7 +3858,7 @@
           "description": "Modulation source for macro control 6",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 10,
@@ -3821,7 +3868,7 @@
           "description": "Modulation source for macro control 7",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 11,
@@ -3831,7 +3878,7 @@
           "description": "Modulation source for macro control 8",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -3919,7 +3966,8 @@
           "mode": "NormalizedPercentage",
           "unit": "%"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "MatrixModulator",
@@ -3934,6 +3982,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -4004,7 +4053,8 @@
           "mode": "Time",
           "unit": "ms"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "MidiController",
@@ -4108,7 +4158,8 @@
           "mode": "NormalizedPercentage",
           "unit": "%"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "MidiMetronome",
@@ -4179,7 +4230,8 @@
           "mode": "NormalizedPercentage",
           "unit": "%"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "MidiMuter",
@@ -4195,6 +4247,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -4232,7 +4285,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "MidiPlayer",
@@ -4366,7 +4420,8 @@
           "mode": "Linear",
           "unit": ""
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "Noise",
@@ -4462,7 +4517,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -4472,7 +4527,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -4575,7 +4630,7 @@
           "description": "Scales the playback position",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 1,
@@ -4586,7 +4641,7 @@
           "description": "Bipolar offset modulation of the playback position",
           "constrainer": "*",
           "modulationMode": "offset",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -4683,7 +4738,7 @@
           "description": "Modulates the phaser sweep position between the frequency bounds",
           "constrainer": "*",
           "modulationMode": "combined",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -4757,7 +4812,8 @@
           "mode": "Time",
           "unit": "ms"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "PolyScriptFX",
@@ -4778,7 +4834,9 @@
         "SliderPackProcessor",
         "AudioSampleProcessor",
         "DisplayBufferSource"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "PolyphonicFilter",
@@ -4793,6 +4851,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -4907,7 +4966,7 @@
           "description": "Modulates the filter cutoff frequency",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 1,
@@ -4918,7 +4977,7 @@
           "description": "Modulates the filter gain",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -4929,7 +4988,7 @@
           "description": "Bipolar modulation of the filter frequency",
           "constrainer": "*",
           "modulationMode": "offset",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 3,
@@ -4940,7 +4999,7 @@
           "description": "Modulates the filter resonance",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -5041,7 +5100,7 @@
           "description": "Audio-rate modulation of the drive amount",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -5080,7 +5139,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "ReleaseTrigger",
@@ -5147,7 +5207,8 @@
           },
           "defaultValue": 0.0
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "RouteFX",
@@ -5164,7 +5225,9 @@
       "metadataType": "static",
       "interfaces": [
         "RoutingMatrix"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "Saturator",
@@ -5257,7 +5320,7 @@
           "description": "Modulates the saturation amount",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -5318,7 +5381,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "ScriptFX",
@@ -5340,7 +5404,9 @@
         "SliderPackProcessor",
         "AudioSampleProcessor",
         "DisplayBufferSource"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "ScriptProcessor",
@@ -5359,7 +5425,9 @@
         "TableProcessor",
         "SliderPackProcessor",
         "AudioSampleProcessor"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "ScriptSynth",
@@ -5460,7 +5528,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -5470,7 +5538,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -5493,7 +5561,9 @@
         "SliderPackProcessor",
         "AudioSampleProcessor",
         "DisplayBufferSource"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "ScriptVoiceStartModulator",
@@ -5512,7 +5582,9 @@
         "TableProcessor",
         "SliderPackProcessor",
         "AudioSampleProcessor"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "ScriptnodeVoiceKiller",
@@ -5527,6 +5599,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -5564,7 +5637,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "SendContainer",
@@ -5661,7 +5735,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -5671,7 +5745,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -5769,7 +5843,7 @@
           "description": "Modulates the send gain",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -6013,7 +6087,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "SilentSynth",
@@ -6109,7 +6184,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#808080"
         },
         {
           "chainIndex": 2,
@@ -6119,7 +6194,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#808080"
         }
       ]
     },
@@ -6136,6 +6211,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -6237,7 +6313,7 @@
           "description": "Modulates the attack time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -6358,7 +6434,7 @@
           "description": "Modulates the output gain",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 1,
@@ -6369,7 +6445,7 @@
           "description": "Modulates the delay time",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -6380,7 +6456,7 @@
           "description": "Modulates the stereo width",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 3,
@@ -6391,7 +6467,7 @@
           "description": "Modulates the stereo pan position",
           "constrainer": "*",
           "modulationMode": "pan",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -6508,7 +6584,8 @@
           "mode": "NormalizedPercentage",
           "unit": "%"
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "SineSynth",
@@ -6702,7 +6779,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -6712,7 +6789,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -6735,7 +6812,9 @@
       "interfaces": [
         "SlotFX",
         "RoutingMatrix"
-      ]
+      ],
+      "parameters": [],
+      "modulation": []
     },
     {
       "id": "StereoFX",
@@ -6750,6 +6829,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -6795,7 +6875,7 @@
           "description": "Modulates the stereo pan position",
           "constrainer": "*",
           "modulationMode": "pan",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -7105,7 +7185,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -7115,7 +7195,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 4,
@@ -7125,7 +7205,7 @@
           "description": "Modulates the sample start position within each sample's SampleStartMod range. Voice-start-only, gain mode.",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 5,
@@ -7135,7 +7215,7 @@
           "description": "Crossfades between round-robin groups using the crossfade tables for dynamic layering",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -7234,7 +7314,7 @@
           "description": "Modulates the output volume",
           "constrainer": "TimeVariantModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -7244,7 +7324,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#808080"
         }
       ]
     },
@@ -7481,7 +7561,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -7491,7 +7571,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 4,
@@ -7502,7 +7582,7 @@
           "description": "Modulates the unison detune amount",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 5,
@@ -7513,7 +7593,7 @@
           "description": "Modulates the unison stereo spread",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -7617,7 +7697,7 @@
           "description": "Modulates the attack time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 1,
@@ -7628,7 +7708,7 @@
           "description": "Modulates the release time per voice",
           "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -7645,6 +7725,7 @@
       "hasChildren": false,
       "hasFX": false,
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -7662,7 +7743,8 @@
           "mode": "Discrete",
           "unit": ""
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "Velocity",
@@ -7736,7 +7818,8 @@
             "On"
           ]
         }
-      ]
+      ],
+      "modulation": []
     },
     {
       "id": "WaveSynth",
@@ -7752,6 +7835,7 @@
       "hasFX": true,
       "fx_constrainer": "*",
       "metadataType": "static",
+      "interfaces": [],
       "parameters": [
         {
           "parameterIndex": 0,
@@ -8092,7 +8176,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -8102,7 +8186,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 4,
@@ -8113,7 +8197,7 @@
           "description": "Modulates the balance between oscillator 1 and 2",
           "constrainer": "*",
           "modulationMode": "combined",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 5,
@@ -8123,7 +8207,7 @@
           "description": "Modulates the pitch of the second oscillator independently",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     },
@@ -8292,7 +8376,7 @@
           "description": "Modulates the output volume",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 2,
@@ -8302,7 +8386,7 @@
           "description": "Modulates the pitch of all voices",
           "constrainer": "*",
           "modulationMode": "pitch",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 4,
@@ -8313,7 +8397,7 @@
           "description": "Modulates the wavetable position as a scale factor on the table index value",
           "constrainer": "*",
           "modulationMode": "gain",
-          "colour": 2
+          "colour": "#BE952C"
         },
         {
           "chainIndex": 5,
@@ -8324,7 +8408,7 @@
           "description": "Adds a bipolar offset to the wavetable position for modulation-driven morphing",
           "constrainer": "*",
           "modulationMode": "pan",
-          "colour": 2
+          "colour": "#BE952C"
         }
       ]
     }

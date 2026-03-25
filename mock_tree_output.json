@@ -118,7 +118,7 @@
         "description": "Modulates the pitch of all voices",
         "constrainer": "*",
         "modulationMode": "pitch",
-        "colour": 2
+        "colour": "#808080"
       }
     ],
     "bypassed": false,
@@ -143,7 +143,9 @@
         ],
         "bypassed": false,
         "processorId": "Interface",
-        "colour": "#C65638"
+        "colour": "#C65638",
+        "modulation": [],
+        "parameters": []
       }
     ],
     "fx": [
@@ -164,7 +166,9 @@
         ],
         "bypassed": false,
         "processorId": "EQ",
-        "colour": "#3A6666"
+        "colour": "#3A6666",
+        "modulation": [],
+        "parameters": []
       },
       {
         "id": "SimpleReverb",
@@ -300,7 +304,8 @@
         ],
         "bypassed": true,
         "processorId": "Master Reverb",
-        "colour": "#3A6666"
+        "colour": "#3A6666",
+        "modulation": []
       },
       {
         "id": "SimpleGain",
@@ -598,7 +603,7 @@
             "description": "Modulates the pitch of all voices",
             "constrainer": "*",
             "modulationMode": "pitch",
-            "colour": 2
+            "colour": "#808080"
           }
         ],
         "bypassed": false,
@@ -740,7 +745,8 @@
             ],
             "bypassed": false,
             "processorId": "Layer Reverb",
-            "colour": "#3A6666"
+            "colour": "#3A6666",
+            "modulation": []
           }
         ],
         "children": [
@@ -2059,7 +2065,8 @@
                 ],
                 "bypassed": false,
                 "processorId": "Release Trigger",
-                "colour": "#C65638"
+                "colour": "#C65638",
+                "modulation": []
               }
             ],
             "fx": []
@@ -2674,7 +2681,8 @@
                         ],
                         "bypassed": false,
                         "processorId": "Vel Attack",
-                        "colour": "#BE952C"
+                        "colour": "#BE952C",
+                        "modulation": []
                       }
                     ]
                   },
@@ -3433,7 +3441,8 @@
             ],
             "bypassed": false,
             "processorId": "Chorus",
-            "colour": "#3A6666"
+            "colour": "#3A6666",
+            "modulation": []
           }
         ],
         "children": [
