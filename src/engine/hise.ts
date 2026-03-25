@@ -4,7 +4,7 @@
 
 export interface HiseEnvelopeResponse {
 	success: boolean;
-	result: string;
+	result: string | object | null;
 	value?: unknown;
 	moduleId?: string;
 	logs: string[];
@@ -37,7 +37,7 @@ export function isEnvelopeResponse(
 ): response is HiseEnvelopeResponse {
 	return "success" in response
 		&& typeof response.success === "boolean"
-		&& typeof response.result === "string"
+		&& ("result" in response)
 		&& Array.isArray(response.logs)
 		&& Array.isArray(response.errors);
 }

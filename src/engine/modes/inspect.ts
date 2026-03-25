@@ -90,7 +90,7 @@ ${rows.join("\n")}`);
 	}
 }
 
-export function extractStatusPayload(response: { value?: unknown; result: string }): StatusPayload {
+export function extractStatusPayload(response: { value?: unknown; result: string | object | null }): StatusPayload {
 	if (response.value && typeof response.value === "object") {
 		return normalizeStatusPayload(response.value);
 	}

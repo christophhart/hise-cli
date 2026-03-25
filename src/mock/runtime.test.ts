@@ -41,6 +41,6 @@ describe("BuilderMode mock tree ownership", () => {
 		const mode = new BuilderMode(undefined, undefined, undefined, runtime.builderTree);
 		const tree = mode.getTree();
 		expect(tree).not.toBeNull();
-		expect(tree?.label).toBe("Master");
+		expect(tree?.label).toBe("Master Chain");
 	});
 });

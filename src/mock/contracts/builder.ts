@@ -1,0 +1,256 @@
+// Builder contract - normalizes raw HISE builder tree and diff responses.
+//
+// Raw tree shape from GET /api/builder/tree uses split arrays (children[],
+// midi[], fx[]) and inline modulation[] chains. This normalizer converts
+// to the unified TreeNode display format used by the sidebar.
+//
+// Diff responses from POST /api/builder/apply track changes scoped to
+// the current undo group: "+" added, "-" removed, "*" modified.
+
+import type { TreeNode } from "../../engine/result.js";
+
+// ── Raw HISE tree types (from GET /api/builder/tree) ────────────────
+
+export interface RawModulationChain {
+	chainIndex: number;
+	id: string;
+	parameterIndex?: number;
+	disabled: boolean;
+	constrainer: string;
+	modulationMode: string;
+	colour: string;
+	children?: RawTreeNode[];
+	description?: string;
+	metadataType?: string;
+}
+
+export interface RawTreeNode {
+	id: string;
+	processorId: string;
+	prettyName: string;
+	type: string;
+	subtype: string;
+	category: string[];
+	hasChildren: boolean;
+	hasFX: boolean;
+	constrainer?: string;
+	fx_constrainer?: string;
+	child_fx_constrainer?: string;
+	modulation: RawModulationChain[];
+	bypassed: boolean;
+	colour: string;
+	parameters: unknown[];
+	// Split child arrays
+	children?: RawTreeNode[];
+	midi?: RawTreeNode[];
+	fx?: RawTreeNode[];
+	// Metadata (not needed for display, preserved for validation)
+	builderPath?: string;
+	description?: string;
+	metadataType?: string;
+	interfaces?: string[];
+}
+
+// ── Diff types (from POST /api/builder/apply and GET /api/undo/diff) ─
+
+export interface BuilderDiffEntry {
+	domain: string;
+	action: "+" | "-" | "*";
+	target: string;
+}
+
+export interface BuilderApplyResult {
+	scope: string;
+	groupName: string;
+	diff: BuilderDiffEntry[];
+}
+
+// ── Tree normalizer ─────────────────────────────────────────────────
+
+/** Convert a raw HISE tree node into the TreeNode display format. */
+export function normalizeBuilderTree(raw: RawTreeNode): TreeNode {
+	return normalizeModule(raw);
+}
+
+function normalizeModule(raw: RawTreeNode): TreeNode {
+	const children: TreeNode[] = [];
+
+	// MIDI chain
+	if (raw.midi && raw.midi.length > 0) {
+		children.push(normalizeChain(
+			"MIDI Processor Chain",
+			"MidiProcessor",
+			raw.midi.map(normalizeModule),
+		));
+	}
+
+	// Modulation chains
+	for (const mod of raw.modulation) {
+		children.push(normalizeModulationChain(mod));
+	}
+
+	// FX chain
+	if (raw.fx && raw.fx.length > 0) {
+		children.push(normalizeChain(
+			"FX Chain",
+			raw.fx_constrainer ?? "MasterEffect",
+			raw.fx.map(normalizeModule),
+		));
+	} else if (raw.hasFX) {
+		// Empty FX chain - still show it
+		children.push(normalizeChain(
+			"FX Chain",
+			raw.fx_constrainer ?? "MasterEffect",
+			[],
+		));
+	}
+
+	// Direct children (SynthGroup / SynthChain children)
+	if (raw.children) {
+		for (const child of raw.children) {
+			children.push(normalizeModule(child));
+		}
+	}
+
+	return {
+		label: raw.processorId,
+		id: raw.processorId,
+		type: raw.id,
+		nodeKind: "module",
+		children: children.length > 0 ? children : undefined,
+	};
+}
+
+function normalizeModulationChain(mod: RawModulationChain): TreeNode {
+	const children = mod.children
+		? mod.children.map(normalizeModule)
+		: [];
+
+	const colour = mod.colour.startsWith("#") ? mod.colour : undefined;
+
+	return {
+		label: mod.id,
+		id: mod.id,
+		nodeKind: "chain",
+		chainConstrainer: mod.constrainer,
+		colour,
+		children: children.length > 0 ? children : undefined,
+	};
+}
+
+function normalizeChain(
+	label: string,
+	constrainer: string,
+	children: TreeNode[],
+): TreeNode {
+	return {
+		label,
+		id: label,
+		nodeKind: "chain",
+		chainConstrainer: constrainer,
+		children: children.length > 0 ? children : undefined,
+	};
+}
+
+// ── Diff application ────────────────────────────────────────────────
+
+/**
+ * Apply a diff list to an existing TreeNode tree.
+ *
+ * Walks the tree and sets `diff` status on nodes whose `id` (processorId)
+ * matches a diff entry target:
+ * - "+" action -> "added"
+ * - "-" action -> "removed"
+ * - "*" action -> "modified"
+ *
+ * Nodes not in the diff list have their diff cleared.
+ * Returns the mutated tree.
+ */
+export function applyDiffToTree(
+	tree: TreeNode,
+	diff: BuilderDiffEntry[],
+): TreeNode {
+	// Build a lookup: processorId -> diff status
+	// Structural actions (+/-) take priority over * (modified)
+	const diffMap = new Map<string, "added" | "removed" | "modified">();
+	for (const entry of diff) {
+		if (entry.domain !== "builder") continue;
+		const status = entry.action === "+" ? "added" as const
+			: entry.action === "-" ? "removed" as const
+			: "modified" as const;
+		const existing = diffMap.get(entry.target);
+		if (!existing || (status !== "modified" && existing === "modified")) {
+			diffMap.set(entry.target, status);
+		}
+	}
+
+	applyDiffRecursive(tree, diffMap);
+	return tree;
+}
+
+function applyDiffRecursive(
+	node: TreeNode,
+	diffMap: Map<string, "added" | "removed" | "modified">,
+): void {
+	// Only apply diff to module nodes (chains don't have processorIds in the diff)
+	if (node.nodeKind === "module") {
+		const status = diffMap.get(node.id ?? node.label);
+		node.diff = status;
+	} else {
+		node.diff = undefined;
+	}
+
+	if (node.children) {
+		for (const child of node.children) {
+			applyDiffRecursive(child, diffMap);
+		}
+	}
+}
+
+// ── Response normalizers ────────────────────────────────────────────
+
+/** Normalize the result from GET /api/builder/tree into a TreeNode. */
+export function normalizeBuilderTreeResponse(value: unknown): TreeNode {
+	if (!value || typeof value !== "object") {
+		throw new Error("Builder tree result must be an object");
+	}
+	const raw = value as RawTreeNode;
+	if (typeof raw.id !== "string" || typeof raw.processorId !== "string") {
+		throw new Error("Builder tree node must have id and processorId");
+	}
+	return normalizeBuilderTree(raw);
+}
+
+/** Normalize the result from POST /api/builder/apply. */
+export function normalizeBuilderApplyResult(value: unknown): BuilderApplyResult | null {
+	if (value === null || value === undefined) {
+		return null;
+	}
+	if (typeof value !== "object") {
+		throw new Error("Builder apply result must be an object or null");
+	}
+	const data = value as Record<string, unknown>;
+	return {
+		scope: typeof data.scope === "string" ? data.scope : "unknown",
+		groupName: typeof data.groupName === "string" ? data.groupName : "unknown",
+		diff: normalizeBuilderDiff(data.diff),
+	};
+}
+
+function normalizeBuilderDiff(value: unknown): BuilderDiffEntry[] {
+	if (!Array.isArray(value)) return [];
+	return value.map((entry) => {
+		if (!entry || typeof entry !== "object") {
+			throw new Error("Builder diff entry must be an object");
+		}
+		const data = entry as Record<string, unknown>;
+		const action = data.action === "+" ? "+" as const
+			: data.action === "-" ? "-" as const
+			: "*" as const;
+		return {
+			domain: typeof data.domain === "string" ? data.domain : "unknown",
+			action,
+			target: typeof data.target === "string" ? data.target : "",
+		};
+	});
+}

@@ -121,7 +121,7 @@ export function formatReplResponse(
 	}
 
 	if (!response.success) {
-		return errorResult(response.result || "REPL evaluation failed");
+		return errorResult(String(response.result ?? "REPL evaluation failed"));
 	}
 
 	// Build markdown with blockquoted logs and plain return value

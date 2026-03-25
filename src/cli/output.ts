@@ -42,7 +42,7 @@ function serializeScriptOutput(
 		}
 
 		if (!replResponse.success) {
-			return { ok: false, error: replResponse.result || "REPL evaluation failed" };
+			return { ok: false, error: String(replResponse.result ?? "REPL evaluation failed") };
 		}
 
 		const payload: { ok: true; logs?: string[]; value?: unknown } = { ok: true };
