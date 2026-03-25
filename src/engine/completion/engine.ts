@@ -133,7 +133,7 @@ export function buildDatasets(
 				detail: `${m.type} / ${m.subtype}`,
 			});
 
-			if (m.parameters.length > 0) {
+			if (m.parameters?.length > 0) {
 				const params: CompletionItem[] = m.parameters.map((p) => ({
 					label: p.id,
 					detail: `${p.range.min}–${p.range.max} (${p.type})`,

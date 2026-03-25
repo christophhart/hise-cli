@@ -1,0 +1,4878 @@
+{
+  "success": true,
+  "result": {
+    "id": "SynthChain",
+    "prettyName": "Container",
+    "description": "A container for other Sound generators.",
+    "type": "SoundGenerator",
+    "subtype": "SoundGenerator",
+    "category": [
+      "container"
+    ],
+    "builderPath": "b.SoundGenerators.SynthChain",
+    "hasChildren": true,
+    "hasFX": true,
+    "constrainer": "*",
+    "fx_constrainer": "MasterEffect|MonophonicEffect|PolyphonicFilter",
+    "metadataType": "static",
+    "interfaces": [
+      "RoutingMatrix"
+    ],
+    "parameters": [
+      {
+        "parameterIndex": 0,
+        "id": "Gain",
+        "metadataType": "static",
+        "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+        "type": "Slider",
+        "disabled": false,
+        "range": {
+          "min": 0.0,
+          "max": 1.0,
+          "stepSize": 0.0
+        },
+        "defaultValue": 1.0,
+        "chainIndex": 1,
+        "mode": "NormalizedPercentage",
+        "unit": "%",
+        "value": 1.0,
+        "valueNormalized": 1.0,
+        "valueAsString": "100%"
+      },
+      {
+        "parameterIndex": 1,
+        "id": "Balance",
+        "metadataType": "static",
+        "description": "The stereo balance",
+        "type": "Slider",
+        "disabled": false,
+        "range": {
+          "min": -1.0,
+          "max": 1.0,
+          "stepSize": 0.0
+        },
+        "defaultValue": 0.0,
+        "mode": "Pan",
+        "unit": "L",
+        "value": 0.0,
+        "valueNormalized": 0.5,
+        "valueAsString": "C"
+      },
+      {
+        "parameterIndex": 2,
+        "id": "VoiceLimit",
+        "metadataType": "static",
+        "description": "The maximum number of voices",
+        "type": "Slider",
+        "disabled": false,
+        "range": {
+          "min": 1.0,
+          "max": 256.0,
+          "stepSize": 1.0
+        },
+        "defaultValue": 256.0,
+        "mode": "Discrete",
+        "unit": "",
+        "value": 256.0,
+        "valueNormalized": 1.0,
+        "valueAsString": "256"
+      },
+      {
+        "parameterIndex": 3,
+        "id": "KillFadeTime",
+        "metadataType": "static",
+        "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+        "type": "Slider",
+        "disabled": false,
+        "range": {
+          "min": 0.0,
+          "max": 20000.0,
+          "stepSize": 1.0
+        },
+        "defaultValue": 20.0,
+        "mode": "Time",
+        "unit": "ms",
+        "value": 20.0,
+        "valueNormalized": 0.001,
+        "valueAsString": "20ms"
+      }
+    ],
+    "modulation": [
+      {
+        "chainIndex": 1,
+        "id": "Gain Modulation",
+        "metadataType": "static",
+        "parameterIndex": 0,
+        "disabled": false,
+        "description": "Modulates the output volume",
+        "constrainer": "TimeVariantModulator",
+        "modulationMode": "gain",
+        "colour": "#BE952C",
+        "children": []
+      },
+      {
+        "chainIndex": 2,
+        "id": "Pitch Modulation",
+        "metadataType": "static",
+        "disabled": true,
+        "description": "Modulates the pitch of all voices",
+        "constrainer": "*",
+        "modulationMode": "pitch",
+        "colour": 2
+      }
+    ],
+    "bypassed": false,
+    "processorId": "Master Chain",
+    "colour": "#414141",
+    "midi": [
+      {
+        "id": "ScriptProcessor",
+        "prettyName": "Script Processor",
+        "description": "The main scripting interface for MIDI processing, UI creation, and plugin control via the HiseScript API.",
+        "type": "MidiProcessor",
+        "subtype": "MidiProcessor",
+        "category": [],
+        "builderPath": "b.MidiProcessors.ScriptProcessor",
+        "hasChildren": false,
+        "hasFX": false,
+        "metadataType": "dynamic",
+        "interfaces": [
+          "TableProcessor",
+          "SliderPackProcessor",
+          "AudioSampleProcessor"
+        ],
+        "bypassed": false,
+        "processorId": "Interface",
+        "colour": "#C65638"
+      }
+    ],
+    "fx": [
+      {
+        "id": "CurveEq",
+        "prettyName": "Parametriq EQ",
+        "description": "A parametric equalizer with unlimited filter bands and an FFT spectrum display for visual feedback.",
+        "type": "Effect",
+        "subtype": "MasterEffect",
+        "category": [],
+        "builderPath": "b.Effects.CurveEq",
+        "hasChildren": false,
+        "hasFX": false,
+        "metadataType": "dynamic",
+        "interfaces": [
+          "RoutingMatrix",
+          "DisplayBufferSource"
+        ],
+        "bypassed": false,
+        "processorId": "EQ",
+        "colour": "#3A6666"
+      },
+      {
+        "id": "SimpleReverb",
+        "prettyName": "Simple Reverb",
+        "description": "Algorithmic reverb based on Freeverb with controls for room size, damping, and stereo width",
+        "type": "Effect",
+        "subtype": "MasterEffect",
+        "category": [
+          "reverb"
+        ],
+        "builderPath": "b.Effects.SimpleReverb",
+        "hasChildren": false,
+        "hasFX": false,
+        "metadataType": "static",
+        "interfaces": [
+          "RoutingMatrix"
+        ],
+        "parameters": [
+          {
+            "parameterIndex": 0,
+            "id": "RoomSize",
+            "metadataType": "static",
+            "description": "Perceived room size from 0 (small) to 1 (large cathedral)",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.8,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.8,
+            "valueNormalized": 0.8,
+            "valueAsString": "80%"
+          },
+          {
+            "parameterIndex": 1,
+            "id": "Damping",
+            "metadataType": "static",
+            "description": "High frequency absorption where higher values create a darker reverb tail",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.6,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.6,
+            "valueNormalized": 0.6,
+            "valueAsString": "60%"
+          },
+          {
+            "parameterIndex": 2,
+            "id": "WetLevel",
+            "metadataType": "static",
+            "description": "Wet/dry mix where 0 is fully dry and 1 is fully wet",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.2,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.2,
+            "valueNormalized": 0.2,
+            "valueAsString": "20%"
+          },
+          {
+            "parameterIndex": 3,
+            "id": "DryLevel",
+            "metadataType": "static",
+            "description": "Level of the dry signal mixed into the output",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.8,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.8,
+            "valueNormalized": 0.8,
+            "valueAsString": "80%"
+          },
+          {
+            "parameterIndex": 4,
+            "id": "Width",
+            "metadataType": "static",
+            "description": "Stereo width of the reverb where 0 is mono and 1 is full stereo",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.8,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.8,
+            "valueNormalized": 0.8,
+            "valueAsString": "80%"
+          },
+          {
+            "parameterIndex": 5,
+            "id": "FreezeMode",
+            "metadataType": "static",
+            "description": "Freeze mode that sustains the reverb tail indefinitely",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.1,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.1,
+            "valueNormalized": 0.1,
+            "valueAsString": "10%"
+          }
+        ],
+        "bypassed": true,
+        "processorId": "Master Reverb",
+        "colour": "#3A6666"
+      },
+      {
+        "id": "SimpleGain",
+        "prettyName": "Simple Gain",
+        "description": "Utility gain processor with optional delay, stereo width, and balance control, useful for level automation, simple timing offsets, and mid-side shaping",
+        "type": "Effect",
+        "subtype": "MasterEffect",
+        "category": [
+          "mixing",
+          "utility"
+        ],
+        "builderPath": "b.Effects.SimpleGain",
+        "hasChildren": false,
+        "hasFX": false,
+        "metadataType": "static",
+        "interfaces": [
+          "RoutingMatrix"
+        ],
+        "parameters": [
+          {
+            "parameterIndex": 0,
+            "id": "Gain",
+            "metadataType": "static",
+            "description": "Output gain in decibels, where 0 dB is unity and negative values attenuate the signal",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -100.0,
+              "max": 36.0,
+              "stepSize": 1.0,
+              "middlePosition": 0.0
+            },
+            "defaultValue": 0.0,
+            "chainIndex": 0,
+            "mode": "Decibel",
+            "unit": "dB",
+            "value": 0.0,
+            "valueNormalized": 0.5,
+            "valueAsString": "+0.0 dB"
+          },
+          {
+            "parameterIndex": 1,
+            "id": "Delay",
+            "metadataType": "static",
+            "description": "Static delay time in milliseconds applied to both channels",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 500.0,
+              "stepSize": 0.0,
+              "middlePosition": 100.0
+            },
+            "defaultValue": 0.0,
+            "chainIndex": 1,
+            "mode": "Time",
+            "unit": "ms",
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "0ms"
+          },
+          {
+            "parameterIndex": 2,
+            "id": "Width",
+            "metadataType": "static",
+            "description": "Stereo width percentage where 0 is mono, 100 is unchanged, and higher values exaggerate the sides",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 200.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 100.0,
+            "chainIndex": 2,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 100.0,
+            "valueNormalized": 0.5,
+            "valueAsString": "100"
+          },
+          {
+            "parameterIndex": 3,
+            "id": "Balance",
+            "metadataType": "static",
+            "description": "Stereo pan position of the output signal",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.0,
+            "chainIndex": 3,
+            "mode": "Pan",
+            "unit": "L",
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "C"
+          },
+          {
+            "parameterIndex": 4,
+            "id": "InvertPolarity",
+            "metadataType": "static",
+            "description": "Inverts the signal polarity for phase correction or mid-side processing",
+            "type": "Button",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 0.0,
+            "items": [
+              "Off",
+              "On"
+            ],
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "Off"
+          }
+        ],
+        "modulation": [
+          {
+            "chainIndex": 0,
+            "id": "Gain Modulation",
+            "metadataType": "static",
+            "parameterIndex": 0,
+            "disabled": false,
+            "description": "Modulates the output gain",
+            "constrainer": "*",
+            "modulationMode": "gain",
+            "colour": "#3A6666",
+            "children": []
+          },
+          {
+            "chainIndex": 1,
+            "id": "Delay Modulation",
+            "metadataType": "static",
+            "parameterIndex": 1,
+            "disabled": false,
+            "description": "Modulates the delay time",
+            "constrainer": "*",
+            "modulationMode": "gain",
+            "colour": "#3A6666",
+            "children": []
+          },
+          {
+            "chainIndex": 2,
+            "id": "Width Modulation",
+            "metadataType": "static",
+            "parameterIndex": 2,
+            "disabled": false,
+            "description": "Modulates the stereo width",
+            "constrainer": "*",
+            "modulationMode": "gain",
+            "colour": "#3A6666",
+            "children": []
+          },
+          {
+            "chainIndex": 3,
+            "id": "Pan Modulation",
+            "metadataType": "static",
+            "parameterIndex": 3,
+            "disabled": false,
+            "description": "Modulates the stereo pan position",
+            "constrainer": "*",
+            "modulationMode": "pan",
+            "colour": "#3A6666",
+            "children": []
+          }
+        ],
+        "bypassed": false,
+        "processorId": "Limiter",
+        "colour": "#3A6666"
+      }
+    ],
+    "children": [
+      {
+        "id": "SynthChain",
+        "prettyName": "Container",
+        "description": "A container for other Sound generators.",
+        "type": "SoundGenerator",
+        "subtype": "SoundGenerator",
+        "category": [
+          "container"
+        ],
+        "builderPath": "b.SoundGenerators.SynthChain",
+        "hasChildren": true,
+        "hasFX": true,
+        "constrainer": "*",
+        "fx_constrainer": "MasterEffect|MonophonicEffect|PolyphonicFilter",
+        "metadataType": "static",
+        "interfaces": [
+          "RoutingMatrix"
+        ],
+        "parameters": [
+          {
+            "parameterIndex": 0,
+            "id": "Gain",
+            "metadataType": "static",
+            "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 1.0,
+            "chainIndex": 1,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 1.0,
+            "valueNormalized": 1.0,
+            "valueAsString": "100%"
+          },
+          {
+            "parameterIndex": 1,
+            "id": "Balance",
+            "metadataType": "static",
+            "description": "The stereo balance",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -1.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.0,
+            "mode": "Pan",
+            "unit": "L",
+            "value": 0.0,
+            "valueNormalized": 0.5,
+            "valueAsString": "C"
+          },
+          {
+            "parameterIndex": 2,
+            "id": "VoiceLimit",
+            "metadataType": "static",
+            "description": "The maximum number of voices",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 1.0,
+              "max": 256.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 256.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 256.0,
+            "valueNormalized": 1.0,
+            "valueAsString": "256"
+          },
+          {
+            "parameterIndex": 3,
+            "id": "KillFadeTime",
+            "metadataType": "static",
+            "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 20000.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 20.0,
+            "mode": "Time",
+            "unit": "ms",
+            "value": 20.0,
+            "valueNormalized": 0.001,
+            "valueAsString": "20ms"
+          }
+        ],
+        "modulation": [
+          {
+            "chainIndex": 1,
+            "id": "Gain Modulation",
+            "metadataType": "static",
+            "parameterIndex": 0,
+            "disabled": false,
+            "description": "Modulates the output volume",
+            "constrainer": "TimeVariantModulator",
+            "modulationMode": "gain",
+            "colour": "#BE952C",
+            "children": []
+          },
+          {
+            "chainIndex": 2,
+            "id": "Pitch Modulation",
+            "metadataType": "static",
+            "disabled": true,
+            "description": "Modulates the pitch of all voices",
+            "constrainer": "*",
+            "modulationMode": "pitch",
+            "colour": 2
+          }
+        ],
+        "bypassed": false,
+        "processorId": "Sampler Layer",
+        "colour": "#414141",
+        "midi": [],
+        "fx": [
+          {
+            "id": "SimpleReverb",
+            "prettyName": "Simple Reverb",
+            "description": "Algorithmic reverb based on Freeverb with controls for room size, damping, and stereo width",
+            "type": "Effect",
+            "subtype": "MasterEffect",
+            "category": [
+              "reverb"
+            ],
+            "builderPath": "b.Effects.SimpleReverb",
+            "hasChildren": false,
+            "hasFX": false,
+            "metadataType": "static",
+            "interfaces": [
+              "RoutingMatrix"
+            ],
+            "parameters": [
+              {
+                "parameterIndex": 0,
+                "id": "RoomSize",
+                "metadataType": "static",
+                "description": "Perceived room size from 0 (small) to 1 (large cathedral)",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.8,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.8,
+                "valueNormalized": 0.8,
+                "valueAsString": "80%"
+              },
+              {
+                "parameterIndex": 1,
+                "id": "Damping",
+                "metadataType": "static",
+                "description": "High frequency absorption where higher values create a darker reverb tail",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.6,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.6,
+                "valueNormalized": 0.6,
+                "valueAsString": "60%"
+              },
+              {
+                "parameterIndex": 2,
+                "id": "WetLevel",
+                "metadataType": "static",
+                "description": "Wet/dry mix where 0 is fully dry and 1 is fully wet",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.2,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.2,
+                "valueNormalized": 0.2,
+                "valueAsString": "20%"
+              },
+              {
+                "parameterIndex": 3,
+                "id": "DryLevel",
+                "metadataType": "static",
+                "description": "Level of the dry signal mixed into the output",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.8,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.8,
+                "valueNormalized": 0.8,
+                "valueAsString": "80%"
+              },
+              {
+                "parameterIndex": 4,
+                "id": "Width",
+                "metadataType": "static",
+                "description": "Stereo width of the reverb where 0 is mono and 1 is full stereo",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.8,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.8,
+                "valueNormalized": 0.8,
+                "valueAsString": "80%"
+              },
+              {
+                "parameterIndex": 5,
+                "id": "FreezeMode",
+                "metadataType": "static",
+                "description": "Freeze mode that sustains the reverb tail indefinitely",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.1,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.1,
+                "valueNormalized": 0.1,
+                "valueAsString": "10%"
+              }
+            ],
+            "bypassed": false,
+            "processorId": "Layer Reverb",
+            "colour": "#3A6666"
+          }
+        ],
+        "children": [
+          {
+            "id": "StreamingSampler",
+            "prettyName": "Sampler",
+            "description": "A disk-streaming sampler with sample maps, round robin, crossfade groups, and timestretching.",
+            "type": "SoundGenerator",
+            "subtype": "SoundGenerator",
+            "category": [
+              "sample_playback"
+            ],
+            "builderPath": "b.SoundGenerators.StreamingSampler",
+            "hasChildren": false,
+            "hasFX": true,
+            "fx_constrainer": "*",
+            "metadataType": "static",
+            "interfaces": [
+              "Sampler",
+              "RoutingMatrix",
+              "TableProcessor"
+            ],
+            "parameters": [
+              {
+                "parameterIndex": 0,
+                "id": "Gain",
+                "metadataType": "static",
+                "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 1.0,
+                "chainIndex": 1,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 1.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "100%"
+              },
+              {
+                "parameterIndex": 1,
+                "id": "Balance",
+                "metadataType": "static",
+                "description": "The stereo balance",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Pan",
+                "unit": "L",
+                "value": 0.0,
+                "valueNormalized": 0.5,
+                "valueAsString": "C"
+              },
+              {
+                "parameterIndex": 2,
+                "id": "VoiceLimit",
+                "metadataType": "static",
+                "description": "The maximum number of voices",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 256.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 256.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 256.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "256"
+              },
+              {
+                "parameterIndex": 3,
+                "id": "KillFadeTime",
+                "metadataType": "static",
+                "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 20000.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 20.0,
+                "mode": "Time",
+                "unit": "ms",
+                "value": 20.0,
+                "valueNormalized": 0.001,
+                "valueAsString": "20ms"
+              },
+              {
+                "parameterIndex": 4,
+                "id": "PreloadSize",
+                "metadataType": "static",
+                "description": "Preload buffer size in samples for all loaded samples. Set to -1 to load the entire sample into memory.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 65536.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 8192.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 8192.0,
+                "valueNormalized": 0.125,
+                "valueAsString": "8192"
+              },
+              {
+                "parameterIndex": 5,
+                "id": "BufferSize",
+                "metadataType": "static",
+                "description": "Streaming buffer size in samples. Two buffers per voice are swapped between disk reading and audio output.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 512.0,
+                  "max": 65536.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 4096.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 4096.0,
+                "valueNormalized": 0.0551,
+                "valueAsString": "4096"
+              },
+              {
+                "parameterIndex": 6,
+                "id": "VoiceAmount",
+                "metadataType": "static",
+                "description": "The actual number of allocated voices for sample playback",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 256.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 256.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 256.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "256"
+              },
+              {
+                "parameterIndex": 7,
+                "id": "RRGroupAmount",
+                "metadataType": "static",
+                "description": "Number of round-robin groups. Also used as a general mapping dimension for velocity layers or articulations.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 128.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 1.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 1.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "1"
+              },
+              {
+                "parameterIndex": 8,
+                "id": "SamplerRepeatMode",
+                "metadataType": "static",
+                "description": "How the sampler handles retriggered notes on the same key",
+                "type": "ComboBox",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 5.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 3.0,
+                "items": [
+                  "Kill Note",
+                  "Note off",
+                  "Do nothing",
+                  "Kill Duplicate",
+                  "Kill Third"
+                ],
+                "value": 3.0,
+                "valueNormalized": 0.5,
+                "valueAsString": "Kill Duplicate"
+              },
+              {
+                "parameterIndex": 9,
+                "id": "PitchTracking",
+                "metadataType": "static",
+                "description": "Transposes playback pitch based on the MIDI note relative to the sample root note. Disable for drum samples.",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 1.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 1.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "On"
+              },
+              {
+                "parameterIndex": 10,
+                "id": "OneShot",
+                "metadataType": "static",
+                "description": "Plays the entire sample ignoring note-off events",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 11,
+                "id": "CrossfadeGroups",
+                "metadataType": "static",
+                "description": "Plays all round-robin groups simultaneously and crossfades between them using the Group Fade modulation chain",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 12,
+                "id": "Purged",
+                "metadataType": "static",
+                "description": "Memory management: Disabled keeps samples loaded, Enabled unloads all preload buffers, Lazy Load delays preloading until first trigger",
+                "type": "ComboBox",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 2.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Disabled",
+                  "Enabled",
+                  "Lazy Load"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Disabled"
+              },
+              {
+                "parameterIndex": 13,
+                "id": "Reversed",
+                "metadataType": "static",
+                "description": "Loads samples fully into the preload buffer and reverses the playback direction",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 14,
+                "id": "UseStaticMatrix",
+                "metadataType": "static",
+                "description": "Prevents the routing matrix from resizing when loading a sample map with a different mic position count",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 15,
+                "id": "LowPassEnvelopeOrder",
+                "metadataType": "static",
+                "description": "Filter order for the envelope follower low-pass filter, stored in multiples of 6 (0 = off, 6, 12, ...)",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 48.0,
+                  "stepSize": 6.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "0"
+              }
+            ],
+            "modulation": [
+              {
+                "chainIndex": 1,
+                "id": "Gain Modulation",
+                "metadataType": "static",
+                "parameterIndex": 0,
+                "disabled": false,
+                "description": "Modulates the output volume",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#BE952C",
+                "children": [
+                  {
+                    "id": "AHDSR",
+                    "prettyName": "AHDSR Envelope",
+                    "description": "An AHDSR envelope with adjustable curve shapes, optional downsampling for CPU savings, and per-voice modulation of all time parameters.",
+                    "type": "Modulator",
+                    "subtype": "EnvelopeModulator",
+                    "category": [
+                      "generator"
+                    ],
+                    "builderPath": "b.Modulators.AHDSR",
+                    "hasChildren": false,
+                    "hasFX": false,
+                    "metadataType": "static",
+                    "parameters": [
+                      {
+                        "parameterIndex": 0,
+                        "id": "Monophonic",
+                        "metadataType": "static",
+                        "description": "Enables monophonic mode where only one voice is rendered",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": "dynamic",
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 0.0,
+                        "valueNormalized": 0.0,
+                        "valueAsString": "Off"
+                      },
+                      {
+                        "parameterIndex": 1,
+                        "id": "Retrigger",
+                        "metadataType": "static",
+                        "description": "Restarts the envelope when a new note is triggered in monophonic mode",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      },
+                      {
+                        "parameterIndex": 2,
+                        "id": "Attack",
+                        "metadataType": "static",
+                        "description": "Controls how long the envelope takes to reach full level after a note-on",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 100.0
+                        },
+                        "defaultValue": 20.0,
+                        "chainIndex": 0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 20.0,
+                        "valueNormalized": 0.4051,
+                        "valueAsString": "20ms"
+                      },
+                      {
+                        "parameterIndex": 3,
+                        "id": "AttackLevel",
+                        "metadataType": "static",
+                        "description": "The peak level reached at the end of the attack phase",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": -100.0,
+                          "max": 0.0,
+                          "stepSize": 0.0,
+                          "middlePosition": -12.0
+                        },
+                        "defaultValue": 0.0,
+                        "chainIndex": 1,
+                        "mode": "Decibel",
+                        "unit": "dB",
+                        "value": 0.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "+0.0 dB"
+                      },
+                      {
+                        "parameterIndex": 4,
+                        "id": "Hold",
+                        "metadataType": "static",
+                        "description": "The time the envelope stays at the attack level before decaying",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 300.0
+                        },
+                        "defaultValue": 10.0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 10.0,
+                        "valueNormalized": 0.2852,
+                        "valueAsString": "10ms"
+                      },
+                      {
+                        "parameterIndex": 5,
+                        "id": "Decay",
+                        "metadataType": "static",
+                        "description": "The time the envelope takes to fall from the attack level to the sustain level",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 1.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 300.0
+                        },
+                        "defaultValue": 300.0,
+                        "chainIndex": 2,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 300.0,
+                        "valueNormalized": 0.4999999999999999,
+                        "valueAsString": "300ms"
+                      },
+                      {
+                        "parameterIndex": 6,
+                        "id": "Sustain",
+                        "metadataType": "static",
+                        "description": "The level maintained while the note is held",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": -100.0,
+                          "max": 0.0,
+                          "stepSize": 0.0,
+                          "middlePosition": -12.0
+                        },
+                        "defaultValue": 0.0,
+                        "chainIndex": 3,
+                        "mode": "Decibel",
+                        "unit": "dB",
+                        "value": 0.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "+0.0 dB"
+                      },
+                      {
+                        "parameterIndex": 7,
+                        "id": "Release",
+                        "metadataType": "static",
+                        "description": "The time the envelope takes to fall from the sustain level to zero after note-off",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 1.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 300.0
+                        },
+                        "defaultValue": 20.0,
+                        "chainIndex": 4,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 20.0,
+                        "valueNormalized": 0.3174,
+                        "valueAsString": "20ms"
+                      },
+                      {
+                        "parameterIndex": 8,
+                        "id": "AttackCurve",
+                        "metadataType": "static",
+                        "description": "Controls the curvature of the attack phase (0.0 = concave, 1.0 = convex)",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 0.0
+                        },
+                        "defaultValue": 0.0,
+                        "mode": "NormalizedPercentage",
+                        "unit": "%",
+                        "value": 0.0,
+                        "valueNormalized": 0.0,
+                        "valueAsString": "0%"
+                      },
+                      {
+                        "parameterIndex": 9,
+                        "id": "DecayCurve",
+                        "metadataType": "static",
+                        "description": "Controls the curvature of the decay and release phases",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 0.0
+                        },
+                        "defaultValue": 0.0,
+                        "mode": "NormalizedPercentage",
+                        "unit": "%",
+                        "value": 0.0,
+                        "valueNormalized": 0.0,
+                        "valueAsString": "0%"
+                      },
+                      {
+                        "parameterIndex": 10,
+                        "id": "EcoMode",
+                        "metadataType": "static",
+                        "description": "Enables 16x downsampling for reduced CPU usage",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      }
+                    ],
+                    "modulation": [
+                      {
+                        "chainIndex": 0,
+                        "id": "AttackTimeModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 2,
+                        "disabled": false,
+                        "description": "Modulates the attack time per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      },
+                      {
+                        "chainIndex": 1,
+                        "id": "AttackLevelModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 3,
+                        "disabled": false,
+                        "description": "Modulates the attack level per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      },
+                      {
+                        "chainIndex": 2,
+                        "id": "DecayTimeModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 5,
+                        "disabled": false,
+                        "description": "Modulates the decay time per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      },
+                      {
+                        "chainIndex": 3,
+                        "id": "SustainLevelModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 6,
+                        "disabled": false,
+                        "description": "Modulates the sustain level per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      },
+                      {
+                        "chainIndex": 4,
+                        "id": "ReleaseTimeModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 7,
+                        "disabled": false,
+                        "description": "Modulates the release time per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      }
+                    ],
+                    "bypassed": false,
+                    "processorId": "Layer Envelope",
+                    "colour": "#BE952C"
+                  }
+                ]
+              },
+              {
+                "chainIndex": 2,
+                "id": "Pitch Modulation",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Modulates the pitch of all voices",
+                "constrainer": "*",
+                "modulationMode": "pitch",
+                "colour": "#7559A4",
+                "children": []
+              },
+              {
+                "chainIndex": 4,
+                "id": "Sample Start",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Modulates the sample start position within each sample's SampleStartMod range. Voice-start-only, gain mode.",
+                "constrainer": "VoiceStartModulator",
+                "modulationMode": "gain",
+                "colour": "#5E8127",
+                "children": []
+              },
+              {
+                "chainIndex": 5,
+                "id": "Group Fade",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Crossfades between round-robin groups using the crossfade tables for dynamic layering",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#884B29",
+                "children": []
+              }
+            ],
+            "bypassed": false,
+            "processorId": "Piano",
+            "colour": "#414141",
+            "midi": [],
+            "fx": []
+          },
+          {
+            "id": "StreamingSampler",
+            "prettyName": "Sampler",
+            "description": "A disk-streaming sampler with sample maps, round robin, crossfade groups, and timestretching.",
+            "type": "SoundGenerator",
+            "subtype": "SoundGenerator",
+            "category": [
+              "sample_playback"
+            ],
+            "builderPath": "b.SoundGenerators.StreamingSampler",
+            "hasChildren": false,
+            "hasFX": true,
+            "fx_constrainer": "*",
+            "metadataType": "static",
+            "interfaces": [
+              "Sampler",
+              "RoutingMatrix",
+              "TableProcessor"
+            ],
+            "parameters": [
+              {
+                "parameterIndex": 0,
+                "id": "Gain",
+                "metadataType": "static",
+                "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 1.0,
+                "chainIndex": 1,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 1.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "100%"
+              },
+              {
+                "parameterIndex": 1,
+                "id": "Balance",
+                "metadataType": "static",
+                "description": "The stereo balance",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Pan",
+                "unit": "L",
+                "value": 0.0,
+                "valueNormalized": 0.5,
+                "valueAsString": "C"
+              },
+              {
+                "parameterIndex": 2,
+                "id": "VoiceLimit",
+                "metadataType": "static",
+                "description": "The maximum number of voices",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 256.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 256.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 256.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "256"
+              },
+              {
+                "parameterIndex": 3,
+                "id": "KillFadeTime",
+                "metadataType": "static",
+                "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 20000.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 20.0,
+                "mode": "Time",
+                "unit": "ms",
+                "value": 20.0,
+                "valueNormalized": 0.001,
+                "valueAsString": "20ms"
+              },
+              {
+                "parameterIndex": 4,
+                "id": "PreloadSize",
+                "metadataType": "static",
+                "description": "Preload buffer size in samples for all loaded samples. Set to -1 to load the entire sample into memory.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 65536.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 8192.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 8192.0,
+                "valueNormalized": 0.125,
+                "valueAsString": "8192"
+              },
+              {
+                "parameterIndex": 5,
+                "id": "BufferSize",
+                "metadataType": "static",
+                "description": "Streaming buffer size in samples. Two buffers per voice are swapped between disk reading and audio output.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 512.0,
+                  "max": 65536.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 4096.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 4096.0,
+                "valueNormalized": 0.0551,
+                "valueAsString": "4096"
+              },
+              {
+                "parameterIndex": 6,
+                "id": "VoiceAmount",
+                "metadataType": "static",
+                "description": "The actual number of allocated voices for sample playback",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 256.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 256.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 256.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "256"
+              },
+              {
+                "parameterIndex": 7,
+                "id": "RRGroupAmount",
+                "metadataType": "static",
+                "description": "Number of round-robin groups. Also used as a general mapping dimension for velocity layers or articulations.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 128.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 1.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 1.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "1"
+              },
+              {
+                "parameterIndex": 8,
+                "id": "SamplerRepeatMode",
+                "metadataType": "static",
+                "description": "How the sampler handles retriggered notes on the same key",
+                "type": "ComboBox",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 5.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 3.0,
+                "items": [
+                  "Kill Note",
+                  "Note off",
+                  "Do nothing",
+                  "Kill Duplicate",
+                  "Kill Third"
+                ],
+                "value": 3.0,
+                "valueNormalized": 0.5,
+                "valueAsString": "Kill Duplicate"
+              },
+              {
+                "parameterIndex": 9,
+                "id": "PitchTracking",
+                "metadataType": "static",
+                "description": "Transposes playback pitch based on the MIDI note relative to the sample root note. Disable for drum samples.",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 1.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 1.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "On"
+              },
+              {
+                "parameterIndex": 10,
+                "id": "OneShot",
+                "metadataType": "static",
+                "description": "Plays the entire sample ignoring note-off events",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 11,
+                "id": "CrossfadeGroups",
+                "metadataType": "static",
+                "description": "Plays all round-robin groups simultaneously and crossfades between them using the Group Fade modulation chain",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 12,
+                "id": "Purged",
+                "metadataType": "static",
+                "description": "Memory management: Disabled keeps samples loaded, Enabled unloads all preload buffers, Lazy Load delays preloading until first trigger",
+                "type": "ComboBox",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 2.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Disabled",
+                  "Enabled",
+                  "Lazy Load"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Disabled"
+              },
+              {
+                "parameterIndex": 13,
+                "id": "Reversed",
+                "metadataType": "static",
+                "description": "Loads samples fully into the preload buffer and reverses the playback direction",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 14,
+                "id": "UseStaticMatrix",
+                "metadataType": "static",
+                "description": "Prevents the routing matrix from resizing when loading a sample map with a different mic position count",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              },
+              {
+                "parameterIndex": 15,
+                "id": "LowPassEnvelopeOrder",
+                "metadataType": "static",
+                "description": "Filter order for the envelope follower low-pass filter, stored in multiples of 6 (0 = off, 6, 12, ...)",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 48.0,
+                  "stepSize": 6.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "0"
+              }
+            ],
+            "modulation": [
+              {
+                "chainIndex": 1,
+                "id": "Gain Modulation",
+                "metadataType": "static",
+                "parameterIndex": 0,
+                "disabled": false,
+                "description": "Modulates the output volume",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#BE952C",
+                "children": [
+                  {
+                    "id": "SimpleEnvelope",
+                    "prettyName": "Simple Envelope",
+                    "description": "A lightweight two-stage envelope with attack and release, supporting linear or exponential curves.",
+                    "type": "Modulator",
+                    "subtype": "EnvelopeModulator",
+                    "category": [
+                      "generator"
+                    ],
+                    "builderPath": "b.Modulators.SimpleEnvelope",
+                    "hasChildren": false,
+                    "hasFX": false,
+                    "metadataType": "static",
+                    "parameters": [
+                      {
+                        "parameterIndex": 0,
+                        "id": "Monophonic",
+                        "metadataType": "static",
+                        "description": "Enables monophonic mode where only one voice is rendered",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": "dynamic",
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 0.0,
+                        "valueNormalized": 0.0,
+                        "valueAsString": "Off"
+                      },
+                      {
+                        "parameterIndex": 1,
+                        "id": "Retrigger",
+                        "metadataType": "static",
+                        "description": "Restarts the envelope when a new note is triggered in monophonic mode",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      },
+                      {
+                        "parameterIndex": 2,
+                        "id": "Attack",
+                        "metadataType": "static",
+                        "description": "The attack time in milliseconds",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 1000.0
+                        },
+                        "defaultValue": 5.0,
+                        "chainIndex": 0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 5.0,
+                        "valueNormalized": 0.1467,
+                        "valueAsString": "5ms"
+                      },
+                      {
+                        "parameterIndex": 3,
+                        "id": "Release",
+                        "metadataType": "static",
+                        "description": "The release time in milliseconds",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 1000.0
+                        },
+                        "defaultValue": 10.0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 10.0,
+                        "valueNormalized": 0.1723,
+                        "valueAsString": "10ms"
+                      },
+                      {
+                        "parameterIndex": 4,
+                        "id": "LinearMode",
+                        "metadataType": "static",
+                        "description": "Toggles between linear and exponential envelope curves",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      }
+                    ],
+                    "modulation": [
+                      {
+                        "chainIndex": 0,
+                        "id": "AttackTimeModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 2,
+                        "disabled": false,
+                        "description": "Modulates the attack time per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      }
+                    ],
+                    "bypassed": false,
+                    "processorId": "DefaultEnvelope",
+                    "colour": "#BE952C"
+                  }
+                ]
+              },
+              {
+                "chainIndex": 2,
+                "id": "Pitch Modulation",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Modulates the pitch of all voices",
+                "constrainer": "*",
+                "modulationMode": "pitch",
+                "colour": "#7559A4",
+                "children": []
+              },
+              {
+                "chainIndex": 4,
+                "id": "Sample Start",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Modulates the sample start position within each sample's SampleStartMod range. Voice-start-only, gain mode.",
+                "constrainer": "VoiceStartModulator",
+                "modulationMode": "gain",
+                "colour": "#5E8127",
+                "children": []
+              },
+              {
+                "chainIndex": 5,
+                "id": "Group Fade",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Crossfades between round-robin groups using the crossfade tables for dynamic layering",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#884B29",
+                "children": []
+              }
+            ],
+            "bypassed": false,
+            "processorId": "Piano Release",
+            "colour": "#414141",
+            "midi": [
+              {
+                "id": "ReleaseTrigger",
+                "prettyName": "Release Trigger",
+                "description": "Release trigger generator that replays notes on key-up with velocity scaled by a time-based attenuation curve",
+                "type": "MidiProcessor",
+                "subtype": "MidiProcessor",
+                "category": [
+                  "note_processing"
+                ],
+                "builderPath": "b.MidiProcessors.ReleaseTrigger",
+                "hasChildren": false,
+                "hasFX": false,
+                "metadataType": "static",
+                "interfaces": [
+                  "TableProcessor"
+                ],
+                "parameters": [
+                  {
+                    "parameterIndex": 0,
+                    "id": "TimeAttenuate",
+                    "metadataType": "static",
+                    "description": "Enables time-based velocity attenuation on release",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 0.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 1,
+                    "id": "Time",
+                    "metadataType": "static",
+                    "description": "Time in seconds used to normalise the release attenuation curve",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 20.0,
+                      "stepSize": 0.1
+                    },
+                    "defaultValue": 0.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0ms"
+                  },
+                  {
+                    "parameterIndex": 2,
+                    "id": "TimeTable",
+                    "metadataType": "static",
+                    "description": "Curve that scales release velocity over time",
+                    "type": "Unspecified",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 0.0
+                    },
+                    "defaultValue": 0.0,
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0"
+                  }
+                ],
+                "bypassed": false,
+                "processorId": "Release Trigger",
+                "colour": "#C65638"
+              }
+            ],
+            "fx": []
+          }
+        ]
+      },
+      {
+        "id": "SynthGroup",
+        "prettyName": "Synthesiser Group",
+        "description": "A container for synthesisers that share common modulation, with optional FM synthesis and unison detune/spread.",
+        "type": "SoundGenerator",
+        "subtype": "SoundGenerator",
+        "category": [
+          "container",
+          "oscillator"
+        ],
+        "builderPath": "b.SoundGenerators.SynthGroup",
+        "hasChildren": true,
+        "hasFX": true,
+        "constrainer": "!SynthChain|!GlobalModulatorContainer|!SynthGroup|!MacroModulationSource",
+        "fx_constrainer": "*",
+        "child_fx_constrainer": "VoiceEffect",
+        "metadataType": "static",
+        "interfaces": [
+          "RoutingMatrix"
+        ],
+        "parameters": [
+          {
+            "parameterIndex": 0,
+            "id": "Gain",
+            "metadataType": "static",
+            "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 1.0,
+            "chainIndex": 1,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 1.0,
+            "valueNormalized": 1.0,
+            "valueAsString": "100%"
+          },
+          {
+            "parameterIndex": 1,
+            "id": "Balance",
+            "metadataType": "static",
+            "description": "The stereo balance",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -1.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.0,
+            "mode": "Pan",
+            "unit": "L",
+            "value": 0.0,
+            "valueNormalized": 0.5,
+            "valueAsString": "C"
+          },
+          {
+            "parameterIndex": 2,
+            "id": "VoiceLimit",
+            "metadataType": "static",
+            "description": "The maximum number of voices",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 1.0,
+              "max": 256.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 256.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 256.0,
+            "valueNormalized": 1.0,
+            "valueAsString": "256"
+          },
+          {
+            "parameterIndex": 3,
+            "id": "KillFadeTime",
+            "metadataType": "static",
+            "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 20000.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 20.0,
+            "mode": "Time",
+            "unit": "ms",
+            "value": 20.0,
+            "valueNormalized": 0.001,
+            "valueAsString": "20ms"
+          },
+          {
+            "parameterIndex": 4,
+            "id": "EnableFM",
+            "metadataType": "static",
+            "description": "Enables FM synthesis between two child synths",
+            "type": "Button",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 0.0,
+            "items": [
+              "Off",
+              "On"
+            ],
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "Off"
+          },
+          {
+            "parameterIndex": 5,
+            "id": "CarrierIndex",
+            "metadataType": "static",
+            "description": "The child synth index used as FM carrier",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -1.0,
+              "max": 16.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": -1.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": -1.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "-1"
+          },
+          {
+            "parameterIndex": 6,
+            "id": "ModulatorIndex",
+            "metadataType": "static",
+            "description": "The child synth index used as FM modulator",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -1.0,
+              "max": 16.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": -1.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": -1.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "-1"
+          },
+          {
+            "parameterIndex": 7,
+            "id": "UnisonoVoiceAmount",
+            "metadataType": "static",
+            "description": "The number of unison voices per note",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 1.0,
+              "max": 16.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 1.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 1.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "1"
+          },
+          {
+            "parameterIndex": 8,
+            "id": "UnisonoDetune",
+            "metadataType": "static",
+            "description": "The detune spread in semitones for unison voices",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 24.0,
+              "stepSize": 0.01
+            },
+            "defaultValue": 0.0,
+            "chainIndex": 4,
+            "mode": "Linear",
+            "unit": "",
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "0"
+          },
+          {
+            "parameterIndex": 9,
+            "id": "UnisonoSpread",
+            "metadataType": "static",
+            "description": "The stereo spread of unison voices (0 = mono, 1 = full width)",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 1.0,
+            "chainIndex": 5,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 1.0,
+            "valueNormalized": 1.0,
+            "valueAsString": "100%"
+          },
+          {
+            "parameterIndex": 10,
+            "id": "ForceMono",
+            "metadataType": "static",
+            "description": "Forces monophonic output by summing all voices",
+            "type": "Button",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 0.0,
+            "items": [
+              "Off",
+              "On"
+            ],
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "Off"
+          },
+          {
+            "parameterIndex": 11,
+            "id": "KillSecondVoices",
+            "metadataType": "static",
+            "description": "Kills retriggered voices instead of allowing multiple notes",
+            "type": "Button",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 1.0,
+            "items": [
+              "Off",
+              "On"
+            ],
+            "value": 1.0,
+            "valueNormalized": 1.0,
+            "valueAsString": "On"
+          }
+        ],
+        "modulation": [
+          {
+            "chainIndex": 1,
+            "id": "Gain Modulation",
+            "metadataType": "static",
+            "parameterIndex": 0,
+            "disabled": false,
+            "description": "Modulates the output volume",
+            "constrainer": "*",
+            "modulationMode": "gain",
+            "colour": "#BE952C",
+            "children": [
+              {
+                "id": "AHDSR",
+                "prettyName": "AHDSR Envelope",
+                "description": "An AHDSR envelope with adjustable curve shapes, optional downsampling for CPU savings, and per-voice modulation of all time parameters.",
+                "type": "Modulator",
+                "subtype": "EnvelopeModulator",
+                "category": [
+                  "generator"
+                ],
+                "builderPath": "b.Modulators.AHDSR",
+                "hasChildren": false,
+                "hasFX": false,
+                "metadataType": "static",
+                "parameters": [
+                  {
+                    "parameterIndex": 0,
+                    "id": "Monophonic",
+                    "metadataType": "static",
+                    "description": "Enables monophonic mode where only one voice is rendered",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": "dynamic",
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 1,
+                    "id": "Retrigger",
+                    "metadataType": "static",
+                    "description": "Restarts the envelope when a new note is triggered in monophonic mode",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  },
+                  {
+                    "parameterIndex": 2,
+                    "id": "Attack",
+                    "metadataType": "static",
+                    "description": "Controls how long the envelope takes to reach full level after a note-on",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 100.0
+                    },
+                    "defaultValue": 20.0,
+                    "chainIndex": 0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 20.0,
+                    "valueNormalized": 0.4051,
+                    "valueAsString": "20ms"
+                  },
+                  {
+                    "parameterIndex": 3,
+                    "id": "AttackLevel",
+                    "metadataType": "static",
+                    "description": "The peak level reached at the end of the attack phase",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": -100.0,
+                      "max": 0.0,
+                      "stepSize": 0.0,
+                      "middlePosition": -12.0
+                    },
+                    "defaultValue": 0.0,
+                    "chainIndex": 1,
+                    "mode": "Decibel",
+                    "unit": "dB",
+                    "value": 0.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "+0.0 dB"
+                  },
+                  {
+                    "parameterIndex": 4,
+                    "id": "Hold",
+                    "metadataType": "static",
+                    "description": "The time the envelope stays at the attack level before decaying",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 300.0
+                    },
+                    "defaultValue": 10.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 10.0,
+                    "valueNormalized": 0.2852,
+                    "valueAsString": "10ms"
+                  },
+                  {
+                    "parameterIndex": 5,
+                    "id": "Decay",
+                    "metadataType": "static",
+                    "description": "The time the envelope takes to fall from the attack level to the sustain level",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 300.0
+                    },
+                    "defaultValue": 300.0,
+                    "chainIndex": 2,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 300.0,
+                    "valueNormalized": 0.4999999999999999,
+                    "valueAsString": "300ms"
+                  },
+                  {
+                    "parameterIndex": 6,
+                    "id": "Sustain",
+                    "metadataType": "static",
+                    "description": "The level maintained while the note is held",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": -100.0,
+                      "max": 0.0,
+                      "stepSize": 0.0,
+                      "middlePosition": -12.0
+                    },
+                    "defaultValue": 0.0,
+                    "chainIndex": 3,
+                    "mode": "Decibel",
+                    "unit": "dB",
+                    "value": 0.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "+0.0 dB"
+                  },
+                  {
+                    "parameterIndex": 7,
+                    "id": "Release",
+                    "metadataType": "static",
+                    "description": "The time the envelope takes to fall from the sustain level to zero after note-off",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 300.0
+                    },
+                    "defaultValue": 20.0,
+                    "chainIndex": 4,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 20.0,
+                    "valueNormalized": 0.3174,
+                    "valueAsString": "20ms"
+                  },
+                  {
+                    "parameterIndex": 8,
+                    "id": "AttackCurve",
+                    "metadataType": "static",
+                    "description": "Controls the curvature of the attack phase (0.0 = concave, 1.0 = convex)",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 0.0
+                    },
+                    "defaultValue": 0.0,
+                    "mode": "NormalizedPercentage",
+                    "unit": "%",
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0%"
+                  },
+                  {
+                    "parameterIndex": 9,
+                    "id": "DecayCurve",
+                    "metadataType": "static",
+                    "description": "Controls the curvature of the decay and release phases",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 0.0
+                    },
+                    "defaultValue": 0.0,
+                    "mode": "NormalizedPercentage",
+                    "unit": "%",
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0%"
+                  },
+                  {
+                    "parameterIndex": 10,
+                    "id": "EcoMode",
+                    "metadataType": "static",
+                    "description": "Enables 16x downsampling for reduced CPU usage",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  }
+                ],
+                "modulation": [
+                  {
+                    "chainIndex": 0,
+                    "id": "AttackTimeModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 2,
+                    "disabled": false,
+                    "description": "Modulates the attack time per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": [
+                      {
+                        "id": "Velocity",
+                        "prettyName": "Velocity Modulator",
+                        "description": "Creates a modulation value from the MIDI velocity of incoming note messages, with optional table mapping and decibel conversion.",
+                        "type": "Modulator",
+                        "subtype": "VoiceStartModulator",
+                        "category": [
+                          "input",
+                          "note_processing"
+                        ],
+                        "builderPath": "b.Modulators.Velocity",
+                        "hasChildren": false,
+                        "hasFX": false,
+                        "metadataType": "static",
+                        "interfaces": [
+                          "TableProcessor"
+                        ],
+                        "parameters": [
+                          {
+                            "parameterIndex": 0,
+                            "id": "Inverted",
+                            "metadataType": "static",
+                            "description": "Inverts the velocity response so high velocities produce low values",
+                            "type": "Button",
+                            "disabled": false,
+                            "range": {
+                              "min": 0.0,
+                              "max": 1.0,
+                              "stepSize": 1.0
+                            },
+                            "defaultValue": 0.0,
+                            "items": [
+                              "Off",
+                              "On"
+                            ],
+                            "value": 0.0,
+                            "valueNormalized": 0.0,
+                            "valueAsString": "Off"
+                          },
+                          {
+                            "parameterIndex": 1,
+                            "id": "UseTable",
+                            "metadataType": "static",
+                            "description": "Enables a lookup table for custom velocity response curves",
+                            "type": "Button",
+                            "disabled": false,
+                            "range": {
+                              "min": 0.0,
+                              "max": 1.0,
+                              "stepSize": 1.0
+                            },
+                            "defaultValue": 0.0,
+                            "items": [
+                              "Off",
+                              "On"
+                            ],
+                            "value": 0.0,
+                            "valueNormalized": 0.0,
+                            "valueAsString": "Off"
+                          },
+                          {
+                            "parameterIndex": 2,
+                            "id": "DecibelMode",
+                            "metadataType": "static",
+                            "description": "Converts the output to a decibel scale (-100dB to 0dB) then to linear gain",
+                            "type": "Button",
+                            "disabled": false,
+                            "range": {
+                              "min": 0.0,
+                              "max": 1.0,
+                              "stepSize": 1.0
+                            },
+                            "defaultValue": 0.0,
+                            "items": [
+                              "Off",
+                              "On"
+                            ],
+                            "value": 0.0,
+                            "valueNormalized": 0.0,
+                            "valueAsString": "Off"
+                          }
+                        ],
+                        "bypassed": false,
+                        "processorId": "Vel Attack",
+                        "colour": "#BE952C"
+                      }
+                    ]
+                  },
+                  {
+                    "chainIndex": 1,
+                    "id": "AttackLevelModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 3,
+                    "disabled": false,
+                    "description": "Modulates the attack level per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 2,
+                    "id": "DecayTimeModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 5,
+                    "disabled": false,
+                    "description": "Modulates the decay time per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 3,
+                    "id": "SustainLevelModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 6,
+                    "disabled": false,
+                    "description": "Modulates the sustain level per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 4,
+                    "id": "ReleaseTimeModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 7,
+                    "disabled": false,
+                    "description": "Modulates the release time per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  }
+                ],
+                "bypassed": false,
+                "processorId": "Synth Envelope",
+                "colour": "#BE952C"
+              },
+              {
+                "id": "LFO",
+                "prettyName": "LFO Modulator",
+                "description": "Generates a periodic modulation signal with multiple waveform types, tempo sync, and an optional step sequencer mode.",
+                "type": "Modulator",
+                "subtype": "TimeVariantModulator",
+                "category": [
+                  "generator",
+                  "oscillator"
+                ],
+                "builderPath": "b.Modulators.LFO",
+                "hasChildren": false,
+                "hasFX": false,
+                "metadataType": "static",
+                "interfaces": [
+                  "TableProcessor",
+                  "SliderPackProcessor",
+                  "DisplayBufferSource"
+                ],
+                "parameters": [
+                  {
+                    "parameterIndex": 0,
+                    "id": "Frequency",
+                    "metadataType": "static",
+                    "description": "The modulation frequency",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.01,
+                      "max": 40.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 10.0
+                    },
+                    "defaultValue": "dynamic",
+                    "chainIndex": 1,
+                    "mode": "Frequency",
+                    "unit": "Hz",
+                    "tempoSyncIndex": 4,
+                    "value": 3.0,
+                    "valueNormalized": 0.2736,
+                    "valueAsString": "3.0 Hz"
+                  },
+                  {
+                    "parameterIndex": 1,
+                    "id": "FadeIn",
+                    "metadataType": "static",
+                    "description": "Fade in time after each key press",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 3000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 500.0
+                    },
+                    "defaultValue": 1000.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 1000.0,
+                    "valueNormalized": 0.6538,
+                    "valueAsString": "1000ms"
+                  },
+                  {
+                    "parameterIndex": 2,
+                    "id": "WaveformType",
+                    "metadataType": "static",
+                    "description": "The waveform for the oscillator",
+                    "type": "ComboBox",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 7.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Sine",
+                      "Triangle",
+                      "Saw",
+                      "Square",
+                      "Random",
+                      "Custom",
+                      "Steps"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Triangle"
+                  },
+                  {
+                    "parameterIndex": 3,
+                    "id": "Legato",
+                    "metadataType": "static",
+                    "description": "Disables retriggering of the LFO if multiple keys are pressed",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  },
+                  {
+                    "parameterIndex": 4,
+                    "id": "TempoSync",
+                    "metadataType": "static",
+                    "description": "Enables sync to host tempo",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 0.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 5,
+                    "id": "SmoothingTime",
+                    "metadataType": "static",
+                    "description": "Smoothing time in milliseconds to reduce discontinuities in the modulation signal",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 100.0
+                    },
+                    "defaultValue": 5.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 5.0,
+                    "valueNormalized": 0.2029,
+                    "valueAsString": "5ms"
+                  },
+                  {
+                    "parameterIndex": 6,
+                    "id": "NumSteps",
+                    "metadataType": "static",
+                    "description": "Number of steps for the step sequencer",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 128.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 16.0,
+                    "mode": "Discrete",
+                    "unit": "",
+                    "value": 16.0,
+                    "valueNormalized": 0.1181,
+                    "valueAsString": "16"
+                  },
+                  {
+                    "parameterIndex": 7,
+                    "id": "LoopEnabled",
+                    "metadataType": "static",
+                    "description": "Enables oscillator looping",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  },
+                  {
+                    "parameterIndex": 8,
+                    "id": "PhaseOffset",
+                    "metadataType": "static",
+                    "description": "The initial phase offset of the LFO",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 0.0
+                    },
+                    "defaultValue": 0.0,
+                    "mode": "NormalizedPercentage",
+                    "unit": "%",
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0%"
+                  },
+                  {
+                    "parameterIndex": 9,
+                    "id": "SyncToMasterClock",
+                    "metadataType": "static",
+                    "description": "Sync the LFO to the master clock",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 0.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 10,
+                    "id": "IgnoreNoteOn",
+                    "metadataType": "static",
+                    "description": "Free run mode - does not reset the LFO phase on note on",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 0.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  }
+                ],
+                "modulation": [
+                  {
+                    "chainIndex": 0,
+                    "id": "LFO Intensity Mod",
+                    "metadataType": "static",
+                    "disabled": false,
+                    "description": "Modulates the intensity of the LFO output",
+                    "constrainer": "*",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 1,
+                    "id": "LFO Frequency Mod",
+                    "metadataType": "static",
+                    "parameterIndex": 0,
+                    "disabled": false,
+                    "description": "Modulates the frequency of the LFO",
+                    "constrainer": "*",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  }
+                ],
+                "bypassed": false,
+                "processorId": "Vibrato",
+                "colour": "#BE952C"
+              }
+            ]
+          },
+          {
+            "chainIndex": 2,
+            "id": "Pitch Modulation",
+            "metadataType": "static",
+            "disabled": false,
+            "description": "Modulates the pitch of all voices",
+            "constrainer": "*",
+            "modulationMode": "pitch",
+            "colour": "#7559A4",
+            "children": [
+              {
+                "id": "LFO",
+                "prettyName": "LFO Modulator",
+                "description": "Generates a periodic modulation signal with multiple waveform types, tempo sync, and an optional step sequencer mode.",
+                "type": "Modulator",
+                "subtype": "TimeVariantModulator",
+                "category": [
+                  "generator",
+                  "oscillator"
+                ],
+                "builderPath": "b.Modulators.LFO",
+                "hasChildren": false,
+                "hasFX": false,
+                "metadataType": "static",
+                "interfaces": [
+                  "TableProcessor",
+                  "SliderPackProcessor",
+                  "DisplayBufferSource"
+                ],
+                "parameters": [
+                  {
+                    "parameterIndex": 0,
+                    "id": "Frequency",
+                    "metadataType": "static",
+                    "description": "The modulation frequency",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.01,
+                      "max": 40.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 10.0
+                    },
+                    "defaultValue": "dynamic",
+                    "chainIndex": 1,
+                    "mode": "Frequency",
+                    "unit": "Hz",
+                    "tempoSyncIndex": 4,
+                    "value": 3.0,
+                    "valueNormalized": 0.2736,
+                    "valueAsString": "3.0 Hz"
+                  },
+                  {
+                    "parameterIndex": 1,
+                    "id": "FadeIn",
+                    "metadataType": "static",
+                    "description": "Fade in time after each key press",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 3000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 500.0
+                    },
+                    "defaultValue": 1000.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 1000.0,
+                    "valueNormalized": 0.6538,
+                    "valueAsString": "1000ms"
+                  },
+                  {
+                    "parameterIndex": 2,
+                    "id": "WaveformType",
+                    "metadataType": "static",
+                    "description": "The waveform for the oscillator",
+                    "type": "ComboBox",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 7.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Sine",
+                      "Triangle",
+                      "Saw",
+                      "Square",
+                      "Random",
+                      "Custom",
+                      "Steps"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Triangle"
+                  },
+                  {
+                    "parameterIndex": 3,
+                    "id": "Legato",
+                    "metadataType": "static",
+                    "description": "Disables retriggering of the LFO if multiple keys are pressed",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  },
+                  {
+                    "parameterIndex": 4,
+                    "id": "TempoSync",
+                    "metadataType": "static",
+                    "description": "Enables sync to host tempo",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 0.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 5,
+                    "id": "SmoothingTime",
+                    "metadataType": "static",
+                    "description": "Smoothing time in milliseconds to reduce discontinuities in the modulation signal",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 100.0
+                    },
+                    "defaultValue": 5.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 5.0,
+                    "valueNormalized": 0.2029,
+                    "valueAsString": "5ms"
+                  },
+                  {
+                    "parameterIndex": 6,
+                    "id": "NumSteps",
+                    "metadataType": "static",
+                    "description": "Number of steps for the step sequencer",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 128.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 16.0,
+                    "mode": "Discrete",
+                    "unit": "",
+                    "value": 16.0,
+                    "valueNormalized": 0.1181,
+                    "valueAsString": "16"
+                  },
+                  {
+                    "parameterIndex": 7,
+                    "id": "LoopEnabled",
+                    "metadataType": "static",
+                    "description": "Enables oscillator looping",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  },
+                  {
+                    "parameterIndex": 8,
+                    "id": "PhaseOffset",
+                    "metadataType": "static",
+                    "description": "The initial phase offset of the LFO",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 0.0
+                    },
+                    "defaultValue": 0.0,
+                    "mode": "NormalizedPercentage",
+                    "unit": "%",
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0%"
+                  },
+                  {
+                    "parameterIndex": 9,
+                    "id": "SyncToMasterClock",
+                    "metadataType": "static",
+                    "description": "Sync the LFO to the master clock",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 0.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 10,
+                    "id": "IgnoreNoteOn",
+                    "metadataType": "static",
+                    "description": "Free run mode - does not reset the LFO phase on note on",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 0.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  }
+                ],
+                "modulation": [
+                  {
+                    "chainIndex": 0,
+                    "id": "LFO Intensity Mod",
+                    "metadataType": "static",
+                    "disabled": false,
+                    "description": "Modulates the intensity of the LFO output",
+                    "constrainer": "*",
+                    "modulationMode": "gain",
+                    "colour": "#7559A4",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 1,
+                    "id": "LFO Frequency Mod",
+                    "metadataType": "static",
+                    "parameterIndex": 0,
+                    "disabled": false,
+                    "description": "Modulates the frequency of the LFO",
+                    "constrainer": "*",
+                    "modulationMode": "gain",
+                    "colour": "#7559A4",
+                    "children": []
+                  }
+                ],
+                "bypassed": false,
+                "processorId": "Pitch LFO",
+                "colour": "#7559A4"
+              }
+            ]
+          },
+          {
+            "chainIndex": 4,
+            "id": "Detune Modulation",
+            "metadataType": "static",
+            "parameterIndex": 8,
+            "disabled": false,
+            "description": "Modulates the unison detune amount",
+            "constrainer": "*",
+            "modulationMode": "gain",
+            "colour": "#880022",
+            "children": []
+          },
+          {
+            "chainIndex": 5,
+            "id": "Spread Modulation",
+            "metadataType": "static",
+            "parameterIndex": 9,
+            "disabled": false,
+            "description": "Modulates the unison stereo spread",
+            "constrainer": "*",
+            "modulationMode": "gain",
+            "colour": "#22AA88",
+            "children": []
+          }
+        ],
+        "bypassed": false,
+        "processorId": "Synth Layer",
+        "colour": "#414141",
+        "midi": [],
+        "fx": [
+          {
+            "id": "Chorus",
+            "prettyName": "Chorus",
+            "description": "Stereo chorus effect with modulated delay lines for thickening and movement",
+            "type": "Effect",
+            "subtype": "MasterEffect",
+            "category": [
+              "delay"
+            ],
+            "builderPath": "b.Effects.Chorus",
+            "hasChildren": false,
+            "hasFX": false,
+            "metadataType": "static",
+            "interfaces": [
+              "RoutingMatrix"
+            ],
+            "parameters": [
+              {
+                "parameterIndex": 0,
+                "id": "Rate",
+                "metadataType": "static",
+                "description": "LFO rate controlling the modulation speed",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.3,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.3,
+                "valueNormalized": 0.3,
+                "valueAsString": "30%"
+              },
+              {
+                "parameterIndex": 1,
+                "id": "Width",
+                "metadataType": "static",
+                "description": "Modulation depth controlling the intensity of the pitch variation",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.43,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.43,
+                "valueNormalized": 0.43,
+                "valueAsString": "43%"
+              },
+              {
+                "parameterIndex": 2,
+                "id": "Feedback",
+                "metadataType": "static",
+                "description": "Amount of signal fed back into the delay line for more pronounced sweeps",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.3,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.3,
+                "valueNormalized": 0.3,
+                "valueAsString": "30%"
+              },
+              {
+                "parameterIndex": 3,
+                "id": "Delay",
+                "metadataType": "static",
+                "description": "Base delay time that gets modulated by the LFO",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 1.0,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 1.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "100%"
+              }
+            ],
+            "bypassed": false,
+            "processorId": "Chorus",
+            "colour": "#3A6666"
+          }
+        ],
+        "children": [
+          {
+            "id": "WavetableSynth",
+            "prettyName": "Wavetable Synthesiser",
+            "description": "A two-dimensional wavetable synthesiser that morphs between waveforms using a table index and supports audio file resynthesis.",
+            "type": "SoundGenerator",
+            "subtype": "SoundGenerator",
+            "category": [
+              "oscillator"
+            ],
+            "builderPath": "b.SoundGenerators.WavetableSynth",
+            "hasChildren": false,
+            "hasFX": true,
+            "fx_constrainer": "*",
+            "metadataType": "static",
+            "interfaces": [
+              "WavetableController",
+              "RoutingMatrix",
+              "AudioSampleProcessor"
+            ],
+            "parameters": [
+              {
+                "parameterIndex": 0,
+                "id": "Gain",
+                "metadataType": "static",
+                "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.25,
+                "chainIndex": 1,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.25,
+                "valueNormalized": 0.25,
+                "valueAsString": "25%"
+              },
+              {
+                "parameterIndex": 1,
+                "id": "Balance",
+                "metadataType": "static",
+                "description": "The stereo balance",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Pan",
+                "unit": "L",
+                "value": 0.0,
+                "valueNormalized": 0.5,
+                "valueAsString": "C"
+              },
+              {
+                "parameterIndex": 2,
+                "id": "VoiceLimit",
+                "metadataType": "static",
+                "description": "The maximum number of voices",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 256.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 256.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 256.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "256"
+              },
+              {
+                "parameterIndex": 3,
+                "id": "KillFadeTime",
+                "metadataType": "static",
+                "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 20000.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 20.0,
+                "mode": "Time",
+                "unit": "ms",
+                "value": 20.0,
+                "valueNormalized": 0.001,
+                "valueAsString": "20ms"
+              },
+              {
+                "parameterIndex": 4,
+                "id": "HqMode",
+                "metadataType": "static",
+                "description": "Enables higher-quality rendering with better interpolation at the cost of more CPU usage",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 1.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 1.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "On"
+              },
+              {
+                "parameterIndex": 5,
+                "id": "LoadedBankIndex",
+                "metadataType": "static",
+                "description": "Index of the currently loaded wavetable bank from the project's wavetable directory",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 128.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 0.0,
+                "valueNormalized": 0.0078,
+                "valueAsString": "0"
+              },
+              {
+                "parameterIndex": 6,
+                "id": "TableIndexValue",
+                "metadataType": "static",
+                "description": "Normalized position in the wavetable where 0.0 is the first and 1.0 is the last waveform",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.0,
+                "chainIndex": 5,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "0%"
+              },
+              {
+                "parameterIndex": 7,
+                "id": "RefreshMipMap",
+                "metadataType": "static",
+                "description": "Updates the mipmap when pitch modulation goes outside the frequency range to reduce aliasing",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              }
+            ],
+            "modulation": [
+              {
+                "chainIndex": 1,
+                "id": "Gain Modulation",
+                "metadataType": "static",
+                "parameterIndex": 0,
+                "disabled": false,
+                "description": "Modulates the output volume",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#BE952C",
+                "children": [
+                  {
+                    "id": "SimpleEnvelope",
+                    "prettyName": "Simple Envelope",
+                    "description": "A lightweight two-stage envelope with attack and release, supporting linear or exponential curves.",
+                    "type": "Modulator",
+                    "subtype": "EnvelopeModulator",
+                    "category": [
+                      "generator"
+                    ],
+                    "builderPath": "b.Modulators.SimpleEnvelope",
+                    "hasChildren": false,
+                    "hasFX": false,
+                    "metadataType": "static",
+                    "parameters": [
+                      {
+                        "parameterIndex": 0,
+                        "id": "Monophonic",
+                        "metadataType": "static",
+                        "description": "Enables monophonic mode where only one voice is rendered",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": "dynamic",
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 0.0,
+                        "valueNormalized": 0.0,
+                        "valueAsString": "Off"
+                      },
+                      {
+                        "parameterIndex": 1,
+                        "id": "Retrigger",
+                        "metadataType": "static",
+                        "description": "Restarts the envelope when a new note is triggered in monophonic mode",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      },
+                      {
+                        "parameterIndex": 2,
+                        "id": "Attack",
+                        "metadataType": "static",
+                        "description": "The attack time in milliseconds",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 1000.0
+                        },
+                        "defaultValue": 5.0,
+                        "chainIndex": 0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 5.0,
+                        "valueNormalized": 0.1467,
+                        "valueAsString": "5ms"
+                      },
+                      {
+                        "parameterIndex": 3,
+                        "id": "Release",
+                        "metadataType": "static",
+                        "description": "The release time in milliseconds",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 1000.0
+                        },
+                        "defaultValue": 10.0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 10.0,
+                        "valueNormalized": 0.1723,
+                        "valueAsString": "10ms"
+                      },
+                      {
+                        "parameterIndex": 4,
+                        "id": "LinearMode",
+                        "metadataType": "static",
+                        "description": "Toggles between linear and exponential envelope curves",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      }
+                    ],
+                    "modulation": [
+                      {
+                        "chainIndex": 0,
+                        "id": "AttackTimeModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 2,
+                        "disabled": false,
+                        "description": "Modulates the attack time per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      }
+                    ],
+                    "bypassed": false,
+                    "processorId": "DefaultEnvelope2",
+                    "colour": "#BE952C"
+                  }
+                ]
+              },
+              {
+                "chainIndex": 2,
+                "id": "Pitch Modulation",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Modulates the pitch of all voices",
+                "constrainer": "*",
+                "modulationMode": "pitch",
+                "colour": "#7559A4",
+                "children": []
+              },
+              {
+                "chainIndex": 4,
+                "id": "Table Index",
+                "metadataType": "static",
+                "parameterIndex": 6,
+                "disabled": false,
+                "description": "Modulates the wavetable position as a scale factor on the table index value",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#4D54B3",
+                "children": []
+              },
+              {
+                "chainIndex": 5,
+                "id": "Table Index Bipolar",
+                "metadataType": "static",
+                "parameterIndex": 6,
+                "disabled": false,
+                "description": "Adds a bipolar offset to the wavetable position for modulation-driven morphing",
+                "constrainer": "*",
+                "modulationMode": "pan",
+                "colour": "#4D54B3",
+                "children": []
+              }
+            ],
+            "bypassed": false,
+            "processorId": "Pad Osc 1",
+            "colour": "#414141",
+            "midi": [],
+            "fx": []
+          },
+          {
+            "id": "WavetableSynth",
+            "prettyName": "Wavetable Synthesiser",
+            "description": "A two-dimensional wavetable synthesiser that morphs between waveforms using a table index and supports audio file resynthesis.",
+            "type": "SoundGenerator",
+            "subtype": "SoundGenerator",
+            "category": [
+              "oscillator"
+            ],
+            "builderPath": "b.SoundGenerators.WavetableSynth",
+            "hasChildren": false,
+            "hasFX": true,
+            "fx_constrainer": "*",
+            "metadataType": "static",
+            "interfaces": [
+              "WavetableController",
+              "RoutingMatrix",
+              "AudioSampleProcessor"
+            ],
+            "parameters": [
+              {
+                "parameterIndex": 0,
+                "id": "Gain",
+                "metadataType": "static",
+                "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.25,
+                "chainIndex": 1,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.25,
+                "valueNormalized": 0.25,
+                "valueAsString": "25%"
+              },
+              {
+                "parameterIndex": 1,
+                "id": "Balance",
+                "metadataType": "static",
+                "description": "The stereo balance",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Pan",
+                "unit": "L",
+                "value": 0.0,
+                "valueNormalized": 0.5,
+                "valueAsString": "C"
+              },
+              {
+                "parameterIndex": 2,
+                "id": "VoiceLimit",
+                "metadataType": "static",
+                "description": "The maximum number of voices",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 1.0,
+                  "max": 256.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 256.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 256.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "256"
+              },
+              {
+                "parameterIndex": 3,
+                "id": "KillFadeTime",
+                "metadataType": "static",
+                "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 20000.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 20.0,
+                "mode": "Time",
+                "unit": "ms",
+                "value": 20.0,
+                "valueNormalized": 0.001,
+                "valueAsString": "20ms"
+              },
+              {
+                "parameterIndex": 4,
+                "id": "HqMode",
+                "metadataType": "static",
+                "description": "Enables higher-quality rendering with better interpolation at the cost of more CPU usage",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 1.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 1.0,
+                "valueNormalized": 1.0,
+                "valueAsString": "On"
+              },
+              {
+                "parameterIndex": 5,
+                "id": "LoadedBankIndex",
+                "metadataType": "static",
+                "description": "Index of the currently loaded wavetable bank from the project's wavetable directory",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": -1.0,
+                  "max": 128.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "mode": "Discrete",
+                "unit": "",
+                "value": 0.0,
+                "valueNormalized": 0.0078,
+                "valueAsString": "0"
+              },
+              {
+                "parameterIndex": 6,
+                "id": "TableIndexValue",
+                "metadataType": "static",
+                "description": "Normalized position in the wavetable where 0.0 is the first and 1.0 is the last waveform",
+                "type": "Slider",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 0.0
+                },
+                "defaultValue": 0.0,
+                "chainIndex": 5,
+                "mode": "NormalizedPercentage",
+                "unit": "%",
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "0%"
+              },
+              {
+                "parameterIndex": 7,
+                "id": "RefreshMipMap",
+                "metadataType": "static",
+                "description": "Updates the mipmap when pitch modulation goes outside the frequency range to reduce aliasing",
+                "type": "Button",
+                "disabled": false,
+                "range": {
+                  "min": 0.0,
+                  "max": 1.0,
+                  "stepSize": 1.0
+                },
+                "defaultValue": 0.0,
+                "items": [
+                  "Off",
+                  "On"
+                ],
+                "value": 0.0,
+                "valueNormalized": 0.0,
+                "valueAsString": "Off"
+              }
+            ],
+            "modulation": [
+              {
+                "chainIndex": 1,
+                "id": "Gain Modulation",
+                "metadataType": "static",
+                "parameterIndex": 0,
+                "disabled": false,
+                "description": "Modulates the output volume",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#BE952C",
+                "children": [
+                  {
+                    "id": "SimpleEnvelope",
+                    "prettyName": "Simple Envelope",
+                    "description": "A lightweight two-stage envelope with attack and release, supporting linear or exponential curves.",
+                    "type": "Modulator",
+                    "subtype": "EnvelopeModulator",
+                    "category": [
+                      "generator"
+                    ],
+                    "builderPath": "b.Modulators.SimpleEnvelope",
+                    "hasChildren": false,
+                    "hasFX": false,
+                    "metadataType": "static",
+                    "parameters": [
+                      {
+                        "parameterIndex": 0,
+                        "id": "Monophonic",
+                        "metadataType": "static",
+                        "description": "Enables monophonic mode where only one voice is rendered",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": "dynamic",
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 0.0,
+                        "valueNormalized": 0.0,
+                        "valueAsString": "Off"
+                      },
+                      {
+                        "parameterIndex": 1,
+                        "id": "Retrigger",
+                        "metadataType": "static",
+                        "description": "Restarts the envelope when a new note is triggered in monophonic mode",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      },
+                      {
+                        "parameterIndex": 2,
+                        "id": "Attack",
+                        "metadataType": "static",
+                        "description": "The attack time in milliseconds",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 1000.0
+                        },
+                        "defaultValue": 5.0,
+                        "chainIndex": 0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 5.0,
+                        "valueNormalized": 0.1467,
+                        "valueAsString": "5ms"
+                      },
+                      {
+                        "parameterIndex": 3,
+                        "id": "Release",
+                        "metadataType": "static",
+                        "description": "The release time in milliseconds",
+                        "type": "Slider",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 20000.0,
+                          "stepSize": 0.0,
+                          "middlePosition": 1000.0
+                        },
+                        "defaultValue": 10.0,
+                        "mode": "Time",
+                        "unit": "ms",
+                        "value": 10.0,
+                        "valueNormalized": 0.1723,
+                        "valueAsString": "10ms"
+                      },
+                      {
+                        "parameterIndex": 4,
+                        "id": "LinearMode",
+                        "metadataType": "static",
+                        "description": "Toggles between linear and exponential envelope curves",
+                        "type": "Button",
+                        "disabled": false,
+                        "range": {
+                          "min": 0.0,
+                          "max": 1.0,
+                          "stepSize": 1.0
+                        },
+                        "defaultValue": 1.0,
+                        "items": [
+                          "Off",
+                          "On"
+                        ],
+                        "value": 1.0,
+                        "valueNormalized": 1.0,
+                        "valueAsString": "On"
+                      }
+                    ],
+                    "modulation": [
+                      {
+                        "chainIndex": 0,
+                        "id": "AttackTimeModulation",
+                        "metadataType": "static",
+                        "parameterIndex": 2,
+                        "disabled": false,
+                        "description": "Modulates the attack time per voice",
+                        "constrainer": "VoiceStartModulator",
+                        "modulationMode": "gain",
+                        "colour": "#BE952C",
+                        "children": []
+                      }
+                    ],
+                    "bypassed": false,
+                    "processorId": "DefaultEnvelope3",
+                    "colour": "#BE952C"
+                  }
+                ]
+              },
+              {
+                "chainIndex": 2,
+                "id": "Pitch Modulation",
+                "metadataType": "static",
+                "disabled": false,
+                "description": "Modulates the pitch of all voices",
+                "constrainer": "*",
+                "modulationMode": "pitch",
+                "colour": "#7559A4",
+                "children": []
+              },
+              {
+                "chainIndex": 4,
+                "id": "Table Index",
+                "metadataType": "static",
+                "parameterIndex": 6,
+                "disabled": false,
+                "description": "Modulates the wavetable position as a scale factor on the table index value",
+                "constrainer": "*",
+                "modulationMode": "gain",
+                "colour": "#4D54B3",
+                "children": []
+              },
+              {
+                "chainIndex": 5,
+                "id": "Table Index Bipolar",
+                "metadataType": "static",
+                "parameterIndex": 6,
+                "disabled": false,
+                "description": "Adds a bipolar offset to the wavetable position for modulation-driven morphing",
+                "constrainer": "*",
+                "modulationMode": "pan",
+                "colour": "#4D54B3",
+                "children": []
+              }
+            ],
+            "bypassed": false,
+            "processorId": "Pad Osc 2",
+            "colour": "#414141",
+            "midi": [],
+            "fx": []
+          }
+        ]
+      },
+      {
+        "id": "SineSynth",
+        "prettyName": "Sine Wave Generator",
+        "description": "A lightweight sine wave generator for FM synthesis, additive synthesis, or adding subtle harmonics to other sounds.",
+        "type": "SoundGenerator",
+        "subtype": "SoundGenerator",
+        "category": [
+          "oscillator"
+        ],
+        "builderPath": "b.SoundGenerators.SineSynth",
+        "hasChildren": false,
+        "hasFX": true,
+        "fx_constrainer": "*",
+        "metadataType": "static",
+        "interfaces": [
+          "RoutingMatrix"
+        ],
+        "parameters": [
+          {
+            "parameterIndex": 0,
+            "id": "Gain",
+            "metadataType": "static",
+            "description": "The output volume as normalised linear gain (0.0 to 1.0), not decibels. Use a SimpleGain effect in the FX chain for decibel-scaled volume control.",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.25,
+            "chainIndex": 1,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.25,
+            "valueNormalized": 0.25,
+            "valueAsString": "25%"
+          },
+          {
+            "parameterIndex": 1,
+            "id": "Balance",
+            "metadataType": "static",
+            "description": "The stereo balance",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -1.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.0,
+            "mode": "Pan",
+            "unit": "L",
+            "value": 0.0,
+            "valueNormalized": 0.5,
+            "valueAsString": "C"
+          },
+          {
+            "parameterIndex": 2,
+            "id": "VoiceLimit",
+            "metadataType": "static",
+            "description": "The maximum number of voices",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 1.0,
+              "max": 256.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 256.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 256.0,
+            "valueNormalized": 1.0,
+            "valueAsString": "256"
+          },
+          {
+            "parameterIndex": 3,
+            "id": "KillFadeTime",
+            "metadataType": "static",
+            "description": "The fade out time in milliseconds when voices are killed by exceeding the voice limit or by a voice killer",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 20000.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 20.0,
+            "mode": "Time",
+            "unit": "ms",
+            "value": 20.0,
+            "valueNormalized": 0.001,
+            "valueAsString": "20ms"
+          },
+          {
+            "parameterIndex": 4,
+            "id": "OctaveTranspose",
+            "metadataType": "static",
+            "description": "Coarse pitch offset in octaves when using musical tuning mode",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -5.0,
+              "max": 5.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 0.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 0.0,
+            "valueNormalized": 0.5,
+            "valueAsString": "0"
+          },
+          {
+            "parameterIndex": 5,
+            "id": "SemiTones",
+            "metadataType": "static",
+            "description": "Fine pitch offset in semitones when using musical tuning mode",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -12.0,
+              "max": 12.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 0.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 0.0,
+            "valueNormalized": 0.5,
+            "valueAsString": "0"
+          },
+          {
+            "parameterIndex": 6,
+            "id": "UseFreqRatio",
+            "metadataType": "static",
+            "description": "Switches between musical (octave/semitone) and harmonic ratio tuning modes",
+            "type": "Button",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 0.0,
+            "items": [
+              "Off",
+              "On"
+            ],
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "Off"
+          },
+          {
+            "parameterIndex": 7,
+            "id": "CoarseFreqRatio",
+            "metadataType": "static",
+            "description": "Harmonic index as a frequency multiplier where 1 is the root frequency",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": -5.0,
+              "max": 16.0,
+              "stepSize": 1.0
+            },
+            "defaultValue": 1.0,
+            "mode": "Discrete",
+            "unit": "",
+            "value": 1.0,
+            "valueNormalized": 0.2857,
+            "valueAsString": "1"
+          },
+          {
+            "parameterIndex": 8,
+            "id": "FineFreqRatio",
+            "metadataType": "static",
+            "description": "Fine frequency offset as a fractional multiplier in harmonic tuning mode",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.0,
+            "mode": "Linear",
+            "unit": "",
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "0"
+          },
+          {
+            "parameterIndex": 9,
+            "id": "SaturationAmount",
+            "metadataType": "static",
+            "description": "Amount of waveshaping saturation applied to the sine wave to add harmonics",
+            "type": "Slider",
+            "disabled": false,
+            "range": {
+              "min": 0.0,
+              "max": 1.0,
+              "stepSize": 0.0
+            },
+            "defaultValue": 0.0,
+            "mode": "NormalizedPercentage",
+            "unit": "%",
+            "value": 0.0,
+            "valueNormalized": 0.0,
+            "valueAsString": "0%"
+          }
+        ],
+        "modulation": [
+          {
+            "chainIndex": 1,
+            "id": "Gain Modulation",
+            "metadataType": "static",
+            "parameterIndex": 0,
+            "disabled": false,
+            "description": "Modulates the output volume",
+            "constrainer": "*",
+            "modulationMode": "gain",
+            "colour": "#BE952C",
+            "children": [
+              {
+                "id": "SimpleEnvelope",
+                "prettyName": "Simple Envelope",
+                "description": "A lightweight two-stage envelope with attack and release, supporting linear or exponential curves.",
+                "type": "Modulator",
+                "subtype": "EnvelopeModulator",
+                "category": [
+                  "generator"
+                ],
+                "builderPath": "b.Modulators.SimpleEnvelope",
+                "hasChildren": false,
+                "hasFX": false,
+                "metadataType": "static",
+                "parameters": [
+                  {
+                    "parameterIndex": 0,
+                    "id": "Monophonic",
+                    "metadataType": "static",
+                    "description": "Enables monophonic mode where only one voice is rendered",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": "dynamic",
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 1,
+                    "id": "Retrigger",
+                    "metadataType": "static",
+                    "description": "Restarts the envelope when a new note is triggered in monophonic mode",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  },
+                  {
+                    "parameterIndex": 2,
+                    "id": "Attack",
+                    "metadataType": "static",
+                    "description": "The attack time in milliseconds",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 1000.0
+                    },
+                    "defaultValue": 5.0,
+                    "chainIndex": 0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 5.0,
+                    "valueNormalized": 0.1467,
+                    "valueAsString": "5ms"
+                  },
+                  {
+                    "parameterIndex": 3,
+                    "id": "Release",
+                    "metadataType": "static",
+                    "description": "The release time in milliseconds",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 1000.0
+                    },
+                    "defaultValue": 10.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 10.0,
+                    "valueNormalized": 0.1723,
+                    "valueAsString": "10ms"
+                  },
+                  {
+                    "parameterIndex": 4,
+                    "id": "LinearMode",
+                    "metadataType": "static",
+                    "description": "Toggles between linear and exponential envelope curves",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  }
+                ],
+                "modulation": [
+                  {
+                    "chainIndex": 0,
+                    "id": "AttackTimeModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 2,
+                    "disabled": false,
+                    "description": "Modulates the attack time per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  }
+                ],
+                "bypassed": false,
+                "processorId": "DefaultEnvelope4",
+                "colour": "#BE952C"
+              },
+              {
+                "id": "AHDSR",
+                "prettyName": "AHDSR Envelope",
+                "description": "An AHDSR envelope with adjustable curve shapes, optional downsampling for CPU savings, and per-voice modulation of all time parameters.",
+                "type": "Modulator",
+                "subtype": "EnvelopeModulator",
+                "category": [
+                  "generator"
+                ],
+                "builderPath": "b.Modulators.AHDSR",
+                "hasChildren": false,
+                "hasFX": false,
+                "metadataType": "static",
+                "parameters": [
+                  {
+                    "parameterIndex": 0,
+                    "id": "Monophonic",
+                    "metadataType": "static",
+                    "description": "Enables monophonic mode where only one voice is rendered",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": "dynamic",
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "Off"
+                  },
+                  {
+                    "parameterIndex": 1,
+                    "id": "Retrigger",
+                    "metadataType": "static",
+                    "description": "Restarts the envelope when a new note is triggered in monophonic mode",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  },
+                  {
+                    "parameterIndex": 2,
+                    "id": "Attack",
+                    "metadataType": "static",
+                    "description": "Controls how long the envelope takes to reach full level after a note-on",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 100.0
+                    },
+                    "defaultValue": 20.0,
+                    "chainIndex": 0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 20.0,
+                    "valueNormalized": 0.4051,
+                    "valueAsString": "20ms"
+                  },
+                  {
+                    "parameterIndex": 3,
+                    "id": "AttackLevel",
+                    "metadataType": "static",
+                    "description": "The peak level reached at the end of the attack phase",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": -100.0,
+                      "max": 0.0,
+                      "stepSize": 0.0,
+                      "middlePosition": -12.0
+                    },
+                    "defaultValue": 0.0,
+                    "chainIndex": 1,
+                    "mode": "Decibel",
+                    "unit": "dB",
+                    "value": 0.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "+0.0 dB"
+                  },
+                  {
+                    "parameterIndex": 4,
+                    "id": "Hold",
+                    "metadataType": "static",
+                    "description": "The time the envelope stays at the attack level before decaying",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 300.0
+                    },
+                    "defaultValue": 10.0,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 10.0,
+                    "valueNormalized": 0.2852,
+                    "valueAsString": "10ms"
+                  },
+                  {
+                    "parameterIndex": 5,
+                    "id": "Decay",
+                    "metadataType": "static",
+                    "description": "The time the envelope takes to fall from the attack level to the sustain level",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 300.0
+                    },
+                    "defaultValue": 300.0,
+                    "chainIndex": 2,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 300.0,
+                    "valueNormalized": 0.4999999999999999,
+                    "valueAsString": "300ms"
+                  },
+                  {
+                    "parameterIndex": 6,
+                    "id": "Sustain",
+                    "metadataType": "static",
+                    "description": "The level maintained while the note is held",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": -100.0,
+                      "max": 0.0,
+                      "stepSize": 0.0,
+                      "middlePosition": -12.0
+                    },
+                    "defaultValue": 0.0,
+                    "chainIndex": 3,
+                    "mode": "Decibel",
+                    "unit": "dB",
+                    "value": 0.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "+0.0 dB"
+                  },
+                  {
+                    "parameterIndex": 7,
+                    "id": "Release",
+                    "metadataType": "static",
+                    "description": "The time the envelope takes to fall from the sustain level to zero after note-off",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 1.0,
+                      "max": 20000.0,
+                      "stepSize": 0.0,
+                      "middlePosition": 300.0
+                    },
+                    "defaultValue": 20.0,
+                    "chainIndex": 4,
+                    "mode": "Time",
+                    "unit": "ms",
+                    "value": 20.0,
+                    "valueNormalized": 0.3174,
+                    "valueAsString": "20ms"
+                  },
+                  {
+                    "parameterIndex": 8,
+                    "id": "AttackCurve",
+                    "metadataType": "static",
+                    "description": "Controls the curvature of the attack phase (0.0 = concave, 1.0 = convex)",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 0.0
+                    },
+                    "defaultValue": 0.0,
+                    "mode": "NormalizedPercentage",
+                    "unit": "%",
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0%"
+                  },
+                  {
+                    "parameterIndex": 9,
+                    "id": "DecayCurve",
+                    "metadataType": "static",
+                    "description": "Controls the curvature of the decay and release phases",
+                    "type": "Slider",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 0.0
+                    },
+                    "defaultValue": 0.0,
+                    "mode": "NormalizedPercentage",
+                    "unit": "%",
+                    "value": 0.0,
+                    "valueNormalized": 0.0,
+                    "valueAsString": "0%"
+                  },
+                  {
+                    "parameterIndex": 10,
+                    "id": "EcoMode",
+                    "metadataType": "static",
+                    "description": "Enables 16x downsampling for reduced CPU usage",
+                    "type": "Button",
+                    "disabled": false,
+                    "range": {
+                      "min": 0.0,
+                      "max": 1.0,
+                      "stepSize": 1.0
+                    },
+                    "defaultValue": 1.0,
+                    "items": [
+                      "Off",
+                      "On"
+                    ],
+                    "value": 1.0,
+                    "valueNormalized": 1.0,
+                    "valueAsString": "On"
+                  }
+                ],
+                "modulation": [
+                  {
+                    "chainIndex": 0,
+                    "id": "AttackTimeModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 2,
+                    "disabled": false,
+                    "description": "Modulates the attack time per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 1,
+                    "id": "AttackLevelModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 3,
+                    "disabled": false,
+                    "description": "Modulates the attack level per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 2,
+                    "id": "DecayTimeModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 5,
+                    "disabled": false,
+                    "description": "Modulates the decay time per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 3,
+                    "id": "SustainLevelModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 6,
+                    "disabled": false,
+                    "description": "Modulates the sustain level per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  },
+                  {
+                    "chainIndex": 4,
+                    "id": "ReleaseTimeModulation",
+                    "metadataType": "static",
+                    "parameterIndex": 7,
+                    "disabled": false,
+                    "description": "Modulates the release time per voice",
+                    "constrainer": "VoiceStartModulator",
+                    "modulationMode": "gain",
+                    "colour": "#BE952C",
+                    "children": []
+                  }
+                ],
+                "bypassed": false,
+                "processorId": "Sub Envelope",
+                "colour": "#BE952C"
+              }
+            ]
+          },
+          {
+            "chainIndex": 2,
+            "id": "Pitch Modulation",
+            "metadataType": "static",
+            "disabled": false,
+            "description": "Modulates the pitch of all voices",
+            "constrainer": "*",
+            "modulationMode": "pitch",
+            "colour": "#7559A4",
+            "children": []
+          }
+        ],
+        "bypassed": false,
+        "processorId": "Sub Bass",
+        "colour": "#414141",
+        "midi": [],
+        "fx": []
+      }
+    ]
+  },
+  "logs": [],
+  "errors": []
+}

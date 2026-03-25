@@ -2428,7 +2428,7 @@
           "metadataType": "static",
           "disabled": false,
           "description": "Modulates the sustain level per voice",
-          "constrainer": "VoiceStartModulator",
+          "constrainer": "*",
           "modulationMode": "gain",
           "colour": 2
         },
@@ -2626,7 +2626,7 @@
           "metadataType": "static",
           "disabled": false,
           "description": "The modulation sources that can be picked up using GlobalModulators",
-          "constrainer": "!Global*Modulator",
+          "constrainer": "!GlobalEnvelopeModulator|!GlobalVoiceStartModulator|!GlobalTimeVariantModulator|!GlobalStaticTimeVariantModulator",
           "modulationMode": "gain",
           "colour": 2
         },
@@ -5579,7 +5579,7 @@
       "builderPath": "b.SoundGenerators.SendContainer",
       "hasChildren": false,
       "hasFX": true,
-      "fx_constrainer": "MasterEffect",
+      "fx_constrainer": "MasterEffect|MonophonicEffect|PolyphonicFilter",
       "metadataType": "static",
       "interfaces": [
         "RoutingMatrix"
@@ -6730,7 +6730,7 @@
       "hasChildren": true,
       "hasFX": false,
       "constrainer": "*",
-      "child_fx_constrainer": "MasterEffect|!RouteEffect|!SlotFX",
+      "child_fx_constrainer": "MasterEffect|MonophonicEffect|!RouteFX|!SlotFX",
       "metadataType": "static",
       "interfaces": [
         "SlotFX",
@@ -7123,7 +7123,7 @@
           "metadataType": "static",
           "disabled": false,
           "description": "Modulates the sample start position within each sample's SampleStartMod range. Voice-start-only, gain mode.",
-          "constrainer": "*",
+          "constrainer": "VoiceStartModulator",
           "modulationMode": "gain",
           "colour": 2
         },
@@ -7152,7 +7152,7 @@
       "hasChildren": true,
       "hasFX": true,
       "constrainer": "*",
-      "fx_constrainer": "MasterEffect",
+      "fx_constrainer": "MasterEffect|MonophonicEffect|PolyphonicFilter",
       "metadataType": "static",
       "interfaces": [
         "RoutingMatrix"
@@ -7261,7 +7261,7 @@
       "builderPath": "b.SoundGenerators.SynthGroup",
       "hasChildren": true,
       "hasFX": true,
-      "constrainer": "!ModulatorSynthChain|!GlobalModulatorContainer|!ModulatorSynthGroup|!MacroModulationSource",
+      "constrainer": "!SynthChain|!GlobalModulatorContainer|!SynthGroup|!MacroModulationSource",
       "fx_constrainer": "*",
       "child_fx_constrainer": "VoiceEffect",
       "metadataType": "static",

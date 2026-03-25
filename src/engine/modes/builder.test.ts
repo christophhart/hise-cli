@@ -208,6 +208,117 @@ describe("validateAddCommand", () => {
 	});
 });
 
+describe("validateAddCommand — chain constraints", () => {
+	it("rejects effect in midi chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "SimpleGain", chain: "midi" },
+			moduleList,
+		);
+		expect(result.valid).toBe(false);
+		expect(result.errors[0]).toContain("not a MidiProcessor");
+	});
+
+	it("rejects modulator in fx chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "AHDSR", chain: "fx" },
+			moduleList,
+		);
+		expect(result.valid).toBe(false);
+		expect(result.errors[0]).toContain("not an Effect");
+	});
+
+	it("rejects effect in children chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "SimpleReverb", chain: "children" },
+			moduleList,
+		);
+		expect(result.valid).toBe(false);
+		expect(result.errors[0]).toContain("not a SoundGenerator");
+	});
+
+	it("rejects sound generator in gain chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "SineSynth", chain: "gain" },
+			moduleList,
+		);
+		expect(result.valid).toBe(false);
+		expect(result.errors[0]).toContain("not a Modulator");
+	});
+
+	it("accepts modulator in gain chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "AHDSR", chain: "gain" },
+			moduleList,
+		);
+		expect(result.valid).toBe(true);
+	});
+
+	it("accepts effect in fx chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "SimpleReverb", chain: "fx" },
+			moduleList,
+		);
+		expect(result.valid).toBe(true);
+	});
+
+	it("accepts midi processor in midi chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "ReleaseTrigger", chain: "midi" },
+			moduleList,
+		);
+		expect(result.valid).toBe(true);
+	});
+
+	it("accepts sound generator in children chain", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "SineSynth", chain: "children" },
+			moduleList,
+		);
+		expect(result.valid).toBe(true);
+	});
+
+	// Constrainer-level validation (parent type known)
+	it("rejects excluded effect via fx_constrainer", () => {
+		// SynthChain's fx_constrainer is "MasterEffect|MonophonicEffect|PolyphonicFilter"
+		// PolyFilterEffect has subtype VoiceEffect - not in positive list
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "HardcodedPolyphonicFX", parent: "SynthChain", chain: "fx" },
+			moduleList,
+		);
+		expect(result.valid).toBe(false);
+		expect(result.errors[0]).toContain("cannot be added");
+	});
+
+	it("accepts matching effect via fx_constrainer", () => {
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "SimpleReverb", parent: "SynthChain", chain: "fx" },
+			moduleList,
+		);
+		expect(result.valid).toBe(true);
+	});
+
+	it("validates modulation chain constrainer on parent", () => {
+		// AHDSR's AttackTimeModulation constrainer is "VoiceStartModulator"
+		// Velocity is a VoiceStartModulator — should pass
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "Velocity", parent: "AHDSR", chain: "gain" },
+			moduleList,
+		);
+		expect(result.valid).toBe(true);
+	});
+
+	it("rejects wrong modulator subtype for constrainer", () => {
+		// SynthChain's gain constrainer is "TimeVariantModulator"
+		// AHDSR is EnvelopeModulator — should fail
+		const result = validateAddCommand(
+			{ type: "add", moduleType: "AHDSR", parent: "SynthChain", chain: "gain" },
+			moduleList,
+		);
+		expect(result.valid).toBe(false);
+		expect(result.errors[0]).toContain("cannot be added");
+	});
+});
+
 describe("validateSetCommand", () => {
 	it("accepts valid parameter and value", () => {
 		const result = validateSetCommand(

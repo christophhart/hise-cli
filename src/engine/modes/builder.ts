@@ -16,6 +16,7 @@ import type {
 	ModuleDefinition,
 	ModuleList,
 } from "../data.js";
+import { ConstrainerParser } from "../constrainer-parser.js";
 import type { TreeNode } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenizeBuilder } from "../highlight/builder.js";
@@ -348,6 +349,7 @@ export function validateAddCommand(
 		const chainError = validateChainConstraint(
 			module,
 			cmd.chain,
+			cmd.parent,
 			moduleList,
 		);
 		if (chainError) {
@@ -405,26 +407,80 @@ export function validateSetCommand(
 	return { valid: errors.length === 0, errors };
 }
 
+/** Map chain name to the constrainer string from a parent module definition. */
+function resolveChainConstrainer(
+	parentModule: ModuleDefinition,
+	chainName: string,
+): string | null {
+	const lower = chainName.toLowerCase();
+
+	if (lower === "fx") {
+		return parentModule.fx_constrainer ?? null;
+	}
+
+	if (lower === "children") {
+		return parentModule.constrainer ?? null;
+	}
+
+	if (lower === "midi") {
+		// midi chains only accept MidiProcessors - no constrainer string needed,
+		// validated by type check below
+		return null;
+	}
+
+	// Modulation chains: match by name (gain, pitch, or internal chain names)
+	for (const mod of parentModule.modulation) {
+		const modName = mod.id.toLowerCase().replace(/\s+/g, "");
+		if (modName.includes(lower) || lower === `chain${mod.chainIndex}`) {
+			return mod.constrainer;
+		}
+	}
+
+	return null;
+}
+
 function validateChainConstraint(
 	module: ModuleDefinition,
 	chainName: string,
+	parentName: string | undefined,
 	moduleList: ModuleList,
 ): string | null {
-	// Find the target parent module to check if this module's subtype
-	// is accepted by the chain's constrainer. This is a simplified check.
-	// The chain name typically maps to a modulation slot (e.g., "gain", "pitch").
-	// For now, we check that the module subtype is compatible with known
-	// modulation constrainers.
+	const lower = chainName.toLowerCase();
 
-	// The subtype determines which chains accept this module:
-	// - EnvelopeModulator → accepted by chains with constrainer "*" or "EnvelopeModulator"
-	// - VoiceStartModulator → accepted by chains with constrainer "*" or "VoiceStartModulator"
-	// - TimeVariantModulator → accepted by chains with constrainer "*" or "TimeVariantModulator"
-	// etc.
+	// Basic type-level check: midi chains only accept MidiProcessors
+	if (lower === "midi" && module.type !== "MidiProcessor") {
+		return `${module.id} is a ${module.type}, not a MidiProcessor. Only MIDI processors can be added to midi chains.`;
+	}
 
-	// For Phase 1, we just validate that the chain name looks reasonable.
-	// Full chain constraint validation requires knowing the parent module's
-	// modulation slots, which requires a running HISE instance or builder tree state.
+	// fx chains only accept Effects
+	if (lower === "fx" && module.type !== "Effect") {
+		return `${module.id} is a ${module.type}, not an Effect. Only effects can be added to fx chains.`;
+	}
+
+	// children chains only accept SoundGenerators
+	if (lower === "children" && module.type !== "SoundGenerator") {
+		return `${module.id} is a ${module.type}, not a SoundGenerator. Only sound generators can be added as children.`;
+	}
+
+	// Modulation chains (gain, pitch, etc.) only accept Modulators
+	if (lower !== "midi" && lower !== "fx" && lower !== "children" && module.type !== "Modulator") {
+		return `${module.id} is a ${module.type}, not a Modulator. Only modulators can be added to modulation chains.`;
+	}
+
+	// If parent is specified and matches a module type, do constrainer validation
+	if (parentName) {
+		const parentModule = moduleList.modules.find((m) => m.id === parentName);
+		if (parentModule) {
+			const constrainerStr = resolveChainConstrainer(parentModule, chainName);
+			if (constrainerStr) {
+				const cp = new ConstrainerParser(constrainerStr);
+				const result = cp.check({ id: module.id, subtype: module.subtype });
+				if (!result.ok) {
+					return `${module.id} cannot be added to ${parentName}.${chainName}: ${result.error}`;
+				}
+			}
+		}
+	}
 
 	return null;
 }
