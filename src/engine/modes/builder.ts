@@ -1,7 +1,7 @@
-// ── Builder mode — Chevrotain parser + local validation ─────────────
+// ── Builder mode — Chevrotain parser + HISE execution ───────────────
 
-// Phase 1: Parser skeleton + validation against moduleList.json.
-// No HISE execution — builder endpoints are new and tracked in #12.
+// Phase 4.2: Commands execute against live HISE via POST /api/builder/apply.
+// Falls back to local-only validation when no connection is available.
 
 import { CstParser, type IToken } from "chevrotain";
 import { closest } from "fastest-levenshtein";
@@ -22,6 +22,15 @@ import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenizeBuilder } from "../highlight/builder.js";
 import type { CompletionItem, CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
+import {
+	isErrorResponse,
+	isEnvelopeResponse,
+} from "../hise.js";
+import {
+	normalizeBuilderTreeResponse,
+	normalizeBuilderApplyResult,
+	applyDiffToTree,
+} from "../../mock/contracts/builder.js";
 
 // ── Chain color constants (FX and MIDI are always fixed) ────────────
 
@@ -162,9 +171,13 @@ class BuilderParser extends CstParser {
 	});
 
 	// add <type> [as "<name>"] [to <target>[.<chain>]]
+	// Type can be multi-word (e.g., "Noise Generator") — greedy Identifier+ or QuotedString.
 	public addCommand = this.RULE("addCommand", () => {
 		this.CONSUME(Add);
-		this.CONSUME2(Identifier, { LABEL: "moduleType" });
+		this.OR2([
+			{ ALT: () => this.CONSUME3(QuotedString, { LABEL: "quotedType" }) },
+			{ ALT: () => this.AT_LEAST_ONE(() => this.CONSUME2(Identifier, { LABEL: "moduleType" })) },
+		]);
 		this.OPTION(() => {
 			this.CONSUME(As);
 			this.CONSUME(QuotedString, { LABEL: "alias" });
@@ -495,7 +508,13 @@ function extractTargetRef(node: any): string {
 function extractAddCommand(
 	node: any,
 ): { command: AddCommand } | { error: string } {
-	const moduleType = (node.children.moduleType[0] as IToken).image;
+	let moduleType: string;
+	if (node.children.quotedType) {
+		moduleType = stripQuotes((node.children.quotedType[0] as IToken).image);
+	} else {
+		const words = (node.children.moduleType as IToken[]).map((t) => t.image);
+		moduleType = words.join(" ");
+	}
 	const alias = node.children.alias
 		? stripQuotes((node.children.alias[0] as IToken).image)
 		: undefined;
@@ -638,12 +657,18 @@ export function validateAddCommand(
 	const errors: string[] = [];
 	const suggestions: string[] = [];
 
-	// 1. Check module type exists
-	const moduleNames = moduleList.modules.map((m) => m.id);
-	const module = moduleList.modules.find((m) => m.id === cmd.moduleType);
+	// 1. Check module type exists (by pretty name or type ID)
+	const module = findModuleByName(cmd.moduleType, moduleList);
 
 	if (!module) {
-		const suggestion = closest(cmd.moduleType, moduleNames);
+		// Suggest closest match from both pretty names and type IDs
+		const allNames = moduleList.modules.flatMap((m) => [m.prettyName, m.id]);
+		const closestName = closest(cmd.moduleType, allNames);
+		// Map back to the pretty name for display
+		const closestModule = closestName
+			? moduleList.modules.find((m) => m.prettyName === closestName || m.id === closestName)
+			: undefined;
+		const suggestion = closestModule?.prettyName;
 		errors.push(`Unknown module type "${cmd.moduleType}".`);
 		if (suggestion) {
 			suggestions.push(suggestion);
@@ -678,10 +703,10 @@ export function validateSetCommand(
 ): ValidationResult {
 	const errors: string[] = [];
 
-	// Find the target module by type name (in builder context, target
-	// is a module instance name — but for validation we check param
+	// Find the target module by pretty name or type ID (in builder context,
+	// target is a module instance name — but for validation we check param
 	// against all modules of matching type)
-	const module = moduleList.modules.find((m) => m.id === cmd.target);
+	const module = findModuleByName(cmd.target, moduleList);
 	if (!module) {
 		// Can't validate without knowing the module type
 		return { valid: true, errors: [] };
@@ -777,7 +802,7 @@ function validateChainConstraint(
 
 	// If parent is specified and matches a module type, do constrainer validation
 	if (parentName) {
-		const parentModule = moduleList.modules.find((m) => m.id === parentName);
+		const parentModule = findModuleByName(parentName, moduleList);
 		if (parentModule) {
 			const constrainerStr = resolveChainConstrainer(parentModule, chainName);
 			if (constrainerStr) {
@@ -791,6 +816,243 @@ function validateChainConstraint(
 	}
 
 	return null;
+}
+
+// ── Module name resolution ──────────────────────────────────────────
+
+/**
+ * Resolve a user-supplied module name (pretty name or type ID) to the
+ * internal type ID. Users primarily work with pretty names ("Sampler"),
+ * but type IDs ("StreamingSampler") are also accepted for power users.
+ */
+export function resolveModuleTypeId(
+	name: string,
+	moduleList: ModuleList | null,
+): string | null {
+	if (!moduleList) return null;
+	// Exact match on prettyName first (primary user-facing name)
+	const byPretty = moduleList.modules.find((m) => m.prettyName === name);
+	if (byPretty) return byPretty.id;
+	// Exact match on type ID (backwards compat)
+	const byId = moduleList.modules.find((m) => m.id === name);
+	if (byId) return byId.id;
+	// Case-insensitive fallback
+	const lower = name.toLowerCase();
+	const byPrettyCI = moduleList.modules.find((m) => m.prettyName.toLowerCase() === lower);
+	if (byPrettyCI) return byPrettyCI.id;
+	const byIdCI = moduleList.modules.find((m) => m.id.toLowerCase() === lower);
+	if (byIdCI) return byIdCI.id;
+	return null;
+}
+
+/** Look up a module definition by pretty name or type ID. */
+function findModuleByName(
+	name: string,
+	moduleList: ModuleList,
+): ModuleDefinition | undefined {
+	return moduleList.modules.find((m) =>
+		m.prettyName === name || m.id === name
+		|| m.prettyName.toLowerCase() === name.toLowerCase()
+		|| m.id.toLowerCase() === name.toLowerCase(),
+	);
+}
+
+// ── Command → API operations mapping ────────────────────────────────
+
+export interface BuilderOp {
+	op: string;
+	[key: string]: unknown;
+}
+
+/**
+ * Resolve a chain name to the integer index expected by the HISE API.
+ * -1 = direct children, 0 = midi, 1+ = modulation chains, 3 = fx (for top-level).
+ * Named modulation chains are resolved from the parent's tree node.
+ */
+export function resolveChainIndex(
+	chainName: string | undefined,
+	moduleType: string | undefined,
+	parentNode: TreeNode | null,
+	moduleList: ModuleList | null,
+): number {
+	if (!chainName) {
+		// No chain specified: auto-resolve by module type
+		if (!moduleType || !moduleList) return -1;
+		const mod = moduleList.modules.find((m) => m.id === moduleType);
+		if (!mod) return -1;
+		// SoundGenerators go to children, Effects to fx, MidiProcessors to midi,
+		// Modulators need explicit chain
+		switch (mod.type) {
+			case "Effect": return 3;
+			case "MidiProcessor": return 0;
+			default: return -1;
+		}
+	}
+
+	const lower = chainName.toLowerCase().replace(/\s+/g, "");
+	if (lower === "children" || lower === "direct") return -1;
+	if (lower === "midi" || lower === "midiprocessorchain") return 0;
+	if (lower === "fx" || lower === "fxchain") return 3;
+
+	// Try well-known modulation chain names (short and full labels)
+	if (lower === "gain" || lower === "gainmodulation") return 1;
+	if (lower === "pitch" || lower === "pitchmodulation") return 2;
+
+	// Look up named modulation chains from the parent tree node
+	if (parentNode?.children) {
+		for (const child of parentNode.children) {
+			if (child.nodeKind === "chain" && child.label) {
+				const chainLabel = child.label.toLowerCase().replace(/\s+/g, "");
+				if (chainLabel.includes(lower)) {
+					// Chains in our normalized tree don't carry chainIndex,
+					// but modulation chains follow a known order: Gain=1, Pitch=2, etc.
+					// Fall back to checking if the label matches standard patterns
+					if (chainLabel.includes("gain")) return 1;
+					if (chainLabel.includes("pitch")) return 2;
+				}
+			}
+		}
+	}
+
+	// Last resort: try parsing as a number
+	const num = parseInt(chainName, 10);
+	if (!isNaN(num)) return num;
+
+	// Default to direct children
+	return -1;
+}
+
+/** Find a TreeNode by its id (processorId for modules, label for chains). Case-insensitive. */
+function findNodeById(tree: TreeNode | null, id: string): TreeNode | null {
+	if (!tree) return null;
+	if (tree.id?.toLowerCase() === id.toLowerCase()) return tree;
+	if (tree.children) {
+		for (const child of tree.children) {
+			const found = findNodeById(child, id);
+			if (found) return found;
+		}
+	}
+	return null;
+}
+
+/**
+ * Walk a path of node IDs from the tree root, returning the node at the end.
+ * Each segment matches a direct child's id at that level (case-insensitive).
+ */
+function resolveNodeByPath(tree: TreeNode | null, path: string[]): TreeNode | null {
+	if (!tree || path.length === 0) return tree;
+	let current: TreeNode = tree;
+	for (const seg of path) {
+		if (!current.children) return null;
+		const lower = seg.toLowerCase();
+		const child = current.children.find((c) => c.id?.toLowerCase() === lower);
+		if (!child) return null;
+		current = child;
+	}
+	return current;
+}
+
+/**
+ * Resolve the parent node for a path — the second-to-last node.
+ * For path ["SineSynth", "FX Chain"], returns the SineSynth node.
+ */
+function resolveParentByPath(tree: TreeNode | null, path: string[]): TreeNode | null {
+	if (!tree || path.length <= 1) return tree;
+	return resolveNodeByPath(tree, path.slice(0, -1));
+}
+
+/** Find the parent tree node of a node by its id (case-insensitive). */
+function findParentNode(tree: TreeNode | null, childId: string): TreeNode | null {
+	if (!tree) return null;
+	const lower = childId.toLowerCase();
+	if (tree.children) {
+		for (const child of tree.children) {
+			if (child.id?.toLowerCase() === lower) return tree;
+			const found = findParentNode(child, childId);
+			if (found) return found;
+		}
+	}
+	return null;
+}
+
+/**
+ * Convert a parsed BuilderCommand into HISE API operation(s).
+ * Returns an array of ops (most commands produce exactly one).
+ */
+export function commandToOps(
+	cmd: BuilderCommand,
+	treeRoot: TreeNode | null,
+	moduleList: ModuleList | null,
+	currentPath: string[],
+): { ops: BuilderOp[] } | { error: string } {
+	switch (cmd.type) {
+		case "add": {
+			let parent: string;
+			let explicitChain = cmd.chain;
+
+			if (cmd.parent) {
+				// Explicit parent given — use it directly
+				parent = cmd.parent;
+			} else if (currentPath.length > 0) {
+				// Resolve from current path context using path-aware lookup
+				const contextNode = resolveNodeByPath(treeRoot, currentPath);
+				if (contextNode?.nodeKind === "chain") {
+					// cd'd into a chain — parent is the module owning this chain
+					const ownerNode = resolveParentByPath(treeRoot, currentPath);
+					parent = ownerNode?.id ?? treeRoot?.id ?? "Master Chain";
+					explicitChain = explicitChain ?? contextNode.label;
+				} else {
+					// cd'd into a module — use it as parent
+					parent = contextNode?.id ?? currentPath[currentPath.length - 1];
+				}
+			} else {
+				parent = treeRoot?.id ?? "Master Chain";
+			}
+
+			// If explicit parent (from `add X to Y.chain`) resolves to a chain, fix it up
+			if (cmd.parent) {
+				const parentNode = findNodeById(treeRoot, parent);
+				if (parentNode?.nodeKind === "chain") {
+					const actualParent = findParentNode(treeRoot, parent);
+					if (actualParent) {
+						explicitChain = explicitChain ?? parentNode.label;
+						parent = actualParent.id ?? actualParent.label;
+					}
+				}
+			}
+
+			const resolvedParentNode = findNodeById(treeRoot, parent);
+			// Resolve pretty name → type ID for the API, keep pretty name for default instance name
+			const typeId = resolveModuleTypeId(cmd.moduleType, moduleList) ?? cmd.moduleType;
+			const chainIndex = resolveChainIndex(explicitChain, typeId, resolvedParentNode, moduleList);
+			const op: BuilderOp = {
+				op: "add",
+				type: typeId,
+				parent,
+				chain: chainIndex,
+				name: cmd.alias ?? cmd.moduleType,
+			};
+			return { ops: [op] };
+		}
+		case "remove":
+			return { ops: [{ op: "remove", target: cmd.target }] };
+		case "clone":
+			return { ops: [{ op: "clone", source: cmd.source, count: cmd.count }] };
+		case "set":
+			return { ops: [{ op: "set_attributes", target: cmd.target, attributes: { [cmd.param]: cmd.value } }] };
+		case "rename":
+			return { ops: [{ op: "set_id", target: cmd.target, name: cmd.name }] };
+		case "bypass":
+			return { ops: [{ op: "set_bypassed", target: cmd.target, bypassed: true }] };
+		case "enable":
+			return { ops: [{ op: "set_bypassed", target: cmd.target, bypassed: false }] };
+		case "load":
+			return { ops: [{ op: "set_effect", target: cmd.target, effect: cmd.source }] };
+		case "move":
+			return { error: "move is not yet supported by the HISE C++ API" };
+		case "show":
+			return { error: "show commands are handled locally" };
+	}
 }
 
 // ── Tree utilities ──────────────────────────────────────────────────
@@ -849,6 +1111,7 @@ export class BuilderMode implements Mode {
 	private readonly completionEngine: CompletionEngine | null;
 	private currentPath: string[] = [];
 	private treeRoot: TreeNode | null = null;
+	compactView = false;
 
 	constructor(moduleList?: ModuleList, completionEngine?: CompletionEngine, initialPath?: string, treeRoot?: TreeNode | null) {
 		this.moduleList = moduleList ?? null;
@@ -867,7 +1130,9 @@ export class BuilderMode implements Mode {
 
 	getTree(): TreeNode | null {
 		if (!this.treeRoot) return null;
-		return propagateChainColors(structuredClone(this.treeRoot));
+		let tree = propagateChainColors(structuredClone(this.treeRoot));
+		if (this.compactView) tree = compactTree(tree, this.currentPath);
+		return tree;
 	}
 
 	getSelectedPath(): string[] {
@@ -946,6 +1211,12 @@ export class BuilderMode implements Mode {
 		}
 
 		const verb = tokens[0].image.toLowerCase();
+
+		// ── cd <child> — complete with children of current node ──
+		if (verb === "cd") {
+			return this.completeCd(tokens, trailingSpace, offset, inputLength, segment);
+		}
+
 		const modules = collectModuleIds(this.treeRoot);
 		const moduleItems = moduleIdCompletionItems(modules);
 
@@ -987,6 +1258,63 @@ export class BuilderMode implements Mode {
 		return empty;
 	}
 
+	private completeCd(
+		tokens: import("chevrotain").IToken[],
+		trailingSpace: boolean,
+		offset: number,
+		inputLength: number,
+		segment: string,
+	): CompletionResult {
+		const empty: CompletionResult = { items: [], from: offset, to: inputLength };
+
+		// Find the node at the current path
+		const contextNode = resolveNodeByPath(this.treeRoot, this.currentPath) ?? this.treeRoot;
+		if (!contextNode?.children) return empty;
+
+		// Build completion items from children
+		const childItems: CompletionItem[] = contextNode.children.map((c) => ({
+			label: c.label,
+			detail: c.nodeKind === "chain" ? "chain" : (c.type ?? ""),
+			insertText: c.label.includes(" ") ? `"${c.label}"` : c.label,
+		}));
+
+		// "cd " — show all children
+		if (tokens.length === 1 && trailingSpace) {
+			return { items: childItems, from: offset + segment.length, to: inputLength, label: "Children" };
+		}
+
+		// "cd Fx" or "cd "FX Ch" — filter by prefix
+		if (tokens.length >= 2) {
+			const prefixTokens = tokens.slice(1);
+			let prefix = prefixTokens.map((t) => t.image).join(" ");
+			// Strip quotes from QuotedString tokens
+			if (prefix.startsWith('"')) prefix = prefix.slice(1);
+			if (prefix.endsWith('"')) prefix = prefix.slice(0, -1);
+			const from = offset + prefixTokens[0].startOffset;
+			const items = fuzzyFilter(prefix, childItems);
+			return { items, from, to: inputLength, label: "Children" };
+		}
+
+		return empty;
+	}
+
+	/** Filter module type completions by the current chain's constrainer. */
+	private filterByChainContext(items: CompletionItem[]): CompletionItem[] {
+		const contextNode = resolveNodeByPath(this.treeRoot, this.currentPath);
+		if (!contextNode || contextNode.nodeKind !== "chain" || !contextNode.chainConstrainer) {
+			return items;
+		}
+
+		const constrainer = new ConstrainerParser(contextNode.chainConstrainer);
+		return items.filter((item) => {
+			// detail is the type ID (e.g., "SineSynth"), insertText is also the type ID
+			const typeId = item.insertText ?? item.detail ?? item.label;
+			const mod = this.moduleList?.modules.find((m) => m.id === typeId);
+			if (!mod) return false;
+			return constrainer.check({ id: mod.id, subtype: mod.subtype }).ok;
+		});
+	}
+
 	private completeAdd(
 		tokens: import("chevrotain").IToken[],
 		trailingSpace: boolean,
@@ -998,13 +1326,14 @@ export class BuilderMode implements Mode {
 	): CompletionResult {
 		const engine = this.completionEngine!;
 
-		// Position 1: module type
+		// Position 1: module type (filtered by chain context if cd'd into a chain)
 		if (tokens.length === 1 && trailingSpace) {
-			return { items: engine.completeModuleType(""), from: offset + segment.length, to: inputLength, label: "Module types" };
+			const items = this.filterByChainContext(engine.completeModuleType(""));
+			return { items, from: offset + segment.length, to: inputLength, label: "Module types" };
 		}
 		if (tokens.length === 2 && !trailingSpace) {
 			const prefix = tokens[1].image;
-			const items = engine.completeModuleType(prefix);
+			const items = this.filterByChainContext(engine.completeModuleType(prefix));
 			const from = offset + tokens[1].startOffset;
 			return { items, from, to: inputLength, label: "Module types" };
 		}
@@ -1121,17 +1450,50 @@ export class BuilderMode implements Mode {
 		return { items: [], from: offset, to: inputLength };
 	}
 
+	// ── Tree fetching ───────────────────────────────────────────
+
+	private treeFetched = false;
+
+	/** Fetch the module tree from HISE and update treeRoot. */
+	async fetchTree(connection: import("../hise.js").HiseConnection): Promise<void> {
+		const response = await connection.get("/api/builder/tree");
+		if (isErrorResponse(response)) return;
+		if (!isEnvelopeResponse(response) || !response.success) return;
+		try {
+			this.treeRoot = normalizeBuilderTreeResponse(response.result);
+		} catch {
+			// Normalization failed — keep existing tree
+		}
+	}
+
+	/** Lazily fetch the tree on first parse if connected and not yet fetched. */
+	private async ensureTree(session: SessionContext): Promise<void> {
+		if (!this.treeFetched && session.connection) {
+			this.treeFetched = true;
+			await this.fetchTree(session.connection);
+		}
+	}
+
+	// ── Parse entry point ───────────────────────────────────────
+
 	async parse(
 		input: string,
 		session: SessionContext,
 	): Promise<CommandResult> {
+		await this.ensureTree(session);
+
 		const trimmed = input.trim();
 		const parts = trimmed.split(/\s+/);
 		const keyword = parts[0]?.toLowerCase();
 
 		// ── Navigation commands (handled before Chevrotain parser) ──
 		if (keyword === "cd") {
-			return this.handleCd(parts.slice(1).join(" ").trim(), session);
+			let cdTarget = parts.slice(1).join(" ").trim();
+			// Strip surrounding quotes
+			if (cdTarget.startsWith('"') && cdTarget.endsWith('"')) {
+				cdTarget = cdTarget.slice(1, -1);
+			}
+			return this.handleCd(cdTarget, session);
 		}
 		if (keyword === "ls" || keyword === "dir") {
 			return this.handleLs();
@@ -1150,7 +1512,7 @@ export class BuilderMode implements Mode {
 		// Execute all commands from comma chaining; return last result
 		let lastResult: CommandResult = textResult("(no commands)");
 		for (const cmd of result.commands) {
-			lastResult = this.dispatchCommand(cmd);
+			lastResult = await this.dispatchCommand(cmd, session);
 			if (lastResult.type === "error") return lastResult;
 		}
 		return lastResult;
@@ -1160,13 +1522,11 @@ export class BuilderMode implements Mode {
 
 	private handleCd(target: string, session: SessionContext): CommandResult {
 		if (!target || target === "/") {
-			// cd or cd / — go to root
 			this.currentPath = [];
 			return textResult("/");
 		}
 
 		if (target === "..") {
-			// cd .. — go up one level; at context root, exit builder mode
 			if (this.currentPath.length === 0) {
 				return session.popMode();
 			}
@@ -1174,12 +1534,19 @@ export class BuilderMode implements Mode {
 			return textResult(this.currentPath.length > 0 ? this.currentPath.join(".") : "/");
 		}
 
-		// Navigate down — target can be a single name or a dotted path
+		// Navigate down — validate against tree if available
 		const segments = target.split(".").filter((s) => s !== "");
 		for (const seg of segments) {
 			if (seg === "..") {
 				if (this.currentPath.length > 0) this.currentPath.pop();
 			} else {
+				// Validate the segment exists in the tree
+				if (this.treeRoot) {
+					const node = findNodeById(this.treeRoot, seg);
+					if (!node) {
+						return errorResult(`"${seg}" not found in module tree.`);
+					}
+				}
 				this.currentPath.push(seg);
 			}
 		}
@@ -1187,11 +1554,33 @@ export class BuilderMode implements Mode {
 	}
 
 	private handleLs(): CommandResult {
-		const path = this.currentPath.length > 0 ? this.currentPath.join(".") : "/";
-		// Without a HISE connection, we can't query the live processor tree.
-		// Return the current path and a hint about needing a connection.
-		return textResult(
-			`${path}: listing children requires a HISE connection (use show types for available module types)`,
+		if (!this.treeRoot) {
+			const path = this.currentPath.length > 0 ? this.currentPath.join(".") : "/";
+			return textResult(
+				`${path}: listing children requires a HISE connection (use show types for available module types)`,
+			);
+		}
+
+		// Find the node at the current path
+		let node: TreeNode | null = this.treeRoot;
+		if (this.currentPath.length > 0) {
+			node = findNodeById(this.treeRoot, this.currentPath[this.currentPath.length - 1]);
+		}
+		if (!node) {
+			return errorResult(`Path not found: ${this.currentPath.join(".")}`);
+		}
+
+		if (!node.children || node.children.length === 0) {
+			return textResult(`${node.label}: (no children)`);
+		}
+
+		return tableResult(
+			["Name", "Type", "Kind"],
+			node.children.map((c) => [
+				c.label,
+				c.type ?? "",
+				c.nodeKind ?? "",
+			]),
 		);
 	}
 
@@ -1199,39 +1588,123 @@ export class BuilderMode implements Mode {
 		return textResult(this.currentPath.length > 0 ? this.currentPath.join(".") : "/");
 	}
 
-	private dispatchCommand(cmd: BuilderCommand): CommandResult {
-		switch (cmd.type) {
-			case "add": return this.handleAdd(cmd);
-			case "clone": return this.handleClone(cmd);
-			case "remove": return this.handleRemove(cmd);
-			case "move": return this.handleMove(cmd);
-			case "rename": return this.handleRename(cmd);
-			case "set": return this.handleSet(cmd);
-			case "load": return this.handleLoad(cmd);
-			case "bypass": return this.handleBypass(cmd);
-			case "enable": return this.handleEnable(cmd);
-			case "show": return this.handleShow(cmd);
+	// ── Command dispatch and execution ──────────────────────────
+
+	private async dispatchCommand(
+		cmd: BuilderCommand,
+		session: SessionContext,
+	): Promise<CommandResult> {
+		// Show commands are always local
+		if (cmd.type === "show") {
+			return this.handleShow(cmd);
 		}
+
+		// Move is not yet in C++ API
+		if (cmd.type === "move") {
+			const dest = cmd.chain ? `${cmd.parent}.${cmd.chain}` : cmd.parent;
+			return textResult(`move ${cmd.target} to ${dest} (not yet in HISE C++ API)`);
+		}
+
+		// Local validation for add and set
+		if (cmd.type === "add" && this.moduleList) {
+			const validation = validateAddCommand(cmd, this.moduleList);
+			if (!validation.valid) {
+				return errorResult(validation.errors.join("\n"));
+			}
+		}
+		if (cmd.type === "set" && this.moduleList) {
+			const validation = validateSetCommand(cmd, this.moduleList);
+			if (!validation.valid) {
+				return errorResult(validation.errors.join("\n"));
+			}
+		}
+
+		// If no connection, return local-only result
+		if (!session.connection) {
+			return this.localFallback(cmd);
+		}
+
+		// Build API operations
+		const opsResult = commandToOps(cmd, this.treeRoot, this.moduleList, this.currentPath);
+		if ("error" in opsResult) {
+			return errorResult(opsResult.error);
+		}
+
+		// Execute against HISE
+		return this.executeOps(opsResult.ops, session.connection);
 	}
 
-	private handleAdd(cmd: AddCommand): CommandResult {
-		if (!this.moduleList) {
-			return textResult(`add ${cmd.moduleType} (validation skipped — no module data loaded)`);
+	/** Execute operations against POST /api/builder/apply, re-fetch tree. */
+	private async executeOps(
+		ops: BuilderOp[],
+		connection: import("../hise.js").HiseConnection,
+	): Promise<CommandResult> {
+		const response = await connection.post("/api/builder/apply", { operations: ops });
+
+		if (isErrorResponse(response)) {
+			return errorResult(response.message);
+		}
+		if (!isEnvelopeResponse(response)) {
+			return errorResult("Unexpected response from HISE");
+		}
+		if (!response.success) {
+			const msg = response.errors.length > 0
+				? response.errors.map((e) => e.errorMessage).join("\n")
+				: "Builder operation failed";
+			return errorResult(msg);
 		}
 
-		const validation = validateAddCommand(cmd, this.moduleList);
-		if (!validation.valid) {
-			return errorResult(validation.errors.join("\n"));
+		// Parse the diff result
+		const applyResult = normalizeBuilderApplyResult(response.result);
+
+		// Re-fetch the tree to get the updated state
+		await this.fetchTree(connection);
+
+		// Apply diff markers to the refreshed tree for sidebar indicators
+		if (applyResult?.diff && this.treeRoot) {
+			applyDiffToTree(this.treeRoot, applyResult.diff);
 		}
 
-		// Success — describe what would happen (no HISE execution in Phase 1)
-		const parts = [`add ${cmd.moduleType}`];
-		if (cmd.alias) parts.push(`as "${cmd.alias}"`);
-		if (cmd.parent) {
-			const dest = cmd.chain ? `${cmd.parent}.${cmd.chain}` : cmd.parent;
-			parts.push(`to ${dest}`);
+		// Build a human-readable summary from logs
+		const summary = response.logs.length > 0
+			? response.logs.join("; ")
+			: (applyResult?.diff ?? []).map((d) => `${d.action} ${d.target}`).join(", ") || "OK";
+
+		return textResult(summary);
+	}
+
+	/** Fallback for disconnected mode — validation + description only. */
+	private localFallback(cmd: BuilderCommand): CommandResult {
+		switch (cmd.type) {
+			case "add": {
+				const parts = [`add ${cmd.moduleType}`];
+				if (cmd.alias) parts.push(`as "${cmd.alias}"`);
+				if (cmd.parent) {
+					const dest = cmd.chain ? `${cmd.parent}.${cmd.chain}` : cmd.parent;
+					parts.push(`to ${dest}`);
+				}
+				return textResult(`${parts.join(" ")} (no HISE connection)`);
+			}
+			case "set":
+				return textResult(`set ${cmd.target}.${cmd.param} to ${cmd.value} (no HISE connection)`);
+			case "clone": {
+				const parts = [`clone ${cmd.source}`];
+				if (cmd.count > 1) parts.push(`x${cmd.count}`);
+				return textResult(`${parts.join(" ")} (no HISE connection)`);
+			}
+			case "remove":
+				return textResult(`remove ${cmd.target} (no HISE connection)`);
+			case "rename":
+				return textResult(`rename ${cmd.target} to "${cmd.name}" (no HISE connection)`);
+			case "load":
+				return textResult(`load "${cmd.source}" into ${cmd.target} (no HISE connection)`);
+			case "bypass":
+				return textResult(`bypass ${cmd.target} (no HISE connection)`);
+			case "enable":
+				return textResult(`enable ${cmd.target} (no HISE connection)`);
+			default:
+				return textResult("(no HISE connection)");
 		}
-		return textResult(`Parsed: ${parts.join(" ")} (execution deferred — builder endpoints pending)`);
 	}
 
 	private handleShow(cmd: ShowCommand): CommandResult {
@@ -1259,56 +1732,72 @@ export class BuilderMode implements Mode {
 		}
 
 		if (cmd.what === "target") {
-			return textResult(`Parsed: show ${cmd.target} (execution deferred — requires HISE connection)`);
+			// Show module info from tree
+			if (this.treeRoot) {
+				const node = findNodeById(this.treeRoot, cmd.target!);
+				if (node) {
+					const info = [`${node.label} (${node.type ?? "unknown"})`];
+					if (node.children) {
+						info.push(`  ${node.children.length} children`);
+					}
+					return textResult(info.join("\n"));
+				}
+			}
+			return textResult(`show ${cmd.target} (module not found in tree)`);
 		}
 
-		// show tree — requires live HISE connection
-		return textResult("Module tree display requires a HISE connection (not available in Phase 1).");
-	}
-
-	private handleSet(cmd: SetCommand): CommandResult {
-		if (!this.moduleList) {
-			return textResult(`set ${cmd.target}.${cmd.param} to ${cmd.value} (validation skipped)`);
+		// show tree — render from treeRoot
+		if (!this.treeRoot) {
+			return textResult("No module tree available (requires HISE connection).");
 		}
+		return textResult(renderTreeText(this.treeRoot, 0));
+	}
+}
 
-		const validation = validateSetCommand(cmd, this.moduleList);
-		if (!validation.valid) {
-			return errorResult(validation.errors.join("\n"));
+/**
+ * Strip chain nodes from the tree, promoting their module children up.
+ * Chains that are part of the currentPath are preserved so the sidebar
+ * can still show where the user has navigated.
+ */
+function compactTree(node: TreeNode, remainingPath: string[]): TreeNode {
+	if (!node.children) return node;
+
+	const newChildren: TreeNode[] = [];
+	// The next segment of the path that needs to be matched at this level
+	const nextSeg = remainingPath.length > 0 ? remainingPath[0].toLowerCase() : null;
+
+	for (const child of node.children) {
+		const childId = (child.id ?? child.label).toLowerCase();
+		const isOnPath = nextSeg !== null && childId === nextSeg;
+
+		if (child.nodeKind === "chain" && !isOnPath) {
+			// Not on the active path — promote chain's module children up
+			if (child.children) {
+				for (const grandchild of child.children) {
+					newChildren.push(compactTree(grandchild, []));
+				}
+			}
+		} else {
+			// Keep the node: either a module, or the specific chain on the active path
+			const childPath = isOnPath ? remainingPath.slice(1) : [];
+			newChildren.push(compactTree(child, childPath));
 		}
-
-		return textResult(
-			`Parsed: set ${cmd.target}.${cmd.param} to ${cmd.value} (execution deferred)`,
-		);
 	}
 
-	private handleClone(cmd: CloneCommand): CommandResult {
-		const parts = [`clone ${cmd.source}`];
-		if (cmd.count > 1) parts.push(`x${cmd.count}`);
-		return textResult(`Parsed: ${parts.join(" ")} (execution deferred)`);
-	}
+	return { ...node, children: newChildren.length > 0 ? newChildren : undefined };
+}
 
-	private handleRemove(cmd: RemoveCommand): CommandResult {
-		return textResult(`Parsed: remove ${cmd.target} (execution deferred)`);
-	}
+/** Simple text rendering of the tree for `show tree` command. */
+function renderTreeText(node: TreeNode, depth: number): string {
+	const indent = "  ".repeat(depth);
+	const kind = node.nodeKind === "chain" ? `[${node.label}]` : node.label;
+	const typeInfo = node.type ? ` (${node.type})` : "";
+	let line = `${indent}${kind}${typeInfo}`;
 
-	private handleMove(cmd: MoveCommand): CommandResult {
-		const dest = cmd.chain ? `${cmd.parent}.${cmd.chain}` : cmd.parent;
-		return textResult(`Parsed: move ${cmd.target} to ${dest} (stub — not yet in HISE C++ API)`);
+	if (node.children) {
+		for (const child of node.children) {
+			line += "\n" + renderTreeText(child, depth + 1);
+		}
 	}
-
-	private handleRename(cmd: RenameCommand): CommandResult {
-		return textResult(`Parsed: rename ${cmd.target} to "${cmd.name}" (execution deferred)`);
-	}
-
-	private handleLoad(cmd: LoadCommand): CommandResult {
-		return textResult(`Parsed: load "${cmd.source}" into ${cmd.target} (execution deferred)`);
-	}
-
-	private handleBypass(cmd: BypassCommand): CommandResult {
-		return textResult(`Parsed: bypass ${cmd.target} (execution deferred)`);
-	}
-
-	private handleEnable(cmd: EnableCommand): CommandResult {
-		return textResult(`Parsed: enable ${cmd.target} (execution deferred)`);
-	}
+	return line;
 }

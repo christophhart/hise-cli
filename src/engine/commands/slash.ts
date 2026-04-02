@@ -279,4 +279,12 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		kind: "command",
 		surfaces: ["tui"],
 	});
+
+	registry.register({
+		name: "compact",
+		description: "Toggle compact tree view (hide chains, show modules only)",
+		handler: async (_args, _session) => textResult("compact:toggle"),
+		kind: "command",
+		surfaces: ["tui"],
+	});
 }

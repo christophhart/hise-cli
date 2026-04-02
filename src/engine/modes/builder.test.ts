@@ -458,14 +458,14 @@ describe("validateAddCommand", () => {
 		);
 		expect(result.valid).toBe(false);
 		expect(result.errors[0]).toContain("Did you mean");
-		expect(result.errors[0]).toContain("AHDSR");
+		expect(result.errors[0]).toContain("AHDSR Envelope");
 	});
 
 	it("suggests for common misspellings", () => {
 		const cases = [
-			{ input: "StreamingSamplr", expected: "StreamingSampler" },
-			{ input: "SimplGain", expected: "SimpleGain" },
-			{ input: "LFo", expected: "LFO" },
+			{ input: "StreamingSamplr", expected: "Sampler" },
+			{ input: "SimplGain", expected: "Simple Gain" },
+			{ input: "LFOx", expected: "LFO Modulator" },
 		];
 
 		for (const { input, expected } of cases) {
@@ -719,7 +719,7 @@ describe("BuilderMode", () => {
 		const result = await mode.parse("add AHDSR", nullSession);
 		expect(result.type).toBe("text");
 		if (result.type === "text") {
-			expect(result.content).toContain("validation skipped");
+			expect(result.content).toContain("no HISE connection");
 		}
 	});
 
@@ -803,7 +803,7 @@ describe("BuilderMode completion", () => {
 	it("completes module types after 'add '", () => {
 		const mode = createBuilderWithEngine();
 		const result = mode.complete!("add AH", 6);
-		expect(result.items.some((i) => i.label === "AHDSR")).toBe(true);
+		expect(result.items.some((i) => i.detail === "AHDSR")).toBe(true);
 	});
 
 	it("completes show subcommands after 'show '", () => {

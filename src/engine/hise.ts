@@ -68,9 +68,12 @@ export class HttpHiseConnection implements HiseConnection {
 				method: "GET",
 				signal: this.abortController?.signal,
 			});
+			if (!response.ok) {
+				return { error: true, message: `${response.status} — ${endpoint} not found` };
+			}
 			return (await response.json()) as HiseResponse;
 		} catch (error) {
-			return { error: true, message: String(error) };
+			return { error: true, message: `GET ${endpoint}: ${String(error)}` };
 		}
 	}
 
@@ -83,9 +86,17 @@ export class HttpHiseConnection implements HiseConnection {
 				body: JSON.stringify(body),
 				signal: this.abortController?.signal,
 			});
+			if (!response.ok) {
+				// Try to parse error body, fall back to status code
+				try {
+					return (await response.json()) as HiseResponse;
+				} catch {
+					return { error: true, message: `${response.status} — ${endpoint} failed` };
+				}
+			}
 			return (await response.json()) as HiseResponse;
 		} catch (error) {
-			return { error: true, message: String(error) };
+			return { error: true, message: `POST ${endpoint}: ${String(error)}` };
 		}
 	}
 

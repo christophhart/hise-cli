@@ -87,9 +87,18 @@ export function fuzzyFilter(
 
 	const scored: ScoredItem[] = [];
 	for (const item of items) {
-		const s = scoreMatch(input, item.label);
-		if (s !== null) {
-			scored.push({ item, score: s });
+		// Match against label, insertText, and detail — take the best score
+		let best = scoreMatch(input, item.label);
+		if (item.insertText) {
+			const s = scoreMatch(input, item.insertText);
+			if (s !== null && (best === null || s < best)) best = s;
+		}
+		if (item.detail) {
+			const s = scoreMatch(input, item.detail);
+			if (s !== null && (best === null || s < best)) best = s;
+		}
+		if (best !== null) {
+			scored.push({ item, score: best });
 		}
 	}
 
@@ -129,8 +138,8 @@ export function buildDatasets(
 	if (moduleList) {
 		for (const m of moduleList.modules) {
 			moduleItems.push({
-				label: m.id,
-				detail: `${m.type} / ${m.subtype}`,
+				label: m.prettyName,
+				detail: m.id,
 			});
 
 			if (m.parameters?.length > 0) {

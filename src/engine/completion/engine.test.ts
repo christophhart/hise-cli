@@ -253,8 +253,9 @@ describe("buildDatasets", () => {
 	it("builds module items from moduleList", () => {
 		const ds = buildDatasets(moduleList, null, null);
 		expect(ds.moduleItems).toHaveLength(1);
-		expect(ds.moduleItems[0].label).toBe("SineSynth");
-		expect(ds.moduleItems[0].detail).toBe("SoundGenerator / SoundGenerator");
+		expect(ds.moduleItems[0].label).toBe("Sine Synth");
+		expect(ds.moduleItems[0].detail).toBe("SineSynth");
+		expect(ds.moduleItems[0].insertText).toBeUndefined();
 	});
 
 	it("builds module param map", () => {
@@ -540,10 +541,17 @@ describe("CompletionEngine", () => {
 			expect(items).toHaveLength(2);
 		});
 
-		it("filters by prefix", () => {
+		it("filters by prefix (type ID)", () => {
 			const items = engine.completeModuleType("SimpleG");
 			expect(items).toHaveLength(1);
-			expect(items[0].label).toBe("SimpleGain");
+			expect(items[0].label).toBe("Simple Gain");
+			expect(items[0].detail).toBe("SimpleGain");
+		});
+
+		it("filters by prefix (pretty name)", () => {
+			const items = engine.completeModuleType("Simple Ga");
+			expect(items).toHaveLength(1);
+			expect(items[0].detail).toBe("SimpleGain");
 		});
 
 		it("returns both Simple* modules for 'Simple'", () => {

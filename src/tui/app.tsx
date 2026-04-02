@@ -6,7 +6,6 @@ import type { DOMElement } from "ink";
 import { MouseProvider, useOnWheel, useOnPress, useOnDrag, getBoundingClientRect } from "@ink-tools/ink-mouse";
 import { PROFILING_ENABLED, onRenderCallback } from "./profiler.js";
 import type { CommandResult } from "../engine/result.js";
-import type { TreeNode } from "../engine/result.js";
 import type { HiseConnection } from "../engine/hise.js";
 import type { DataLoader } from "../engine/data.js";
 import { BuilderMode } from "../engine/modes/builder.js";
@@ -54,7 +53,6 @@ const ENTER_ACCEPTS_COMPLETION = false; // true = Enter accepts popup selection,
 export interface AppProps {
 	connection: HiseConnection | null;
 	dataLoader?: DataLoader;
-	builderTree?: TreeNode | null;
 	scheme?: ColorScheme;
 	width?: number;  // override stdout.columns (for screencast runner)
 	height?: number; // override stdout.rows (for screencast runner)
@@ -71,7 +69,7 @@ export function App(props: AppProps) {
 	);
 }
 
-function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, width, height, animate }: AppProps) {
+function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, animate }: AppProps) {
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
@@ -101,7 +99,6 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 			connection,
 			completionEngine,
 			getModuleList: () => moduleListRef.current,
-			getBuilderTree: () => builderTree,
 		}).session;
 	}
 	const session = sessionRef.current;
@@ -735,6 +732,18 @@ function AppInner({ connection, dataLoader, builderTree, scheme: schemeProp, wid
 					: "Tree sidebar is not visible. Press Ctrl+B to open it.";
 				const collapseBlock = renderResult({ type: "text", content: msg }, scheme, innerW);
 				if (collapseBlock) addBlocks([collapseBlock]);
+			} else if (result.type === "text" && input.trim() === "/compact") {
+				const mode = session.currentMode();
+				if (mode instanceof BuilderMode) {
+					mode.compactView = !mode.compactView;
+					const msg = mode.compactView ? "Compact view (chains hidden)" : "Full view (chains visible)";
+					const block = renderResult({ type: "text", content: msg }, scheme, innerW);
+					if (block) addBlocks([block]);
+				} else {
+					const block = renderResult({ type: "text", content: "/compact is only available in builder mode" }, scheme, innerW);
+					if (block) addBlocks([block]);
+				}
+				setRenderTick((prev) => prev + 1);
 			} else if (result.type === "empty" && input.startsWith("/")) {
 				if (input.trim() === "/clear") {
 					setOutputBlocks([]);

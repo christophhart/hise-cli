@@ -25,7 +25,6 @@ export async function executeCliCommand(
 	const { session, completionEngine } = createSession({
 		connection,
 		getModuleList: () => moduleList,
-		getBuilderTree: () => mockRuntime?.builderTree ?? null,
 	});
 	const moduleList = await loadSessionDatasets(dataLoader, completionEngine);
 	for (const mode of session.modeStack) {

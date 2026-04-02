@@ -119,11 +119,30 @@ describe("executeCliCommand", () => {
 
 	it("executes builder one-shot commands through the shared session path", async () => {
 		mockObserverFetch();
+		const conn = new MockHiseConnection().setProbeResult(true);
+		// Register builder mock handlers so execution can proceed
+		conn.onGet("/api/builder/tree", () => ({
+			success: true,
+			result: {
+				id: "SynthChain", processorId: "Master Chain", prettyName: "Container",
+				type: "SoundGenerator", subtype: "SoundGenerator", category: ["container"],
+				hasChildren: true, hasFX: false, modulation: [], bypassed: false,
+				colour: "#414141", children: [], midi: [], fx: [],
+			},
+			logs: [],
+			errors: [],
+		}));
+		conn.onPost("/api/builder/apply", () => ({
+			success: true,
+			result: { scope: "root", groupName: "root", diff: [{ domain: "builder", action: "+", target: "LFO" }] },
+			logs: ["Add LFO"],
+			errors: [],
+		}));
 		const result = await executeCliCommand(
 			["node", "hise-cli", "-builder", "add", "LFO"],
 			getCliCommands(),
 			createDataLoader(),
-			new MockHiseConnection().setProbeResult(true),
+			conn,
 		);
 
 		expect(result.kind).toBe("json");
@@ -132,7 +151,7 @@ describe("executeCliCommand", () => {
 				ok: true,
 				result: {
 					type: "text",
-					content: expect.stringContaining("Parsed: add LFO"),
+					content: expect.stringContaining("Add LFO"),
 				},
 			});
 			if ("result" in result.payload) {

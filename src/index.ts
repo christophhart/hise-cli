@@ -164,7 +164,7 @@ const dataLoader = createNodeDataLoader(dataDir);
 
 async function launchTui(
 	connection: import("./engine/hise.js").HiseConnection,
-	options?: { animate?: boolean; builderTree?: import("./engine/result.js").TreeNode | null },
+	options?: { animate?: boolean },
 ): Promise<void> {
 	const restoreAltScreen = setupAltScreen();
 
@@ -172,7 +172,6 @@ async function launchTui(
 		React.createElement(TuiApp, {
 			connection,
 			dataLoader,
-			builderTree: options?.builderTree,
 			animate: options?.animate,
 		}),
 		{
@@ -199,7 +198,6 @@ async function launchRepl(
 		const mockRuntime = createDefaultMockRuntime();
 		await launchTui(mockRuntime.connection, {
 			animate: !noAnimation,
-			builderTree: mockRuntime.builderTree,
 		});
 		return;
 	}

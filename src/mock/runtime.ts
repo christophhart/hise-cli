@@ -46,7 +46,7 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 
 	// Builder apply - accepts ops, returns diff scoped to current undo context
 	connection.onPost("/api/builder/apply", (body) => {
-		const ops = (body as { ops?: unknown[] })?.ops ?? [];
+		const ops = (body as { operations?: unknown[] })?.operations ?? [];
 		const diff = createMockDiffFromOps(ops);
 		pendingDiff.push(...diff);
 

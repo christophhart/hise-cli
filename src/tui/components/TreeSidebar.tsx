@@ -802,10 +802,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		let fg = scheme.foreground.default;
 		let bg = scheme.backgrounds.sidebar;
 
-		// Diff tinted background (applied before cursor check so cursor wins)
-		if (row.node.diff && DIFF_COLORS[row.node.diff]) {
-			bg = mix(DIFF_COLORS[row.node.diff]!, scheme.backgrounds.sidebar, DIFF_BG_ALPHA);
-		}
+		// Diff is indicated by the +/-/* character only — no row background tint
 
 		// When filter is active, dim ancestor-only rows (visible but not matching)
 		const isFilterAncestorOnly = filterPattern !== "" && rowIndex != null
