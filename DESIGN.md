@@ -451,57 +451,82 @@ slash command: `/modes`.
 
 ### Builder Mode
 
-Wraps the HISE Builder scripting API for constructing the module tree.
+Wraps the HISE Builder REST API (`/api/builder/*`) for constructing the
+module tree. Commands map to `POST /api/builder/apply` operations.
 
 ```
-# Adding
-add <type> [as "<name>"] [to <parent>.<chain>]
+# Adding modules
+add <type> [as "<name>"] [to <target>[.<chain>]]
 
   add StreamingSampler as "Sampler 1"
-  add AHDSR to Sampler1.gain
-  add LFO as "LFO2" to Sine.pitch
+  add AHDSR to Sampler 1.gain
+  add SimpleReverb to Master Chain          # chain auto-resolved to fx
 
-# Cloning (hybrid syntax)
-clone <source> x<count> [as "<template {n}>"]
-clone <source> as "<template {start..end}>"
+# Cloning (simple duplication, auto-renames IDs)
+clone <target> [x<count>]
 
-  clone Sampler1 x4
-  clone Sampler1 x4 as "Sampler {n}"
-  clone Sampler1 as "Sampler {2..10}"
+  clone Sampler 1
+  clone Sampler 1 x4
 
 # Removing
-remove <name>
-clear
-clear <target>.<chain>
+remove <target>
 
-# Moving
-move <name> to <parent>.<chain> [at <index>]
+# Moving (stub - not yet in HISE C++ API)
+move <target> to <parent>[.<chain>]
 
-# Parameters
-set <target> <param> [to] <value> [<param2> [to] <value2> ...]
+# Renaming
+rename <target> to "<name>"
 
-# Scripting
-connect <target> to script "<path>"
+  rename SineSynth1 to "My Sine"
+
+# Parameters (dot separates target from param)
+set <target>.<param> [to] <value>
+
+  set Master Chain.Volume to 0.5
+  set Pad Osc 1.Detune to 0.25
+
+# Loading DSP networks / compiled nodes
+load "<source>" into <target>
+
+  load "MyReverb" into ScriptFX1
 
 # Inspection
 show tree | show <target> | show types [synth|mod|fx|midi]
 
-# Selection context
-select <target>
-
 # Bypass
-bypass <name> | enable <name>
-
-# Session
-flush
+bypass <target> | enable <target>
 ```
 
-**Dot notation**: `Sampler1.gain` means the gain chain of Sampler1. Chains:
-`direct`, `gain`, `pitch`, `fx`, `midi`.
+**Comma chaining**: multiple operations on one line, separated by commas.
+Maps to multiple entries in the `operations[]` array of the REST API call.
+Verb inheritance: omit the verb keyword to reuse the previous one.
+Set target inheritance: omit `target.` to reuse the previous set target.
 
-**Clone range inference**: No trailing-number guessing. Count (`x4`) or
-brace expansion (`{2..10}`) is always explicit. `{n}` is a 1-indexed template
-placeholder.
+```
+# Explicit verbs
+add SineSynth, add LFO to SineSynth1, set SineSynth1.Volume to 0.5
+
+# Verb inheritance (omit verb = reuse last)
+add SineSynth as Funky, SineSynth2 as Funky3, set Funky3.Volume to 0.5
+
+# Set target inheritance (omit target. = reuse last set target)
+set Master Chain.Volume to 0.5, Pan to 10, LFO.FadeIn to 100
+```
+
+**Target identifiers**: bare words (`SineSynth1`) or multi-word
+(`Master Chain`). Quoted strings (`"Master Chain"`) also accepted.
+Autocomplete inserts quotes for IDs with spaces.
+
+**Dot notation**: `Master Chain.gain` means the gain chain of Master Chain.
+In `set`, dot separates target from parameter: `Master Chain.Volume`.
+
+**Chain auto-resolution**: when no `.chain` is specified in `add`/`move`,
+the chain is inferred from the module's type:
+- `SoundGenerator` - chain index -1 (direct child)
+- `Effect` - fx chain (index 3)
+- `MidiProcessor` - midi chain (index 0)
+- `Modulator` - requires explicit dot notation (`Sine.gain`),
+  fuzzy-matched against the parent's `modulation[]` chain IDs
 
 #### Builder Mode Validation
 

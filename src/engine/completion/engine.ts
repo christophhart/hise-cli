@@ -373,8 +373,15 @@ export class CompletionEngine {
 	completeBuilderKeyword(prefix: string): CompletionItem[] {
 		const items: CompletionItem[] = [
 			{ label: "add", detail: "Add a module to the tree" },
-			{ label: "show", detail: "Show tree or types" },
+			{ label: "clone", detail: "Duplicate a module" },
+			{ label: "remove", detail: "Remove a module" },
+			{ label: "move", detail: "Move a module (stub)" },
+			{ label: "rename", detail: "Rename a module" },
 			{ label: "set", detail: "Set a module parameter" },
+			{ label: "load", detail: "Load DSP network into module" },
+			{ label: "bypass", detail: "Bypass a module" },
+			{ label: "enable", detail: "Enable a bypassed module" },
+			{ label: "show", detail: "Show tree, types, or module" },
 			{ label: "cd", detail: "Navigate to a processor (cd .., cd /)" },
 			{ label: "ls", detail: "List children at current path" },
 			{ label: "pwd", detail: "Print current path" },

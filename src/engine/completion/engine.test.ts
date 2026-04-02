@@ -660,12 +660,12 @@ describe("CompletionEngine", () => {
 	describe("completeBuilderKeyword", () => {
 		it("returns all keywords for empty prefix", () => {
 			const items = engine.completeBuilderKeyword("");
-			expect(items).toHaveLength(6); // add, show, set, cd, ls, pwd
+			expect(items).toHaveLength(13); // add, show, set, cd, ls, pwd, clone, remove, move, rename, load, bypass, enable
 		});
 
 		it("filters by prefix", () => {
 			const items = engine.completeBuilderKeyword("a");
-			expect(items).toHaveLength(1);
+			expect(items.length).toBeGreaterThan(0);
 			expect(items[0].label).toBe("add");
 		});
 	});

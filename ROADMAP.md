@@ -514,53 +514,114 @@ the CLI-side execution is wired up.
 Tracks [#5](https://github.com/christoph-hart/hise-cli/issues/5) (builder)
 and [#4](https://github.com/christoph-hart/hise-cli/issues/4) (plan submode).
 
-### 4.0 HISE C++ builder endpoints (REST-first)
+### 4.0 HISE C++ builder endpoints (REST-first) ✓
 
 The builder is the first mode that mutates HISE state via REST. Following
-the REST-first principle, C++ endpoints are implemented and tested before
+the REST-first principle, C++ endpoints were implemented and tested before
 the CLI-side builder execution code.
 
-**4.0.1 — Design endpoint contracts**: JSON request/response schemas for
-all builder endpoints. Full specification in
-[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md) § Builder.
+**Status: Completed.** All builder and undo endpoints probed against live
+HISE. Three C++ bugs found and fixed (empty runtime tree children, name
+truncation, SynthGroup constrainer `!` negation). Two API inconsistencies
+fixed (group apply returning null result, integer colours on disabled
+chains). Canonical API contract documented in
+`hise-source/guidelines/api/rest-api.md`. Friction points tracked in
+`hise-source/guidelines/api/BUILDER_PITFALLS.md`.
 
-**4.0.2 — Implement C++ handlers**: Add to `ApiRoute` enum, route metadata,
-handler implementations in `RestHelpers.cpp`, switch cases in
-`BackendProcessor.cpp`. Endpoints:
-- `GET /api/builder/tree` — hierarchical module tree
-- `POST /api/builder/add` — add module (with `validate: true` dry-run)
-- `POST /api/builder/remove` — remove module
-- `POST /api/builder/set_attributes` — set parameter values
-- `POST /api/builder/clear` / `clear_children` — clear modules
-- `POST /api/builder/clone` — deep-copy modules
-- `POST /api/builder/move` — move module between chains
-- `POST /api/builder/connect_to_script` — attach external script
-- `POST /api/builder/flush` — apply pending UI updates
+**Actual C++ API** (consolidated, not per-operation endpoints):
+- `GET /api/builder/tree` - hierarchical module tree with parameters,
+  modulation chains, colours. Supports `moduleId`, `group`, `verbose`,
+  `queryParameters` params.
+- `POST /api/builder/apply` - batched operations: `add`, `remove`,
+  `clone`, `set_attributes`, `set_id`, `set_bypassed`, `set_effect`,
+  `set_complex_data`. Returns diff summary (`+`/`-`/`*` actions).
+- `POST /api/undo/push_group` / `pop_group` - grouped execution (plan mode)
+- `POST /api/undo/back` / `forward` - undo/redo
+- `GET /api/undo/diff` / `history` - diff inspection
+- `POST /api/undo/clear` - clear undo history
 
-**4.0.3 — C++ unit tests**: Verify each operation end-to-end in
-`ServerUnitTests.cpp`. Test patterns: add → verify via tree, remove →
-verify gone, set_attributes → verify parameter changed, clone → verify
-copy exists, move → verify new parent. Test error cases: invalid module
-type, duplicate name, invalid chain target, out-of-range parameter.
+**4.0.4 — Mock data & contract alignment** ✓
 
-**4.0.4 — Update mock contract data**: builder mock payloads and contract
-normalizers must match the validated `GET /api/builder/tree` response from C++
-tests. Follow [MODE_DEVELOPMENT.md](MODE_DEVELOPMENT.md) for the mock-first
-contract workflow and live parity test requirements.
+- `src/mock/contracts/builder.ts` - Raw HISE tree types (`RawTreeNode`,
+  `RawModulationChain`), diff types (`BuilderDiffEntry`, `BuilderApplyResult`),
+  normalizer functions (`normalizeBuilderTree` -> `TreeNode`,
+  `applyDiffToTree`, response normalizers). 29 contract tests.
+- `src/engine/hise.ts` - Widened `HiseEnvelopeResponse.result` from
+  `string` to `string | object | null` for builder object responses.
+- `src/mock/runtime.ts` - Mock handlers for `GET /api/builder/tree`,
+  `POST /api/builder/apply` (with diff tracking), undo group endpoints
+  (`push_group`, `pop_group`, `GET diff`, `clear`).
+- `src/mock/builderTree.ts` - Rewritten to match the "Hybrid Keys" mock
+  project (23 modules, 15 types, 4 nesting depths, all chain types).
 
-### 4.1 Builder parser
+**Constrainer parser** (Track 1) ✓
 
-Full Chevrotain grammar from
-[DESIGN.md — Builder Mode](DESIGN.md#builder-mode):
-`add`, `clone`, `remove`, `clear`, `move`, `set`, `connect`, `show`, `select`,
-`bypass`/`enable`, `flush`. Clone commands use `brace-expansion` for
-`{2..10}` patterns.
+- `src/engine/constrainer-parser.ts` - TypeScript port of HISE's
+  `ProcessorMetadata::ConstrainerParser`. Handles `*`, positive subtype
+  matching, `!` negation, mixed patterns. 10 tests.
+- Wired into `validateChainConstraint()` in builder.ts for data-driven
+  chain validation using constrainer strings from `moduleList.json`.
+  13 chain constraint tests.
 
-### 4.2 Module tree tracking + tree sidebar integration
+### 4.1 Builder parser ✓
 
-Fetch from `GET /api/builder/tree` on mode entry. Update locally as commands
-execute. Enables instance-level validation (module name exists, name
-uniqueness) without round-trips.
+**Status: Completed.** Full Chevrotain grammar rewrite matching the actual
+HISE `builder/apply` operations. Updated grammar spec in
+[DESIGN.md - Builder Mode](DESIGN.md#builder-mode).
+
+**Grammar** (10 command rules):
+- `add <type> [as "<name>"] [to <target>[.<chain>]]`
+- `clone <target> [x<count>]`
+- `remove <target>`
+- `move <target> to <parent>[.<chain>]` (stub - not yet in C++ API)
+- `rename <target> to "<name>"`
+- `set <target>.<param> [to] <value>`
+- `load "<source>" into <target>`
+- `bypass <target>` / `enable <target>`
+- `show tree` / `show types [filter]` / `show <target>`
+
+**Key features:**
+- Multi-word targets via greedy `AT_LEAST_ONE(Identifier)` or `QuotedString`
+- Dot notation for `set` (separates target from param: `set Master Chain.Volume to 0.5`)
+- Chain auto-resolution by module type (SoundGenerator -> children,
+  Effect -> fx, MidiProcessor -> midi, Modulator -> explicit `.chain` required)
+- Comma chaining with verb inheritance and set target inheritance
+  (`set X.Volume to 0.5, Pan to 10, LFO.FadeIn to 100`)
+- 9 new keyword tokens + XCount multiplier + Comma in `tokens.ts`
+
+**Instance ID completion** ✓
+
+- `collectModuleIds()` tree walker - extracts `{id, type}` pairs from `TreeNode`
+- Token-aware `complete()` using Chevrotain lexer for position detection
+- Context-dependent completions: module types after `add`, instance IDs
+  after `remove`/`clone`/`bypass`/`enable`/`rename`/`move`/`load`, parent
+  IDs after `add ... to`, parameters after `set <target>.`
+- Instance-to-type resolution for `set` param completion (e.g., `set Osc 1.`
+  resolves "Osc 1" to SineSynth, completes SineSynth params)
+- Auto-quoting: IDs with spaces get `insertText: '"Master Chain"'`
+- Comma-aware: completes only the last segment after a comma
+
+**Files modified/created:**
+- `src/engine/modes/tokens.ts` - 9 keyword tokens, XCount, Comma, VERB_KEYWORDS
+- `src/engine/modes/builder.ts` - Full parser rewrite, tree utilities,
+  completion rewrite (~500 lines changed)
+- `src/engine/highlight/builder.ts` - New keywords in syntax highlighter
+- `src/engine/completion/engine.ts` - Updated keyword list (13 builder keywords)
+- `src/engine/modes/builder.test.ts` - 105 tests (parser, comma chaining,
+  validation, integration, collectModuleIds, instance completion)
+
+**Removed from old spec** (not in C++ API): `clear`, `flush`, `select`,
+`connect`, clone templates/brace-expansion.
+
+**Added** (match C++ API): `rename` (set_id), `load...into` (set_effect),
+`bypass`/`enable` (set_bypassed), comma chaining (maps to operations array).
+
+### 4.2 Execution wiring + tree tracking
+
+Fetch tree from `GET /api/builder/tree` on mode entry. Commands call
+`POST /api/builder/apply` instead of returning "deferred". Map parsed
+commands to API operations (chain auto-resolution). Re-fetch tree after
+mutations, update diff indicators in sidebar.
 
 The tree sidebar (implemented in Phase 3.6) displays this tree via
 `Mode.getTree()` / `getSelectedPath()` / `selectNode()`. `cd` validates
@@ -570,9 +631,13 @@ auto-updates after commands execute.
 
 ### 4.3 Plan submode + diff indicators
 
-Record validated commands. `/execute` runs the plan. `/export` generates
-HiseScript using `builderPath` from `moduleList.json`. `/show` displays
-the plan. `/remove N` edits it. `/discard` returns to live mode.
+Enter with `plan` keyword. Uses `POST /api/undo/push_group` for grouped
+execution. Commands validated against the evolving plan tree.
+
+- `/execute` - `POST /api/undo/pop_group { cancel: false }`
+- `/discard` - `POST /api/undo/pop_group { cancel: true }`
+- `/show` - `GET /api/undo/diff` - display planned operations
+- `/export` - generate HiseScript using `builderPath` from `moduleList.json`
 
 Plan mode uses the tree sidebar's `TreeNode.diff` property to visualize
 planned changes: `"added"` (green +) for modules to be created,
@@ -580,19 +645,16 @@ planned changes: `"added"` (green +) for modules to be created,
 for parameter changes. `added`/`removed` propagate to children
 automatically via the existing diff propagation in `propagateChainColors()`.
 
-HISE-side plan validation via `validate: true` flag on `POST /api/builder/add`.
+Diff data comes from `POST /api/builder/apply` responses (always returned,
+even inside groups - fixed in C++).
 
 **Phase 4 gate — all must pass:**
-- **C++ gate** (4.0): all builder endpoints pass unit tests in
-  `ServerUnitTests.cpp`, `verifyAllEndpointsTested()` passes
-- **hise-cli gate** (4.1–4.3): `npm test` passes with full Chevrotain parser
-  for all grammar forms (`add`, `clone`, `remove`, `clear`, `move`, `set`,
-  `connect`, `show`, `select`, `bypass`/`enable`, `flush`), plan submode
-  records/shows/removes/exports commands, module tree tracking validates
-  against mock runtime data matching the C++ response structure, `.tape` screencast
-  for builder workflow
-- `npm run build && npm run typecheck` pass
-- **Integration**: builder commands execute correctly against live HISE
+- **C++ gate** (4.0): ✓ all builder/undo endpoints probed and validated
+- **hise-cli gate** (4.0.4 + 4.1): ✓ 618 tests pass with contract
+  normalizers, full Chevrotain parser for all grammar forms, instance
+  completion, constrainer validation, mock runtime handlers
+- ✓ `npm run build && npm run typecheck` pass
+- **Remaining** (4.2-4.3): execution wiring, tree tracking, plan submode
 
 ---
 
@@ -1084,9 +1146,8 @@ contracts and live parity tests, is defined in [MODE_DEVELOPMENT.md](MODE_DEVELO
 | UI parameter validation | `POST /api/ui/validate_parameters` | Phase 6.3 |
 | Module reference (`/modules`) | None — local `moduleList.json` | None |
 | API docs (`/api`) | None — local `scripting_api.json` | None |
-| Builder execution | `POST /api/builder/add`, `/remove`, `/move`, `/set_attributes` | Phase 4 (4.0) |
-| Plan validation | `POST /api/builder/add` with `validate: true` | Phase 4 (4.0) |
-| Module tree fetch | `GET /api/builder/tree` | Phase 4 (4.0) |
+| Builder execution | `POST /api/builder/apply` (batched ops), `GET /api/builder/tree` | Phase 4 (4.0) ✓ |
+| Undo/plan groups | `POST /api/undo/push_group`, `pop_group`, `back`, `forward`, `clear`; `GET /api/undo/diff`, `history` | Phase 4 (4.0) ✓ |
 | UI component CRUD | `POST /api/ui/add_component`, `/remove_component`, `/rename_component`, `/move_component`, `/reparent_component` | Phase 6.3 |
 | Expansion management | `GET /api/expansions/list`, `/assets`; `POST /api/expansions/switch`, `/create`, `/encode`, `/refresh` | Phase 6.4 |
 | DSP mode | `POST /api/dsp/*` | Phase 6.5 |

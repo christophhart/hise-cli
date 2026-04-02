@@ -23,6 +23,12 @@ export const NumberLiteral = createToken({
 	pattern: /-?\d+(\.\d+)?/,
 });
 
+// Multiplier token: x4, x10, etc. Must come before Identifier.
+export const XCount = createToken({
+	name: "XCount",
+	pattern: /x\d+/i,
+});
+
 // ── Identifiers ─────────────────────────────────────────────────────
 export const DotPath = createToken({
 	name: "DotPath",
@@ -43,6 +49,54 @@ export const Identifier = createToken({
 export const Add = createToken({
 	name: "Add",
 	pattern: /add/i,
+	longer_alt: Identifier,
+});
+
+export const Clone = createToken({
+	name: "Clone",
+	pattern: /clone/i,
+	longer_alt: Identifier,
+});
+
+export const Remove = createToken({
+	name: "Remove",
+	pattern: /remove/i,
+	longer_alt: Identifier,
+});
+
+export const Move = createToken({
+	name: "Move",
+	pattern: /move/i,
+	longer_alt: Identifier,
+});
+
+export const Rename = createToken({
+	name: "Rename",
+	pattern: /rename/i,
+	longer_alt: Identifier,
+});
+
+export const Load = createToken({
+	name: "Load",
+	pattern: /load/i,
+	longer_alt: Identifier,
+});
+
+export const Into = createToken({
+	name: "Into",
+	pattern: /into/i,
+	longer_alt: Identifier,
+});
+
+export const Bypass = createToken({
+	name: "Bypass",
+	pattern: /bypass/i,
+	longer_alt: Identifier,
+});
+
+export const Enable = createToken({
+	name: "Enable",
+	pattern: /enable/i,
 	longer_alt: Identifier,
 });
 
@@ -88,22 +142,45 @@ export const Dot = createToken({
 	pattern: /\./,
 });
 
+export const Comma = createToken({
+	name: "Comma",
+	pattern: /,/,
+});
+
 // ── Token order for the builder lexer ───────────────────────────────
 // Keywords must come before Identifier so they match first.
+// XCount must come before Identifier (x4 should not lex as Identifier).
 
 export const BUILDER_TOKENS = [
 	WhiteSpace,
 	QuotedString,
 	NumberLiteral,
+	XCount,
 	Add,
+	Clone,
+	Remove,
+	Move,
+	Rename,
+	Load,
+	Into,
+	Bypass,
+	Enable,
 	Show,
 	Set,
 	To,
 	As,
 	Tree,
 	Types,
+	Comma,
 	Dot,
 	Identifier,
 ];
+
+// ── Verb keywords (for comma pre-processor) ────────────────────────
+const _Set = globalThis.Set;
+export const VERB_KEYWORDS: ReadonlySet<string> = new _Set([
+	"add", "clone", "remove", "move", "rename",
+	"load", "set", "show", "bypass", "enable",
+]);
 
 export const builderLexer = new Lexer(BUILDER_TOKENS);
