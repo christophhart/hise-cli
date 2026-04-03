@@ -5,7 +5,7 @@ import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type { DOMElement } from "ink";
 import { MouseProvider, useOnWheel, useOnPress, useOnDrag, getBoundingClientRect } from "@ink-tools/ink-mouse";
 import { PROFILING_ENABLED, onRenderCallback } from "./profiler.js";
-import type { CommandResult } from "../engine/result.js";
+import type { CommandResult, TreeNode } from "../engine/result.js";
 import type { HiseConnection } from "../engine/hise.js";
 import type { DataLoader } from "../engine/data.js";
 import { BuilderMode } from "../engine/modes/builder.js";
@@ -743,7 +743,6 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					const block = renderResult({ type: "text", content: "/compact is only available in builder mode" }, scheme, innerW);
 					if (block) addBlocks([block]);
 				}
-				setRenderTick((prev) => prev + 1);
 			} else if (result.type === "empty" && input.startsWith("/")) {
 				if (input.trim() === "/clear") {
 					setOutputBlocks([]);
@@ -766,6 +765,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		} finally {
 			disabledRef.current = false;
 			setDisabled(false);
+			// Refresh tree sidebar from current mode after every command
+			const mode = session.currentMode();
+			setModeTree(mode.getTree?.() ?? null);
+			setModeSelectedPath(mode.getSelectedPath?.() ?? []);
 		}
 
 	}, [session, scheme, addBlocks, exit, connectionStatus, columns, rows, contentColumns, layout, maxScrollOffset]);
@@ -993,18 +996,15 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// the completion result, so it is always in sync with the typed value)
 	const ghostText = completionState?.ghostText;
 
-	// ── Tree sidebar data ──────────────────────────────────────────
-	const modeTree = currentMode.getTree?.() ?? null;
-	const modeSelectedPath = currentMode.getSelectedPath?.() ?? [];
-
-	// Counter to force re-render after mode mutations (e.g. selectNode
-	// changes currentPath but React doesn't know about it).
-	const [, setRenderTick] = useState(0);
+	// ── Tree sidebar data (React state so updates trigger re-render) ──
+	const [modeTree, setModeTree] = useState<TreeNode | null>(currentMode.getTree?.() ?? null);
+	const [modeSelectedPath, setModeSelectedPath] = useState<string[]>(currentMode.getSelectedPath?.() ?? []);
 
 	const handleTreeSelect = useCallback((path: string[]) => {
 		if (currentMode.selectNode) {
 			currentMode.selectNode(path);
-			setRenderTick((prev) => prev + 1);
+			setModeTree(currentMode.getTree?.() ?? null);
+			setModeSelectedPath(currentMode.getSelectedPath?.() ?? []);
 		}
 	}, [currentMode]);
 

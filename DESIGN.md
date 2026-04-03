@@ -571,35 +571,34 @@ Standard chain mapping for SoundGenerators:
 Constrainer syntax: `"*"` (any), `"VoiceStartModulator"` (exact subtype),
 `"MasterEffect|!RouteEffect|!SlotFX"` (subtype + exclusion list).
 
-### Plan Submode
+### Undo Mode
 
-Enter with `plan` from builder mode. Commands are validated locally first
-(type-level), then by HISE (via the `validate` flag on the API) and recorded.
-Strict validation: invalid commands are rejected immediately.
+Top-level mode (`/undo`, cyan `#66d9ef`) providing undo/redo navigation and
+plan groups across all domains. Supports inline one-shot calls from any mode
+(`/undo back` from builder).
 
 ```
-[builder] > plan
-[builder:plan] > add StreamingSampler as "Sampler 1"
-  ok [1] add StreamingSampler as "Sampler 1"
-[builder:plan] > /execute          # run the plan
-[builder:plan] > /export plan.js   # generate HiseScript
-[builder:plan] > /show             # display the plan
-[builder:plan] > /remove 2         # edit the plan
-[builder:plan] > /discard          # discard and return to live mode
+[undo] > back                    # undo one action/group
+[undo] > forward                 # redo one action/group
+[undo] > plan "Add oscillators"  # start plan group
+[plan:Add oscillators] > ...     # (switch to builder, make changes)
+[undo] > apply                   # commit plan as one undoable unit
+[undo] > discard                 # roll back plan
+[undo] > diff                    # show current diff
+[undo] > history                 # show full history
+[undo] > clear                   # clear all history
 ```
 
-**HISE-side validation**: each command is sent through the same API with
-`validate: true`. HISE maintains a stateful plan session (virtual tree) so
-step N+1 can reference modules from step N.
+**Plan groups**: `plan "name"` calls `POST /api/undo/push_group`. While a
+group is active, builder commands execute via `/api/builder/apply` as usual —
+HISE validates against the group's evolving state. The runtime tree is empty
+during a plan; builder detects this via `GET /api/undo/diff` (`groupName`)
+and fetches `?group=current` for the plan tree. `apply` commits the group
+as one undoable unit, `discard` rolls back.
 
-**CLI-side reference tracking**: the CLI tracks which plan steps introduce
-which names (simple string bookkeeping). When a step is removed, dependent
-steps are flagged - no HISE roundtrip needed for that.
-
-**CLI-side script generation**: the CLI generates HiseScript from validated
-plan steps using the `builderPath` field from `moduleList.json` to map short
-type names to full builder constants (`SimpleGain` -> `b.Effects.SimpleGain`).
-Clone steps emit for-loops.
+**Sidebar tree**: shows undo history from `GET /api/undo/history`. Past
+actions are flat, the active plan group is nested one level with its diff
+children. Cursor position highlighted with `>`.
 
 ### DSP (Scriptnode) Mode
 

@@ -36,12 +36,12 @@ Tab
 Sleep 300ms
 Expect "add"
 
-# Continue typing module prefix (single match: "add AH" + Tab → "add AHDSR")
+# Continue typing module prefix (single match: "add AH" + Tab → "add AHDSR Envelope")
 Type " AH"
 Sleep 200ms
 Tab
 Sleep 300ms
-Expect "AHDSR"
+Expect "AHDSR Envelope"
 
 # Submit the completed command
 Enter

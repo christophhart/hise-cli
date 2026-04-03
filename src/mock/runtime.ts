@@ -65,29 +65,84 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 	});
 
 	// Undo group management
+	let historyCursor = -1;
+	const historyEntries: Array<{ name: string; count: number }> = [];
+
 	connection.onPost("/api/undo/push_group", (body) => {
 		inGroup = true;
 		groupName = String((body as { name?: string })?.name ?? "Unnamed");
 		pendingDiff.length = 0;
-		return envelopeOk("ok");
+		return envelopeDiff(groupName, []);
 	});
 
-	connection.onPost("/api/undo/pop_group", () => {
+	connection.onPost("/api/undo/pop_group", (body) => {
+		const cancel = (body as { cancel?: boolean })?.cancel ?? false;
+		const prevGroup = groupName;
 		inGroup = false;
 		groupName = "";
-		return envelopeOk("ok");
+		if (cancel) {
+			pendingDiff.length = 0;
+			return envelopeDiff("root", []);
+		}
+		// Apply: collapse into a single history entry
+		if (pendingDiff.length > 0) {
+			historyEntries.push({ name: prevGroup, count: pendingDiff.length });
+			historyCursor = historyEntries.length - 1;
+		}
+		return envelopeDiff("root", [...pendingDiff]);
+	});
+
+	connection.onPost("/api/undo/back", () => {
+		if (historyCursor < 0) {
+			return { success: false, result: null, logs: [], errors: [{ errorMessage: "nothing to undo", callstack: [] }] };
+		}
+		historyCursor--;
+		return envelopeDiff(inGroup ? groupName : "root", [...pendingDiff]);
+	});
+
+	connection.onPost("/api/undo/forward", () => {
+		if (historyCursor >= historyEntries.length - 1) {
+			return { success: false, result: null, logs: [], errors: [{ errorMessage: "nothing to redo", callstack: [] }] };
+		}
+		historyCursor++;
+		return envelopeDiff(inGroup ? groupName : "root", [...pendingDiff]);
 	});
 
 	connection.onGet("/api/undo/diff", () => ({
 		success: true,
-		result: { diff: [...pendingDiff] },
+		result: {
+			scope: "group",
+			groupName: inGroup ? groupName : "root",
+			diff: [...pendingDiff],
+		},
+		logs: [],
+		errors: [],
+	}));
+
+	connection.onGet("/api/undo/history", () => ({
+		success: true,
+		result: {
+			scope: "group",
+			groupName: inGroup ? groupName : "root",
+			cursor: historyCursor,
+			history: historyEntries.map((e, i) => ({
+				index: i,
+				type: "group",
+				name: e.name,
+				count: e.count,
+			})),
+		},
 		logs: [],
 		errors: [],
 	}));
 
 	connection.onPost("/api/undo/clear", () => {
 		pendingDiff.length = 0;
-		return envelopeOk("ok");
+		historyEntries.length = 0;
+		historyCursor = -1;
+		inGroup = false;
+		groupName = "";
+		return envelopeDiff("root", []);
 	});
 
 	return {
@@ -102,11 +157,20 @@ function envelopeOk(result: string): HiseResponse {
 	return { success: true, result, logs: [], errors: [] };
 }
 
+function envelopeDiff(groupName: string, diff: BuilderDiffEntry[]): HiseResponse {
+	return {
+		success: true,
+		result: { scope: "group", groupName, diff },
+		logs: [],
+		errors: [],
+	};
+}
+
 /** Create a minimal raw tree matching HISE's GET /api/builder/tree shape. */
 function createMockRawTree(): object {
 	return {
 		id: "SynthChain",
-		processorId: "Master",
+		processorId: "Master Chain",
 		prettyName: "Container",
 		type: "SoundGenerator",
 		subtype: "SoundGenerator",

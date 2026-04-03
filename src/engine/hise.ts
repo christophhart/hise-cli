@@ -152,7 +152,12 @@ export class MockHiseConnection implements HiseConnection {
 
 	async get(endpoint: string): Promise<HiseResponse> {
 		this.calls.push({ method: "GET", endpoint });
-		const handler = this.getHandlers.get(endpoint);
+		let handler = this.getHandlers.get(endpoint);
+		if (!handler) {
+			// Strip query string and try base path
+			const basePath = endpoint.split("?")[0];
+			handler = this.getHandlers.get(basePath);
+		}
 		if (handler) {
 			return handler();
 		}

@@ -328,6 +328,25 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		}
 		return initial;
 	});
+	// Re-expand tree when its structure changes (mode switch, tree refresh, new nodes)
+	const treeRootId = tree?.id ?? tree?.label;
+	const treeChildCount = tree?.children?.length ?? 0;
+	useEffect(() => {
+		if (!tree) return;
+		const newExpanded = new Set<string>();
+		function expandAll(node: TreeNode, parentPath: string[]): void {
+			const key = [...parentPath, node.id ?? node.label].join(".");
+			newExpanded.add(key);
+			if (node.children) {
+				for (const child of node.children) {
+					expandAll(child, [...parentPath, node.id ?? node.label]);
+				}
+			}
+		}
+		expandAll(tree, []);
+		setExpandedSet(newExpanded);
+	}, [treeRootId, treeChildCount]);
+
 	const [cursorIndex, setCursorIndex] = useState(persistedState?.cursorIndex ?? 0);
 	const [scrollOffset, setScrollOffset] = useState(persistedState?.scrollOffset ?? 0);
 

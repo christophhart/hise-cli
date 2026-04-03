@@ -11,6 +11,7 @@ function createMockSession(): CommandSession & { modes: string[]; quitRequested:
 	
 	return {
 		modes,
+		connection: null,
 		get quitRequested() { return quitRequested; },
 		get modeStackDepth() {
 			return modes.length;

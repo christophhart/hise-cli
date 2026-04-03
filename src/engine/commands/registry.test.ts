@@ -7,6 +7,7 @@ function createMockSession(): CommandSession {
 	const modeCache = new Map<string, import("../modes/mode.js").Mode>();
 	
 	return {
+		connection: null,
 		get modeStackDepth() {
 			return modes.length;
 		},

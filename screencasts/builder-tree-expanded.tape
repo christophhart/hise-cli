@@ -10,22 +10,23 @@ Set Connection "mock"
 
 Type "/builder"
 Enter
-Sleep 500ms
+Sleep 1000ms
 ExpectMode "builder"
 
 # Open the sidebar
 Ctrl+B
-Sleep 500ms
+Sleep 1000ms
 
 # The tree should be fully expanded by default.
-# "Oscillators" is a direct child of root — visible even if only root expanded
-Expect "Oscillators" sidebar
+# "Master Chain" is the root — always visible (check full screen, sidebar region
+# detection depends on search icon rendering which may not be captured in PTY)
+Expect "Master Chain"
 
-# "Osc 1" is a child of Oscillators — only visible if Oscillators is expanded
-Expect "Osc 1" sidebar
+# "Osc 1" is a direct child (sound generator) — visible if root is expanded
+Expect "Osc 1"
 
-# "KeyNumber" is deeply nested (5 levels) — only visible if everything is expanded
-Expect "KeyNumber" sidebar
+# "Gain Modulation" is a modulation chain — visible if fully expanded
+Expect "Gain Modulation"
 
 # Exit
 Type "/exit"

@@ -144,16 +144,22 @@ export class Session implements SessionContext, CommandSession {
 	// ── One-shot execution ──────────────────────────────────────────
 
 	async executeOneShot(modeId: string, input: string): Promise<CommandResult> {
+		const activeMode = this.currentMode(); // save reference before push
 		const mode = this.getOrCreateMode(modeId);
 		this.modeStack.push(mode);
 		const result = await mode.parse(input, this);
 		this.popMode(true); // Silent pop
-		
+
+		// After undo one-shot, invalidate the active mode's tree so it re-fetches
+		if (modeId === "undo" && activeMode.invalidateTree) {
+			activeMode.invalidateTree();
+		}
+
 		// Tag the result with the mode's accent so the TUI can use it for output borders
 		if (result.type !== "empty") {
 			result.accent = mode.accent;
 		}
-		
+
 		return result;
 	}
 

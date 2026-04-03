@@ -12,6 +12,7 @@ export interface CommandSession {
 	requestQuit(): void;
 	readonly modeStackDepth: number;
 	readonly currentModeId: string;
+	readonly connection: import("../hise.js").HiseConnection | null;
 	allCommands(): CommandEntry[];
 	/** Get or create a cached mode instance (for one-shot execution and argument completion) */
 	getOrCreateMode(modeId: string): import("../modes/mode.js").Mode;

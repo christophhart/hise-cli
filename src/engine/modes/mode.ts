@@ -13,6 +13,7 @@ export const MODE_ACCENTS = {
 	inspect: "#ae81ff",
 	project: "#e6db74",
 	compile: "#f92672",
+	undo: "#66d9ef",
 } as const;
 
 export type ModeId =
@@ -23,7 +24,8 @@ export type ModeId =
 	| "sampler"
 	| "inspect"
 	| "project"
-	| "compile";
+	| "compile"
+	| "undo";
 
 export interface CompletionItem {
 	label: string;
@@ -75,4 +77,11 @@ export interface Mode {
 	getSelectedPath?(): string[];
 	/** Navigate to a node by path (called when the user selects a tree node). */
 	selectNode?(path: string[]): void;
+
+	/** Mark the mode's cached tree as stale so it re-fetches on next use.
+	 *  Called by the session after one-shot undo commands change shared state. */
+	invalidateTree?(): void;
+
+	/** Called when the mode is entered (pushed onto stack). Async to allow data fetching. */
+	onEnter?(session: SessionContext): Promise<void>;
 }

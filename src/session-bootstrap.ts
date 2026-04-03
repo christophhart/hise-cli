@@ -5,8 +5,9 @@ import { Session } from "./engine/session.js";
 import { BuilderMode } from "./engine/modes/builder.js";
 import { InspectMode } from "./engine/modes/inspect.js";
 import { ScriptMode } from "./engine/modes/script.js";
+import { UndoMode } from "./engine/modes/undo.js";
 
-export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder"] as const;
+export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo"] as const;
 
 export interface CreateSessionOptions {
 	connection: HiseConnection | null;
@@ -26,6 +27,7 @@ export function createSession({
 		"builder",
 		(ctx) => new BuilderMode(getModuleList?.(), completionEngine, ctx),
 	);
+	session.registerMode("undo", () => new UndoMode(completionEngine));
 	return { session, completionEngine };
 }
 

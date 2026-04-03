@@ -408,4 +408,28 @@ export class CompletionEngine {
 		];
 		return fuzzyFilter(prefix, items);
 	}
+
+	/**
+	 * Complete undo mode keywords.
+	 */
+	completeUndo(prefix: string, inPlan: boolean): CompletionItem[] {
+		const items: CompletionItem[] = [
+			{ label: "back", detail: "Undo one action/group" },
+			{ label: "forward", detail: "Redo one action/group" },
+			{ label: "clear", detail: "Clear all undo history" },
+			{ label: "diff", detail: "Show current diff" },
+			{ label: "history", detail: "Show undo history" },
+		];
+		if (inPlan) {
+			items.push(
+				{ label: "apply", detail: "Commit plan group" },
+				{ label: "discard", detail: "Discard plan group" },
+			);
+		} else {
+			items.push(
+				{ label: "plan", detail: "Start a plan group" },
+			);
+		}
+		return fuzzyFilter(prefix, items);
+	}
 }

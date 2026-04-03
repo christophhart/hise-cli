@@ -42,6 +42,14 @@ describe("screencasts", () => {
 		await testTape(tape("builder-tree-expanded"));
 	}, 30_000);
 
+	it("builder-execution", async () => {
+		await testTape(tape("builder-execution"));
+	}, 30_000);
+
+	it("undo-mode", async () => {
+		await testTape(tape("undo-mode"));
+	}, 30_000);
+
 	afterAll(() => {
 		// Gzip .cast files and generate HTML preview page
 		const script = path.join(SCREENCASTS_DIR, "generate.py");

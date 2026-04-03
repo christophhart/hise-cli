@@ -61,6 +61,7 @@ async function handleModes(
 		["inspect", "Runtime monitor", MODE_ACCENTS.inspect],
 		["project", "Project settings", MODE_ACCENTS.project],
 		["compile", "Build targets", MODE_ACCENTS.compile],
+		["undo", "Undo history & plan groups", MODE_ACCENTS.undo],
 	];
 
 	return tableResult(
@@ -111,16 +112,21 @@ function createModeHandler(modeId: ModeId): CommandHandler {
 		} else {
 			// Enter mode (with optional context)
 			const mode = session.getOrCreateMode(modeId);
-			
+
 			// Set context if provided
 			if (context && mode.setContext) {
 				mode.setContext(context);
 			}
-			
+
 			// Push mode onto stack
 			const pushResult = session.pushMode(modeId);
 			if (pushResult) return pushResult;
-			
+
+			// Fetch initial data (tree, history) so sidebar shows content immediately
+			if (mode.onEnter) {
+				await mode.onEnter({ connection: session.connection, popMode: () => session.popMode() });
+			}
+
 			const label = context ? `${modeId}.${context}` : modeId;
 			const result = textResult(`Entered ${label} mode.`);
 			// Tag with target mode's accent for output border
@@ -253,6 +259,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "compile",
 		description: "Enter compile mode (build targets)",
 		handler: createModeHandler("compile"),
+		kind: "mode",
+	});
+
+	registry.register({
+		name: "undo",
+		description: "Enter undo mode (history & plan groups)",
+		handler: createModeHandler("undo"),
 		kind: "mode",
 	});
 

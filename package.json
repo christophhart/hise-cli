@@ -38,7 +38,7 @@
     "test:live-contract": "vitest run --config vitest.live.config.ts",
     "test:live-contract:inspect": "vitest run --config vitest.live.config.ts src/live-contract/inspect.live.test.ts",
     "test:live-contract:script": "vitest run --config vitest.live.config.ts src/live-contract/script.live.test.ts",
-    "test:screencasts": "vitest run src/tui/screencast/tape-runner.test.ts",
+    "test:screencasts": "vitest run --config vitest.screencast.config.ts",
     "prepack": "npm run build",
     "start": "node dist/index.js",
     "dev": "npm run build && node dist/index.js",

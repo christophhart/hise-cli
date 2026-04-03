@@ -51,13 +51,17 @@ export interface RawTreeNode {
 	interfaces?: string[];
 }
 
-// ── Diff types (from POST /api/builder/apply and GET /api/undo/diff) ─
+// ── Diff types (shared across builder apply and undo diff responses) ─
 
-export interface BuilderDiffEntry {
+/** A single diff entry from HISE — used by both builder and undo APIs. */
+export interface DiffEntry {
 	domain: string;
 	action: "+" | "-" | "*";
 	target: string;
 }
+
+/** @deprecated Use DiffEntry — kept as alias for backwards compatibility. */
+export type BuilderDiffEntry = DiffEntry;
 
 export interface BuilderApplyResult {
 	scope: string;

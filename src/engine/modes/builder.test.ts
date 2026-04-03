@@ -760,6 +760,26 @@ describe("BuilderMode", () => {
 		// Returns last command's result
 		expect(result.type).toBe("text");
 	});
+
+	it("prevents removing the root container", async () => {
+		const tree = { label: "Master Chain", id: "Master Chain", children: [] };
+		const mode = new BuilderMode(moduleList, undefined, undefined, tree);
+		const result = await mode.parse("remove \"Master Chain\"", nullSession);
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("Cannot remove the root container");
+		}
+	});
+
+	it("prevents removing root container with any project name", async () => {
+		const tree = { label: "My Project", id: "My Project", children: [] };
+		const mode = new BuilderMode(moduleList, undefined, undefined, tree);
+		const result = await mode.parse('remove "My Project"', nullSession);
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("Cannot remove the root container");
+		}
+	});
 });
 
 // ── BuilderMode completion ──────────────────────────────────────────

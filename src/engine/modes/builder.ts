@@ -825,36 +825,27 @@ function validateChainConstraint(
  * internal type ID. Users primarily work with pretty names ("Sampler"),
  * but type IDs ("StreamingSampler") are also accepted for power users.
  */
+/** Look up a module definition by pretty name or type ID (case-insensitive fallback). */
+function findModuleByName(
+	name: string,
+	moduleList: ModuleList,
+): ModuleDefinition | undefined {
+	const lower = name.toLowerCase();
+	// Exact match first (prettyName → id), then case-insensitive fallback
+	return moduleList.modules.find((m) => m.prettyName === name || m.id === name)
+		?? moduleList.modules.find((m) => m.prettyName.toLowerCase() === lower || m.id.toLowerCase() === lower);
+}
+
+/**
+ * Resolve a user-facing module name (pretty name or type ID) to the
+ * internal type ID. Delegates to findModuleByName.
+ */
 export function resolveModuleTypeId(
 	name: string,
 	moduleList: ModuleList | null,
 ): string | null {
 	if (!moduleList) return null;
-	// Exact match on prettyName first (primary user-facing name)
-	const byPretty = moduleList.modules.find((m) => m.prettyName === name);
-	if (byPretty) return byPretty.id;
-	// Exact match on type ID (backwards compat)
-	const byId = moduleList.modules.find((m) => m.id === name);
-	if (byId) return byId.id;
-	// Case-insensitive fallback
-	const lower = name.toLowerCase();
-	const byPrettyCI = moduleList.modules.find((m) => m.prettyName.toLowerCase() === lower);
-	if (byPrettyCI) return byPrettyCI.id;
-	const byIdCI = moduleList.modules.find((m) => m.id.toLowerCase() === lower);
-	if (byIdCI) return byIdCI.id;
-	return null;
-}
-
-/** Look up a module definition by pretty name or type ID. */
-function findModuleByName(
-	name: string,
-	moduleList: ModuleList,
-): ModuleDefinition | undefined {
-	return moduleList.modules.find((m) =>
-		m.prettyName === name || m.id === name
-		|| m.prettyName.toLowerCase() === name.toLowerCase()
-		|| m.id.toLowerCase() === name.toLowerCase(),
-	);
+	return findModuleByName(name, moduleList)?.id ?? null;
 }
 
 // ── Command → API operations mapping ────────────────────────────────
@@ -1454,9 +1445,19 @@ export class BuilderMode implements Mode {
 
 	private treeFetched = false;
 
-	/** Fetch the module tree from HISE and update treeRoot. */
+	/** Fetch the module tree from HISE and update treeRoot.
+	 *  Detects plan state via undo diff — uses ?group=current when a plan group is active. */
 	async fetchTree(connection: import("../hise.js").HiseConnection): Promise<void> {
-		const response = await connection.get("/api/builder/tree");
+		// Detect plan state: if groupName !== "root", use plan tree endpoint
+		let inPlan = false;
+		const diffResp = await connection.get("/api/undo/diff?scope=group");
+		if (isEnvelopeResponse(diffResp) && diffResp.success) {
+			const result = diffResp.result as Record<string, unknown> | null;
+			inPlan = typeof result?.groupName === "string" && result.groupName !== "root";
+		}
+
+		const endpoint = inPlan ? "/api/builder/tree?group=current" : "/api/builder/tree";
+		const response = await connection.get(endpoint);
 		if (isErrorResponse(response)) return;
 		if (!isEnvelopeResponse(response) || !response.success) return;
 		try {
@@ -1472,6 +1473,16 @@ export class BuilderMode implements Mode {
 			this.treeFetched = true;
 			await this.fetchTree(session.connection);
 		}
+	}
+
+	/** Mark the cached tree as stale so it re-fetches on next parse. */
+	invalidateTree(): void {
+		this.treeFetched = false;
+	}
+
+	/** Fetch tree on mode entry so the sidebar shows content immediately. */
+	async onEnter(session: SessionContext): Promise<void> {
+		await this.ensureTree(session);
 	}
 
 	// ── Parse entry point ───────────────────────────────────────
@@ -1603,6 +1614,14 @@ export class BuilderMode implements Mode {
 		if (cmd.type === "move") {
 			const dest = cmd.chain ? `${cmd.parent}.${cmd.chain}` : cmd.parent;
 			return textResult(`move ${cmd.target} to ${dest} (not yet in HISE C++ API)`);
+		}
+
+		// Never allow removing the root container
+		if (cmd.type === "remove" && this.treeRoot) {
+			const rootId = this.treeRoot.id ?? this.treeRoot.label;
+			if (cmd.target.toLowerCase() === rootId.toLowerCase()) {
+				return errorResult("Cannot remove the root container.");
+			}
 		}
 
 		// Local validation for add and set
