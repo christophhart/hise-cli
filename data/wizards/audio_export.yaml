@@ -1,0 +1,58 @@
+id: audio_export
+header: Audio Exporter
+description: Render the live output of HISE to an audio file
+body: |
+  Captures the live audio output of the current HISE project and writes it to a WAV file.
+
+  - **Render offline** processes faster than realtime without audio playback
+  - **Wait for MIDI** starts recording on the first MIDI note, aligning the output
+  - Choose a render length or use a custom duration
+
+  > Make sure your project produces audio output before starting the export.
+tabs:
+  - label: Settings
+    fields:
+      - id: Location
+        type: file
+        label: Location
+        required: true
+        help: The output wave file location
+        wildcard: ".wav"
+        saveFile: true
+      - id: Length
+        type: choice
+        label: Render Length
+        help: Duration of the audio export
+        defaultValue: 1 second
+        items:
+          - 1 second
+          - 5 seconds
+          - 15 seconds
+          - 30 seconds
+          - 1 minute
+          - custom...
+        valueMode: text
+      - id: Realtime
+        type: toggle
+        label: Render offline
+        help: Record MIDI input for the given duration, then render offline
+      - id: MidiInput
+        type: toggle
+        label: Wait for MIDI
+        help: Start recording on the first MIDI input
+  - label: Complete
+    fields:
+      - id: OpenInEditor
+        type: toggle
+        label: Open in editor
+        help: Open the exported file in your configured audio editor
+        defaultValue: "1"
+submitLabel: Renders audio output to the specified file
+tasks:
+  - id: ExportFunction
+    function: onExport
+postActions: []
+globalDefaults:
+  OpenInEditor: "1"
+  Location: ""
+  Length: 1 second

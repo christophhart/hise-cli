@@ -1,0 +1,69 @@
+id: new_project
+header: Create New Project
+description: Creates and initialises a new HISE project folder
+body: |
+  This will create a new HISE project folder with the standard directory structure.
+
+  - **Empty Project**: A blank project with default settings
+  - **Import HXI**: Extract a previously exported `.hxi` or `.lwc` archive
+  - **Rhapsody Template**: A project pre-configured with the Rhapsody Player layout
+
+  > The project folder will be created as a subfolder of the selected location.
+tabs:
+  - label: Settings
+    fields:
+      - id: ProjectName
+        type: text
+        label: Project Name
+        required: true
+        help: The name of the project folder to create
+        emptyText: Enter a project name
+      - id: DefaultProjectFolder
+        type: file
+        label: Location
+        required: true
+        help: Parent folder where the project will be created
+        defaultValue: ""
+        directory: true
+      - id: UseDefault
+        type: toggle
+        label: Use as default location
+        help: Save this location as the default for future projects
+        defaultValue: "1"
+      - id: Template
+        type: choice
+        label: Project Template
+        help: Choose how to initialise the project
+        defaultValue: "0"
+        items:
+          - Empty Project
+          - Import HXI
+          - Rhapsody Template
+        itemDescriptions:
+          - Blank project with default settings
+          - Import a previously exported .hxi archive
+          - Player template with Rhapsody layout
+        valueMode: index
+  - label: Import
+    fields:
+      - id: hxiFile
+        type: file
+        label: HXI File
+        help: Select the .hxi or .lwc file to extract
+        wildcard: "*.hxi,*.lwc"
+    condition:
+      fieldId: Template
+      value: "1"
+submitLabel: Creates a folder and switches the HISE project
+tasks:
+  - id: createEmptyProject
+    function: createEmptyProject
+  - id: importHxiTask
+    function: importHxiTask
+  - id: extractRhapsody
+    function: extractRhapsody
+postActions: []
+globalDefaults:
+  DefaultProjectFolder: ""
+  UseDefault: "1"
+  Template: "0"

@@ -38,15 +38,16 @@ const nodeDataLoader: DataLoader = {
 		return JSON.parse(raw) as ScriptnodeList;
 	},
 	async loadWizardDefinitions() {
+		const { parse: parseYaml } = await import("yaml");
 		const wizardDir = path.join(DATA_DIR, "wizards");
 		if (!fs.existsSync(wizardDir)) return [];
 		const files = fs.readdirSync(wizardDir).filter(
-			(f: string) => f.endsWith(".json") && f !== "broadcaster.json",
+			(f: string) => f.endsWith(".yaml"),
 		);
-		return files.map((f: string) => ({
-			filename: f.replace(".json", ""),
-			data: JSON.parse(fs.readFileSync(path.join(wizardDir, f), "utf8")),
-		}));
+		return files.map((f: string) => {
+			const content = fs.readFileSync(path.join(wizardDir, f), "utf8");
+			return parseYaml(content);
+		});
 	},
 };
 

@@ -52,7 +52,7 @@ function createDataLoader(moduleList = createModuleList()): DataLoader {
 		async loadScriptnodeList() {
 			return {};
 		},
-		async loadWizardDefinitions() {
+		async loadWizardDefinitions(): Promise<import("../engine/wizard/types.js").WizardDefinition[]> {
 			return [];
 		},
 	};

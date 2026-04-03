@@ -42,6 +42,11 @@ import {
 import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { startObserverServer, type ObserverEvent } from "./observer.js";
 import { MODE_ACCENTS } from "../engine/modes/mode.js";
+import type { WizardAnswers } from "../engine/wizard/types.js";
+import { WizardExecutor } from "../engine/wizard/executor.js";
+import { renderWizardBlock, createInitialFormState, type WizardFormState } from "./components/wizard-render.js";
+import { handleWizardKey } from "./components/wizard-keys.js";
+import { listPathCompletions } from "./wizard-files.js";
 
 // ── Layout constants (non-scaling) ──────────────────────────────────
 
@@ -171,6 +176,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const disabledRef = useRef(false);
 	const [scrollOffset, setScrollOffset] = useState(0);
 
+	// Wizard state — form rendered as output block, keys handled by pure function
+	const [wizardForm, setWizardForm] = useState<WizardFormState | null>(null);
+	const wizardFormRef = useRef<WizardFormState | null>(null);
+	wizardFormRef.current = wizardForm;
+
 	// Refs tracking latest state values (for snapshot capture in async callbacks)
 	const outputBlocksRef = useRef(outputBlocks);
 	outputBlocksRef.current = outputBlocks;
@@ -210,9 +220,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	);
 
 	// Viewport height for output (within the main area)
+	// When wizard is active, Input is hidden — output gets the full height
+	const inputOverhead = wizardForm ? 0 : GAP_ROWS + INPUT_SECTION_ROWS;
 	const outputHeight = Math.max(
 		layout.minOutputRows,
-		mainAreaHeight - GAP_ROWS - INPUT_SECTION_ROWS,
+		mainAreaHeight - inputOverhead,
 	);
 
 	// ── Scroll helpers ──────────────────────────────────────────────
@@ -265,6 +277,69 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	useInput((input, key) => {
 		if (disabledRef.current) return;
+
+		// ── Priority 1: Wizard form active ───────────────────────
+		if (wizardFormRef.current) {
+			const result = handleWizardKey(wizardFormRef.current, input, key);
+			if (!result) return;
+			if (result.action === "cancel") {
+				// Re-render form deactivated (no signal highlights)
+				const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+				const deactivated = { ...wizardFormRef.current!, active: false };
+				const deactivatedBlock = renderWizardBlock(deactivated, scheme, innerW);
+				setOutputBlocks((prev) => {
+					const updated = [...prev];
+					updated[updated.length - 1] = deactivatedBlock;
+					return updated;
+				});
+				setWizardForm(null);
+				const block = renderResult({ type: "text", content: "Wizard cancelled." }, scheme, innerW);
+				if (block) addBlocks([block]);
+				return;
+			}
+			if (result.action === "submit") {
+				const form = wizardFormRef.current!;
+				// Re-render form deactivated (no signal highlights)
+				const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+				const deactivated = { ...form, active: false };
+				const deactivatedBlock = renderWizardBlock(deactivated, scheme, innerW);
+				setOutputBlocks((prev) => {
+					const updated = [...prev];
+					updated[updated.length - 1] = deactivatedBlock;
+					return updated;
+				});
+				setWizardForm(null);
+				void executeWizard(form, result.answers);
+				return;
+			}
+			// action === "update" — re-render the form block
+			let newState = result.state;
+
+			// Recompute file path completions if signaled
+			if (result.recomputeCompletions) {
+				const def = newState.definition;
+				const tab = def.tabs[newState.activeTab];
+				const field = tab?.fields[newState.activeField];
+				if (field?.type === "file") {
+					const value = newState.answers[field.id] ?? "";
+					const completions = listPathCompletions(value, {
+						directory: field.directory,
+						wildcard: field.wildcard,
+					});
+					newState = { ...newState, completions, completionIndex: 0 };
+				}
+			}
+
+			setWizardForm(newState);
+			const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+			const block = renderWizardBlock(newState, scheme, innerW);
+			setOutputBlocks((prev) => {
+				const updated = [...prev];
+				updated[updated.length - 1] = block;
+				return updated;
+			});
+			return;
+		}
 
 		// ── Priority 2: Global hotkeys ────────────────────────────
 		// Ctrl+B — toggle tree sidebar
@@ -701,7 +776,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			const echoBlock = renderEcho(input, accent, scheme.backgrounds.darker, innerW, echoSpans);
 			addBlocks([echoBlock]);
 
-			if (result.type === "text" && input.trim().startsWith("/density")) {
+			if (result.type === "wizard") {
+				// Wizard result — render form as output block
+				const formState = createInitialFormState(result.definition, result.prefill);
+				setWizardForm(formState);
+				const block = renderWizardBlock(formState, scheme, innerW);
+				addBlocks([block]);
+			} else if (result.type === "text" && input.trim().startsWith("/density")) {
 				// Density command - intercept to apply TUI-side state change
 				const arg = input.trim().slice("/density".length).trim().toLowerCase();
 				const validDensities = ["compact", "standard", "spacious"] as const;
@@ -773,6 +854,51 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	}, [session, scheme, addBlocks, exit, connectionStatus, columns, rows, contentColumns, layout, maxScrollOffset]);
 
+	// ── Wizard execution (after submit) ─────────────────────────────
+
+	const executeWizard = useCallback(async (form: WizardFormState, answers: WizardAnswers) => {
+		const def = form.definition;
+		const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+
+		if (!session.connection) {
+			const block = renderResult({ type: "error", message: "No HISE connection \u2014 cannot execute wizard." }, scheme, innerW);
+			if (block) addBlocks([block]);
+			return;
+		}
+
+		disabledRef.current = true;
+		setDisabled(true);
+
+		try {
+			const executor = new WizardExecutor(session.connection);
+			const result = await executor.execute(def, answers, (progress) => {
+				const msg = [progress.phase, progress.percent !== undefined ? `${progress.percent}%` : "", progress.message]
+					.filter(Boolean).join(" ");
+				const block = renderResult({ type: "text", content: msg }, scheme, innerW);
+				if (block) addBlocks([block]);
+			});
+
+			if (result.success) {
+				const block = renderResult({ type: "text", content: result.message }, scheme, innerW);
+				if (block) addBlocks([block]);
+				if (result.postActions && result.postActions.length > 0) {
+					const lines = result.postActions.map((a, i) => `  [${i + 1}] ${a.label}`).join("\n");
+					const actionBlock = renderResult({ type: "text", content: `\n${lines}` }, scheme, innerW);
+					if (actionBlock) addBlocks([actionBlock]);
+				}
+			} else {
+				const block = renderResult({ type: "error", message: result.message }, scheme, innerW);
+				if (block) addBlocks([block]);
+			}
+		} catch (err) {
+			const block = renderResult({ type: "error", message: String(err) }, scheme, innerW);
+			if (block) addBlocks([block]);
+		} finally {
+			disabledRef.current = false;
+			setDisabled(false);
+		}
+	}, [session, scheme, contentColumns, layout, addBlocks]);
+
 	// ── Mode label ──────────────────────────────────────────────────
 
 	const currentMode = session.currentMode();
@@ -838,9 +964,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// ── Mode hints ──────────────────────────────────────────────────
 
 	const scrollHint = totalLines > outputHeight ? "PgUp/PgDn scroll" : "";
-	const modeHint = currentMode.id === "root"
-		? `/help for commands    [escape] for context menu  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
-		: `/exit to leave ${currentMode.name}  /help for commands  [escape] for context menu${scrollHint ? `  ${scrollHint}` : ""}`;
+	const modeHint = wizardForm
+		? "" // Wizard has its own hint bar in the output block
+		: currentMode.id === "root"
+			? `/help for commands    [escape] for context menu  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
+			: `/exit to leave ${currentMode.name}  /help for commands  [escape] for context menu${scrollHint ? `  ${scrollHint}` : ""}`;
 
 	// ── Completion handlers ────────────────────────────────────────
 
@@ -1038,7 +1166,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					/>
 					)}
 					<Box ref={outputRef} flexDirection="column" flexGrow={1}>
-						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
+						{!wizardForm && <Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>}
 					{PROFILING_ENABLED ? (
 					<Profiler id="Output" onRender={onRenderCallback}>
 						<Output
@@ -1064,8 +1192,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 						hideScrollbar={completionState?.visible}
 					/>
 					)}
-						<Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>
-					{completionState?.visible && (
+					{!wizardForm && <Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>}
+					{!wizardForm && completionState?.visible && (
 						<CompletionPopup
 							items={completionState.result.items}
 							selectedIndex={completionState.selectedIndex}
@@ -1082,6 +1210,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							bottomOffset={INPUT_SECTION_ROWS}
 						/>
 					)}
+					{!wizardForm && (
 					<Box ref={inputBoxRef}>
 						<Input
 							modeLabel={modeLabel}
@@ -1101,6 +1230,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							tokenize={modeTokenizer}
 						/>
 					</Box>
+					)}
 					</Box>
 				</Box>
 				<StatusBar

@@ -40,11 +40,11 @@ export async function loadSessionDatasets(
 	if (!dataLoader) return undefined;
 	await completionEngine.init(dataLoader);
 
-	// Load wizard definitions
+	// Load wizard definitions from YAML
 	if (session) {
 		try {
-			const rawWizards = await dataLoader.loadWizardDefinitions();
-			session.wizardRegistry = WizardRegistry.fromRawData(rawWizards);
+			const wizardDefs = await dataLoader.loadWizardDefinitions();
+			session.wizardRegistry = WizardRegistry.fromDefinitions(wizardDefs);
 		} catch {
 			// Wizard data not available — /wizard command will report no wizards
 		}

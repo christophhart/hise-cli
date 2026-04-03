@@ -14,6 +14,7 @@ export type {
 } from "./types.js";
 
 export { parseWizardJson } from "./parser.js";
+export { wizardToYaml, yamlToWizard } from "./yaml.js";
 export { validateAnswers } from "./validator.js";
 export { WizardExecutor } from "./executor.js";
 export { WizardRegistry } from "./registry.js";

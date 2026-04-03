@@ -170,6 +170,6 @@ export interface DataLoader {
 	loadModuleList(): Promise<ModuleList>;
 	loadScriptingApi(): Promise<ScriptingApi>;
 	loadScriptnodeList(): Promise<ScriptnodeList>;
-	/** Load raw wizard definition JSONs from the wizards data directory. */
-	loadWizardDefinitions(): Promise<Array<{ filename: string; data: unknown }>>;
+	/** Load wizard definitions from YAML files in data/wizards/. */
+	loadWizardDefinitions(): Promise<Array<import("./wizard/types.js").WizardDefinition>>;
 }

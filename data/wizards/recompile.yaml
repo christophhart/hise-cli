@@ -1,0 +1,34 @@
+id: recompile
+header: Recompile
+description: Recompile all script processors and optionally reset data objects
+body: |
+  Triggers a full recompilation of all script processors in the current project. Optionally clears cached data objects that persist across compilations.
+
+  - **Global Variables** are normally persistent — clear them to reset state
+  - **Fonts**, **Audio Files**, and **Images** are pooled — clear to force reload
+  - This is equivalent to pressing F5 in the HISE IDE with additional cache options
+tabs:
+  - label: Settings
+    fields:
+      - id: clearGlobals
+        type: toggle
+        label: Global Variables
+        help: Clear all global variable data slots
+      - id: clearFonts
+        type: toggle
+        label: Fonts
+        help: Clear all fonts loaded with Engine.loadFont()
+      - id: clearAudioFiles
+        type: toggle
+        label: Audio Files
+        help: Clear all loaded AudioFiles from the pool
+      - id: clearImages
+        type: toggle
+        label: Images
+        help: Clear all images from the pool
+submitLabel: Recompiles all scripts and clears selected caches
+tasks:
+  - id: task
+    function: task
+postActions: []
+globalDefaults: {}

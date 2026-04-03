@@ -4,7 +4,7 @@
 // These types are the engine-layer contract consumed by TUI and CLI.
 
 /** Field input types that map to HISE multipage dialog element types. */
-export type WizardFieldType = "text" | "file" | "choice" | "toggle";
+export type WizardFieldType = "text" | "file" | "choice" | "toggle" | "multiselect";
 
 /** A single input field within a wizard tab. */
 export interface WizardField {
@@ -24,8 +24,10 @@ export interface WizardField {
 	readonly emptyText?: string;
 
 	// ── Choice-specific ─────────────────────────────────────────
-	/** Available options for "choice" fields (parsed from newline-separated Items). */
+	/** Available options for "choice" and "multiselect" fields. */
 	readonly items?: string[];
+	/** Per-item descriptions (parallel array to items). Shown as dimmed tooltip on focused item. */
+	readonly itemDescriptions?: string[];
 	/** How the choice value is stored: "text" (literal) or "index" (numeric). */
 	readonly valueMode?: "text" | "index";
 
@@ -81,6 +83,10 @@ export interface WizardDefinition {
 	readonly id: string;
 	/** Display title (from Properties.Header). */
 	readonly header: string;
+	/** Short description shown dimmed next to the header. */
+	readonly description?: string;
+	/** Markdown body rendered below the header (usage tips, bullet points). */
+	readonly body?: string;
 	/** Optional subtitle (from Properties.Subtitle). */
 	readonly subtitle?: string;
 	/** Tab groups containing all input fields. */
@@ -89,6 +95,8 @@ export interface WizardDefinition {
 	readonly tasks: WizardTask[];
 	/** Optional follow-up actions after successful execution. */
 	readonly postActions: WizardPostAction[];
+	/** Description shown next to the Submit button (explains what happens on submit). */
+	readonly submitLabel?: string;
 	/** Default field values from GlobalState. */
 	readonly globalDefaults: Record<string, string>;
 }

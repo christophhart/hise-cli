@@ -1,0 +1,26 @@
+id: compile_networks
+header: Compile Networks
+description: Compile scriptnode C++ networks into a DLL
+body: |
+  Compiles all scriptnode DSP networks that have C++ source code into a native DLL.
+
+  - **Replace script FX modules** swaps interpreted script modules with compiled versions
+  - **Open in IDE** launches Xcode or Visual Studio for manual debugging
+  - The compiled DLL will be loaded automatically on next project launch
+tabs:
+  - label: Settings
+    fields:
+      - id: replaceScriptModules
+        type: toggle
+        label: Replace script FX modules
+        help: Replace script FX modules with hardcoded counterparts
+      - id: openIDE
+        type: toggle
+        label: Open DLL project in IDE
+        help: Open the C++ project in your system IDE after compilation
+submitLabel: Compiles scriptnode C++ networks into a DLL
+tasks:
+  - id: compileTask
+    function: compileTask
+postActions: []
+globalDefaults: {}

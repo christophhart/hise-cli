@@ -1,0 +1,93 @@
+id: install_package_maker
+header: Install Package Maker
+description: Create an installer payload for distributing HISE project assets
+body: |
+  Creates an `install_package.json` that defines what files and settings to include when distributing this project as a HISE asset.
+
+  - Use **wildcards** to include or exclude specific file patterns
+  - **File type filters** limit the payload to specific asset categories
+  - **Preprocessors** carry over DSP processing settings to the target project
+  - Test your configuration with a **simulation run** before publishing
+
+  > This is mainly useful if you intend to publish a product on the HISE store.
+tabs:
+  - label: Settings
+    fields:
+      - id: LoadSettings
+        type: toggle
+        label: Load existing settings
+        help: Load settings from existing install_package.json if present
+        defaultValue: "true"
+  - label: Payload
+    fields:
+      - id: InfoText
+        type: text
+        label: Info Text
+        help: Markdown message shown to users during installation
+        emptyText: Enter installation instructions...
+      - id: PositiveWildcard
+        type: text
+        label: Include Wildcards
+        help: "Comma-separated wildcards to include (e.g. Scripts/,*.hip)"
+        defaultValue: "*"
+      - id: NegativeWildcard
+        type: text
+        label: Exclude Wildcards
+        help: "Comma-separated wildcards to exclude (e.g. *.txt,Binaries/)"
+        defaultValue: ""
+        emptyText: Add negative wildcards...
+      - id: FileTypeFilter
+        type: multiselect
+        label: File Type Filter
+        help: Select which file types to include in the payload
+        items:
+          - AudioFiles
+          - Images
+          - SampleMaps
+          - MidiFiles
+          - UserPresets
+          - Scripts
+        itemDescriptions:
+          - .wav, .aif audio samples
+          - .png, .jpg UI images
+          - .xml sample map definitions
+          - .mid, .hm MIDI sequences
+          - .preset user preset files
+          - .js HiseScript files
+      - id: Preprocessors
+        type: multiselect
+        label: Preprocessors
+        help: Select preprocessors to include from project_info.xml
+        items:
+          - Raw Processor
+          - Convolution
+          - Impulse Response
+        itemDescriptions:
+          - Unprocessed audio data
+          - Convolution reverb impulse responses
+          - IR files for cabinet simulation
+      - id: UseClipboard
+        type: toggle
+        label: Copy to clipboard
+        help: Copy a string to the system clipboard after installation
+      - id: ClipboardContent
+        type: text
+        label: Clipboard Content
+        help: Text to copy to clipboard after installation
+        emptyText: Enter clipboard data...
+  - label: Test
+    fields:
+      - id: ExternalZipSelector
+        type: file
+        label: Test Archive
+        help: Select a .zip file to simulate a test installation run
+        wildcard: "*.zip"
+submitLabel: Writes the install_package.json file to the project
+tasks: []
+postActions:
+  - id: SimulateTestRun
+    label: Simulate test run
+globalDefaults:
+  LoadSettings: "true"
+  PositiveWildcard: "*"
+  NegativeWildcard: ""

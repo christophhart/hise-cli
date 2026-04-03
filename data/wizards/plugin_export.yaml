@@ -1,0 +1,73 @@
+id: plugin_export
+header: Compile Project
+description: Compile your HISE project as a plugin or standalone app
+body: |
+  Exports the current HISE project as a compiled binary using the system compiler (Xcode/Visual Studio).
+
+  - Choose between **Plugin** (VST/AU/AAX) or **Standalone App**
+  - The project type determines the plugin category (Instrument, FX, MIDI)
+  - Make sure the HISE SDK path and compiler toolchain are configured in the settings
+
+  > The compilation may take several minutes depending on the project size.
+tabs:
+  - label: Settings
+    fields:
+      - id: ExportType
+        type: choice
+        label: Export Target
+        help: Plugin or standalone application
+        defaultValue: "0"
+        items:
+          - Plugin
+          - Standalone App
+        itemDescriptions:
+          - VST/AU/AAX plugin loaded by a DAW
+          - Standalone application with audio/MIDI I/O
+        valueMode: text
+      - id: projectType
+        type: choice
+        label: Project Type
+        help: Instrument, FX, or MIDI processor
+        defaultValue: Instrument
+        items:
+          - Instrument
+          - FX plugin
+          - MIDI plugin
+        itemDescriptions:
+          - Virtual instrument generating audio from MIDI
+          - Audio effect processing incoming signal
+          - MIDI processor transforming MIDI data
+        valueMode: text
+      - id: pluginType
+        type: choice
+        label: Plugin Type
+        help: Plugin architecture (VST, AU, AAX)
+        defaultValue: VST
+        items:
+          - VST
+          - AU
+          - AAX
+          - All Platforms
+        itemDescriptions:
+          - VST2/VST3 depending on project settings
+          - Audio Unit v2 (macOS only)
+          - Pro Tools format (requires AAX SDK)
+          - Build all formats at once
+        valueMode: text
+submitLabel: Launches the system compiler to export the project
+tasks:
+  - id: compileTask
+    function: compileTask
+postActions:
+  - id: showCompiledFile
+    label: Show compiled file
+    help: Shows the file that you've just compiled.
+  - id: showPluginFolder
+    label: Show plugin folder
+    help: Open the plugin install folder
+globalDefaults:
+  ExportType: "0"
+  projectType: Instrument
+  pluginType: VST
+  showCompiledFile: "true"
+  showPluginFolder: "true"
