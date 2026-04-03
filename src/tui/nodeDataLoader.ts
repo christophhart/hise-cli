@@ -37,5 +37,16 @@ export function createNodeDataLoader(dataDir: string): DataLoader {
 			);
 			return JSON.parse(raw) as ScriptnodeList;
 		},
+		async loadWizardDefinitions(): Promise<Array<{ filename: string; data: unknown }>> {
+			const wizardDir = path.join(dataDir, "wizards");
+			if (!fs.existsSync(wizardDir)) return [];
+			const files = fs.readdirSync(wizardDir).filter(
+				(f) => f.endsWith(".json") && f !== "broadcaster.json",
+			);
+			return files.map((f) => ({
+				filename: f.replace(".json", ""),
+				data: JSON.parse(fs.readFileSync(path.join(wizardDir, f), "utf8")),
+			}));
+		},
 	};
 }

@@ -18,6 +18,8 @@ export interface CommandSession {
 	getOrCreateMode(modeId: string): import("../modes/mode.js").Mode;
 	/** Execute a command in a mode without entering it (one-shot) */
 	executeOneShot(modeId: string, input: string): Promise<CommandResult>;
+	/** Wizard definitions registry (loaded from data/wizards/) */
+	readonly wizardRegistry: import("../wizard/registry.js").WizardRegistry | null;
 }
 
 export type CommandHandler = (

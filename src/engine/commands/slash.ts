@@ -6,10 +6,12 @@ import {
 	errorResult,
 	tableResult,
 	textResult,
+	wizardResult,
 } from "../result.js";
 import { MODE_ACCENTS, type ModeId } from "../modes/mode.js";
 import type { CommandHandler, CommandRegistry, CommandSession } from "./registry.js";
 import { generateHelp } from "./help.js";
+import type { WizardAnswers } from "../wizard/types.js";
 
 // ── Handler implementations ─────────────────────────────────────────
 
@@ -156,6 +158,135 @@ async function handleCollapse(
 	return textResult(`Collapsed: ${pattern}`);
 }
 
+// ── Wizard command ──────────────────────────────────────────────────
+
+/**
+ * Parse pre-fill arguments from a wizard command line.
+ * E.g., "target:standalone format:vst" → { target: "standalone", format: "vst" }
+ */
+function parseWizardPrefill(args: string): { prefill: WizardAnswers; flags: Set<string>; remaining: string } {
+	const prefill: WizardAnswers = {};
+	const flags = new Set<string>();
+	const remaining: string[] = [];
+
+	for (const token of args.split(/\s+/).filter(Boolean)) {
+		if (token.startsWith("--")) {
+			flags.add(token.slice(2));
+		} else if (token.includes(":")) {
+			const colonIdx = token.indexOf(":");
+			const key = token.slice(0, colonIdx);
+			const value = token.slice(colonIdx + 1);
+			if (key) prefill[key] = value;
+		} else {
+			remaining.push(token);
+		}
+	}
+
+	return { prefill, flags, remaining: remaining.join(" ") };
+}
+
+async function handleWizard(
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	const registry = session.wizardRegistry;
+	if (!registry) {
+		return errorResult("No wizard definitions loaded.");
+	}
+
+	const trimmed = args.trim();
+
+	// /wizard or /wizard list → list available wizards
+	if (!trimmed || trimmed === "list") {
+		const wizards = registry.list();
+		if (wizards.length === 0) {
+			return textResult("No wizards available.");
+		}
+		return tableResult(
+			["ID", "Name"],
+			wizards.map((w) => [w.id, w.header]),
+		);
+	}
+
+	// Split: first token is wizard ID, rest is args
+	const spaceIdx = trimmed.indexOf(" ");
+	const wizardId = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+	const wizardArgs = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
+
+	const def = registry.get(wizardId);
+	if (!def) {
+		// Try fuzzy match
+		const all = registry.list();
+		const match = all.find((w) => w.id.startsWith(wizardId));
+		if (match) {
+			return handleWizardWithDef(match, wizardArgs, session);
+		}
+		return errorResult(`Unknown wizard: "${wizardId}". Use /wizard list to see available wizards.`);
+	}
+
+	return handleWizardWithDef(def, wizardArgs, session);
+}
+
+async function handleWizardWithDef(
+	def: import("../wizard/types.js").WizardDefinition,
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	const { prefill, flags } = parseWizardPrefill(args);
+
+	// --schema: output field schema as JSON
+	if (flags.has("schema")) {
+		const fields = def.tabs.flatMap((t) =>
+			t.fields.map((f) => ({
+				id: f.id,
+				type: f.type,
+				label: f.label,
+				required: f.required,
+				items: f.items,
+				defaultValue: f.defaultValue,
+			})),
+		);
+		return textResult(JSON.stringify({ id: def.id, header: def.header, fields }, null, 2));
+	}
+
+	// --run: execute directly without form
+	if (flags.has("run")) {
+		// Merge defaults with prefill
+		const answers: WizardAnswers = { ...def.globalDefaults };
+		for (const tab of def.tabs) {
+			for (const field of tab.fields) {
+				if (field.defaultValue !== undefined) {
+					answers[field.id] = field.defaultValue;
+				}
+			}
+		}
+		Object.assign(answers, prefill);
+
+		// Validate and execute
+		const { validateAnswers } = await import("../wizard/validator.js");
+		const validation = validateAnswers(def, answers);
+		if (!validation.valid) {
+			const messages = validation.errors.map((e) => `  ${e.fieldId}: ${e.message}`).join("\n");
+			return errorResult(`Validation failed:\n${messages}`);
+		}
+
+		if (!session.connection) {
+			return errorResult("No HISE connection — cannot execute wizard.");
+		}
+
+		const { WizardExecutor } = await import("../wizard/executor.js");
+		const executor = new WizardExecutor(session.connection);
+		const result = await executor.execute(def, answers);
+		if (result.success) {
+			return textResult(result.message);
+		}
+		return errorResult(result.message);
+	}
+
+	// Default: return wizard result to open the form in TUI
+	return wizardResult(def, prefill);
+}
+
 const VALID_DENSITIES = ["auto", "compact", "standard", "spacious"];
 
 async function handleDensity(
@@ -267,6 +398,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		description: "Enter undo mode (history & plan groups)",
 		handler: createModeHandler("undo"),
 		kind: "mode",
+	});
+
+	registry.register({
+		name: "wizard",
+		description: "Run a wizard (list, <name>, <name> --schema, <name> --run)",
+		handler: handleWizard,
+		kind: "command",
 	});
 
 	registry.register({

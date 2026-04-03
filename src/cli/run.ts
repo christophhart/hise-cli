@@ -26,7 +26,7 @@ export async function executeCliCommand(
 		connection,
 		getModuleList: () => moduleList,
 	});
-	const moduleList = await loadSessionDatasets(dataLoader, completionEngine);
+	const moduleList = await loadSessionDatasets(dataLoader, completionEngine, session);
 	for (const mode of session.modeStack) {
 		if (moduleList && "setModuleList" in mode && typeof mode.setModuleList === "function") {
 			mode.setModuleList(moduleList);

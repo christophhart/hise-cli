@@ -3,6 +3,8 @@
 // Pure data types that both TUI and CLI frontends consume.
 // TUI renders them visually; CLI serializes them as JSON.
 
+import type { WizardDefinition, WizardAnswers } from "./wizard/types.js";
+
 export interface TreeNode {
 	label: string;
 	type?: string;
@@ -41,6 +43,7 @@ export type CommandResult =
 	| { type: "table"; headers: string[]; rows: string[][]; accent?: string }
 	| { type: "tree"; root: TreeNode; accent?: string }
 	| { type: "markdown"; content: string; accent?: string }
+	| { type: "wizard"; definition: WizardDefinition; prefill: WizardAnswers; autoRun: boolean; accent?: string }
 	| { type: "empty"; accent?: string };
 
 // ── Result factory helpers ──────────────────────────────────────────
@@ -76,6 +79,14 @@ export function treeResult(root: TreeNode): CommandResult {
 
 export function markdownResult(content: string): CommandResult {
 	return { type: "markdown", content };
+}
+
+export function wizardResult(
+	definition: WizardDefinition,
+	prefill: WizardAnswers = {},
+	autoRun = false,
+): CommandResult {
+	return { type: "wizard", definition, prefill, autoRun, accent: "#e8a060" };
 }
 
 export function emptyResult(): CommandResult {

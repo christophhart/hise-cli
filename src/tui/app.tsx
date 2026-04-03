@@ -602,7 +602,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		async function load() {
 			if (!dataLoader || cancelled) return;
 			try {
-				const moduleList = await loadSessionDatasets(dataLoader, completionEngine);
+				const moduleList = await loadSessionDatasets(dataLoader, completionEngine, session);
 				if (!cancelled) {
 					if (!moduleList) return;
 					// Store for future builder mode instances

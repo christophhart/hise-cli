@@ -37,6 +37,17 @@ const nodeDataLoader: DataLoader = {
 		);
 		return JSON.parse(raw) as ScriptnodeList;
 	},
+	async loadWizardDefinitions() {
+		const wizardDir = path.join(DATA_DIR, "wizards");
+		if (!fs.existsSync(wizardDir)) return [];
+		const files = fs.readdirSync(wizardDir).filter(
+			(f: string) => f.endsWith(".json") && f !== "broadcaster.json",
+		);
+		return files.map((f: string) => ({
+			filename: f.replace(".json", ""),
+			data: JSON.parse(fs.readFileSync(path.join(wizardDir, f), "utf8")),
+		}));
+	},
 };
 
 // ── Module List ─────────────────────────────────────────────────────

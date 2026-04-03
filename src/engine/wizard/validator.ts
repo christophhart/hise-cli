@@ -1,0 +1,95 @@
+// ── Wizard answer validation ────────────────────────────────────────
+
+import type {
+	WizardDefinition,
+	WizardAnswers,
+	WizardValidation,
+	WizardField,
+} from "./types.js";
+
+/**
+ * Validate wizard answers against the definition.
+ * Fields in greyed-out tabs (condition not met) are skipped.
+ */
+export function validateAnswers(
+	def: WizardDefinition,
+	answers: WizardAnswers,
+): WizardValidation {
+	const errors: Array<{ fieldId: string; message: string }> = [];
+
+	for (const tab of def.tabs) {
+		// Skip fields in conditional tabs whose condition is not met
+		if (tab.condition) {
+			const condValue = answers[tab.condition.fieldId];
+			if (condValue !== tab.condition.value) continue;
+		}
+
+		for (const field of tab.fields) {
+			const value = answers[field.id];
+			const fieldErrors = validateField(field, value);
+			errors.push(...fieldErrors);
+		}
+	}
+
+	return {
+		valid: errors.length === 0,
+		errors,
+	};
+}
+
+function validateField(
+	field: WizardField,
+	value: string | undefined,
+): Array<{ fieldId: string; message: string }> {
+	const errors: Array<{ fieldId: string; message: string }> = [];
+
+	// Required check
+	if (field.required && (!value || value.trim().length === 0)) {
+		errors.push({
+			fieldId: field.id,
+			message: `${field.label} is required`,
+		});
+		return errors; // no point checking further
+	}
+
+	// Choice value check
+	if (field.type === "choice" && field.items && value !== undefined && value.length > 0) {
+		if (field.valueMode === "index") {
+			const idx = parseInt(value, 10);
+			if (isNaN(idx) || idx < 0 || idx >= field.items.length) {
+				errors.push({
+					fieldId: field.id,
+					message: `${field.label}: invalid index "${value}" (0-${field.items.length - 1})`,
+				});
+			}
+		} else {
+			if (!field.items.includes(value)) {
+				errors.push({
+					fieldId: field.id,
+					message: `${field.label}: "${value}" is not a valid option`,
+				});
+			}
+		}
+	}
+
+	return errors;
+}
+
+/**
+ * Check whether a single field has a valid value (for tab checkmark status).
+ * Returns true if the field is satisfied (either optional, or required and filled).
+ */
+export function isFieldSatisfied(field: WizardField, value: string | undefined): boolean {
+	if (!field.required) return true;
+	return value !== undefined && value.trim().length > 0;
+}
+
+/**
+ * Check whether all required fields in a tab are satisfied.
+ */
+export function isTabComplete(
+	tab: { fields: WizardField[] },
+	answers: WizardAnswers,
+): boolean {
+	return tab.fields.every((f) => isFieldSatisfied(f, answers[f.id]));
+}

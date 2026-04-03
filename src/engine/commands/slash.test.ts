@@ -66,6 +66,7 @@ function createMockSession(): CommandSession & { modes: string[]; quitRequested:
 			modes.pop();
 			return result;
 		},
+		wizardRegistry: null,
 	};
 }
 

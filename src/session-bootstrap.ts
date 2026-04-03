@@ -6,6 +6,7 @@ import { BuilderMode } from "./engine/modes/builder.js";
 import { InspectMode } from "./engine/modes/inspect.js";
 import { ScriptMode } from "./engine/modes/script.js";
 import { UndoMode } from "./engine/modes/undo.js";
+import { WizardRegistry } from "./engine/wizard/registry.js";
 
 export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo"] as const;
 
@@ -34,9 +35,21 @@ export function createSession({
 export async function loadSessionDatasets(
 	dataLoader: DataLoader | null | undefined,
 	completionEngine: CompletionEngine,
+	session?: Session,
 ): Promise<ModuleList | undefined> {
 	if (!dataLoader) return undefined;
 	await completionEngine.init(dataLoader);
+
+	// Load wizard definitions
+	if (session) {
+		try {
+			const rawWizards = await dataLoader.loadWizardDefinitions();
+			session.wizardRegistry = WizardRegistry.fromRawData(rawWizards);
+		} catch {
+			// Wizard data not available — /wizard command will report no wizards
+		}
+	}
+
 	try {
 		return await dataLoader.loadModuleList();
 	} catch {

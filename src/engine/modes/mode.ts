@@ -14,6 +14,7 @@ export const MODE_ACCENTS = {
 	project: "#e6db74",
 	compile: "#f92672",
 	undo: "#66d9ef",
+	wizard: "#e8a060",
 } as const;
 
 export type ModeId =
@@ -25,7 +26,8 @@ export type ModeId =
 	| "inspect"
 	| "project"
 	| "compile"
-	| "undo";
+	| "undo"
+	| "wizard";
 
 export interface CompletionItem {
 	label: string;
