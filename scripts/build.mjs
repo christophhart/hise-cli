@@ -19,6 +19,9 @@ await build({
 	define: {
 		"__APP_VERSION__": JSON.stringify(pkg.version),
 	},
+	loader: {
+		".yaml": "text",
+	},
 	sourcemap: false,
 	logLevel: "info",
 });

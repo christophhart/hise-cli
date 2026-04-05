@@ -42,7 +42,11 @@
     "prepack": "npm run build",
     "start": "node dist/index.js",
     "dev": "npm run build && node dist/index.js",
-    "dev:profile": "npm run build && node dist/index.js --profile"
+    "dev:profile": "npm run build && node dist/index.js --profile",
+    "build:binary": "npm run build && node scripts/build-binary.mjs",
+    "build:binary:mac": "npm run build && node scripts/build-binary.mjs --target bun-darwin-arm64",
+    "build:binary:linux": "npm run build && node scripts/build-binary.mjs --target bun-linux-x64",
+    "build:binary:windows": "npm run build && node scripts/build-binary.mjs --target bun-windows-x64"
   },
   "devDependencies": {
     "@types/marked-terminal": "^6.1.1",

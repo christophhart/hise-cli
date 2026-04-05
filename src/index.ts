@@ -1,12 +1,11 @@
 #!/usr/bin/env node
 
-import * as path from "node:path";
 import chalk from "chalk";
 import { render } from "ink";
 import React from "react";
 import { App as TuiApp } from "./tui/app.js";
 import { HttpHiseConnection } from "./engine/hise.js";
-import { createNodeDataLoader } from "./tui/nodeDataLoader.js";
+import { createBundledDataLoader } from "./tui/bundledDataLoader.js";
 import { createSession } from "./session-bootstrap.js";
 import { executeCliCommand } from "./cli/run.js";
 import { renderCliHelp } from "./cli/help.js";
@@ -44,10 +43,7 @@ function setupAltScreen(): () => void {
 	return restore;
 }
 
-// Resolve data/ directory relative to this file (works from both
-// dist/index.js and src/index.ts).
-const dataDir = path.resolve(import.meta.dirname, "../data");
-const dataLoader = createNodeDataLoader(dataDir);
+const dataLoader = createBundledDataLoader();
 
 async function launchTui(
 	connection: import("./engine/hise.js").HiseConnection,
