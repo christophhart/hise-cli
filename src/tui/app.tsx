@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState, Profiler } fr
 import { Box, Text, useApp, useInput, useStdout } from "ink";
 import type { DOMElement } from "ink";
 import { MouseProvider, useOnWheel, useOnPress, useOnDrag, getBoundingClientRect } from "@ink-tools/ink-mouse";
+import { shimYogaNodes } from "./ink-compat-shim.js"; // tree-shaken when __REZI_COMPAT__ is false
 import { PROFILING_ENABLED, onRenderCallback } from "./profiler.js";
 import type { CommandResult, TreeNode } from "../engine/result.js";
 import type { HiseConnection } from "../engine/hise.js";
@@ -52,7 +53,7 @@ import { listPathCompletions } from "./wizard-files.js";
 
 // ── Layout constants (non-scaling) ──────────────────────────────────
 
-const SCROLL_WHEEL_LINES = 3; // lines per mouse wheel tick
+const SCROLL_WHEEL_LINES = 1; // lines per mouse wheel tick
 const ENTER_ACCEPTS_COMPLETION = false; // true = Enter accepts popup selection, false = Enter submits typed text
 
 // ── App props ───────────────────────────────────────────────────────
@@ -204,6 +205,16 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		forValue?: string;
 	} | null>(null);
 	const outputRef = useRef<DOMElement>(null);
+
+	// Shim yogaNode on ink-compat host nodes so @ink-tools/ink-mouse can
+	// compute hit testing. Walk up from outputRef to root after each render.
+	// No-op when building with stock Ink (esbuild dead-code eliminates this).
+	useEffect(() => {
+		if (!__REZI_COMPAT__) return;
+		let node: any = outputRef.current;
+		while (node?.parent) node = node.parent;
+		if (node) shimYogaNodes(node);
+	});
 
 	// Track whether user has scrolled away from bottom
 	const userScrolledRef = useRef(false);
@@ -1251,7 +1262,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 						searchText={searchText}
 					/>
 					)}
-					<Box ref={outputRef} flexDirection="column" flexGrow={1}>
+					<Box ref={outputRef} flexDirection="column" flexGrow={1} width={contentColumns}>
 						{!wizardForm && <Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>}
 					{PROFILING_ENABLED ? (
 					<Profiler id="Output" onRender={onRenderCallback}>

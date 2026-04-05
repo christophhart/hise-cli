@@ -672,7 +672,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 	});
 
 	// Scroll wheel
-	const WHEEL_LINES = 3;
+	const WHEEL_LINES = 1;
 	useOnWheel(boxRef, (event) => {
 		if (event.button === "wheel-up") {
 			setScrollOffset((prev) => Math.max(0, prev - WHEEL_LINES));

@@ -1,6 +1,10 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+	define: {
+		"__REZI_COMPAT__": "false",
+		"__APP_VERSION__": '"0.0.0-test"',
+	},
 	resolve: {
 		// Node16 module resolution requires .js extensions on local imports,
 		// but vitest needs to resolve them to .ts source files.

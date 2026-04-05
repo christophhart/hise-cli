@@ -32,6 +32,7 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
+    "build:ink": "node scripts/build.mjs --ink",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -68,11 +69,13 @@
   "dependencies": {
     "@byteland/ink-scroll-bar": "^1.0.0",
     "@ink-tools/ink-mouse": "^2.1.0",
+    "@rezi-ui/ink-compat": "^0.1.0-alpha.60",
     "cli-highlight": "^2.1.11",
     "highlight.js": "^11.11.1",
     "ink-scroll-view": "^0.3.6",
     "marked-terminal": "^7.3.0",
     "react-devtools-core": "^7.0.1",
+    "react-reconciler": "^0.31.0",
     "yaml": "^2.8.3"
   }
 }

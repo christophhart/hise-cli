@@ -60,6 +60,7 @@ async function launchTui(
 		}),
 		{
 			exitOnCtrlC: true,
+			maxFps: 60,
 		},
 	);
 	await instance.waitUntilExit().finally(() => {

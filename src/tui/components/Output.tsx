@@ -104,12 +104,13 @@ export const Output = React.memo(function Output({
 	while (visibleSlice.length < viewportHeight) {
 		visibleSlice.push("");
 	}
-	const visibleText = visibleSlice.join("\n");
 
 	return (
 		<Box flexDirection="row" width={columns} height={viewportHeight} backgroundColor={scheme.backgrounds.standard}>
-			<Box width={contentCols} height={viewportHeight} paddingX={pad}>
-				<Text>{visibleText}</Text>
+			<Box flexDirection="column" width={contentCols} height={viewportHeight} paddingX={pad}>
+				{visibleSlice.map((line, i) => (
+					<Text key={i}>{line || " "}</Text>
+				))}
 			</Box>
 			{hideScrollbar ? (
 				<Box width={SCROLLBAR_WIDTH} />
