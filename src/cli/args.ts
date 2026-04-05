@@ -24,6 +24,10 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		return { kind: "tui", args: args.slice(1) };
 	}
 
+	if (first === "wizard") {
+		return parseWizardSubcommand(args.slice(1), commands);
+	}
+
 	const flagToEntry = new Map<string, CommandEntry>();
 	for (const command of commands) {
 		flagToEntry.set(`-${command.name}`, command);
@@ -66,4 +70,52 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	const canonicalCommand = `/${entry.name}${targetSuffix}${tail ? ` ${tail}` : ""}`;
 
 	return { kind: "execute", entry, canonicalCommand, mode, useMock };
+}
+
+// ── wizard subcommand ────────────────────────────────────────────────
+
+const WIZARD_RESERVED = new Set(["--mock", "--schema", "--answers"]);
+
+function parseWizardSubcommand(args: string[], commands: CommandEntry[]): CliParseResult {
+	const wizardEntry = commands.find((c) => c.name === "wizard");
+	if (!wizardEntry) {
+		return { kind: "error", message: "Wizard command not available" };
+	}
+
+	const useMock = args.includes("--mock");
+	const rest = args.filter((a) => a !== "--mock");
+
+	if (rest.length === 0 || rest[0] === "list") {
+		return { kind: "execute", entry: wizardEntry, canonicalCommand: "/wizard list", mode: "root", useMock };
+	}
+
+	const wizardId = rest[0]!;
+
+	if (rest.includes("--schema")) {
+		return { kind: "execute", entry: wizardEntry, canonicalCommand: `/wizard ${wizardId} --schema`, mode: "root", useMock };
+	}
+
+	const answersIdx = rest.indexOf("--answers");
+	if (answersIdx === -1) {
+		return { kind: "error", message: "wizard subcommand requires --schema or --answers" };
+	}
+
+	const answersJson = rest[answersIdx + 1];
+	if (!answersJson) {
+		return { kind: "error", message: "--answers requires a JSON string argument" };
+	}
+
+	let answers: Record<string, string>;
+	try {
+		answers = JSON.parse(answersJson);
+	} catch {
+		return { kind: "error", message: `--answers: invalid JSON: ${answersJson}` };
+	}
+
+	const prefillTokens = Object.entries(answers)
+		.map(([k, v]) => `${k}:${v}`)
+		.join(" ");
+
+	const canonicalCommand = `/wizard ${wizardId} --run${prefillTokens ? ` ${prefillTokens}` : ""}`;
+	return { kind: "execute", entry: wizardEntry, canonicalCommand, mode: "root", useMock };
 }

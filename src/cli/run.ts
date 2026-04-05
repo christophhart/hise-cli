@@ -8,23 +8,35 @@ import { CapturingHiseConnection } from "./capture.js";
 import { serializeCliOutput, type CliOutputPayload } from "./output.js";
 import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { createDefaultMockRuntime } from "../mock/runtime.js";
+import type { WizardHandlerRegistry } from "../engine/wizard/handler-registry.js";
+
+export interface CliCommandOptions {
+	connectionOverride?: HiseConnection;
+	handlerRegistry?: WizardHandlerRegistry;
+}
 
 export async function executeCliCommand(
 	argv: string[],
 	commands: CommandEntry[],
 	dataLoader: DataLoader,
-	connectionOverride?: HiseConnection,
+	connectionOrOptions?: HiseConnection | CliCommandOptions,
 ): Promise<{ kind: "tui"; args: string[] } | { kind: "help" } | { kind: "error"; message: string } | { kind: "json"; payload: CliOutputPayload }> {
+	// Backward compat: accept either a connection directly or an options object
+	const opts: CliCommandOptions = connectionOrOptions && "probe" in connectionOrOptions
+		? { connectionOverride: connectionOrOptions }
+		: (connectionOrOptions as CliCommandOptions) ?? {};
+
 	const parsed = parseCliArgs(argv, commands);
 	if (parsed.kind !== "execute") return parsed;
 
-	const mockRuntime = !connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
+	const mockRuntime = !opts.connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
 	const connection = new CapturingHiseConnection(
-		connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
+		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
 	);
 	const { session, completionEngine } = createSession({
 		connection,
 		getModuleList: () => moduleList,
+		handlerRegistry: opts.handlerRegistry,
 	});
 	const moduleList = await loadSessionDatasets(dataLoader, completionEngine, session);
 	for (const mode of session.modeStack) {

@@ -58,6 +58,7 @@ submitLabel: Launches the system compiler to export the project
 tasks:
   - id: compileTask
     function: compileTask
+    type: http
 postActions:
   - id: showCompiledFile
     label: Show compiled file

@@ -1,0 +1,102 @@
+id: setup
+header: HISE Setup
+description: Install and build HISE from source
+body: |
+  Guides you through cloning, building, and configuring HISE.
+  Detects your environment automatically and skips completed steps.
+
+  - **Clone**: Fetches the HISE repository from GitHub
+  - **Build Dependencies**: Installs platform-specific build requirements
+  - **Faust** (optional): Installs the Faust compiler for DSP development
+  - **Compile**: Builds HISE from source using your system compiler
+  - **Verify**: Confirms the built binary works correctly
+
+  > The full build can take 30+ minutes depending on your machine.
+
+init:
+  type: internal
+  function: setupDetectEnvironment
+
+tabs:
+  - label: Environment
+    fields:
+      - id: installPath
+        type: file
+        label: Install Path
+        required: true
+        help: Directory where HISE will be cloned and built
+        directory: true
+      - id: platform
+        type: choice
+        label: Platform
+        help: Detected automatically from your system
+        items:
+          - macOS
+          - Windows
+          - Linux
+        valueMode: text
+      - id: architecture
+        type: choice
+        label: Architecture
+        help: Detected automatically from your system
+        items:
+          - arm64
+          - x64
+        valueMode: text
+
+  - label: Options
+    fields:
+      - id: includeFaust
+        type: toggle
+        label: Include Faust
+        help: Install Faust and build HISE with Faust support
+        defaultValue: "0"
+      - id: targetCommit
+        type: text
+        label: Target Commit
+        help: Git SHA to checkout (leave empty for latest develop)
+        emptyText: latest develop
+
+  - label: Detected
+    fields:
+      - id: hasGit
+        type: toggle
+        label: Git Installed
+        help: Detected automatically — skips git installation if found
+      - id: compilerVersion
+        type: text
+        label: Compiler
+        help: Detected compiler name and version
+      - id: hasFaust
+        type: toggle
+        label: Faust Installed
+        help: Detected automatically — skips Faust installation if found
+
+submitLabel: Starts the HISE build pipeline (may take 30+ minutes)
+tasks:
+  - id: gitInstall
+    function: setupGitInstall
+    type: internal
+  - id: cloneRepo
+    function: setupCloneRepo
+    type: internal
+  - id: buildDeps
+    function: setupBuildDeps
+    type: internal
+  - id: faustInstall
+    function: setupFaustInstall
+    type: internal
+  - id: extractSdks
+    function: setupExtractSdks
+    type: internal
+  - id: compile
+    function: setupCompile
+    type: internal
+  - id: addPath
+    function: setupAddPath
+    type: internal
+  - id: verify
+    function: setupVerify
+    type: internal
+postActions: []
+globalDefaults: {}

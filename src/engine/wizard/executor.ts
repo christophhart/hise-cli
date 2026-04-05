@@ -1,66 +1,151 @@
 // ── Wizard executor — shared one-shot execution for TUI and CLI ─────
+//
+// Dispatches tasks by type: "http" → HISE REST API, "internal" → registered TS handler.
+// Also handles pre-form initialization via the same type pattern.
 
 import type { HiseConnection } from "../hise.js";
 import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
+import type { WizardHandlerRegistry } from "./handler-registry.js";
 import type {
 	WizardDefinition,
+	WizardTask,
 	WizardAnswers,
 	WizardProgress,
 	WizardExecResult,
 } from "./types.js";
 import { validateAnswers } from "./validator.js";
 
+/** Dependencies injected into the executor. */
+export interface WizardExecutorDeps {
+	readonly connection: HiseConnection | null;
+	readonly handlerRegistry: WizardHandlerRegistry | null;
+}
+
 export class WizardExecutor {
-	constructor(private readonly connection: HiseConnection) {}
+	constructor(private readonly deps: WizardExecutorDeps) {}
 
 	/**
-	 * Execute a wizard with the given answers.
-	 * Validates first, then POSTs to HISE for execution.
+	 * Run the wizard's init function (if any) to fetch default values.
+	 * Returns a Record to merge into globalDefaults before form display.
+	 */
+	async initialize(def: WizardDefinition): Promise<Record<string, string>> {
+		if (!def.init) return {};
+
+		if (def.init.type === "http") {
+			if (!this.deps.connection) return {};
+			try {
+				const response = await this.deps.connection.get(
+					`/api/wizard/initialise?id=${encodeURIComponent(def.id)}`,
+				);
+				if (isEnvelopeResponse(response) && response.success && response.result) {
+					return typeof response.result === "object"
+						? (response.result as Record<string, string>)
+						: {};
+				}
+			} catch {
+				// Init failure is non-fatal — return empty defaults
+			}
+			return {};
+		}
+
+		// type === "internal"
+		const handler = this.deps.handlerRegistry?.getInit(def.init.function);
+		if (!handler) return {};
+		try {
+			return await handler(def.id);
+		} catch {
+			return {};
+		}
+	}
+
+	/**
+	 * Execute all wizard tasks sequentially after validation.
+	 * A failing task halts the sequence.
 	 */
 	async execute(
 		def: WizardDefinition,
 		answers: WizardAnswers,
 		onProgress?: (p: WizardProgress) => void,
 	): Promise<WizardExecResult> {
-		// Validate answers
 		const validation = validateAnswers(def, answers);
 		if (!validation.valid) {
 			const messages = validation.errors.map((e) => e.message).join("; ");
-			return {
-				success: false,
-				message: `Validation failed: ${messages}`,
-			};
+			return { success: false, message: `Validation failed: ${messages}` };
+		}
+
+		if (def.tasks.length === 0) {
+			return { success: true, message: `${def.header} completed.` };
 		}
 
 		onProgress?.({ phase: "Starting", percent: 0, message: `Executing ${def.header}...` });
+		const allLogs: string[] = [];
+
+		for (let i = 0; i < def.tasks.length; i++) {
+			const task = def.tasks[i]!;
+			const taskProgress = (p: WizardProgress): void => {
+				const basePercent = (i / def.tasks.length) * 100;
+				const taskRange = 100 / def.tasks.length;
+				const scaledPercent =
+					p.percent !== undefined ? Math.round(basePercent + (p.percent / 100) * taskRange) : undefined;
+				onProgress?.({ ...p, percent: scaledPercent });
+			};
+
+			const result =
+				task.type === "http"
+					? await this.executeHttpTask(def, task, answers, taskProgress)
+					: await this.executeInternalTask(task, answers, taskProgress);
+
+			if (result.logs) allLogs.push(...result.logs);
+			if (!result.success) {
+				return { ...result, logs: allLogs.length > 0 ? allLogs : undefined };
+			}
+		}
+
+		onProgress?.({ phase: "Complete", percent: 100 });
+		return {
+			success: true,
+			message: `${def.header} completed successfully.`,
+			postActions: def.postActions.length > 0 ? def.postActions : undefined,
+			logs: allLogs.length > 0 ? allLogs : undefined,
+		};
+	}
+
+	private async executeHttpTask(
+		def: WizardDefinition,
+		task: WizardTask,
+		answers: WizardAnswers,
+		onProgress: (p: WizardProgress) => void,
+	): Promise<WizardExecResult> {
+		if (!this.deps.connection) {
+			return { success: false, message: `No HISE connection for http task "${task.id}".` };
+		}
+
+		onProgress({ phase: task.id, message: `Executing ${task.id}...` });
 
 		try {
-			const response = await this.connection.post("/api/wizard/execute", {
+			const response = await this.deps.connection.post("/api/wizard/execute", {
 				wizardId: def.id,
 				answers,
-				tasks: def.tasks.map((t) => t.function),
+				tasks: [task.function],
 			});
 
 			if (isErrorResponse(response)) {
-				return {
-					success: false,
-					message: response.message,
-				};
+				return { success: false, message: response.message };
 			}
 
 			if (isEnvelopeResponse(response) && response.success) {
 				return {
 					success: true,
-					message: response.result ? String(response.result) : `${def.header} completed successfully.`,
-					postActions: def.postActions.length > 0 ? def.postActions : undefined,
+					message: response.result ? String(response.result) : `${task.id} completed.`,
 					logs: response.logs.length > 0 ? response.logs : undefined,
 				};
 			}
 
 			if (isEnvelopeResponse(response)) {
-				const errorMsg = response.errors.length > 0
-					? response.errors.map((e: { errorMessage: string }) => e.errorMessage).join("\n")
-					: "Unknown error";
+				const errorMsg =
+					response.errors.length > 0
+						? response.errors.map((e: { errorMessage: string }) => e.errorMessage).join("\n")
+						: "Unknown error";
 				return {
 					success: false,
 					message: errorMsg,
@@ -68,14 +153,31 @@ export class WizardExecutor {
 				};
 			}
 
-			return {
-				success: false,
-				message: "Unexpected response format",
-			};
+			return { success: false, message: "Unexpected response format" };
 		} catch (err) {
 			return {
 				success: false,
-				message: `Execution failed: ${err instanceof Error ? err.message : String(err)}`,
+				message: `Task "${task.id}" failed: ${err instanceof Error ? err.message : String(err)}`,
+			};
+		}
+	}
+
+	private async executeInternalTask(
+		task: WizardTask,
+		answers: WizardAnswers,
+		onProgress: (p: WizardProgress) => void,
+	): Promise<WizardExecResult> {
+		const handler = this.deps.handlerRegistry?.getTask(task.function);
+		if (!handler) {
+			return { success: false, message: `No handler registered for internal task "${task.function}".` };
+		}
+
+		try {
+			return await handler(answers, onProgress);
+		} catch (err) {
+			return {
+				success: false,
+				message: `Task "${task.function}" failed: ${err instanceof Error ? err.message : String(err)}`,
 			};
 		}
 	}

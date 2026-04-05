@@ -20,6 +20,8 @@ export interface CommandSession {
 	executeOneShot(modeId: string, input: string): Promise<CommandResult>;
 	/** Wizard definitions registry (loaded from data/wizards/) */
 	readonly wizardRegistry: import("../wizard/registry.js").WizardRegistry | null;
+	/** Internal wizard handler registry (task + init functions) */
+	readonly handlerRegistry: import("../wizard/handler-registry.js").WizardHandlerRegistry | null;
 }
 
 export type CommandHandler = (

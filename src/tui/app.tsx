@@ -43,6 +43,7 @@ import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { startObserverServer, type ObserverEvent } from "./observer.js";
 import { MODE_ACCENTS } from "../engine/modes/mode.js";
 import type { WizardAnswers } from "../engine/wizard/types.js";
+import { mergeInitDefaults } from "../engine/wizard/types.js";
 import { WizardExecutor } from "../engine/wizard/executor.js";
 import { renderWizardBlock, createInitialFormState, type WizardFormState } from "./components/wizard-render.js";
 import { handleWizardKey } from "./components/wizard-keys.js";
@@ -62,6 +63,7 @@ export interface AppProps {
 	width?: number;  // override stdout.columns (for screencast runner)
 	height?: number; // override stdout.rows (for screencast runner)
 	animate?: boolean; // disable logo animation (--no-animation)
+	handlerRegistry?: import("../engine/wizard/handler-registry.js").WizardHandlerRegistry;
 }
 
 // ── App component ───────────────────────────────────────────────────
@@ -74,7 +76,7 @@ export function App(props: AppProps) {
 	);
 }
 
-function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, animate }: AppProps) {
+function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, animate, handlerRegistry }: AppProps) {
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
@@ -104,6 +106,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			connection,
 			completionEngine,
 			getModuleList: () => moduleListRef.current,
+			handlerRegistry,
 		}).session;
 	}
 	const session = sessionRef.current;
@@ -166,9 +169,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// State
 	const [outputBlocks, setOutputBlocks] = useState<PrerenderedBlock[]>([]);
-	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
-		connection ? "connected" : "error",
-	);
+	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("error");
 	const [disabled, setDisabled] = useState(false);
 	// Synchronous disabled check — avoids the React render-cycle gap
 	// where keystrokes can arrive between setDisabled(true) and the
@@ -777,8 +778,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			addBlocks([echoBlock]);
 
 			if (result.type === "wizard") {
-				// Wizard result — render form as output block
-				const formState = createInitialFormState(result.definition, result.prefill);
+				// Wizard result — run init to fetch defaults, then render form
+				const executor = new WizardExecutor({
+					connection: session.connection,
+					handlerRegistry: session.handlerRegistry,
+				});
+				const initDefaults = await executor.initialize(result.definition);
+				const mergedDef = mergeInitDefaults(result.definition, initDefaults);
+				const formState = createInitialFormState(mergedDef, result.prefill);
 				setWizardForm(formState);
 				const block = renderWizardBlock(formState, scheme, innerW);
 				addBlocks([block]);
@@ -860,8 +867,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		const def = form.definition;
 		const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
 
-		if (!session.connection) {
-			const block = renderResult({ type: "error", message: "No HISE connection \u2014 cannot execute wizard." }, scheme, innerW);
+		const hasHttpTasks = def.tasks.some((t) => t.type === "http");
+		if (hasHttpTasks && !session.connection) {
+			const block = renderResult({ type: "error", message: "No HISE connection \u2014 cannot execute HTTP wizard tasks." }, scheme, innerW);
 			if (block) addBlocks([block]);
 			return;
 		}
@@ -870,7 +878,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		setDisabled(true);
 
 		try {
-			const executor = new WizardExecutor(session.connection);
+			const executor = new WizardExecutor({
+				connection: session.connection,
+				handlerRegistry: session.handlerRegistry,
+			});
 			const result = await executor.execute(def, answers, (progress) => {
 				const msg = [progress.phase, progress.percent !== undefined ? `${progress.percent}%` : "", progress.message]
 					.filter(Boolean).join(" ");

@@ -30,5 +30,6 @@ submitLabel: Recompiles all scripts and clears selected caches
 tasks:
   - id: task
     function: task
+    type: http
 postActions: []
 globalDefaults: {}

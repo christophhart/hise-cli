@@ -58,10 +58,13 @@ submitLabel: Creates a folder and switches the HISE project
 tasks:
   - id: createEmptyProject
     function: createEmptyProject
+    type: http
   - id: importHxiTask
     function: importHxiTask
+    type: http
   - id: extractRhapsody
     function: extractRhapsody
+    type: http
 postActions: []
 globalDefaults:
   DefaultProjectFolder: ""

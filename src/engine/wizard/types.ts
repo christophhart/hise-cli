@@ -59,12 +59,25 @@ export interface WizardTab {
 	};
 }
 
+/** Execution type: "http" delegates to HISE, "internal" calls a registered TS function. */
+export type WizardTaskType = "internal" | "http";
+
+/** Pre-form initialization — fetches default values before the form renders. */
+export interface WizardInit {
+	/** Execution type for the init handler. */
+	readonly type: WizardTaskType;
+	/** Function name (internal registry key or ignored for http). */
+	readonly function: string;
+}
+
 /** A task to execute when the wizard is submitted. */
 export interface WizardTask {
 	/** Unique identifier (from LambdaTask "ID"). */
 	readonly id: string;
-	/** Function name to invoke on the HISE side. */
+	/** Function name to invoke. */
 	readonly function: string;
+	/** Execution type. Defaults to "http" for backward compat with HISE wizards. */
+	readonly type: WizardTaskType;
 }
 
 /** An optional follow-up action offered after successful execution. */
@@ -89,6 +102,8 @@ export interface WizardDefinition {
 	readonly body?: string;
 	/** Optional subtitle (from Properties.Subtitle). */
 	readonly subtitle?: string;
+	/** Pre-form initialization to fetch default values. */
+	readonly init?: WizardInit;
 	/** Tab groups containing all input fields. */
 	readonly tabs: WizardTab[];
 	/** Tasks to execute on submission. */
@@ -125,4 +140,13 @@ export interface WizardExecResult {
 	readonly message: string;
 	readonly postActions?: WizardPostAction[];
 	readonly logs?: string[];
+}
+
+/** Merge init-fetched defaults into a wizard definition's globalDefaults. */
+export function mergeInitDefaults(
+	def: WizardDefinition,
+	initDefaults: Record<string, string>,
+): WizardDefinition {
+	if (Object.keys(initDefaults).length === 0) return def;
+	return { ...def, globalDefaults: { ...def.globalDefaults, ...initDefaults } };
 }

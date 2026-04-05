@@ -251,9 +251,19 @@ async function handleWizardWithDef(
 
 	// --run: execute directly without form
 	if (flags.has("run")) {
-		// Merge defaults with prefill
-		const answers: WizardAnswers = { ...def.globalDefaults };
-		for (const tab of def.tabs) {
+		const { WizardExecutor } = await import("../wizard/executor.js");
+		const { mergeInitDefaults } = await import("../wizard/types.js");
+		const executor = new WizardExecutor({
+			connection: session.connection,
+			handlerRegistry: session.handlerRegistry,
+		});
+
+		// Run init to fetch defaults, then merge with definition defaults and prefill
+		const initDefaults = await executor.initialize(def);
+		const mergedDef = mergeInitDefaults(def, initDefaults);
+
+		const answers: WizardAnswers = { ...mergedDef.globalDefaults };
+		for (const tab of mergedDef.tabs) {
 			for (const field of tab.fields) {
 				if (field.defaultValue !== undefined) {
 					answers[field.id] = field.defaultValue;
@@ -264,19 +274,18 @@ async function handleWizardWithDef(
 
 		// Validate and execute
 		const { validateAnswers } = await import("../wizard/validator.js");
-		const validation = validateAnswers(def, answers);
+		const validation = validateAnswers(mergedDef, answers);
 		if (!validation.valid) {
 			const messages = validation.errors.map((e) => `  ${e.fieldId}: ${e.message}`).join("\n");
 			return errorResult(`Validation failed:\n${messages}`);
 		}
 
-		if (!session.connection) {
-			return errorResult("No HISE connection — cannot execute wizard.");
+		const hasHttpTasks = mergedDef.tasks.some((t) => t.type === "http");
+		if (hasHttpTasks && !session.connection) {
+			return errorResult("No HISE connection — cannot execute HTTP wizard tasks.");
 		}
 
-		const { WizardExecutor } = await import("../wizard/executor.js");
-		const executor = new WizardExecutor(session.connection);
-		const result = await executor.execute(def, answers);
+		const result = await executor.execute(mergedDef, answers);
 		if (result.success) {
 			return textResult(result.message);
 		}
@@ -306,6 +315,22 @@ async function handleDensity(
 }
 
 // ── Registration ────────────────────────────────────────────────────
+
+// ── Connect command ──────────────────────────────────────────────────
+
+async function handleConnect(
+	_args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	if (!session.connection) {
+		return errorResult("No connection configured.");
+	}
+	const alive = await session.connection.probe();
+	if (alive) {
+		return textResult("Connected to HISE on localhost:1900.");
+	}
+	return errorResult("HISE not responding on localhost:1900. Start HISE and try again.");
+}
 
 export function registerBuiltinCommands(registry: CommandRegistry): void {
 	registry.register({
@@ -398,6 +423,14 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		description: "Enter undo mode (history & plan groups)",
 		handler: createModeHandler("undo"),
 		kind: "mode",
+	});
+
+	registry.register({
+		name: "connect",
+		description: "Check HISE connection status",
+		handler: handleConnect,
+		kind: "command",
+		surfaces: ["tui"],
 	});
 
 	registry.register({

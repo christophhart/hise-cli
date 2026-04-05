@@ -7,6 +7,7 @@ import { InspectMode } from "./engine/modes/inspect.js";
 import { ScriptMode } from "./engine/modes/script.js";
 import { UndoMode } from "./engine/modes/undo.js";
 import { WizardRegistry } from "./engine/wizard/registry.js";
+import type { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 
 export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo"] as const;
 
@@ -14,14 +15,17 @@ export interface CreateSessionOptions {
 	connection: HiseConnection | null;
 	completionEngine?: CompletionEngine;
 	getModuleList?: () => ModuleList | undefined;
+	handlerRegistry?: WizardHandlerRegistry;
 }
 
 export function createSession({
 	connection,
 	completionEngine = new CompletionEngine(),
 	getModuleList,
+	handlerRegistry,
 }: CreateSessionOptions): { session: Session; completionEngine: CompletionEngine } {
 	const session = new Session(connection, completionEngine);
+	if (handlerRegistry) session.handlerRegistry = handlerRegistry;
 	session.registerMode("script", (ctx) => new ScriptMode(ctx, completionEngine));
 	session.registerMode("inspect", () => new InspectMode(completionEngine));
 	session.registerMode(

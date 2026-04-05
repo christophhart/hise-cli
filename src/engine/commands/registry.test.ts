@@ -56,6 +56,7 @@ function createMockSession(): CommandSession {
 			return result;
 		},
 		wizardRegistry: null,
+		handlerRegistry: null,
 	};
 }
 

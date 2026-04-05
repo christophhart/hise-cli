@@ -51,6 +51,7 @@ submitLabel: Renders audio output to the specified file
 tasks:
   - id: ExportFunction
     function: onExport
+    type: http
 postActions: []
 globalDefaults:
   OpenInEditor: "1"

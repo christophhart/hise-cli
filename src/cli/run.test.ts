@@ -58,6 +58,33 @@ function createDataLoader(moduleList = createModuleList()): DataLoader {
 	};
 }
 
+function createDataLoaderWithWizard(): DataLoader {
+	const base = createDataLoader();
+	return {
+		...base,
+		async loadWizardDefinitions() {
+			return [
+				{
+					id: "test_wizard",
+					header: "Test Wizard",
+					tabs: [
+						{
+							label: "Settings",
+							fields: [
+								{ id: "name", type: "text" as const, label: "Name", required: true },
+								{ id: "format", type: "choice" as const, label: "Format", required: false, items: ["WAV", "AIFF"], defaultValue: "WAV" },
+							],
+						},
+					],
+					tasks: [{ id: "run", function: "runTest", type: "http" as const }],
+					postActions: [],
+					globalDefaults: {},
+				},
+			];
+		},
+	};
+}
+
 describe("executeCliCommand", () => {
 	it("returns compact semantic JSON for script values", async () => {
 		mockObserverFetch();
@@ -253,5 +280,89 @@ describe("executeCliCommand", () => {
 				type: "markdown",
 			},
 		});
+	});
+});
+
+describe("wizard subcommand", () => {
+	it("lists wizards via wizard list", async () => {
+		mockObserverFetch();
+		const result = await executeCliCommand(
+			["node", "hise-cli", "wizard", "list"],
+			getCliCommands(),
+			createDataLoaderWithWizard(),
+			new MockHiseConnection().setProbeResult(true),
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(true);
+			expect(result.payload).toMatchObject({
+				ok: true,
+				result: { type: "table" },
+			});
+		}
+	});
+
+	it("returns schema via wizard --schema", async () => {
+		mockObserverFetch();
+		const result = await executeCliCommand(
+			["node", "hise-cli", "wizard", "test_wizard", "--schema"],
+			getCliCommands(),
+			createDataLoaderWithWizard(),
+			new MockHiseConnection().setProbeResult(true),
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(true);
+			if ("result" in result.payload) {
+				expect(result.payload.result.type).toBe("text");
+				const content = (result.payload.result as { content: string }).content;
+				const schema = JSON.parse(content);
+				expect(schema.id).toBe("test_wizard");
+				expect(schema.fields).toHaveLength(2);
+			}
+		}
+	});
+
+	it("executes wizard via --answers JSON", async () => {
+		mockObserverFetch();
+		const conn = new MockHiseConnection().setProbeResult(true);
+		conn.onPost("/api/wizard/execute", () => ({
+			success: true,
+			result: "Test Wizard completed successfully.",
+			logs: [],
+			errors: [],
+		}));
+
+		const result = await executeCliCommand(
+			["node", "hise-cli", "wizard", "test_wizard", "--answers", '{"name":"MyProject","format":"WAV"}'],
+			getCliCommands(),
+			createDataLoaderWithWizard(),
+			conn,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(true);
+			if ("result" in result.payload) {
+				expect(result.payload.result.type).toBe("text");
+			}
+		}
+	});
+
+	it("returns error for unknown wizard with --answers", async () => {
+		mockObserverFetch();
+		const result = await executeCliCommand(
+			["node", "hise-cli", "wizard", "nonexistent", "--answers", "{}"],
+			getCliCommands(),
+			createDataLoaderWithWizard(),
+			new MockHiseConnection().setProbeResult(true),
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(false);
+		}
 	});
 });

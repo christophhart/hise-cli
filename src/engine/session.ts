@@ -15,6 +15,7 @@ import {
 import { registerBuiltinCommands } from "./commands/slash.js";
 import type { CompletionEngine } from "./completion/engine.js";
 import type { WizardRegistry } from "./wizard/registry.js";
+import type { WizardHandlerRegistry } from "./wizard/handler-registry.js";
 
 // ── Mode factory registry ───────────────────────────────────────────
 
@@ -33,6 +34,7 @@ export class Session implements SessionContext, CommandSession {
 	readonly registry: CommandRegistry;
 	readonly completionEngine: CompletionEngine | null;
 	wizardRegistry: WizardRegistry | null = null;
+	handlerRegistry: WizardHandlerRegistry | null = null;
 	projectName: string | null = null;
 
 	private readonly modeFactories = new Map<string, ModeFactory>();

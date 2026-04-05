@@ -449,88 +449,132 @@ its own sidebar tree showing undo history and plan group state.
 **Goal**: declarative multi-step workflows serving both TUI and CLI.
 
 Tracks [#15](https://github.com/christoph-hart/hise-cli/issues/15).
-Full type specification in
-[DESIGN.md — Wizard Framework](DESIGN.md#wizard-framework).
-Conversion guide in
-[docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md).
+Source wizard JSONs from HISE's C++ multipage dialogs live in `wizards/`.
+Converted YAML definitions in `data/wizards/`.
 
-### 5.1 Engine types
+### 5.1 Engine types + JSON parser + YAML format ✓
 
-File: `src/engine/wizard/types.ts`
+**Status: Completed.** Engine-layer wizard types, a converter from HISE
+multipage dialog JSON to internal representation, and YAML serialization.
 
-`WizardDefinition`, `WizardStep` (8 types), `FormField`, `PipelinePhase`,
-`PipelineCallbacks`, `PhaseResult`, `WizardOutput`, `Answers`.
+`WizardDefinition`, `WizardField` (5 types: text, file, choice, toggle,
+multiselect), `WizardTab`, `WizardTask`, `WizardPostAction`, `WizardAnswers`,
+`WizardValidation`, `WizardProgress`, `WizardExecResult`.
 
-### 5.2 WizardRunner (TUI state machine)
+**Key decisions:**
+- **YAML as canonical format**: HISE JSON is converted once via
+  `scripts/convert-wizards.mjs`. Runtime loads YAML directly — no JSON
+  parser in the hot path. YAML files are human-editable.
+- **Flat field types**: no `Branch`/`Column`/`List` nesting from HISE JSON.
+  Branches become conditional tabs (`tab.condition`). Radio-group buttons
+  merged into `choice` fields by the converter.
+- **`multiselect` field type**: added for tag-list-style multi-toggle fields
+  (e.g., file type filters). Stored as comma-separated string.
+- **`itemDescriptions`**: per-item tooltips shown dimmed next to each option
+  during choice/multiselect editing.
+- **`body`**: markdown field rendered below the header for self-documenting
+  wizard descriptions (bullet points, tips, blockquotes).
+- **`submitLabel`**: description shown next to the Submit button explaining
+  what happens on submit.
+- **Broadcaster wizard omitted**: too complex (6-page decision tree, not a
+  form). The 6 ported wizards: `new_project`, `plugin_export`,
+  `audio_export`, `compile_networks`, `install_package_maker`, `recompile`.
 
-File: `src/engine/wizard/runner.ts`
+**Files:**
+- `src/engine/wizard/types.ts` — all type definitions
+- `src/engine/wizard/parser.ts` — HISE JSON → WizardDefinition converter
+- `src/engine/wizard/yaml.ts` — YAML serialize/deserialize
+- `src/engine/wizard/validator.ts` — answer validation, `isTabComplete()`
+- `src/engine/wizard/executor.ts` — one-shot execution via HiseConnection
+- `src/engine/wizard/registry.ts` — WizardRegistry loaded at session bootstrap
+- `src/engine/wizard/index.ts` — re-exports
+- `scripts/convert-wizards.mjs` — one-shot JSON→YAML conversion script
+- `data/wizards/*.yaml` — 6 wizard definitions
 
-Step-by-step navigation: `advance()`, `back()`, `visibleSteps()`,
-`currentStep()`, `isComplete()`, `generateOutput()`.
+### 5.2 `/wizard` slash command ✓
 
-### 5.3 WizardExecutor (CLI single-shot)
+**Status: Completed.** Registered in `src/engine/commands/slash.ts`.
 
-File: `src/engine/wizard/executor.ts`
+- `/wizard` or `/wizard list` → table of available wizards
+- `/wizard <name>` → returns `wizardResult()` to activate TUI form
+- `/wizard <name> key:value` → pre-fill fields
+- `/wizard <name> --run key:value` → validate + execute directly
+- `/wizard <name> --schema` → JSON field schema for CLI/LLM use
+- Fuzzy-matched wizard IDs (prefix match)
 
-`execute(answers)`, `validate(answers)`, `schema()`.
+`"wizard"` added to `ModeId` with accent `#e8a060` (copper).
+`CommandResult` union extended with `type: "wizard"`.
 
-### 5.4 TUI overlay
+### 5.3 TUI wizard form ✓
 
-File: `src/tui/wizard/WizardOverlay.tsx`
+**Status: Completed.** Wizard form renders as a `PrerenderedBlock` in the
+Output viewport using chalk. No Ink/React components — pure ANSI strings
+with the same rendering pipeline as markdown blocks, echo, and errors.
 
-Fixed-size overlay using size presets from `Overlay.tsx` (`OVERLAY_SIZES`),
-copper `#e8a060` border. Step renderers for select, text, toggle, form,
-preview, pipeline. Keyboard map per
-[docs/TUI_STYLE.md — Section 4.5](docs/TUI_STYLE.md#45-wizard-keyboard-map).
+**Key decisions:**
+- **Output-block rendering**: three prior approaches failed (manual Ink
+  padding, `wrap="truncate"`, `@inkjs/ui` components) due to Ink layout
+  glitches. The working approach renders the entire form as ANSI lines via
+  chalk and displays it through the Output viewport's existing slice-and-
+  render pipeline. See `feedback_ink_rendering` memory.
+- **Block replacement**: on each keystroke the last block in `outputBlocks`
+  is replaced with a fresh render. Auto-scroll keeps it in view.
+- **Three interaction modes**: navigate (arrows + tab), edit (typing +
+  choice/multiselect expansion), submit (enter on button).
+- **Input hidden during wizard**: the form captures all keys via the
+  `useInput` handler in app.tsx. Output viewport gets the full height.
+- **Deactivated render**: on submit/cancel the form re-renders with
+  `active: false` (no signal-color highlights) before returning to normal.
+- **Required field indicator**: `*` in accent color for empty required
+  fields, disappears once filled.
+- **File path completion**: `listPathCompletions()` in `src/tui/wizard-files.ts`
+  reads the filesystem, filters by prefix/wildcard/directory flag, renders
+  suggestions below the field like choice expansion. Tab accepts, Enter
+  exits edit keeping typed value.
+- **`✦` icon**: four-pointed star in accent color before the wizard title.
 
-### 5.5 Pipeline executor
+**Files:**
+- `src/tui/components/wizard-render.ts` — pure render function
+- `src/tui/components/wizard-keys.ts` — pure key handler (state transitions)
+- `src/tui/wizard-files.ts` — filesystem path completion
+- `src/tui/app.tsx` — integration (state, key routing, block replacement)
 
-File: `src/engine/wizard/pipeline.ts`
+### 5.4 CLI commands
 
-Phase sequencing, streaming log output, abort (`AbortController`), retry
-from failed phase.
+**Status: Partially complete.** `/wizard <name> --run` and `--schema` work
+via the slash command handler. Remaining: dedicated `hise-cli wizard`
+entry point in `src/cli/run.ts` with `--answers` JSON input and structured
+JSON progress output.
 
-### 5.6 Shared pipeline phases
+### 5.5 Pipeline executor + execution wiring
 
-Directory: `src/engine/wizard/phases/`
+**Status: Not started.** The `WizardExecutor` class exists and POSTs to
+`/api/wizard/execute`, but the HISE C++ endpoint does not exist yet. The
+executor needs to be wired to actual HISE operations (compile, create
+project, recompile, etc.) once the REST endpoints are available.
 
-Reusable building blocks extracted from legacy setup templates. The
-extraction must remove all TUI dependencies (Ink components, React hooks)
-from the phase logic. Prerequisite for Phase 5.7.
+Remaining work:
+- Pipeline phase sequencing with progress callbacks
+- Abort support (`AbortController`)
+- Per-wizard task mapping (which HISE endpoints to call for each wizard)
+- Progress bar rendering in the output stream
 
-Template source for extraction: `docs/LEGACY_SETUP_SCRIPTS.md`.
+### 5.6 Tests + screencast
 
-Specific phase modules to implement:
-- `compile.ts` — Projucer + platform compiler (`runProjucer`, `runBuild`)
-- `verify.ts` — binary check (`verifyBinary`, `checkBuildFlags`)
-- `git-ops.ts` — clone, fetch, checkout (`gitClone`, `gitFetch`, `gitCheckout`)
-- `cleanup.ts` — directory + PATH removal (`removeDirectory`, `cleanPath`)
+**Status: Partially complete.** 729 tests pass. Engine tests cover parser
+(39 tests), validator (13 tests), render (16 tests), key handler (18 tests).
+Remaining: `.tape` screencast test for a wizard walkthrough, end-to-end
+integration test with mock HISE connection.
 
-### 5.7 Setup wizard definition
-
-File: `src/engine/wizard/definitions/setup.ts`
-
-The first real wizard. `standalone: true`. 5 steps (form → form → form →
-pipeline → preview). Reuses the 9 legacy build phases from
-`docs/LEGACY_SETUP_SCRIPTS.md`
-via shared pipeline phases. Source reference: `data/wizards/new_project.json`.
-
-### 5.8 CLI commands
-
-`hise-cli wizard <id> --answers '<json>'` — single-shot execution.
-`hise-cli wizard <id> --schema` — dump parameter schema.
-`hise-cli wizard list` — list available wizards.
-No lifecycle subcommand aliases are kept before 1.0. Only explicit wizard
-commands should exist.
-
-**Phase 5 gate — all must pass:**
-- `npm test` passes with: WizardRunner step navigation (advance, back,
-  showIf, repeat groups), WizardExecutor single-shot validation + execution,
-  pipeline phase sequencing with abort, setup wizard definition renders in
-  ink-testing-library overlay, CLI `--answers` and `--schema` work,
-  `.tape` screencast for setup wizard walkthrough
-- `npm run build && npm run typecheck` pass
-- Manual: `hise-cli wizard setup` opens standalone wizard overlay
+**Phase 5 gate — to pass:**
+- ✓ `npm run build && npm run typecheck` pass
+- ✓ `npm test` passes with: parser, validator, renderer, key handler tests
+- ✓ `/wizard list` shows 6 wizards, `/wizard <name>` opens form
+- ✓ TUI form: navigate, edit text/choice/multiselect/toggle, file
+  completion, submit
+- ○ CLI `--answers` JSON execution path (`src/cli/run.ts`)
+- ○ Pipeline executor wired to HISE REST endpoints
+- ○ `.tape` screencast for wizard walkthrough
 
 ---
 

@@ -22,5 +22,6 @@ submitLabel: Compiles scriptnode C++ networks into a DLL
 tasks:
   - id: compileTask
     function: compileTask
+    type: http
 postActions: []
 globalDefaults: {}

@@ -175,7 +175,7 @@ function extractTasks(elements: RawElement[]): WizardTask[] {
 	for (const el of elements) {
 		if (el.Type === "LambdaTask") {
 			const fn = el.Function ?? el.ID ?? "task";
-			tasks.push({ id: el.ID || fn, function: fn });
+			tasks.push({ id: el.ID || fn, function: fn, type: "http" });
 		}
 		if (el.Children) {
 			tasks.push(...extractTasks(el.Children));
