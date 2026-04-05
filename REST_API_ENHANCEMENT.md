@@ -2110,6 +2110,607 @@ Returns the updated expansion count.
 
 ---
 
+## Wizard Endpoints
+
+Wizard endpoints support the hise-cli wizard framework (phase 5). Three
+execution patterns exist:
+
+1. **Sync** — HISE performs the work and returns immediately.
+2. **Long-running job** — HISE starts a background thread, returns a `jobId`.
+   The client polls `/api/wizard/status` for progress until completion.
+3. **Prepare-only** — HISE generates build artifacts (Projucer project,
+   build script). The client runs the system compiler locally.
+
+All wizard endpoints use the standard response envelope.
+
+---
+
+### GET /api/wizard/initialise
+
+Fetch pre-populated field defaults for a wizard form. Called before
+displaying the form so HISE can inject environment-specific values.
+
+**Query Parameters**:
+
+| Parameter | Required | Description          |
+|-----------|----------|----------------------|
+| `id`      | Yes      | The wizard ID string |
+
+**Response** (success):
+```json
+{
+  "success": true,
+  "result": {
+    "FieldId1": "default value",
+    "FieldId2": "/some/detected/path"
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+`result` is a flat `Record<string, string>` — keys are field IDs from the
+wizard definition, values are detected defaults. Unknown keys are ignored
+by the client. Fields not present in the response keep their YAML defaults.
+
+**Response** (failure):
+```json
+{
+  "success": false,
+  "result": null,
+  "logs": [],
+  "errors": [{ "errorMessage": "No project loaded", "callstack": [] }]
+}
+```
+
+Init failure is **non-fatal** — the client falls back to YAML defaults.
+
+#### Per-wizard init contracts
+
+**`new_project`** — Detects the default project folder location.
+
+```json
+// GET /api/wizard/initialise?id=new_project
+// Response result:
+{
+  "DefaultProjectFolder": "/Users/foo/HISE Projects"
+}
+```
+
+**`plugin_export`** — Returns current project settings relevant to export.
+
+```json
+// GET /api/wizard/initialise?id=plugin_export
+// Response result:
+{
+  "ExportType": "Plugin",
+  "projectType": "Instrument",
+  "pluginType": "VST"
+}
+```
+
+**`audio_export`** — Suggests default output path.
+
+```json
+// GET /api/wizard/initialise?id=audio_export
+// Response result:
+{
+  "Location": "/Users/foo/HISE Projects/MyProject/Exports/output.wav"
+}
+```
+
+**`install_package_maker`** — Loads existing `install_package.json` if
+present, returns its values as field defaults.
+
+```json
+// GET /api/wizard/initialise?id=install_package_maker
+// Response result:
+{
+  "InfoText": "Existing info text from file",
+  "PositiveWildcard": "Scripts/,*.hip",
+  "NegativeWildcard": "*.txt",
+  "FileTypeFilter": "AudioFiles,Scripts",
+  "Preprocessors": "Raw Processor",
+  "UseClipboard": "0",
+  "ClipboardContent": ""
+}
+```
+
+**`recompile`** — No init needed. The client does not call initialise.
+
+**`compile_networks`** — No init needed.
+
+**`setup`** — Init is `type: "internal"` (handled in TypeScript). No HTTP
+init call.
+
+---
+
+### POST /api/wizard/execute
+
+Execute a wizard task. The request body identifies the wizard, provides
+all form answers, and names the task function to run.
+
+**JSON Body**:
+
+| Field      | Type                      | Required | Description                        |
+|------------|---------------------------|----------|------------------------------------|
+| `wizardId` | `string`                  | Yes      | Wizard ID                          |
+| `answers`  | `Record<string, string>`  | Yes      | All field values from the form     |
+| `tasks`    | `string[]`                | Yes      | Task function names to execute     |
+
+The `tasks` array always contains exactly one function name. HISE
+dispatches internally based on `wizardId` + `tasks[0]`. For wizards with
+multiple alternative tasks (e.g. `new_project`), HISE uses the `answers`
+to determine which operation to perform — non-matching tasks return
+success with a no-op.
+
+#### Sync response
+
+For fast operations that complete immediately:
+
+```json
+{
+  "success": true,
+  "result": "Project created at /Users/foo/HISE Projects/MyProject",
+  "logs": ["Created directory structure", "Wrote project_info.xml"],
+  "errors": []
+}
+```
+
+#### Long-running job response
+
+For operations that take significant wall-clock time (audio rendering,
+future monolith encoding, expansion encoding). HISE starts the operation
+on a background thread and returns a job handle:
+
+```json
+{
+  "success": true,
+  "result": {
+    "jobId": "audio_export_1717600000",
+    "async": true
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+The client detects a job response by checking `result.async === true` and
+switches to polling `/api/wizard/status`.
+
+#### Error response
+
+```json
+{
+  "success": false,
+  "result": null,
+  "logs": ["Attempted to create project folder"],
+  "errors": [
+    { "errorMessage": "Folder already exists: /path/to/MyProject", "callstack": [] }
+  ]
+}
+```
+
+---
+
+### GET /api/wizard/status
+
+Poll progress of a long-running wizard job. Only used for async tasks
+(where execute returned `async: true`).
+
+**Query Parameters**:
+
+| Parameter | Required | Description                  |
+|-----------|----------|------------------------------|
+| `jobId`   | Yes      | Job ID from execute response |
+
+**Response** (in progress):
+```json
+{
+  "success": true,
+  "result": {
+    "finished": false,
+    "progress": 0.45,
+    "message": "Rendering audio: 3.6s / 8.0s"
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Response** (completed):
+```json
+{
+  "success": true,
+  "result": {
+    "finished": true,
+    "progress": 1.0,
+    "message": "Export complete"
+  },
+  "logs": ["Rendered 8.0 seconds of audio", "Written to /path/to/output.wav"],
+  "errors": []
+}
+```
+
+**Response** (failed):
+```json
+{
+  "success": false,
+  "result": {
+    "finished": true,
+    "progress": 0.6,
+    "message": "Audio engine error"
+  },
+  "logs": ["Rendered 4.8 seconds before failure"],
+  "errors": [{ "errorMessage": "Buffer underrun in audio callback", "callstack": [] }]
+}
+```
+
+**Response** (unknown job):
+```json
+{
+  "success": false,
+  "result": null,
+  "logs": [],
+  "errors": [{ "errorMessage": "No active job with ID: invalid_id", "callstack": [] }]
+}
+```
+
+**Polling interval**: The client polls every 500ms. HISE does not need to
+rate-limit — the `requestSerializationLock` naturally throttles.
+
+**Job lifecycle**: A job is queryable from the moment `execute` returns
+until the client has retrieved a `finished: true` response. After that,
+HISE may discard the job state. Only one job runs at a time (HISE is
+single-threaded for REST).
+
+---
+
+### Per-Wizard Execute Contracts
+
+#### `new_project` — Sync
+
+HISE dispatches internally based on `answers.Template`:
+- `"0"` → create empty project
+- `"1"` → import HXI archive (uses `answers.hxiFile`)
+- `"2"` → extract Rhapsody template
+
+All three task functions are sent sequentially by the client. HISE
+executes only the one matching the Template value; the others return
+success as no-ops.
+
+**Request** (empty project):
+```json
+{
+  "wizardId": "new_project",
+  "answers": {
+    "ProjectName": "MyPlugin",
+    "DefaultProjectFolder": "/Users/foo/HISE Projects",
+    "UseDefault": "1",
+    "Template": "0"
+  },
+  "tasks": ["createEmptyProject"]
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Project created at /Users/foo/HISE Projects/MyPlugin",
+  "logs": [
+    "Created directory structure",
+    "Generated project_info.xml",
+    "Switched active project to MyPlugin"
+  ],
+  "errors": []
+}
+```
+
+**Request** (import HXI):
+```json
+{
+  "wizardId": "new_project",
+  "answers": {
+    "ProjectName": "ImportedPlugin",
+    "DefaultProjectFolder": "/Users/foo/HISE Projects",
+    "UseDefault": "1",
+    "Template": "1",
+    "hxiFile": "/Users/foo/Downloads/MyLibrary.hxi"
+  },
+  "tasks": ["importHxiTask"]
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Imported MyLibrary.hxi into /Users/foo/HISE Projects/ImportedPlugin",
+  "logs": [
+    "Extracted archive (14 files)",
+    "Generated project_info.xml",
+    "Switched active project to ImportedPlugin"
+  ],
+  "errors": []
+}
+```
+
+---
+
+#### `recompile` — Sync
+
+Triggers F5-style recompile with optional cache clearing. Completes in
+seconds.
+
+**Request**:
+```json
+{
+  "wizardId": "recompile",
+  "answers": {
+    "clearGlobals": "1",
+    "clearFonts": "0",
+    "clearAudioFiles": "0",
+    "clearImages": "0"
+  },
+  "tasks": ["task"]
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "Recompilation complete",
+  "logs": [
+    "Cleared global variables",
+    "Compiled 3 script processors",
+    "Compilation time: 1.2s"
+  ],
+  "errors": []
+}
+```
+
+---
+
+#### `plugin_export` — Sync (prepare only)
+
+HISE generates the Projucer project file and platform build script. The
+actual compilation is handled by hise-cli internally (runs the system
+compiler via `PhaseExecutor`, reusing the setup wizard's compile
+infrastructure).
+
+The existing `export_ci` command-line codepath is reused — this endpoint
+is a thin wrapper that writes the same build artifacts without launching
+the compiler.
+
+**Request**:
+```json
+{
+  "wizardId": "plugin_export",
+  "answers": {
+    "ExportType": "Plugin",
+    "projectType": "Instrument",
+    "pluginType": "VST"
+  },
+  "tasks": ["compileTask"]
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "projectFile": "/Users/foo/HISE Projects/MyPlugin/Binaries/MyPlugin.jucer",
+    "buildScript": "/Users/foo/HISE Projects/MyPlugin/Binaries/build.sh",
+    "buildDirectory": "/Users/foo/HISE Projects/MyPlugin/Binaries",
+    "configuration": "Release"
+  },
+  "logs": [
+    "Generated Projucer file",
+    "Created build script for macOS/arm64",
+    "Export type: VST Instrument"
+  ],
+  "errors": []
+}
+```
+
+The `result` object provides paths the client needs to invoke the
+compiler. The client reads `buildScript` and `buildDirectory` to execute
+the build step internally.
+
+---
+
+#### `compile_networks` — Sync (prepare only)
+
+Same pattern as `plugin_export`. HISE generates the DLL C++ project from
+scriptnode network graphs. The client compiles locally.
+
+**Request**:
+```json
+{
+  "wizardId": "compile_networks",
+  "answers": {
+    "replaceScriptModules": "1",
+    "openIDE": "0"
+  },
+  "tasks": ["compileTask"]
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "projectFile": "/Users/foo/HISE Projects/MyPlugin/DspNetworks/Binaries/MyPlugin_ScriptNodes.jucer",
+    "buildScript": "/Users/foo/HISE Projects/MyPlugin/DspNetworks/Binaries/build.sh",
+    "buildDirectory": "/Users/foo/HISE Projects/MyPlugin/DspNetworks/Binaries",
+    "configuration": "Release",
+    "networks": ["MyFilter", "MySynth", "MyEffect"]
+  },
+  "logs": [
+    "Found 3 networks with C++ source",
+    "Generated Projucer file for DLL",
+    "Created build script"
+  ],
+  "errors": []
+}
+```
+
+---
+
+#### `audio_export` — Long-running job
+
+Renders live audio output to WAV. Uses realtime rendering by default, so
+wall-clock duration equals render length. This is the test balloon for
+the async job pattern.
+
+**Request**:
+```json
+{
+  "wizardId": "audio_export",
+  "answers": {
+    "Location": "/Users/foo/Desktop/render.wav",
+    "Length": "8 seconds",
+    "Realtime": "1",
+    "MidiInput": "0",
+    "OpenInEditor": "1"
+  },
+  "tasks": ["onExport"]
+}
+```
+
+**Response** (job started):
+```json
+{
+  "success": true,
+  "result": {
+    "jobId": "audio_export_1717600000",
+    "async": true
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+Then the client polls `GET /api/wizard/status?jobId=audio_export_1717600000`:
+
+**Status** (in progress):
+```json
+{
+  "success": true,
+  "result": {
+    "finished": false,
+    "progress": 0.45,
+    "message": "Rendering: 3.6s / 8.0s"
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Status** (complete):
+```json
+{
+  "success": true,
+  "result": {
+    "finished": true,
+    "progress": 1.0,
+    "message": "Rendered 8.0s to /Users/foo/Desktop/render.wav"
+  },
+  "logs": [
+    "Sample rate: 44100 Hz",
+    "Channels: 2",
+    "File size: 2.7 MB"
+  ],
+  "errors": []
+}
+```
+
+**Offline rendering** (`Realtime: "0"`): HISE renders faster than
+realtime. The job pattern is the same — progress updates reflect
+buffer-level advancement rather than wall-clock time.
+
+**Wait for MIDI** (`MidiInput: "1"`): The job enters a waiting state
+until the first MIDI event. Progress message reflects this:
+`"Waiting for MIDI input..."` with `progress: 0.0`.
+
+---
+
+#### `install_package_maker` — Sync
+
+Validates the form fields against the current project settings (checks
+that selected preprocessors match `project_info.xml`) and writes the
+`install_package.json` file.
+
+**Request**:
+```json
+{
+  "wizardId": "install_package_maker",
+  "answers": {
+    "LoadSettings": "true",
+    "InfoText": "Install this package to add the piano samples.",
+    "PositiveWildcard": "Scripts/,*.hip",
+    "NegativeWildcard": "*.txt,Binaries/",
+    "FileTypeFilter": "AudioFiles,Scripts",
+    "Preprocessors": "Raw Processor,Convolution",
+    "UseClipboard": "0",
+    "ClipboardContent": "",
+    "ExternalZipSelector": ""
+  },
+  "tasks": ["writePackageJson"]
+}
+```
+
+**Response** (success):
+```json
+{
+  "success": true,
+  "result": "Written install_package.json",
+  "logs": [
+    "Validated 2 preprocessors against project settings",
+    "Matched 47 files with wildcards",
+    "Written to /Users/foo/HISE Projects/MyPlugin/install_package.json"
+  ],
+  "errors": []
+}
+```
+
+**Response** (validation failure):
+```json
+{
+  "success": false,
+  "result": null,
+  "logs": [],
+  "errors": [
+    { "errorMessage": "Preprocessor 'Convolution' not enabled in project settings", "callstack": [] }
+  ]
+}
+```
+
+**Implementation notes**: The task function name `writePackageJson` needs
+to be added to the wizard YAML (currently `tasks: []`). HISE validates
+`Preprocessors` against `project_info.xml` before writing.
+
+---
+
+### Future long-running wizards (job pattern)
+
+These wizards do not exist yet but will reuse the same async job
+infrastructure as `audio_export`:
+
+- **Monolith encoding** — HLAC-compresses sample maps into `.ch1` files.
+  Long-running (minutes for large sample libraries). Progress: per-sample-map.
+- **Expansion encoding** — Packages expansion packs with optional
+  encryption. Long-running. Progress: per-expansion.
+
+No new endpoints needed — they use `POST /api/wizard/execute` (returns
+`async: true`) and `GET /api/wizard/status` (polling).
+
+---
+
 ## Server-Sent Events (SSE)
 
 ### GET /api/events
