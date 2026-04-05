@@ -12,6 +12,7 @@ import {
 	createSetupCompileHandler,
 	createSetupAddPathHandler,
 	createSetupVerifyHandler,
+	createSetupTestHandler,
 } from "./setup-tasks.js";
 
 /** Register all setup wizard handlers (init + tasks). */
@@ -22,7 +23,7 @@ export function registerSetupHandlers(
 	// Init handler — environment detection
 	registry.registerInit("setupDetectEnvironment", createSetupDetectHandler(executor));
 
-	// Task handlers — 8 phases
+	// Task handlers — 9 phases
 	registry.registerTask("setupGitInstall", createSetupGitInstallHandler(executor));
 	registry.registerTask("setupCloneRepo", createSetupCloneRepoHandler(executor));
 	registry.registerTask("setupBuildDeps", createSetupBuildDepsHandler(executor));
@@ -31,4 +32,5 @@ export function registerSetupHandlers(
 	registry.registerTask("setupCompile", createSetupCompileHandler(executor));
 	registry.registerTask("setupAddPath", createSetupAddPathHandler(executor));
 	registry.registerTask("setupVerify", createSetupVerifyHandler(executor));
+	registry.registerTask("setupTest", createSetupTestHandler(executor));
 }

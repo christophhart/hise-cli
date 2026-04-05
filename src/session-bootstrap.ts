@@ -49,8 +49,8 @@ export async function loadSessionDatasets(
 		try {
 			const wizardDefs = await dataLoader.loadWizardDefinitions();
 			session.wizardRegistry = WizardRegistry.fromDefinitions(wizardDefs);
-		} catch {
-			// Wizard data not available — /wizard command will report no wizards
+		} catch (err) {
+			console.error(`[wizard] Failed to load wizard definitions: ${err instanceof Error ? err.message : String(err)}`);
 		}
 	}
 

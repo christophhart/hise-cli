@@ -66,6 +66,7 @@ export class WizardExecutor {
 		def: WizardDefinition,
 		answers: WizardAnswers,
 		onProgress?: (p: WizardProgress) => void,
+		signal?: AbortSignal,
 	): Promise<WizardExecResult> {
 		const validation = validateAnswers(def, answers);
 		if (!validation.valid) {
@@ -81,10 +82,22 @@ export class WizardExecutor {
 		const allLogs: string[] = [];
 
 		for (let i = 0; i < def.tasks.length; i++) {
+			if (signal?.aborted) {
+				return { success: false, message: "Cancelled.", logs: allLogs.length > 0 ? allLogs : undefined };
+			}
+
 			const task = def.tasks[i]!;
+			const basePercent = Math.round((i / def.tasks.length) * 100);
+			const taskRange = 100 / def.tasks.length;
+
+			// Emit phase-start with task label as heading
+			onProgress?.({
+				phase: task.id,
+				percent: basePercent,
+				message: task.label ? `__heading__${task.label}` : undefined,
+			});
+
 			const taskProgress = (p: WizardProgress): void => {
-				const basePercent = (i / def.tasks.length) * 100;
-				const taskRange = 100 / def.tasks.length;
 				const scaledPercent =
 					p.percent !== undefined ? Math.round(basePercent + (p.percent / 100) * taskRange) : undefined;
 				onProgress?.({ ...p, percent: scaledPercent });
@@ -93,7 +106,7 @@ export class WizardExecutor {
 			const result =
 				task.type === "http"
 					? await this.executeHttpTask(def, task, answers, taskProgress)
-					: await this.executeInternalTask(task, answers, taskProgress);
+					: await this.executeInternalTask(task, answers, taskProgress, signal);
 
 			if (result.logs) allLogs.push(...result.logs);
 			if (!result.success) {
@@ -104,7 +117,7 @@ export class WizardExecutor {
 		onProgress?.({ phase: "Complete", percent: 100 });
 		return {
 			success: true,
-			message: `${def.header} completed successfully.`,
+			message: `✓ ${def.header} completed successfully.`,
 			postActions: def.postActions.length > 0 ? def.postActions : undefined,
 			logs: allLogs.length > 0 ? allLogs : undefined,
 		};
@@ -166,6 +179,7 @@ export class WizardExecutor {
 		task: WizardTask,
 		answers: WizardAnswers,
 		onProgress: (p: WizardProgress) => void,
+		signal?: AbortSignal,
 	): Promise<WizardExecResult> {
 		const handler = this.deps.handlerRegistry?.getTask(task.function);
 		if (!handler) {
@@ -173,7 +187,7 @@ export class WizardExecutor {
 		}
 
 		try {
-			return await handler(answers, onProgress);
+			return await handler(answers, onProgress, signal);
 		} catch (err) {
 			return {
 				success: false,

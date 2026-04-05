@@ -45,10 +45,16 @@ export function createNodeDataLoader(dataDir: string): DataLoader {
 			const files = fs.readdirSync(wizardDir).filter(
 				(f) => f.endsWith(".yaml"),
 			);
-			return files.map((f) => {
-				const content = fs.readFileSync(path.join(wizardDir, f), "utf8");
-				return parseYaml(content) as WizardDefinition;
-			});
+			const defs: WizardDefinition[] = [];
+			for (const f of files) {
+				try {
+					const content = fs.readFileSync(path.join(wizardDir, f), "utf8");
+					defs.push(parseYaml(content) as WizardDefinition);
+				} catch (err) {
+					console.error(`[wizard] Failed to parse ${f}: ${err instanceof Error ? err.message : String(err)}`);
+				}
+			}
+			return defs;
 		},
 	};
 }

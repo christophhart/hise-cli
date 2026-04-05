@@ -9,6 +9,7 @@ import type { WizardAnswers, WizardProgress, WizardExecResult } from "./types.js
 export type InternalTaskHandler = (
 	answers: WizardAnswers,
 	onProgress: (p: WizardProgress) => void,
+	signal?: AbortSignal,
 ) => Promise<WizardExecResult>;
 
 /** Signature for internal init handler functions (pre-form default fetching). */

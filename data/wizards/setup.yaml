@@ -77,26 +77,38 @@ tasks:
   - id: gitInstall
     function: setupGitInstall
     type: internal
+    label: Git Install
   - id: cloneRepo
     function: setupCloneRepo
     type: internal
+    label: Clone Repository
   - id: buildDeps
     function: setupBuildDeps
     type: internal
+    label: Build Dependencies
   - id: faustInstall
     function: setupFaustInstall
     type: internal
+    label: Install Faust
   - id: extractSdks
     function: setupExtractSdks
     type: internal
+    label: Extract SDKs
   - id: compile
     function: setupCompile
     type: internal
+    label: Compile HISE
   - id: addPath
     function: setupAddPath
     type: internal
+    label: Add to PATH
   - id: verify
     function: setupVerify
     type: internal
+    label: Verify Installation
+  - id: test
+    function: setupTest
+    type: internal
+    label: Test Export
 postActions: []
 globalDefaults: {}

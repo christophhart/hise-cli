@@ -17,7 +17,7 @@ import {
 	totalLineCount,
 } from "./components/Output.js";
 import type { PrerenderedBlock } from "./components/prerender.js";
-import { renderEcho, renderResult, truncateAnsi } from "./components/prerender.js";
+import { renderEcho, renderResult, truncateAnsi, wrapAnsi, fgHex, RESET } from "./components/prerender.js";
 import { Input, type InputHandle } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
@@ -25,6 +25,7 @@ import { TreeSidebar, type TreeSidebarHandle, type TreeSidebarState } from "./co
 import { CompletionEngine } from "../engine/completion/engine.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import {
+	brand,
 	defaultScheme,
 	type ColorScheme,
 	type ConnectionStatus,
@@ -180,6 +181,12 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// Wizard state — form rendered as output block, keys handled by pure function
 	const [wizardForm, setWizardForm] = useState<WizardFormState | null>(null);
 	const wizardFormRef = useRef<WizardFormState | null>(null);
+
+	// Wizard execution progress — shown in StatusBar during execution
+	const [wizardProgress, setWizardProgress] = useState<{ percent: number; message: string } | null>(null);
+	const abortRef = useRef<AbortController | null>(null);
+	const escTimestampRef = useRef(0);
+	const lastPhaseRef = useRef("");
 	wizardFormRef.current = wizardForm;
 
 	// Refs tracking latest state values (for snapshot capture in async callbacks)
@@ -277,7 +284,19 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const MOUSE_SEQ_RE = /^\[?<\d+;\d+;\d+[Mm]$/;
 
 	useInput((input, key) => {
-		if (disabledRef.current) return;
+		if (disabledRef.current) {
+			// Double-Escape (500ms debounce) to cancel running wizard
+			if (key.escape && abortRef.current) {
+				const now = Date.now();
+				if (escTimestampRef.current > 0 && (now - escTimestampRef.current) < 500) {
+					abortRef.current.abort();
+					escTimestampRef.current = 0;
+				} else {
+					escTimestampRef.current = now;
+				}
+			}
+			return;
+		}
 
 		// ── Priority 1: Wizard form active ───────────────────────
 		if (wizardFormRef.current) {
@@ -876,6 +895,29 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 		disabledRef.current = true;
 		setDisabled(true);
+		lastPhaseRef.current = "";
+		const controller = new AbortController();
+		abortRef.current = controller;
+
+		// ANSI color helpers
+		const dim = fgHex(scheme.foreground.muted);
+		const warn = fgHex(brand.warning);
+		const err = fgHex(brand.error);
+		const ok = fgHex(brand.ok);
+		const accent = fgHex(scheme.foreground.default);
+		const bold = "\x1b[1m";
+
+		const appendLine = (line: string) => {
+			const wrapped = wrapAnsi(line, innerW);
+			setOutputBlocks((prev) => {
+				const last = prev[prev.length - 1];
+				if (last) {
+					const updated = { ...last, lines: [...last.lines, ...wrapped], height: last.height + wrapped.length };
+					return [...prev.slice(0, -1), updated];
+				}
+				return [...prev, { lines: wrapped, height: wrapped.length }];
+			});
+		};
 
 		try {
 			const executor = new WizardExecutor({
@@ -883,30 +925,63 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				handlerRegistry: session.handlerRegistry,
 			});
 			const result = await executor.execute(def, answers, (progress) => {
-				const msg = [progress.phase, progress.percent !== undefined ? `${progress.percent}%` : "", progress.message]
-					.filter(Boolean).join(" ");
-				const block = renderResult({ type: "text", content: msg }, scheme, innerW);
-				if (block) addBlocks([block]);
-			});
+				// Update StatusBar progress
+				setWizardProgress({
+					percent: progress.percent ?? 0,
+					message: progress.phase === "Starting" ? def.header : progress.phase,
+				});
+
+				// Check for heading marker from executor
+				if (progress.message?.startsWith("__heading__")) {
+					const heading = progress.message.slice("__heading__".length);
+					lastPhaseRef.current = progress.phase;
+					appendLine(" ");
+					appendLine(`${bold}${accent}${heading}${RESET}`);
+					return;
+				}
+
+				// Skip phase-only progress with no message
+				if (!progress.message) return;
+
+				// Colorize based on unicode marker prefixes
+				const msg = progress.message;
+				let line: string;
+				if (msg.startsWith("✗ ")) {
+					line = `${err}✗ ${msg.slice(2)}${RESET}`;
+				} else if (msg.startsWith("⚠ ")) {
+					line = `${warn}⚠ ${msg.slice(2)}${RESET}`;
+				} else if (msg.startsWith("✓ ")) {
+					line = `${ok}✓ ${msg.slice(2)}${RESET}`;
+				} else {
+					line = `${dim}${msg}${RESET}`;
+				}
+				appendLine(line);
+			}, controller.signal);
 
 			if (result.success) {
-				const block = renderResult({ type: "text", content: result.message }, scheme, innerW);
-				if (block) addBlocks([block]);
+				const msg = result.message;
+				if (msg.startsWith("✓ ")) {
+					appendLine(" ");
+					appendLine(`${ok}✓ ${msg.slice(2)}${RESET}`);
+				} else {
+					appendLine(`${ok}✓ ${msg}${RESET}`);
+				}
 				if (result.postActions && result.postActions.length > 0) {
 					const lines = result.postActions.map((a, i) => `  [${i + 1}] ${a.label}`).join("\n");
 					const actionBlock = renderResult({ type: "text", content: `\n${lines}` }, scheme, innerW);
 					if (actionBlock) addBlocks([actionBlock]);
 				}
 			} else {
-				const block = renderResult({ type: "error", message: result.message }, scheme, innerW);
-				if (block) addBlocks([block]);
+				appendLine(`${err}✗ ${result.message}${RESET}`);
 			}
-		} catch (err) {
-			const block = renderResult({ type: "error", message: String(err) }, scheme, innerW);
-			if (block) addBlocks([block]);
+		} catch (e) {
+			appendLine(`${err}✗ ${String(e)}${RESET}`);
 		} finally {
 			disabledRef.current = false;
 			setDisabled(false);
+			setWizardProgress(null);
+			abortRef.current = null;
+			escTimestampRef.current = 0;
 		}
 	}, [session, scheme, contentColumns, layout, addBlocks]);
 
@@ -1249,6 +1324,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					modeHint={modeHint}
 					scrollInfo={scrollInfo}
 					columns={columns}
+					wizardProgress={wizardProgress}
 				/>
 		</Box>
 		</ThemeProvider>

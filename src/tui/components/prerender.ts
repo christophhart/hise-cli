@@ -50,7 +50,7 @@ function hexToRgb(hex: string): [number, number, number] {
 	];
 }
 
-function fgHex(hex: string): string {
+export function fgHex(hex: string): string {
 	if (!hex || hex.length < 7) return "";
 	const [r, g, b] = hexToRgb(hex);
 	return `\x1b[38;2;${r};${g};${b}m`;
@@ -62,7 +62,7 @@ function bgHex(hex: string): string {
 	return `\x1b[48;2;${r};${g};${b}m`;
 }
 
-const RESET = "\x1b[0m";
+export const RESET = "\x1b[0m";
 
 /** Truncate an ANSI-styled line to a maximum visible width.
  *  Escape sequences are preserved but don't count towards the width. */
@@ -84,6 +84,44 @@ export function truncateAnsi(line: string, maxVisibleWidth: number): string {
 		i = end !== -1 ? end + 1 : i + 1;
 	}
 	return line.slice(0, i) + RESET;
+}
+
+/** Wrap an ANSI-styled line into multiple lines at a given visible width.
+ *  Preserves active color state across line breaks. */
+export function wrapAnsi(line: string, maxWidth: number): string[] {
+	if (maxWidth <= 0) return [line];
+	const lines: string[] = [];
+	let visible = 0;
+	let current = "";
+	let activeEsc = ""; // accumulated ANSI escapes for carry-over
+
+	let i = 0;
+	while (i < line.length) {
+		if (line[i] === "\x1b") {
+			const end = line.indexOf("m", i);
+			if (end === -1) { current += line[i]; i++; continue; }
+			const seq = line.slice(i, end + 1);
+			current += seq;
+			if (seq === RESET) {
+				activeEsc = "";
+			} else {
+				activeEsc += seq;
+			}
+			i = end + 1;
+		} else {
+			current += line[i];
+			visible++;
+			i++;
+			if (visible >= maxWidth && i < line.length) {
+				lines.push(current + RESET);
+				current = activeEsc;
+				visible = 0;
+			}
+		}
+	}
+	if (current) lines.push(current);
+	if (lines.length === 0) lines.push("");
+	return lines;
 }
 
 // ── Echo renderer ───────────────────────────────────────────────────

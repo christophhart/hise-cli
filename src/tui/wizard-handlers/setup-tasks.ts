@@ -9,6 +9,19 @@ import type { WizardExecResult } from "../../engine/wizard/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+import type { SpawnOptions } from "../../engine/wizard/phase-executor.js";
+
+/** Create a spawn wrapper that injects signal into every call. */
+function withSignal(
+	executor: PhaseExecutor,
+	signal?: AbortSignal,
+): PhaseExecutor {
+	if (!signal) return executor;
+	return {
+		spawn: (cmd, args, opts) => executor.spawn(cmd, args, { ...opts, signal }),
+	};
+}
+
 function ok(message: string, logs?: string[]): WizardExecResult {
 	return { success: true, message, logs };
 }
@@ -19,11 +32,12 @@ function fail(message: string, logs?: string[]): WizardExecResult {
 
 // ── 1. Git install ───────────────────────────────────────────────────
 
-export function createSetupGitInstallHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupGitInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		if (answers.hasGit === "1") {
 			onProgress({ phase: "git-install", percent: 100, message: "Git already installed, skipping." });
-			return ok("Git already installed.");
+			return ok("✓ Git already installed.");
 		}
 
 		const platform = answers.platform ?? "Linux";
@@ -38,22 +52,23 @@ export function createSetupGitInstallHandler(executor: PhaseExecutor): InternalT
 				onLog: (line) => onProgress({ phase: "git-install", message: line }),
 			});
 			if (result.exitCode !== 0) return fail(`Git installation failed: ${result.stderr}`);
-			return ok("Git installed.");
+			return ok("✓ Git installed.");
 		}
 
 		// Windows — winget or direct download
 		const winget = await executor.spawn("winget", ["install", "Git.Git", "--accept-package-agreements", "--accept-source-agreements"], {
 			onLog: (line) => onProgress({ phase: "git-install", message: line }),
 		});
-		if (winget.exitCode === 0) return ok("Git installed via winget.");
+		if (winget.exitCode === 0) return ok("✓ Git installed via winget.");
 		return fail("Git installation failed. Please install Git manually from https://git-scm.com");
 	};
 }
 
 // ── 2. Clone repo ────────────────────────────────────────────────────
 
-export function createSetupCloneRepoHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupCloneRepoHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const targetCommit = answers.targetCommit?.trim() || "";
 
@@ -98,17 +113,18 @@ export function createSetupCloneRepoHandler(executor: PhaseExecutor): InternalTa
 		await executor.spawn("git", ["-C", juceDir, "checkout", "juce6"], {});
 
 		onProgress({ phase: "clone-repo", percent: 100 });
-		return ok("Repository cloned and configured.");
+		return ok("✓ Repository cloned and configured.");
 	};
 }
 
 // ── 3. Build deps (Linux only) ───────────────────────────────────────
 
-export function createSetupBuildDepsHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupBuildDepsHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		if (answers.platform !== "Linux") {
 			onProgress({ phase: "build-deps", percent: 100, message: "Skipping (not Linux)." });
-			return ok("Build dependencies not needed on this platform.");
+			return ok("✓ Build dependencies not needed on this platform.");
 		}
 
 		onProgress({ phase: "build-deps", percent: 0, message: "Installing build dependencies..." });
@@ -127,21 +143,22 @@ export function createSetupBuildDepsHandler(executor: PhaseExecutor): InternalTa
 		});
 
 		if (result.exitCode !== 0) return fail(`Dependency installation failed: ${result.stderr}`);
-		return ok("Build dependencies installed.");
+		return ok("✓ Build dependencies installed.");
 	};
 }
 
 // ── 4. Faust install ─────────────────────────────────────────────────
 
-export function createSetupFaustInstallHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupFaustInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		if (answers.includeFaust !== "1") {
 			onProgress({ phase: "faust-install", percent: 100, message: "Faust not requested, skipping." });
-			return ok("Faust installation skipped.");
+			return ok("✓ Faust installation skipped.");
 		}
 		if (answers.hasFaust === "1") {
 			onProgress({ phase: "faust-install", percent: 100, message: "Faust already installed, skipping." });
-			return ok("Faust already installed.");
+			return ok("✓ Faust already installed.");
 		}
 
 		const platform = answers.platform ?? "Linux";
@@ -154,7 +171,7 @@ export function createSetupFaustInstallHandler(executor: PhaseExecutor): Interna
 			if (result.exitCode !== 0) {
 				return fail("Faust installation failed. Install manually from https://faust.grame.fr");
 			}
-			return ok("Faust installed.");
+			return ok("✓ Faust installed.");
 		}
 
 		// macOS / Windows — guide user to manual install for now
@@ -167,8 +184,9 @@ export function createSetupFaustInstallHandler(executor: PhaseExecutor): Interna
 
 // ── 5. Extract SDKs ─────────────────────────────────────────────────
 
-export function createSetupExtractSdksHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupExtractSdksHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const sdkDir = `${installPath}/tools/SDK`;
 
@@ -177,21 +195,49 @@ export function createSetupExtractSdksHandler(executor: PhaseExecutor): Internal
 		const check = await executor.spawn("ls", ["-d", `${sdkDir}/ASIOSDK2.3`], {});
 		if (check.exitCode === 0) {
 			onProgress({ phase: "extract-sdks", percent: 100, message: "SDKs already extracted." });
-			return ok("SDKs already extracted.");
+			return ok("✓ SDKs already extracted.");
 		}
 
 		const result = await executor.spawn("tar", ["-xf", "sdk.zip"], { cwd: sdkDir });
 		if (result.exitCode !== 0) return fail(`SDK extraction failed: ${result.stderr}`);
 
 		onProgress({ phase: "extract-sdks", percent: 100 });
-		return ok("SDKs extracted.");
+		return ok("✓ SDKs extracted.");
 	};
+}
+
+// ── xcodebuild output filter ─────────────────────────────────────────
+
+function filterXcodeLine(line: string): string | null {
+	const compileMatch = line.match(/^Compile[\w]*\s+.*\/([\w.]+)\s/);
+	if (compileMatch) return `Compiling ${compileMatch[1]}`;
+
+	const ldMatch = line.match(/^Ld\s+.*\/([\w. ]+)\s/);
+	if (ldMatch) return `Linking ${ldMatch[1]}`;
+
+	if (line.startsWith("PhaseScriptExecution")) return line.split(/\s+/)[1] ?? line;
+	if (line.startsWith("ProcessInfoPlistFile")) return "Processing Info.plist";
+	if (/^=== BUILD TARGET/.test(line)) return line;
+
+	// Errors — broad matching to avoid filtering out important messages
+	if (/error:/i.test(line)) return `✗ ${line}`;
+	if (/\bfailed\b/i.test(line)) return `✗ ${line}`;
+	if (/\bundefined symbols?\b/i.test(line)) return `✗ ${line}`;
+	if (/\blinker command failed\b/i.test(line)) return `✗ ${line}`;
+
+	if (/warning:/i.test(line)) return `⚠ ${line}`;
+
+	if (line.startsWith("** BUILD SUCCEEDED **")) return `✓ ${line}`;
+	if (line.startsWith("** BUILD FAILED **")) return `✗ ${line}`;
+
+	return null;
 }
 
 // ── 6. Compile ───────────────────────────────────────────────────────
 
-export function createSetupCompileHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
 		const includeFaust = answers.includeFaust === "1";
@@ -228,7 +274,10 @@ export function createSetupCompileHandler(executor: PhaseExecutor): InternalTask
 				"-configuration", buildConfig,
 				"-jobs", "8",
 			], {
-				onLog: (line) => onProgress({ phase: "compile", message: line }),
+				onLog: (line) => {
+					const filtered = filterXcodeLine(line);
+					if (filtered) onProgress({ phase: "compile", message: filtered });
+				},
 			});
 			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
 		} else if (platform === "Linux") {
@@ -244,14 +293,15 @@ export function createSetupCompileHandler(executor: PhaseExecutor): InternalTask
 		}
 
 		onProgress({ phase: "compile", percent: 100, message: "Compilation complete." });
-		return ok("HISE compiled successfully.");
+		return ok("✓ HISE compiled successfully.");
 	};
 }
 
 // ── 7. Add to PATH ───────────────────────────────────────────────────
 
-export function createSetupAddPathHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
 
@@ -265,7 +315,7 @@ export function createSetupAddPathHandler(executor: PhaseExecutor): InternalTask
 		} else {
 			// Windows handled via environment variable
 			onProgress({ phase: "add-path", percent: 100, message: "PATH update skipped (manual on Windows)." });
-			return ok("Add the HISE build directory to your PATH manually.");
+			return ok("✓ Add the HISE build directory to your PATH manually.");
 		}
 
 		// Detect shell config
@@ -277,27 +327,32 @@ export function createSetupAddPathHandler(executor: PhaseExecutor): InternalTask
 		if (result.exitCode !== 0) return fail(`Failed to update ${shellConfig}: ${result.stderr}`);
 
 		onProgress({ phase: "add-path", percent: 100 });
-		return ok(`Added HISE to PATH in ${shellConfig}. Restart your shell or run: source ${shellConfig}`);
+		return ok(`✓ Added HISE to PATH in ${shellConfig}. Restart your shell or run: source ${shellConfig}`);
 	};
+}
+
+// ── HISE binary path helper ───────────────────────────────────────────
+
+function hiseBinPath(installPath: string, platform: string): string {
+	if (platform === "macOS") {
+		return `${installPath}/projects/standalone/Builds/MacOSX/build/Release/HISE.app/Contents/MacOS/HISE`;
+	} else if (platform === "Linux") {
+		return `${installPath}/projects/standalone/Builds/LinuxMakefile/build/HISE Standalone`;
+	}
+	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2022\\x64\\Release\\App\\HISE.exe`;
 }
 
 // ── 8. Verify ────────────────────────────────────────────────────────
 
-export function createSetupVerifyHandler(executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress) => {
+export function createSetupVerifyHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
 
 		onProgress({ phase: "verify", percent: 0, message: "Verifying HISE binary..." });
 
-		let binPath: string;
-		if (platform === "macOS") {
-			binPath = `${installPath}/projects/standalone/Builds/MacOSX/build/Release/HISE Standalone.app/Contents/MacOS/HISE Standalone`;
-		} else if (platform === "Linux") {
-			binPath = `${installPath}/projects/standalone/Builds/LinuxMakefile/build/HISE Standalone`;
-		} else {
-			binPath = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2022\\x64\\Release\\App\\HISE.exe`;
-		}
+		const binPath = hiseBinPath(installPath, platform);
 
 		const check = await executor.spawn("ls", ["-la", binPath], {});
 		if (check.exitCode !== 0) {
@@ -310,6 +365,66 @@ export function createSetupVerifyHandler(executor: PhaseExecutor): InternalTaskH
 		const logs = flags.stdout.trim() ? [flags.stdout.trim()] : undefined;
 
 		onProgress({ phase: "verify", percent: 100, message: "HISE verified successfully." });
-		return ok("HISE binary verified.", logs);
+		return ok("✓ HISE binary verified.", logs);
+	};
+}
+
+// ── 9. Test export ───────────────────────────────────────────────────
+
+export function createSetupTestHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
+		const installPath = answers.installPath!;
+		const platform = answers.platform ?? "Linux";
+		const arch = answers.architecture ?? "x64";
+		const binPath = hiseBinPath(installPath, platform);
+		const demoProject = `${installPath}/extras/demo_project`;
+
+		onProgress({ phase: "test", percent: 0, message: "Setting project folder..." });
+
+		const setFolder = await executor.spawn(binPath, [
+			"set_project_folder", `-p:${demoProject}`,
+		], {
+			onLog: (line) => onProgress({ phase: "test", message: line }),
+		});
+		if (setFolder.exitCode !== 0) return fail(`set_project_folder failed: ${setFolder.stderr}`);
+
+		onProgress({ phase: "test", percent: 20, message: "Exporting demo project..." });
+
+		const exportCi = await executor.spawn(binPath, [
+			"export_ci", "XmlPresetBackups/Demo.xml",
+			"-t:standalone", `-a:${arch}`, "-nolto",
+		], {
+			cwd: demoProject,
+			onLog: (line) => onProgress({ phase: "test", message: line }),
+		});
+		if (exportCi.exitCode !== 0) return fail(`export_ci failed: ${exportCi.stderr}`);
+
+		onProgress({ phase: "test", percent: 50, message: "Compiling demo project..." });
+
+		let batchScript: string;
+		if (platform === "macOS") {
+			batchScript = `${demoProject}/Binaries/batchCompileOSX`;
+		} else if (platform === "Linux") {
+			batchScript = `${demoProject}/Binaries/batchCompileLinux`;
+		} else {
+			batchScript = `${demoProject}\\Binaries\\batchCompile.bat`;
+		}
+
+		// Strip the xcbeautify pipe from the batch script so we get raw
+		// xcodebuild output through our own filterXcodeLine instead
+		const scriptContent = await executor.spawn("cat", [batchScript], {});
+		const patchedScript = scriptContent.stdout.replace(/\s*\|\s*"[^"]*xcbeautify"/, "");
+		const compile = await executor.spawn("bash", ["-c", patchedScript], {
+			cwd: `${demoProject}/Binaries`,
+			onLog: (line) => {
+				const filtered = filterXcodeLine(line);
+				if (filtered) onProgress({ phase: "test", message: filtered });
+			},
+		});
+		if (compile.exitCode !== 0) return fail(`Demo project compilation failed: ${compile.stderr}`);
+
+		onProgress({ phase: "test", percent: 100 });
+		return ok("✓ Demo project exported and compiled successfully.");
 	};
 }

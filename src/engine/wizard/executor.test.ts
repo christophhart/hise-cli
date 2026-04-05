@@ -193,7 +193,10 @@ describe("WizardExecutor", () => {
 			const progress: WizardProgress[] = [];
 			await executor.execute(def, {}, (p) => progress.push(p));
 			// t1 at 50% → scaled to 25% (first half), t2 at 100% → scaled to 100%
-			const taskProgress = progress.filter((p) => p.phase === "t1" || p.phase === "t2");
+			// Filter to only task-emitted progress (has a non-heading message)
+			const taskProgress = progress.filter((p) =>
+				(p.phase === "t1" || p.phase === "t2") && p.message && !p.message.startsWith("__heading__"),
+			);
 			expect(taskProgress[0]!.percent).toBe(25);
 			expect(taskProgress[1]!.percent).toBe(100);
 		});

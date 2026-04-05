@@ -78,6 +78,8 @@ export interface WizardTask {
 	readonly function: string;
 	/** Execution type. Defaults to "http" for backward compat with HISE wizards. */
 	readonly type: WizardTaskType;
+	/** Human-readable label shown as phase heading in progress output. */
+	readonly label?: string;
 }
 
 /** An optional follow-up action offered after successful execution. */
