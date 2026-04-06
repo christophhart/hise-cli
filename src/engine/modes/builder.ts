@@ -1629,9 +1629,9 @@ export class BuilderMode implements Mode {
 		cmd: BuilderCommand,
 		session: SessionContext,
 	): Promise<CommandResult> {
-		// Show commands are always local
+		// Show commands are always local (except show target which may fetch params)
 		if (cmd.type === "show") {
-			return this.handleShow(cmd);
+			return this.handleShow(cmd, session.connection ?? null);
 		}
 
 		// Move is not yet in C++ API
@@ -1674,7 +1674,15 @@ export class BuilderMode implements Mode {
 		}
 
 		// Execute against HISE
-		return this.executeOps(opsResult.ops, session.connection);
+		const result = await this.executeOps(opsResult.ops, session.connection);
+
+		// For successful set commands, echo the changed parameter as a table row
+		if (cmd.type === "set" && result.type !== "error") {
+			const echo = await this.echoSetParam(cmd, session.connection);
+			if (echo) return echo;
+		}
+
+		return result;
 	}
 
 	/** Execute operations against POST /api/builder/apply, re-fetch tree. */
@@ -1716,6 +1724,37 @@ export class BuilderMode implements Mode {
 		return textResult(summary);
 	}
 
+	/** After a successful set, fetch the updated parameter and return it as a single-row table. */
+	private async echoSetParam(
+		cmd: SetCommand,
+		connection: import("../hise.js").HiseConnection,
+	): Promise<CommandResult | null> {
+		const response = await connection.get(
+			`/api/builder/tree?moduleId=${encodeURIComponent(cmd.target)}`,
+		);
+		if (!isEnvelopeResponse(response) || !response.success) return null;
+		const raw = response.result as Record<string, unknown>;
+		const params = raw.parameters as Array<{
+			id: string;
+			value: number;
+			valueAsString: string;
+			range: { min: number; max: number };
+			defaultValue: number;
+		}> | undefined;
+		if (!params) return null;
+		const param = params.find((p) => p.id === cmd.param);
+		if (!param) return null;
+		return tableResult(
+			["Parameter", "Value", "Range", "Default"],
+			[[
+				param.id,
+				param.valueAsString ?? String(param.value),
+				`${param.range.min} – ${param.range.max}`,
+				String(param.defaultValue),
+			]],
+		);
+	}
+
 	/** Fallback for disconnected mode — validation + description only. */
 	private localFallback(cmd: BuilderCommand): CommandResult {
 		switch (cmd.type) {
@@ -1750,7 +1789,10 @@ export class BuilderMode implements Mode {
 		}
 	}
 
-	private handleShow(cmd: ShowCommand): CommandResult {
+	private async handleShow(
+		cmd: ShowCommand,
+		connection: import("../hise.js").HiseConnection | null,
+	): Promise<CommandResult> {
 		if (cmd.what === "types") {
 			if (!this.moduleList) {
 				return errorResult("Module data not loaded");
@@ -1775,18 +1817,7 @@ export class BuilderMode implements Mode {
 		}
 
 		if (cmd.what === "target") {
-			// Show module info from tree
-			if (this.treeRoot) {
-				const node = findNodeById(this.treeRoot, cmd.target!);
-				if (node) {
-					const info = [`${node.label} (${node.type ?? "unknown"})`];
-					if (node.children) {
-						info.push(`  ${node.children.length} children`);
-					}
-					return textResult(info.join("\n"));
-				}
-			}
-			return textResult(`show ${cmd.target} (module not found in tree)`);
+			return this.handleShowTarget(cmd.target!, connection);
 		}
 
 		// show tree — render from treeRoot
@@ -1794,6 +1825,58 @@ export class BuilderMode implements Mode {
 			return textResult("No module tree available (requires HISE connection).");
 		}
 		return textResult(renderTreeText(this.treeRoot, 0));
+	}
+
+	private async handleShowTarget(
+		target: string,
+		connection: import("../hise.js").HiseConnection | null,
+	): Promise<CommandResult> {
+		// Fetch live parameters from HISE
+		if (connection) {
+			const response = await connection.get(
+				`/api/builder/tree?moduleId=${encodeURIComponent(target)}`,
+			);
+			if (isEnvelopeResponse(response) && response.success) {
+				const raw = response.result as Record<string, unknown>;
+				const params = raw.parameters as Array<{
+					id: string;
+					value: number;
+					valueAsString: string;
+					range: { min: number; max: number };
+					defaultValue: number;
+				}> | undefined;
+
+				if (params && params.length > 0) {
+					return tableResult(
+						["Parameter", "Value", "Range", "Default"],
+						params.map((p) => [
+							p.id,
+							p.valueAsString ?? String(p.value),
+							`${p.range.min} – ${p.range.max}`,
+							String(p.defaultValue),
+						]),
+					);
+				}
+
+				// Module found but no parameters
+				const label = (raw.processorId as string) ?? target;
+				const type = (raw.prettyName as string) ?? (raw.id as string) ?? "unknown";
+				return textResult(`${label} (${type}) — no parameters`);
+			}
+		}
+
+		// Fallback: use cached tree for basic info
+		if (this.treeRoot) {
+			const node = findNodeById(this.treeRoot, target);
+			if (node) {
+				const info = [`${node.label} (${node.type ?? "unknown"})`];
+				if (node.children) {
+					info.push(`  ${node.children.length} children`);
+				}
+				return textResult(info.join("\n"));
+			}
+		}
+		return errorResult(`Module "${target}" not found`);
 	}
 }
 

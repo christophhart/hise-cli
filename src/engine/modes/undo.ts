@@ -102,6 +102,7 @@ export class UndoMode implements Mode {
 
 		const conn = session.connection;
 		await this.ensureHistory(conn);
+		await this.syncPlanState(conn);
 
 		switch (keyword) {
 			case "back":
@@ -272,6 +273,21 @@ export class UndoMode implements Mode {
 	}
 
 	// ── Internal helpers ────────────────────────────────────────
+
+	/** Sync local plan state with HISE's actual undo group state.
+	 *  Needed for CLI one-shot mode where each invocation gets a fresh instance. */
+	private async syncPlanState(
+		conn: import("../hise.js").HiseConnection,
+	): Promise<void> {
+		if (this.inPlan) return; // already tracking locally (TUI session)
+		const resp = await conn.get("/api/undo/diff?scope=group");
+		if (!isEnvelopeResponse(resp) || !resp.success) return;
+		const result = resp.result as Record<string, unknown> | null;
+		if (typeof result?.groupName === "string" && result.groupName !== "root") {
+			this.inPlan = true;
+			this.planName = result.groupName;
+		}
+	}
 
 	/** Fetch history on mode entry so the sidebar shows content immediately. */
 	async onEnter(session: SessionContext): Promise<void> {
