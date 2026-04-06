@@ -125,6 +125,10 @@ COMMANDS
   show <target>
     Show a module's parameters with current values and ranges.
 
+  reset
+    Wipe the entire module tree and clear undo history.
+    This is irreversible — use with caution.
+
   cd <path> / ls / pwd
     Navigate the tree. "cd Master Chain" sets context so subsequent
     commands target that module. "ls" lists children. "pwd" shows
@@ -211,7 +215,8 @@ EXAMPLES
   hise-cli -builder "clone MyGain x2"
   hise-cli -builder "remove MyGain"
   hise-cli -builder "show Master Chain"
-  hise-cli -builder --target:Master "add LFO to gain, set LFO.Frequency to 4.0"`,
+  hise-cli -builder --target:Master "add LFO to gain, set LFO.Frequency to 4.0"
+  hise-cli -builder "reset"`,
 
 	script: `hise-cli -script — HiseScript REPL
 

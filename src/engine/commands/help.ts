@@ -119,6 +119,7 @@ Module tree editor — add, configure, and inspect the HISE module tree.
 | \`show tree\` | Display the full module tree |
 | \`show types [<filter>]\` | List available module types |
 | \`show <target>\` | Show a module's parameters |
+| \`reset\` | Wipe module tree and clear undo history |
 | \`cd <path>\` / \`ls\` / \`pwd\` | Navigate the module tree |
 
 ## Features

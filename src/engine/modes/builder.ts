@@ -1512,6 +1512,9 @@ export class BuilderMode implements Mode {
 		if (keyword === "pwd") {
 			return this.handlePwd();
 		}
+		if (keyword === "reset") {
+			return this.handleReset(session);
+		}
 
 		// ── Chevrotain-parsed builder commands ──
 		const result = parseBuilderInput(input);
@@ -1597,6 +1600,27 @@ export class BuilderMode implements Mode {
 
 	private handlePwd(): CommandResult {
 		return textResult(this.currentPath.length > 0 ? this.currentPath.join(".") : "/");
+	}
+
+	private async handleReset(session: SessionContext): Promise<CommandResult> {
+		if (!session.connection) {
+			return errorResult("reset requires a HISE connection");
+		}
+		const response = await session.connection.post("/api/builder/reset", {});
+		if (isErrorResponse(response)) {
+			return errorResult(response.message);
+		}
+		if (!isEnvelopeResponse(response) || !response.success) {
+			const msg = isEnvelopeResponse(response) && response.errors.length > 0
+				? response.errors.map((e) => e.errorMessage).join("\n")
+				: "Reset failed";
+			return errorResult(msg);
+		}
+		this.treeRoot = null;
+		this.currentPath = [];
+		this.treeFetched = false;
+		await this.fetchTree(session.connection);
+		return textResult(response.logs.length > 0 ? response.logs.join("; ") : "Module tree reset");
 	}
 
 	// ── Command dispatch and execution ──────────────────────────
