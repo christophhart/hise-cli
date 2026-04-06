@@ -6,7 +6,7 @@
 // No border — just a filled rectangle with overlay background.
 
 import React, { useRef } from "react";
-import { Box, Text, type DOMElement } from "ink";
+import { Box, Text, type DOMElement } from "../ink-shim.js";
 // Note: useInput intentionally NOT imported — CompletionPopup is fully
 // controlled by the central key dispatcher in app.tsx via callbacks.
 import { useOnWheel } from "@ink-tools/ink-mouse";

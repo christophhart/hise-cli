@@ -50,6 +50,18 @@ describe("screencasts", () => {
 		await testTape(tape("undo-mode"));
 	}, 30_000);
 
+	it("wizard-list", async () => {
+		await testTape(tape("wizard-list"));
+	}, 30_000);
+
+	it("wizard-form", async () => {
+		await testTape(tape("wizard-form"));
+	}, 30_000);
+
+	it("wizard-alias", async () => {
+		await testTape(tape("wizard-alias"));
+	}, 30_000);
+
 	afterAll(() => {
 		// Gzip .cast files and generate HTML preview page
 		const script = path.join(SCREENCASTS_DIR, "generate.py");

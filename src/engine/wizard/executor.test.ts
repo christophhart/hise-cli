@@ -224,4 +224,179 @@ describe("WizardExecutor", () => {
 			expect(result.logs).toEqual(["log1", "log2", "log3"]);
 		});
 	});
+
+	describe("async job polling", () => {
+		it("handles async job response with polling", async () => {
+			let pollCount = 0;
+			const conn = new MockHiseConnection();
+			conn.onPost("/api/wizard/execute", () => ({
+				success: true,
+				result: { jobId: "j1", async: true },
+				logs: [],
+				errors: [],
+			}));
+			conn.onGet("/api/wizard/status", () => {
+				pollCount++;
+				if (pollCount < 2) {
+					return {
+						success: true,
+						result: { finished: false, progress: 0.5, message: "Working..." },
+						logs: [],
+						errors: [],
+					};
+				}
+				return {
+					success: true,
+					result: { finished: true, progress: 1.0, message: "Done" },
+					logs: ["completed"],
+					errors: [],
+				};
+			});
+
+			const executor = new WizardExecutor({ connection: conn, handlerRegistry: null });
+			const def = minimalDef({
+				tasks: [{ id: "t1", function: "asyncFn", type: "http" }],
+			});
+			const progress: WizardProgress[] = [];
+			const result = await executor.execute(def, {}, (p) => progress.push(p));
+			expect(result.success).toBe(true);
+			expect(result.message).toContain("completed successfully");
+			expect(result.logs).toEqual(["completed"]);
+			// Should have received progress updates from polling
+			const pollProgress = progress.filter((p) => p.message === "Working...");
+			expect(pollProgress.length).toBeGreaterThanOrEqual(1);
+		});
+
+		it("handles async job failure", async () => {
+			const conn = new MockHiseConnection();
+			conn.onPost("/api/wizard/execute", () => ({
+				success: true,
+				result: { jobId: "j2", async: true },
+				logs: [],
+				errors: [],
+			}));
+			conn.onGet("/api/wizard/status", () => ({
+				success: false,
+				result: { finished: true, progress: 0.6, message: "Engine error" },
+				logs: ["partial log"],
+				errors: [{ errorMessage: "Buffer underrun", callstack: [] }],
+			}));
+
+			const executor = new WizardExecutor({ connection: conn, handlerRegistry: null });
+			const def = minimalDef({
+				tasks: [{ id: "t1", function: "asyncFn", type: "http" }],
+			});
+			const result = await executor.execute(def, {});
+			expect(result.success).toBe(false);
+			expect(result.message).toContain("Buffer underrun");
+		});
+
+		it("cancels async polling on abort", async () => {
+			const conn = new MockHiseConnection();
+			conn.onPost("/api/wizard/execute", () => ({
+				success: true,
+				result: { jobId: "j3", async: true },
+				logs: [],
+				errors: [],
+			}));
+			conn.onGet("/api/wizard/status", () => ({
+				success: true,
+				result: { finished: false, progress: 0.1, message: "Still going" },
+				logs: [],
+				errors: [],
+			}));
+
+			const controller = new AbortController();
+			const executor = new WizardExecutor({ connection: conn, handlerRegistry: null });
+			const def = minimalDef({
+				tasks: [{ id: "t1", function: "asyncFn", type: "http" }],
+			});
+
+			// Abort after a short delay
+			setTimeout(() => controller.abort(), 600);
+			const result = await executor.execute(def, {}, undefined, controller.signal);
+			expect(result.success).toBe(false);
+			expect(result.message).toBe("Cancelled.");
+		});
+	});
+
+	describe("prepare-only + inter-task data", () => {
+		it("passes prepare result data to subsequent internal task", async () => {
+			const conn = new MockHiseConnection();
+			conn.onPost("/api/wizard/execute", () => ({
+				success: true,
+				result: {
+					buildScript: "/path/to/build.sh",
+					buildDirectory: "/path/to/Binaries",
+					configuration: "Release",
+					projectFile: "/path/to/project.jucer",
+				},
+				logs: ["Generated build files"],
+				errors: [],
+			}));
+
+			const receivedContext: Record<string, string>[] = [];
+			const registry = new WizardHandlerRegistry();
+			registry.registerTask("compileProject", async (_answers, _onProgress, _signal, context) => {
+				receivedContext.push(context ?? {});
+				return { success: true, message: "compiled" };
+			});
+
+			const executor = new WizardExecutor({ connection: conn, handlerRegistry: registry });
+			const def = minimalDef({
+				tasks: [
+					{ id: "prepare", function: "prepareExport", type: "http" },
+					{ id: "compile", function: "compileProject", type: "internal" },
+				],
+			});
+			const result = await executor.execute(def, {});
+			expect(result.success).toBe(true);
+			expect(receivedContext).toHaveLength(1);
+			expect(receivedContext[0]).toEqual({
+				buildScript: "/path/to/build.sh",
+				buildDirectory: "/path/to/Binaries",
+				configuration: "Release",
+				projectFile: "/path/to/project.jucer",
+			});
+		});
+
+		it("forwards data across multiple tasks", async () => {
+			const conn = new MockHiseConnection();
+			conn.onPost("/api/wizard/execute", () => ({
+				success: true,
+				result: {
+					buildScript: "/build.sh",
+					buildDirectory: "/bin",
+				},
+				logs: [],
+				errors: [],
+			}));
+
+			const registry = new WizardHandlerRegistry();
+			registry.registerTask("internal1", async (_answers, _onProgress, _signal, context) => ({
+				success: true,
+				message: "ok",
+				data: { ...context, extra: "value" },
+			}));
+
+			let finalContext: Record<string, string> = {};
+			registry.registerTask("internal2", async (_answers, _onProgress, _signal, context) => {
+				finalContext = context ?? {};
+				return { success: true, message: "done" };
+			});
+
+			const executor = new WizardExecutor({ connection: conn, handlerRegistry: registry });
+			const def = minimalDef({
+				tasks: [
+					{ id: "t1", function: "httpPrepare", type: "http" },
+					{ id: "t2", function: "internal1", type: "internal" },
+					{ id: "t3", function: "internal2", type: "internal" },
+				],
+			});
+			const result = await executor.execute(def, {});
+			expect(result.success).toBe(true);
+			expect(finalContext.buildScript).toBe("/build.sh");
+			expect(finalContext.extra).toBe("value");
+		});
+	});
 });

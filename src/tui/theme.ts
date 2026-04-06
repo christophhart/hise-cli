@@ -180,6 +180,84 @@ export function statusDot(status: ConnectionStatus): string {
 	return "\u25CF"; // ●
 }
 
+// ── 256-color snapping ─────────────────────────────────────────────
+// When the terminal doesn't support truecolor, snap hex colors to the
+// nearest xterm-256 palette entry so chalk/Ink maps them without drift.
+
+function colorDistSq(r1: number, g1: number, b1: number, r2: number, g2: number, b2: number): number {
+	return (r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2;
+}
+
+function cubeChannelValue(i: number): number {
+	return i === 0 ? 0 : 55 + i * 40;
+}
+
+/** Snap a single hex color to the nearest xterm-256 palette hex. */
+function snapTo256(hex: string): string {
+	const [r, g, b] = parseHex(hex);
+
+	// Best cube match — check nearest + adjacent cells in 6x6x6 cube
+	let bestCubeR = 0, bestCubeG = 0, bestCubeB = 0;
+	let bestCubeDist = Infinity;
+	const ri = Math.round(r / 255 * 5);
+	const gi = Math.round(g / 255 * 5);
+	const bi = Math.round(b / 255 * 5);
+	for (let dr = -1; dr <= 1; dr++) {
+		for (let dg = -1; dg <= 1; dg++) {
+			for (let db = -1; db <= 1; db++) {
+				const cr = ri + dr, cg = gi + dg, cb = bi + db;
+				if (cr < 0 || cr > 5 || cg < 0 || cg > 5 || cb < 0 || cb > 5) continue;
+				const mr = cubeChannelValue(cr), mg = cubeChannelValue(cg), mb = cubeChannelValue(cb);
+				const dist = colorDistSq(r, g, b, mr, mg, mb);
+				if (dist < bestCubeDist) {
+					bestCubeDist = dist;
+					bestCubeR = mr; bestCubeG = mg; bestCubeB = mb;
+				}
+			}
+		}
+	}
+
+	// Skip grayscale for saturated colors (preserves hue)
+	const maxC = Math.max(r, g, b);
+	const minC = Math.min(r, g, b);
+	if (maxC > 0 && (maxC - minC) / maxC > 0.25) {
+		return toHex(bestCubeR, bestCubeG, bestCubeB);
+	}
+
+	// Grayscale ramp candidate
+	const avg = (r + g + b) / 3;
+	const grayIdx = avg < 4 ? 0 : avg > 244 ? 23 : Math.round((avg - 8) / 10);
+	const gv = grayIdx <= 0 ? 8 : 8 + grayIdx * 10;
+	const grayDist = colorDistSq(r, g, b, gv, gv, gv);
+
+	return grayDist <= bestCubeDist ? toHex(gv, gv, gv) : toHex(bestCubeR, bestCubeG, bestCubeB);
+}
+
+export const hasTrueColor = (() => {
+	const ct = (typeof process !== "undefined" ? process.env?.COLORTERM : undefined) ?? "";
+	return ct === "truecolor" || ct === "24bit";
+})();
+
+/** Snap all colors in a scheme to xterm-256 palette equivalents. */
+export function snapSchemeFor256(scheme: ColorScheme): ColorScheme {
+	const snap = snapTo256;
+	return {
+		...scheme,
+		backgrounds: {
+			darker: snap(scheme.backgrounds.darker),
+			standard: snap(scheme.backgrounds.standard),
+			sidebar: snap(scheme.backgrounds.sidebar),
+			raised: snap(scheme.backgrounds.raised),
+			overlay: snap(scheme.backgrounds.overlay),
+		},
+		foreground: {
+			default: snap(scheme.foreground.default),
+			bright: snap(scheme.foreground.bright),
+			muted: snap(scheme.foreground.muted),
+		},
+	};
+}
+
 // ── Color darkening utilities ───────────────────────────────────────
 
 /** Parse a hex color string to RGB components (0–255). */

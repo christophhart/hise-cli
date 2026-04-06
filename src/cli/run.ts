@@ -20,7 +20,7 @@ export async function executeCliCommand(
 	commands: CommandEntry[],
 	dataLoader: DataLoader,
 	connectionOrOptions?: HiseConnection | CliCommandOptions,
-): Promise<{ kind: "tui"; args: string[] } | { kind: "help" } | { kind: "error"; message: string } | { kind: "json"; payload: CliOutputPayload }> {
+): Promise<{ kind: "tui"; args: string[] } | { kind: "help"; scope?: string } | { kind: "error"; message: string } | { kind: "json"; payload: CliOutputPayload }> {
 	// Backward compat: accept either a connection directly or an options object
 	const opts: CliCommandOptions = connectionOrOptions && "probe" in connectionOrOptions
 		? { connectionOverride: connectionOrOptions }

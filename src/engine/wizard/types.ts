@@ -116,6 +116,8 @@ export interface WizardDefinition {
 	readonly submitLabel?: string;
 	/** Default field values from GlobalState. */
 	readonly globalDefaults: Record<string, string>;
+	/** Slash command aliases (e.g. ["setup", "project create"] → /setup, /project create). */
+	readonly aliases?: string[];
 }
 
 // ── Runtime types ───────────────────────────────────────────────────
@@ -142,6 +144,8 @@ export interface WizardExecResult {
 	readonly message: string;
 	readonly postActions?: WizardPostAction[];
 	readonly logs?: string[];
+	/** Structured data forwarded to subsequent tasks (e.g. build paths from prepare step). */
+	readonly data?: Record<string, string>;
 }
 
 /** Merge init-fetched defaults into a wizard definition's globalDefaults. */

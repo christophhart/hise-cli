@@ -10,6 +10,11 @@ body: |
   - Test your configuration with a **simulation run** before publishing
 
   > This is mainly useful if you intend to publish a product on the HISE store.
+
+init:
+  type: http
+  function: initialise
+
 tabs:
   - label: Settings
     fields:
@@ -83,7 +88,10 @@ tabs:
         help: Select a .zip file to simulate a test installation run
         wildcard: "*.zip"
 submitLabel: Writes the install_package.json file to the project
-tasks: []
+tasks:
+  - id: writePackageJson
+    function: writePackageJson
+    type: http
 postActions:
   - id: SimulateTestRun
     label: Simulate test run

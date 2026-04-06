@@ -9,6 +9,11 @@ body: |
   - Make sure the HISE SDK path and compiler toolchain are configured in the settings
 
   > The compilation may take several minutes depending on the project size.
+
+init:
+  type: http
+  function: initialise
+
 tabs:
   - label: Settings
     fields:
@@ -56,9 +61,14 @@ tabs:
         valueMode: text
 submitLabel: Launches the system compiler to export the project
 tasks:
-  - id: compileTask
+  - id: prepareExport
     function: compileTask
     type: http
+    label: Preparing export
+  - id: compileProject
+    function: compileProject
+    type: internal
+    label: Compiling project
 postActions:
   - id: showCompiledFile
     label: Show compiled file

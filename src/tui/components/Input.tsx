@@ -10,7 +10,7 @@ import React, {
 } from "react";
 // Note: useInput intentionally NOT imported — Input is fully controlled
 // by the central key dispatcher in app.tsx via imperative methods.
-import { Box, Text } from "ink";
+import { Box, Text } from "../ink-shim.js";
 
 import { useTheme } from "../theme-context.js";
 import { lightenHex, lerpHex } from "../theme.js";

@@ -1,10 +1,11 @@
 // ── TUI App — main shell wiring Session to components ───────────────
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, Profiler } from "react";
-import { Box, Text, useApp, useInput, useStdout } from "ink";
-import type { DOMElement } from "ink";
+import { Box, Text, useApp, useInput, useStdout } from "./ink-shim.js";
+import type { DOMElement } from "./ink-shim.js";
 import { MouseProvider, useOnWheel, useOnPress, useOnDrag, getBoundingClientRect } from "@ink-tools/ink-mouse";
-import { shimYogaNodes } from "./ink-compat-shim.js"; // tree-shaken when __REZI_COMPAT__ is false
+import { shimYogaNodes } from "./ink-compat-shim.js";
+import { isRezi } from "./ink-shim.js";
 import { PROFILING_ENABLED, onRenderCallback } from "./profiler.js";
 import type { CommandResult, TreeNode } from "../engine/result.js";
 import type { HiseConnection } from "../engine/hise.js";
@@ -28,6 +29,8 @@ import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import {
 	brand,
 	defaultScheme,
+	hasTrueColor,
+	snapSchemeFor256,
 	type ColorScheme,
 	type ConnectionStatus,
 } from "./theme.js";
@@ -82,7 +85,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
-	const scheme = schemeProp ?? defaultScheme;
+	const schemeRaw = schemeProp ?? defaultScheme;
+	const scheme = hasTrueColor ? schemeRaw : snapSchemeFor256(schemeRaw);
 	const columns = width ?? stdout?.columns ?? 80;
 	const rows = height ?? stdout?.rows ?? 24;
 
@@ -210,7 +214,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// compute hit testing. Walk up from outputRef to root after each render.
 	// No-op when building with stock Ink (esbuild dead-code eliminates this).
 	useEffect(() => {
-		if (!__REZI_COMPAT__) return;
+		if (!isRezi) return;
 		let node: any = outputRef.current;
 		while (node?.parent) node = node.parent;
 		if (node) shimYogaNodes(node);

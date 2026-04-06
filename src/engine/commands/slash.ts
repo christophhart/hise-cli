@@ -472,3 +472,28 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		surfaces: ["tui"],
 	});
 }
+
+/**
+ * Register wizard aliases as top-level slash commands.
+ * Called after wizard definitions are loaded from YAML.
+ * E.g., aliases: ["setup"] → /setup opens the wizard form.
+ */
+export function registerWizardAliases(
+	commandRegistry: CommandRegistry,
+	wizardRegistry: import("../wizard/registry.js").WizardRegistry,
+): void {
+	for (const [alias, wizardId] of wizardRegistry.aliases()) {
+		// Skip if a command with this name already exists (modes, builtins take precedence)
+		if (commandRegistry.has(alias)) continue;
+
+		const def = wizardRegistry.get(wizardId);
+		if (!def) continue;
+
+		commandRegistry.register({
+			name: alias,
+			description: `${def.header} (wizard)`,
+			handler: (args, session) => handleWizardWithDef(def, args, session),
+			kind: "command",
+		});
+	}
+}

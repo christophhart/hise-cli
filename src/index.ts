@@ -1,7 +1,21 @@
 #!/usr/bin/env node
 
+// ── Terminal color detection (must run before any renderer import) ───
+// Rezi forces truecolor when it detects pre-rendered ANSI in text content,
+// which breaks terminals like macOS Terminal.app that don't support 24-bit
+// RGB. Set FORCE_COLOR early so Rezi respects the terminal's actual level.
+if (!process.env.FORCE_COLOR && !process.env.NO_COLOR) {
+	const ct = process.env.COLORTERM ?? "";
+	if (ct !== "truecolor" && ct !== "24bit") {
+		const depth = process.stdout.getColorDepth?.();
+		if (typeof depth === "number" && depth < 24) {
+			process.env.FORCE_COLOR = "2"; // 256-color
+		}
+	}
+}
+
 import chalk from "chalk";
-import { render } from "ink";
+import { render } from "./tui/ink-shim.js";
 import React from "react";
 import { App as TuiApp } from "./tui/app.js";
 import { HttpHiseConnection } from "./engine/hise.js";
@@ -13,13 +27,14 @@ import { listCliCommands } from "./cli/commands.js";
 import { createDefaultMockRuntime } from "./mock/runtime.js";
 import { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { createNodePhaseExecutor } from "./tui/nodePhaseExecutor.js";
-import { registerSetupHandlers } from "./tui/wizard-handlers/index.js";
+import { registerSetupHandlers, registerCompileHandlers } from "./tui/wizard-handlers/index.js";
 
 // ── Wizard handler setup ────────────────────────────────────────────
 
 const phaseExecutor = createNodePhaseExecutor();
 const handlerRegistry = new WizardHandlerRegistry();
 registerSetupHandlers(handlerRegistry, phaseExecutor);
+registerCompileHandlers(handlerRegistry, phaseExecutor);
 
 // ── Alt-screen helpers ──────────────────────────────────────────────
 
@@ -93,7 +108,7 @@ async function main(): Promise<void> {
 	const cliResult = await executeCliCommand(process.argv, cliCommands, dataLoader, { handlerRegistry });
 
 	if (cliResult.kind === "help") {
-		console.log(renderCliHelp(cliCommands));
+		console.log(renderCliHelp(cliCommands, cliResult.scope));
 		return;
 	}
 

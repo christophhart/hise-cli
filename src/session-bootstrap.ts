@@ -8,6 +8,7 @@ import { ScriptMode } from "./engine/modes/script.js";
 import { UndoMode } from "./engine/modes/undo.js";
 import { WizardRegistry } from "./engine/wizard/registry.js";
 import type { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
+import { registerWizardAliases } from "./engine/commands/slash.js";
 
 export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo"] as const;
 
@@ -49,6 +50,11 @@ export async function loadSessionDatasets(
 		try {
 			const wizardDefs = await dataLoader.loadWizardDefinitions();
 			session.wizardRegistry = WizardRegistry.fromDefinitions(wizardDefs);
+			registerWizardAliases(session.registry, session.wizardRegistry);
+			// Refresh completion engine with newly registered alias commands
+			if (completionEngine) {
+				completionEngine.setSlashCommands(session.registry.all());
+			}
 		} catch (err) {
 			console.error(`[wizard] Failed to load wizard definitions: ${err instanceof Error ? err.message : String(err)}`);
 		}

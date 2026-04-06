@@ -36,12 +36,15 @@ export interface WizardFormState {
 
 export function createInitialFormState(def: WizardDefinition, prefill: WizardAnswers): WizardFormState {
 	const answers: WizardAnswers = {};
-	for (const [k, v] of Object.entries(def.globalDefaults)) answers[k] = v;
+	// Layer 1: field-level defaults from YAML
 	for (const tab of def.tabs) {
 		for (const field of tab.fields) {
 			if (field.defaultValue !== undefined) answers[field.id] = field.defaultValue;
 		}
 	}
+	// Layer 2: globalDefaults (includes init-fetched values) override field defaults
+	for (const [k, v] of Object.entries(def.globalDefaults)) answers[k] = v;
+	// Layer 3: explicit prefill from command args wins
 	for (const [k, v] of Object.entries(prefill)) answers[k] = v;
 	return {
 		definition: def,

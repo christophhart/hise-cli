@@ -119,4 +119,10 @@ see [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
 - **ESM only** — `.js` extensions on local imports, `node:` prefix on builtins
   (except in `src/engine/` where `node:` imports are forbidden)
 - **Test files**: colocated next to source (`session.test.ts` next to `session.ts`)
+- **Help text sync**: when adding or changing commands, modes, or wizards, update
+  both `src/engine/commands/help.ts` (TUI `/help`) and `src/cli/help.ts` (CLI `--help`).
+  The CLI help is the primary reference for LLM consumers — it must include full
+  syntax, examples, and all available subcommands.
+- **Ink imports**: TUI components must import `Box`, `Text`, hooks from
+  `src/tui/ink-shim.ts`, never from `"ink"` directly. See DESIGN.md § Renderer Dispatch.
 - **Key input debugging**: see [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Debugging

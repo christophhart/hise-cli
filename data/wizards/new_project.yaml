@@ -9,6 +9,11 @@ body: |
   - **Rhapsody Template**: A project pre-configured with the Rhapsody Player layout
 
   > The project folder will be created as a subfolder of the selected location.
+
+init:
+  type: http
+  function: initialise
+
 tabs:
   - label: Settings
     fields:

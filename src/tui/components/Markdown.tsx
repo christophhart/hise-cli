@@ -17,7 +17,7 @@ import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import { tokenize as tokenizeHiseScript } from "../../engine/highlight/hisescript.js";
 
 import { Marked } from "marked";
-import { Text } from "ink";
+import { Text } from "../ink-shim.js";
 import { markedTerminal } from "marked-terminal";
 
 // ── cli-highlight theme mapped from our TOKEN_COLORS ────────────────

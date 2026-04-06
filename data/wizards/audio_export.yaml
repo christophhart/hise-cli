@@ -9,6 +9,11 @@ body: |
   - Choose a render length or use a custom duration
 
   > Make sure your project produces audio output before starting the export.
+
+init:
+  type: http
+  function: initialise
+
 tabs:
   - label: Settings
     fields:

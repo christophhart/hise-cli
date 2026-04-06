@@ -208,7 +208,7 @@ export function createSetupExtractSdksHandler(_executor: PhaseExecutor): Interna
 
 // ── xcodebuild output filter ─────────────────────────────────────────
 
-function filterXcodeLine(line: string): string | null {
+export function filterXcodeLine(line: string): string | null {
 	const compileMatch = line.match(/^Compile[\w]*\s+.*\/([\w.]+)\s/);
 	if (compileMatch) return `Compiling ${compileMatch[1]}`;
 

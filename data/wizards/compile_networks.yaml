@@ -20,8 +20,13 @@ tabs:
         help: Open the C++ project in your system IDE after compilation
 submitLabel: Compiles scriptnode C++ networks into a DLL
 tasks:
-  - id: compileTask
+  - id: prepareNetworkCompile
     function: compileTask
     type: http
+    label: Preparing network compile
+  - id: compileNetworks
+    function: compileNetworks
+    type: internal
+    label: Compiling networks
 postActions: []
 globalDefaults: {}

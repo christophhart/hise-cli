@@ -4,7 +4,8 @@ import { chmodSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
 // ── Renderer selection ──────────────────────────────────────────────
-// Pass --ink to build with stock Ink renderer (default: Rezi ink-compat)
+// Both renderers are bundled; runtime detection picks the right one.
+// Pass --ink to force stock Ink only (disables Rezi at build time).
 const useInk = process.argv.includes("--ink");
 const useRezi = !useInk;
 
@@ -23,17 +24,18 @@ await build({
 	},
 	define: {
 		"__APP_VERSION__": JSON.stringify(pkg.version),
-		"__REZI_COMPAT__": String(useRezi),
 	},
 	loader: {
 		".yaml": "text",
 	},
-	// Rezi mode: alias ink → ink-compat, externalize ink-compat + React (single-copy requirement).
-	// Ink mode: everything bundled.
+	// Rezi mode: two aliases for runtime renderer dispatch.
+	//   "ink" → "@rezi-ui/ink-compat"  (third-party packages get Rezi)
+	//   "ink-stock" → "ink"            (shim imports real Ink for fallback)
+	// --ink mode: only stock Ink, everything bundled.
 	external: useRezi
-		? ["@rezi-ui/ink-compat", "@rezi-ui/native", "react", "react-reconciler"]
+		? ["@rezi-ui/ink-compat", "@rezi-ui/native", "ink", "ink-stock", "react", "react-reconciler"]
 		: [],
-	...(useRezi ? { alias: { "ink": "@rezi-ui/ink-compat" } } : {}),
+	...(useRezi ? { alias: { "ink-stock": "ink", "ink": "@rezi-ui/ink-compat" } } : {}),
 	sourcemap: false,
 	logLevel: "info",
 });
@@ -44,4 +46,4 @@ try {
 	// Best effort on Windows.
 }
 
-console.log(`  renderer: ${useRezi ? "Rezi ink-compat" : "stock Ink"}`);
+console.log(`  renderer: ${useRezi ? "runtime dispatch (Rezi + Ink)" : "stock Ink"}`);

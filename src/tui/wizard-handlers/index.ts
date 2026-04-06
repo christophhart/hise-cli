@@ -1,4 +1,4 @@
-// ── Wizard handler registration — setup wizard ──────────────────────
+// ── Wizard handler registration ─────────────────────────────────────
 
 import type { WizardHandlerRegistry } from "../../engine/wizard/handler-registry.js";
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
@@ -14,6 +14,10 @@ import {
 	createSetupVerifyHandler,
 	createSetupTestHandler,
 } from "./setup-tasks.js";
+import {
+	createCompileProjectHandler,
+	createCompileNetworksHandler,
+} from "./compile-tasks.js";
 
 /** Register all setup wizard handlers (init + tasks). */
 export function registerSetupHandlers(
@@ -33,4 +37,13 @@ export function registerSetupHandlers(
 	registry.registerTask("setupAddPath", createSetupAddPathHandler(executor));
 	registry.registerTask("setupVerify", createSetupVerifyHandler(executor));
 	registry.registerTask("setupTest", createSetupTestHandler(executor));
+}
+
+/** Register compile handlers for plugin export + network compile wizards. */
+export function registerCompileHandlers(
+	registry: WizardHandlerRegistry,
+	executor: PhaseExecutor,
+): void {
+	registry.registerTask("compileProject", createCompileProjectHandler(executor));
+	registry.registerTask("compileNetworks", createCompileNetworksHandler(executor));
 }

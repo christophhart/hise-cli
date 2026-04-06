@@ -2,7 +2,7 @@ import type { CommandEntry } from "../engine/commands/registry.js";
 
 export type CliParseResult =
 	| { kind: "tui"; args: string[] }
-	| { kind: "help" }
+	| { kind: "help"; scope?: string }
 	| { kind: "error"; message: string }
 	| {
 		kind: "execute";
@@ -17,7 +17,16 @@ const RESERVED_FLAGS = new Set(["--help", "-h", "--mock"]);
 export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParseResult {
 	const args = argv.slice(2);
 	if (args.length === 0) return { kind: "tui", args: [] };
-	if (args.includes("--help") || args.includes("-h")) return { kind: "help" };
+
+	// --help with no mode flag → global help
+	// -builder --help or wizard --help → scoped help
+	if (args.includes("--help") || args.includes("-h")) {
+		const nonHelp = args.filter((a) => a !== "--help" && a !== "-h");
+		if (nonHelp.length === 0) return { kind: "help" };
+		const scopeArg = nonHelp[0]!;
+		const scope = scopeArg.replace(/^-{1,2}/, "");
+		return { kind: "help", scope };
+	}
 
 	const first = args[0]!;
 	if (first === "repl") {
@@ -25,6 +34,7 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	}
 
 	if (first === "wizard") {
+		if (args.includes("--help") || args.includes("-h")) return { kind: "help", scope: "wizard" };
 		return parseWizardSubcommand(args.slice(1), commands);
 	}
 

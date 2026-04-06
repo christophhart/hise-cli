@@ -10,6 +10,7 @@ export type InternalTaskHandler = (
 	answers: WizardAnswers,
 	onProgress: (p: WizardProgress) => void,
 	signal?: AbortSignal,
+	context?: Record<string, string>,
 ) => Promise<WizardExecResult>;
 
 /** Signature for internal init handler functions (pre-form default fetching). */

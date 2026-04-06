@@ -283,6 +283,9 @@ export async function runTape(
 			TERM: "xterm-256color",
 			// Force color output even without a real TTY
 			FORCE_COLOR: "1",
+			// Strip test env vars so the spawned app uses its normal renderer
+			VITEST: "",
+			NODE_ENV: "",
 		},
 	});
 

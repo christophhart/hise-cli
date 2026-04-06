@@ -6,7 +6,7 @@
 // avoiding React reconciliation and Yoga layout on scroll.
 
 import type { ColorScheme } from "../theme.js";
-import { brand } from "../theme.js";
+import { brand, hasTrueColor } from "../theme.js";
 import type { TokenSpan } from "../../engine/highlight/tokens.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import type { CommandResult } from "../../engine/result.js";
@@ -41,6 +41,8 @@ function codeToMarkdown(content: string, language?: string): string {
 // ── ANSI color helpers ──────────────────────────────────────────────
 // Raw escape sequences - no chalk dependency (chalk optimizes away
 // empty strings, which breaks our "open color, append text" pattern).
+// Detects true-color support once; falls back to 256-color for
+// terminals like macOS Terminal.app that don't support 24-bit RGB.
 
 function hexToRgb(hex: string): [number, number, number] {
 	return [
@@ -50,16 +52,75 @@ function hexToRgb(hex: string): [number, number, number] {
 	];
 }
 
+/** Squared distance between two RGB colors. */
+function colorDistSq(r1: number, g1: number, b1: number, r2: number, g2: number, b2: number): number {
+	return (r1 - r2) ** 2 + (g1 - g2) ** 2 + (b1 - b2) ** 2;
+}
+
+/** RGB for a 256-color cube index (16-231). */
+function cubeToRgb(idx: number): [number, number, number] {
+	idx -= 16;
+	const bi = idx % 6;
+	idx = Math.floor(idx / 6);
+	const gi = idx % 6;
+	const ri = Math.floor(idx / 6);
+	return [ri ? 55 + ri * 40 : 0, gi ? 55 + gi * 40 : 0, bi ? 55 + bi * 40 : 0];
+}
+
+/** Convert RGB to the nearest xterm 256-color index.
+ *  Checks the best 6x6x6 cube match and the grayscale ramp, picks closest.
+ *  For saturated colors, skips the grayscale ramp to preserve hue. */
+function rgbTo256(r: number, g: number, b: number): number {
+	// Best cube match — check the nearest index AND adjacent cells
+	let bestCubeIdx = 16;
+	let bestCubeDist = Infinity;
+	const ri = Math.round(r / 255 * 5);
+	const gi = Math.round(g / 255 * 5);
+	const bi = Math.round(b / 255 * 5);
+	for (let dr = -1; dr <= 1; dr++) {
+		for (let dg = -1; dg <= 1; dg++) {
+			for (let db = -1; db <= 1; db++) {
+				const cr = ri + dr;
+				const cg = gi + dg;
+				const cb = bi + db;
+				if (cr < 0 || cr > 5 || cg < 0 || cg > 5 || cb < 0 || cb > 5) continue;
+				const idx = 16 + 36 * cr + 6 * cg + cb;
+				const [mr, mg, mb] = cubeToRgb(idx);
+				const dist = colorDistSq(r, g, b, mr, mg, mb);
+				if (dist < bestCubeDist) {
+					bestCubeDist = dist;
+					bestCubeIdx = idx;
+				}
+			}
+		}
+	}
+
+	// Skip grayscale for saturated colors (preserves hue)
+	const maxC = Math.max(r, g, b);
+	const minC = Math.min(r, g, b);
+	if (maxC > 0 && (maxC - minC) / maxC > 0.25) return bestCubeIdx;
+
+	// Grayscale ramp candidate — only for near-grey colors
+	const avg = (r + g + b) / 3;
+	const grayIdx = avg < 4 ? 16 : avg > 244 ? 231 : Math.round((avg - 8) / 10) + 232;
+	const gv = grayIdx < 232 ? 0 : 8 + (grayIdx - 232) * 10;
+	const grayDist = colorDistSq(r, g, b, gv, gv, gv);
+
+	return grayDist <= bestCubeDist ? grayIdx : bestCubeIdx;
+}
+
 export function fgHex(hex: string): string {
 	if (!hex || hex.length < 7) return "";
 	const [r, g, b] = hexToRgb(hex);
-	return `\x1b[38;2;${r};${g};${b}m`;
+	if (hasTrueColor) return `\x1b[38;2;${r};${g};${b}m`;
+	return `\x1b[38;5;${rgbTo256(r, g, b)}m`;
 }
 
 function bgHex(hex: string): string {
 	if (!hex || hex.length < 7) return "";
 	const [r, g, b] = hexToRgb(hex);
-	return `\x1b[48;2;${r};${g};${b}m`;
+	if (hasTrueColor) return `\x1b[48;2;${r};${g};${b}m`;
+	return `\x1b[48;5;${rgbTo256(r, g, b)}m`;
 }
 
 export const RESET = "\x1b[0m";

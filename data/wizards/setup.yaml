@@ -1,6 +1,8 @@
 id: setup
 header: HISE Setup
 description: Install and build HISE from source
+aliases:
+  - setup
 body: |
   Guides you through cloning, building, and configuring HISE.
   Detects your environment automatically and skips completed steps.

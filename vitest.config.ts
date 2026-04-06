@@ -2,7 +2,6 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
 	define: {
-		"__REZI_COMPAT__": "false",
 		"__APP_VERSION__": '"0.0.0-test"',
 	},
 	resolve: {
@@ -10,6 +9,10 @@ export default defineConfig({
 		// but vitest needs to resolve them to .ts source files.
 		extensions: [".ts", ".tsx", ".js", ".jsx"],
 		conditions: ["import", "module", "default"],
+		alias: {
+			// Mirror esbuild alias so ink-shim can import stock Ink in tests
+			"ink-stock": "ink",
+		},
 	},
 	plugins: [
 		{

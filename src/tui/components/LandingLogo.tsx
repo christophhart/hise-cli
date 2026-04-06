@@ -5,7 +5,7 @@
 // palette, with the gradient offset advancing over time.
 
 import React, { useEffect, useState } from "react";
-import { Box, Text } from "ink";
+import { Box, Text } from "../ink-shim.js";
 import { MODE_ACCENTS, lerpHex, type ColorScheme } from "../theme.js";
 
 // ── ASCII art ───────────────────────────────────────────────────────
