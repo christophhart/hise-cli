@@ -109,9 +109,11 @@ function optionalString(value: unknown, label: string): string | undefined {
 	return asString(value, label);
 }
 
-function asBoolean(value: unknown, label: string): boolean {
-	if (typeof value !== "boolean") throw new Error(`${label} must be a boolean`);
-	return value;
+function asBoolean(value: unknown, _label: string): boolean {
+	// JUCE::var may serialize booleans as "true"/"false" or 0/1
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") return value.toLowerCase() !== "false" && value !== "0" && value !== "";
+	return Boolean(value);
 }
 
 function stringArray(value: unknown, label: string): string[] {

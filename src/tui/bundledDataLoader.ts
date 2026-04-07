@@ -10,6 +10,7 @@
 import moduleListData from "../../data/moduleList.json";
 import scriptingApiData from "../../data/scripting_api.json";
 import scriptnodeListData from "../../data/scriptnodeList.json";
+import componentPropertiesData from "../../data/ui_component_properties.json";
 
 import audioExportYaml from "../../data/wizards/audio_export.yaml";
 import compileNetworksYaml from "../../data/wizards/compile_networks.yaml";
@@ -51,6 +52,9 @@ export function createBundledDataLoader(): DataLoader {
 		},
 		async loadWizardDefinitions(): Promise<WizardDefinition[]> {
 			return wizardYamls.map((raw) => parseYaml(raw) as WizardDefinition);
+		},
+		async loadComponentProperties() {
+			return componentPropertiesData as import("../engine/modes/ui.js").ComponentPropertyMap;
 		},
 	};
 }

@@ -33,15 +33,17 @@ export async function executeCliCommand(
 	const connection = new CapturingHiseConnection(
 		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
 	);
+	let datasets: import("../session-bootstrap.js").SessionDatasets = {};
 	const { session, completionEngine } = createSession({
 		connection,
-		getModuleList: () => moduleList,
+		getModuleList: () => datasets.moduleList,
+		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 	});
-	const moduleList = await loadSessionDatasets(dataLoader, completionEngine, session);
+	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 	for (const mode of session.modeStack) {
-		if (moduleList && "setModuleList" in mode && typeof mode.setModuleList === "function") {
-			mode.setModuleList(moduleList);
+		if (datasets.moduleList && "setModuleList" in mode && typeof mode.setModuleList === "function") {
+			mode.setModuleList(datasets.moduleList);
 		}
 	}
 

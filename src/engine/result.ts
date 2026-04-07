@@ -34,6 +34,9 @@ export interface TreeNode {
 	 *  decides which nodes get top margin (builder: sound generators,
 	 *  script: class nodes, dsp: container nodes). Set by the data pipeline. */
 	topMargin?: boolean;
+	/** Optional suffix badge rendered after the label (e.g. ★ for saveInPreset).
+	 *  Displayed in the given colour. Truncation removes label text before badge. */
+	badge?: { text: string; colour: string };
 }
 
 export type CommandResult =

@@ -426,6 +426,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
+		name: "ui",
+		description: "Enter UI mode (component CRUD & layout)",
+		handler: createModeHandler("ui"),
+		kind: "mode",
+	});
+
+	registry.register({
 		name: "connect",
 		description: "Check HISE connection status",
 		handler: handleConnect,

@@ -909,19 +909,26 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 		const label = nodeLabel(row.node);
 		segments.push({ text: label, color: fg, bold: isBold });
 
+		// Badge (suffix after label, e.g. ★ for saveInPreset)
+		const badge = row.node.badge;
+		if (badge) {
+			segments.push({ text: ` ${badge.text}`, color: badge.colour });
+		}
+
 		// Compute total text length
 		const totalTextLen = segments.reduce((sum, s) => sum + s.text.length, 0);
 
-		// Truncate if needed
+		// Truncate if needed — shrink the label segment before the badge
 		const scrollbarSpace = showScrollbar ? 1 : 0;
 		const maxWidth = contentWidth - scrollbarSpace;
 		let truncated = false;
 		if (totalTextLen > maxWidth) {
-			// Truncate the last segment (label)
+			// Find the label segment (second-to-last if badge exists, last otherwise)
+			const labelIdx = badge ? segments.length - 2 : segments.length - 1;
+			const labelSeg = segments[labelIdx]!;
 			const overflow = totalTextLen - maxWidth + 1; // +1 for …
-			const lastSeg = segments[segments.length - 1]!;
-			if (lastSeg.text.length > overflow) {
-				lastSeg.text = lastSeg.text.slice(0, lastSeg.text.length - overflow) + "\u2026";
+			if (labelSeg.text.length > overflow) {
+				labelSeg.text = labelSeg.text.slice(0, labelSeg.text.length - overflow) + "\u2026";
 			}
 			truncated = true;
 		}

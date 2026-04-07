@@ -8,6 +8,7 @@
 // the current undo group: "+" added, "-" removed, "*" modified.
 
 import type { TreeNode } from "../../engine/result.js";
+import { toBool } from "./coerce.js";
 
 // ── Raw HISE tree types (from GET /api/builder/tree) ────────────────
 
@@ -100,7 +101,7 @@ function normalizeModule(raw: RawTreeNode): TreeNode {
 			raw.fx_constrainer ?? "MasterEffect",
 			raw.fx.map(normalizeModule),
 		));
-	} else if (raw.hasFX) {
+	} else if (toBool(raw.hasFX)) {
 		// Empty FX chain - still show it
 		children.push(normalizeChain(
 			"FX Chain",

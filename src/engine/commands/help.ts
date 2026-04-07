@@ -66,6 +66,7 @@ Interactive shell for the HISE audio plugin framework.
 Enter a mode to start working, or use /wizard for guided workflows.
 
 - **/builder** — Module tree editor (add, remove, configure modules)
+- **/ui** — UI component editor (add, remove, set properties, reparent)
 - **/script** — HiseScript REPL (evaluate expressions live)
 - **/inspect** — Runtime monitor (version, project info)
 - **/undo** — Undo history and plan groups
@@ -187,4 +188,34 @@ Project settings and configuration.
 Build targets and export settings.
 
 *(Not yet implemented — Phase 6)*`,
+
+	ui: `# UI Mode
+
+UI component editor — add, remove, configure, and reparent interface components.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| \`add <type> ["name"] [at x y w h]\` | Add a component |
+| \`remove <target>\` | Remove a component |
+| \`set <target>.<prop> [to] <value>\` | Set a property |
+| \`move <target> to <parent> [at <index>]\` | Reparent a component |
+| \`rename <target> to "<name>"\` | Rename a component |
+| \`show <target>\` | Show all properties with current values |
+| \`cd <path>\` / \`ls\` / \`pwd\` | Navigate the component tree |
+
+## Component Types
+
+ScriptButton, ScriptSlider, ScriptPanel, ScriptComboBox, ScriptLabel,
+ScriptImage, ScriptTable, ScriptSliderPack, ScriptAudioWaveform,
+ScriptFloatingTile, ScriptDynamicContainer, ScriptedViewport,
+ScriptMultipageDialog, ScriptWebView
+
+## Features
+
+- **Comma chaining**: \`add ScriptButton "A", ScriptSlider "B"\`
+- **Set chaining**: \`set Knob.x 100, y 200, width 128\`
+- **Tab completion**: component types, IDs, property names
+- **Tree sidebar**: shows component hierarchy, dims invisible components, ★ for saveInPreset`,
 };

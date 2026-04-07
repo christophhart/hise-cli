@@ -172,4 +172,6 @@ export interface DataLoader {
 	loadScriptnodeList(): Promise<ScriptnodeList>;
 	/** Load wizard definitions from YAML files in data/wizards/. */
 	loadWizardDefinitions(): Promise<Array<import("./wizard/types.js").WizardDefinition>>;
+	/** Load UI component property definitions from data/ui_component_properties.json. */
+	loadComponentProperties(): Promise<import("./modes/ui.js").ComponentPropertyMap>;
 }

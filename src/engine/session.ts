@@ -85,6 +85,14 @@ export class Session implements SessionContext, CommandSession {
 		return mode;
 	}
 
+	/** Invalidate all cached mode trees — called after undo operations
+	 *  which can affect any domain (builder, ui). */
+	invalidateAllTrees(): void {
+		for (const mode of this.modeCache.values()) {
+			mode.invalidateTree?.();
+		}
+	}
+
 	// ── Mode stack ──────────────────────────────────────────────────
 
 	currentMode(): Mode {
@@ -154,9 +162,14 @@ export class Session implements SessionContext, CommandSession {
 		const result = await mode.parse(input, this);
 		this.popMode(true); // Silent pop
 
-		// After undo one-shot, invalidate the active mode's tree so it re-fetches
-		if (modeId === "undo" && activeMode.invalidateTree) {
-			activeMode.invalidateTree();
+		// After undo one-shot, invalidate all cached mode trees and eagerly
+		// re-fetch the active mode's tree so getTree() returns fresh data.
+		if (modeId === "undo") {
+			this.invalidateAllTrees();
+			// Re-run ensureTree by triggering a parse-like flow on the active mode
+			if (activeMode.onEnter && this.connection) {
+				await activeMode.onEnter(this);
+			}
 		}
 
 		// Tag the result with the mode's accent so the TUI can use it for output borders

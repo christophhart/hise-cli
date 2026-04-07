@@ -27,7 +27,8 @@ export type TokenType =
 	| "sampler"
 	| "inspect"
 	| "project"
-	| "compile";
+	| "compile"
+	| "ui";
 
 export const TOKEN_COLORS: Record<TokenType, string> = {
 	// Language tokens
@@ -52,6 +53,7 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 	inspect: MODE_ACCENTS.inspect,
 	project: MODE_ACCENTS.project,
 	compile: MODE_ACCENTS.compile,
+	ui: MODE_ACCENTS.ui,
 } as const;
 
 export interface TokenSpan {

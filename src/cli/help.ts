@@ -28,6 +28,7 @@ OUTPUT FORMAT
 
 MODES
   -builder "<command>"     Module tree editor       (--help for syntax)
+  -ui "<command>"          UI component editor      (--help for syntax)
   -script "<expression>"   HiseScript REPL          (--help for syntax)
   -inspect "<command>"     Runtime monitor           (--help for syntax)
   -undo "<command>"        Undo history & plan groups (--help for syntax)
@@ -248,6 +249,41 @@ COMMANDS
 EXAMPLES
   hise-cli -inspect "version"
   hise-cli -inspect "project"`,
+
+	ui: `hise-cli -ui — UI component editor
+
+SYNTAX
+  hise-cli -ui "<command>"
+  hise-cli -ui --target:<component> "<command>"
+
+COMMANDS
+  add <type> ["name"] [at x y w h]    Add a component
+  remove <target>                      Remove a component
+  set <target>.<prop> [to] <value>     Set a property
+  move <target> to <parent> [at N]      Reparent a component (N = z-order index)
+  rename <target> to "<name>"          Rename a component
+  show <target>                        Show all properties
+
+COMPONENT TYPES
+  ScriptButton, ScriptSlider, ScriptPanel, ScriptComboBox, ScriptLabel,
+  ScriptImage, ScriptTable, ScriptSliderPack, ScriptAudioWaveform,
+  ScriptFloatingTile, ScriptDynamicContainer, ScriptedViewport,
+  ScriptMultipageDialog, ScriptWebView
+
+COMMA CHAINING
+  Multiple commands in one call, separated by commas.
+  Verb inheritance: add ScriptButton "A", ScriptSlider "B"
+  Set target inheritance: set Knob.x 100, y 200, width 128
+
+EXAMPLES
+  hise-cli -ui "add ScriptButton \\"PlayButton\\" at 100 200 128 32"
+  hise-cli -ui "set PlayButton.visible false"
+  hise-cli -ui "move PlayButton to MainPanel"
+  hise-cli -ui "move PlayButton to MainPanel at 0"
+  hise-cli -ui "rename PlayButton to \\"StartButton\\""
+  hise-cli -ui "add ScriptPanel \\"Header\\", add ScriptButton \\"Logo\\" at 10 5 40 40"
+  hise-cli -ui --target:MainPanel "add ScriptSlider \\"VolumeKnob\\" at 20 40 128 48"
+  hise-cli -ui "show PlayButton"`,
 
 	undo: `hise-cli -undo — undo history and plan groups
 

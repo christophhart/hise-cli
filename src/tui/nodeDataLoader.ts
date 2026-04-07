@@ -10,6 +10,7 @@ import type {
 	ScriptnodeList,
 } from "../engine/data.js";
 import type { WizardDefinition } from "../engine/wizard/types.js";
+import type { ComponentPropertyMap } from "../engine/modes/ui.js";
 
 /**
  * Create a DataLoader that reads the static JSON datasets from a
@@ -38,6 +39,12 @@ export function createNodeDataLoader(dataDir: string): DataLoader {
 				"utf8",
 			);
 			return JSON.parse(raw) as ScriptnodeList;
+		},
+		async loadComponentProperties(): Promise<ComponentPropertyMap> {
+			const filePath = path.join(dataDir, "ui_component_properties.json");
+			if (!fs.existsSync(filePath)) return {};
+			const raw = fs.readFileSync(filePath, "utf8");
+			return JSON.parse(raw) as ComponentPropertyMap;
 		},
 		async loadWizardDefinitions(): Promise<WizardDefinition[]> {
 			const wizardDir = path.join(dataDir, "wizards");

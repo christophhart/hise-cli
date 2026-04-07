@@ -6,16 +6,18 @@ import { BuilderMode } from "./engine/modes/builder.js";
 import { InspectMode } from "./engine/modes/inspect.js";
 import { ScriptMode } from "./engine/modes/script.js";
 import { UndoMode } from "./engine/modes/undo.js";
+import { UiMode, type ComponentPropertyMap } from "./engine/modes/ui.js";
 import { WizardRegistry } from "./engine/wizard/registry.js";
 import type { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { registerWizardAliases } from "./engine/commands/slash.js";
 
-export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo"] as const;
+export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo", "ui"] as const;
 
 export interface CreateSessionOptions {
 	connection: HiseConnection | null;
 	completionEngine?: CompletionEngine;
 	getModuleList?: () => ModuleList | undefined;
+	getComponentProperties?: () => ComponentPropertyMap | undefined;
 	handlerRegistry?: WizardHandlerRegistry;
 }
 
@@ -23,6 +25,7 @@ export function createSession({
 	connection,
 	completionEngine = new CompletionEngine(),
 	getModuleList,
+	getComponentProperties,
 	handlerRegistry,
 }: CreateSessionOptions): { session: Session; completionEngine: CompletionEngine } {
 	const session = new Session(connection, completionEngine);
@@ -34,15 +37,24 @@ export function createSession({
 		(ctx) => new BuilderMode(getModuleList?.(), completionEngine, ctx),
 	);
 	session.registerMode("undo", () => new UndoMode(completionEngine));
+	session.registerMode(
+		"ui",
+		(ctx) => new UiMode(completionEngine, ctx, getComponentProperties?.()),
+	);
 	return { session, completionEngine };
+}
+
+export interface SessionDatasets {
+	moduleList?: ModuleList;
+	componentProperties?: ComponentPropertyMap;
 }
 
 export async function loadSessionDatasets(
 	dataLoader: DataLoader | null | undefined,
 	completionEngine: CompletionEngine,
 	session?: Session,
-): Promise<ModuleList | undefined> {
-	if (!dataLoader) return undefined;
+): Promise<SessionDatasets> {
+	if (!dataLoader) return {};
 	await completionEngine.init(dataLoader);
 
 	// Load wizard definitions from YAML
@@ -60,9 +72,19 @@ export async function loadSessionDatasets(
 		}
 	}
 
+	const result: SessionDatasets = {};
+
 	try {
-		return await dataLoader.loadModuleList();
+		result.moduleList = await dataLoader.loadModuleList();
 	} catch {
-		return undefined;
+		// moduleList not available
 	}
+
+	try {
+		result.componentProperties = await dataLoader.loadComponentProperties();
+	} catch {
+		// component properties not available
+	}
+
+	return result;
 }

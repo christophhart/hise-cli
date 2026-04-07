@@ -55,6 +55,9 @@ function createDataLoader(moduleList = createModuleList()): DataLoader {
 		async loadWizardDefinitions(): Promise<import("../engine/wizard/types.js").WizardDefinition[]> {
 			return [];
 		},
+		async loadComponentProperties() {
+			return {};
+		},
 	};
 }
 

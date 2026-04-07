@@ -136,6 +136,13 @@ export const Types = createToken({
 	longer_alt: Identifier,
 });
 
+// ── UI keywords ────────────────────────────────────────────────────
+export const At = createToken({
+	name: "At",
+	pattern: /at/i,
+	longer_alt: Identifier,
+});
+
 // ── Punctuation ─────────────────────────────────────────────────────
 export const Dot = createToken({
 	name: "Dot",
@@ -184,3 +191,31 @@ export const VERB_KEYWORDS: ReadonlySet<string> = new _Set([
 ]);
 
 export const builderLexer = new Lexer(BUILDER_TOKENS);
+
+// ── UI mode token order ─────────────────────────────────────────────
+// Shares most tokens with builder but adds At, drops builder-only tokens.
+
+export const UI_TOKENS = [
+	WhiteSpace,
+	QuotedString,
+	NumberLiteral,
+	Add,
+	Remove,
+	Move,
+	Rename,
+	Into,
+	Show,
+	Set,
+	To,
+	As,
+	At,
+	Comma,
+	Dot,
+	Identifier,
+];
+
+export const UI_VERB_KEYWORDS: ReadonlySet<string> = new _Set([
+	"add", "remove", "move", "rename", "set", "show",
+]);
+
+export const uiLexer = new Lexer(UI_TOKENS);

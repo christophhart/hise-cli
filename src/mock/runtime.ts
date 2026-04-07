@@ -1,12 +1,14 @@
 import { MockHiseConnection, type HiseConnection, type HiseResponse } from "../engine/hise.js";
 import type { TreeNode } from "../engine/result.js";
 import { MOCK_BUILDER_TREE } from "./builderTree.js";
+import { MOCK_COMPONENT_TREE, type RawComponentNode } from "./componentTree.js";
 import {
 	normalizeStatusPayload,
 	type StatusPayload,
 } from "./contracts/status.js";
 import { normalizeReplResponse } from "./contracts/repl.js";
 import type { BuilderDiffEntry, BuilderApplyResult } from "./contracts/builder.js";
+import type { DiffEntry } from "./contracts/builder.js";
 
 export interface MockRuntimeProfile {
 	kind: "mock";
@@ -143,6 +145,39 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 		inGroup = false;
 		groupName = "";
 		return envelopeDiff("root", []);
+	});
+
+	// ── UI component endpoints ──────────────────────────────────────
+
+	const componentTree: RawComponentNode = structuredClone(MOCK_COMPONENT_TREE);
+	const uiDiff: DiffEntry[] = [];
+
+	connection.onGet("/api/ui/tree", () => ({
+		success: true,
+		result: componentTree,
+		logs: [],
+		errors: [],
+	}));
+
+	connection.onPost("/api/ui/apply", (body) => {
+		const ops = (body as { operations?: unknown[] })?.operations ?? [];
+		const diff = createMockUiDiffFromOps(ops);
+		uiDiff.push(...diff);
+		pendingDiff.push(...diff);
+
+		return {
+			success: true,
+			result: {
+				scope: inGroup ? "group" : "root",
+				groupName: inGroup ? groupName : "root",
+				diff: [...uiDiff],
+			},
+			logs: diff.map(d => {
+				const verb = d.action === "+" ? "Add" : d.action === "-" ? "Remove" : "Set properties on";
+				return `${verb} ${d.target}`;
+			}),
+			errors: [],
+		};
 	});
 
 	return {
@@ -346,4 +381,22 @@ function formatLogLiteral(value: unknown): string {
 	if (typeof value === "boolean") return String(value);
 	if (value === null) return "null";
 	return "undefined";
+}
+
+/** Derive mock diff entries from UI apply ops. */
+function createMockUiDiffFromOps(ops: unknown[]): DiffEntry[] {
+	const diff: DiffEntry[] = [];
+	for (const op of ops) {
+		if (!op || typeof op !== "object") continue;
+		const o = op as Record<string, unknown>;
+		const opType = o.op as string | undefined;
+		if (opType === "add" && typeof o.id === "string") {
+			diff.push({ domain: "ui", action: "+", target: o.id });
+		} else if (opType === "remove" && typeof o.target === "string") {
+			diff.push({ domain: "ui", action: "-", target: o.target });
+		} else if (typeof o.target === "string") {
+			diff.push({ domain: "ui", action: "*", target: o.target });
+		}
+	}
+	return diff;
 }

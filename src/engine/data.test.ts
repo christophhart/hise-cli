@@ -49,6 +49,12 @@ const nodeDataLoader: DataLoader = {
 			return parseYaml(content);
 		});
 	},
+	async loadComponentProperties() {
+		const filePath = path.join(DATA_DIR, "ui_component_properties.json");
+		if (!fs.existsSync(filePath)) return {};
+		const raw = fs.readFileSync(filePath, "utf8");
+		return JSON.parse(raw);
+	},
 };
 
 // ── Module List ─────────────────────────────────────────────────────

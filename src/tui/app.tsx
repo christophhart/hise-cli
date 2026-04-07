@@ -101,9 +101,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	}
 	const completionEngine = engineRef.current;
 
-	// Loaded module list — stored in ref so the builder factory always
-	// gets the latest data (even for modes created after initial load).
+	// Loaded datasets — stored in refs so lazy mode factories always
+	// get the latest data (even for modes created after initial load).
 	const moduleListRef = useRef<import("../engine/data.js").ModuleList | undefined>(undefined);
+	const componentPropsRef = useRef<import("../engine/modes/ui.js").ComponentPropertyMap | undefined>(undefined);
 
 	// Session — created once, stored in ref
 	const sessionRef = useRef<ReturnType<typeof createSession>["session"] | null>(null);
@@ -112,6 +113,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			connection,
 			completionEngine,
 			getModuleList: () => moduleListRef.current,
+			getComponentProperties: () => componentPropsRef.current,
 			handlerRegistry,
 		}).session;
 	}
@@ -712,20 +714,22 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		async function load() {
 			if (!dataLoader || cancelled) return;
 			try {
-				const moduleList = await loadSessionDatasets(dataLoader, completionEngine, session);
+				const datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 				if (!cancelled) {
-					if (!moduleList) return;
-					// Store for future builder mode instances
-					moduleListRef.current = moduleList;
+					// Store for future mode instances via lazy factories
+					moduleListRef.current = datasets.moduleList;
+					componentPropsRef.current = datasets.componentProperties;
 					// Update existing builder mode instances with module data
-					for (const mode of session.modeStack) {
-						if (mode instanceof BuilderMode) {
-							mode.setModuleList(moduleList);
+					if (datasets.moduleList) {
+						for (const mode of session.modeStack) {
+							if (mode instanceof BuilderMode) {
+								mode.setModuleList(datasets.moduleList);
+							}
 						}
 					}
 				}
 			} catch {
-				// Module data not available — builder validation will be skipped
+				// Data not available — validation will be skipped
 			}
 		}
 

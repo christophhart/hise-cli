@@ -1664,12 +1664,254 @@ Analyze and report signal chain latency.
 
 ---
 
-## UI Component Mutation
+## UI Component Management
 
-Endpoints for creating, removing, and reorganizing UI components from the
-interface designer. Complements the existing read/property endpoints
-(`GET /api/list_components`, `GET/POST /api/*_component_properties`,
+Two endpoints for reading and mutating UI components, mirroring the
+`/api/builder/tree` + `/api/builder/apply` pattern. Complements the existing
+read-only endpoints (`GET /api/list_components`, `GET /api/get_component_properties`,
 `GET/POST /api/*_component_value`). Used by the `/ui` mode (Phase 6.3).
+
+All mutations go through `POST /api/ui/apply` as an operations array so the
+CLI can batch commands (e.g. comma-chained `add ScriptButton "A", add ScriptSlider "B"`)
+into a single round-trip. Each apply call is a single undo transaction — the
+cross-domain undo system (`/api/undo/*`) records it so `/undo back` reverses
+the entire batch.
+
+### GET /api/ui/tree
+
+Return the component hierarchy for a script processor's interface.
+
+**Query Parameters**:
+
+| Parameter  | Required | Description                                      |
+|------------|----------|--------------------------------------------------|
+| `moduleId` | Yes      | Script processor ID (e.g., `"Interface"`)        |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "id": "Content",
+    "type": "ScriptPanel",
+    "visible": true,
+    "enabled": true,
+    "saveInPreset": false,
+    "x": 0, "y": 0, "width": 900, "height": 600,
+    "childComponents": [
+      {
+        "id": "MainPanel",
+        "type": "ScriptPanel",
+        "visible": true,
+        "enabled": true,
+        "saveInPreset": false,
+        "x": 0, "y": 0, "width": 900, "height": 500,
+        "childComponents": [
+          {
+            "id": "GainKnob",
+            "type": "ScriptSlider",
+            "visible": true,
+            "enabled": true,
+            "saveInPreset": true,
+            "x": 100, "y": 50, "width": 128, "height": 48,
+            "childComponents": []
+          },
+          {
+            "id": "PlayButton",
+            "type": "ScriptButton",
+            "visible": true,
+            "enabled": true,
+            "saveInPreset": true,
+            "x": 300, "y": 50, "width": 128, "height": 32,
+            "childComponents": []
+          }
+        ]
+      },
+      {
+        "id": "DebugLabel",
+        "type": "ScriptLabel",
+        "visible": false,
+        "enabled": true,
+        "saveInPreset": false,
+        "x": 0, "y": 550, "width": 400, "height": 30,
+        "childComponents": []
+      }
+    ]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+Each node in the tree has:
+
+| Field             | Type       | Description                                        |
+|-------------------|------------|----------------------------------------------------|
+| `id`              | `string`   | Component ID (unique within the interface)         |
+| `type`            | `string`   | Component type (`ScriptButton`, `ScriptPanel`, …)  |
+| `visible`         | `boolean`  | Whether the component is visible                   |
+| `enabled`         | `boolean`  | Whether the component is enabled                   |
+| `saveInPreset`    | `boolean`  | Whether the component's value is saved in presets  |
+| `x`               | `number`   | X position relative to parent                      |
+| `y`               | `number`   | Y position relative to parent                      |
+| `width`           | `number`   | Width in pixels                                    |
+| `height`          | `number`   | Height in pixels                                   |
+| `childComponents` | `array`    | Child component nodes (empty array for leaf nodes) |
+
+The root node (`"Content"`) represents the interface content area.
+Positions are relative to the parent component.
+
+**Error cases**:
+- 404: `moduleId` is not a valid script processor
+
+**Implementation notes**: Builds the tree recursively from the Content
+component's child list. Uses `getScriptComponentFor()` to query each
+component's properties. Same data as `GET /api/list_components?hierarchy=true`
+but with `saveInPreset` added and wrapped in the builder-style envelope.
+
+---
+
+### POST /api/ui/apply
+
+Apply a batch of UI component operations. Returns a diff of what changed,
+scoped to the current undo group (same envelope as `POST /api/builder/apply`).
+
+**JSON Body**:
+
+| Field        | Required | Description                                        |
+|--------------|----------|----------------------------------------------------|
+| `moduleId`   | Yes      | Script processor ID (e.g., `"Interface"`)          |
+| `operations` | Yes      | Array of operation objects (see below)              |
+
+**Operation types**:
+
+Each operation object requires an `op` field (not `type`) to specify the
+operation kind, matching the builder's `POST /api/builder/apply` convention.
+
+#### `add` — Create a new component
+
+| Field           | Required | Description                                               |
+|-----------------|----------|-----------------------------------------------------------|
+| `op`            | —        | `"add"`                                                   |
+| `componentType` | Yes      | Component type (e.g., `"ScriptButton"`, `"ScriptPanel"`)  |
+| `id`            | No       | Component ID (auto-generated if omitted)                  |
+| `x`             | No       | X position (default: 0)                                   |
+| `y`             | No       | Y position (default: 0)                                   |
+| `width`         | No       | Width (default: type-dependent)                           |
+| `height`        | No       | Height (default: type-dependent)                          |
+| `parentId`      | No       | Parent panel ID (default: root content)                   |
+
+Maps component types to `Content::add*` methods:
+`ScriptButton` → `addButton()`, `ScriptSlider` → `addKnob()`,
+`ScriptPanel` → `addPanel()`, `ScriptComboBox` → `addComboBox()`,
+`ScriptLabel` → `addLabel()`, `ScriptImage` → `addImage()`,
+`ScriptTable` → `addTable()`, `ScriptSliderPack` → `addSliderPack()`,
+`ScriptAudioWaveform` → `addAudioWaveform()`,
+`ScriptFloatingTile` → `addFloatingTile()`,
+`ScriptWebView` → `addWebView()`,
+`ScriptedViewport` → `addViewport()`.
+
+#### `remove` — Delete a component
+
+| Field    | Required | Description           |
+|----------|----------|-----------------------|
+| `op`     | —        | `"remove"`            |
+| `target` | Yes      | Component ID          |
+
+Removes the component and all children recursively.
+
+#### `set` — Change component properties
+
+| Field        | Required | Description                            |
+|--------------|----------|----------------------------------------|
+| `op`         | —        | `"set"`                                |
+| `target`     | Yes      | Component ID                           |
+| `properties` | Yes      | Object of `{ propertyName: value }`    |
+
+Uses `set_component_properties` internally. Properties set in script are
+protected — use `"force": true` in the operation to override.
+
+#### `move` — Reparent a component
+
+| Field          | Required | Description                                       |
+|----------------|----------|---------------------------------------------------|
+| `op`           | —        | `"move"`                                          |
+| `target`       | Yes      | Component ID to reparent                          |
+| `parent`       | Yes      | New parent panel ID (empty string for root)       |
+| `index`        | No       | Z-order index within new parent (default: append) |
+| `keepPosition` | No       | If true, preserve absolute screen position (default: false) |
+
+Validates the target parent is a ScriptPanel (or root) and checks for
+circular references.
+
+#### `rename` — Change a component's ID
+
+| Field    | Required | Description              |
+|----------|----------|--------------------------|
+| `op`     | —        | `"rename"`               |
+| `target` | Yes      | Current component ID     |
+| `newId`  | Yes      | New component ID         |
+
+Validates uniqueness and character constraints.
+
+**Request example** (batched — add + set in one call):
+```json
+{
+  "moduleId": "Interface",
+  "operations": [
+    { "op": "add", "componentType": "ScriptPanel", "id": "MainPanel", "x": 0, "y": 0, "width": 900, "height": 500 },
+    { "op": "add", "componentType": "ScriptButton", "id": "PlayButton", "x": 100, "y": 50, "width": 128, "height": 32, "parentId": "MainPanel" },
+    { "op": "set", "target": "PlayButton", "properties": { "saveInPreset": true, "text": "Play" } }
+  ]
+}
+```
+
+**Response** (matches builder apply envelope):
+```json
+{
+  "success": true,
+  "result": {
+    "scope": "root",
+    "groupName": "",
+    "diff": [
+      { "domain": "ui", "action": "+", "target": "MainPanel" },
+      { "domain": "ui", "action": "+", "target": "PlayButton" },
+      { "domain": "ui", "action": "*", "target": "PlayButton" }
+    ]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+The diff uses the same `DiffEntry` shape as builder:
+- `domain`: `"ui"` (enables cross-domain undo with builder's `"builder"` entries)
+- `action`: `"+"` added, `"-"` removed, `"*"` modified
+- `target`: component ID
+
+**Error cases** (first failing operation aborts the batch):
+- 400: unknown operation `type`
+- 400: `add` with invalid component type
+- 400: `add` with duplicate ID
+- 400: `add` with empty ID or invalid characters
+- 400: `move` to self or descendant (circular)
+- 400: `rename` to existing ID
+- 404: `moduleId` is not a valid script processor
+- 404: `target` component does not exist
+- 404: `parentId` / `parent` does not exist or is not a ScriptPanel
+
+**Undo integration**: The entire `operations` array is one undo transaction.
+`POST /api/undo/back` reverses the whole batch. When inside an undo group
+(`POST /api/undo/push_group` … `POST /api/undo/pop_group`), UI operations
+are grouped with builder operations — the cross-domain undo system handles
+both `"builder"` and `"ui"` domains transparently.
+
+**Implementation notes**: Iterates the operations array, executing each
+against the Content API. Collects diff entries as operations succeed.
+If any operation fails, all preceding operations in the batch are undone
+(transactional rollback) and the error is returned.
+
+---
 
 ### POST /api/ui/validate_parameters
 
@@ -1679,208 +1921,7 @@ Validate UI parameter bindings and ranges.
 
 | Field      | Required | Description |
 |------------|----------|-------------|
-| `moduleId` | Yes      | Script processor ID (eg `Interface`) |
-
----
-
-### POST /api/ui/add_component
-
-Create a new UI component on the interface.
-
-**JSON Body**:
-
-| Field      | Required | Description                                                  |
-|------------|----------|--------------------------------------------------------------|
-| `moduleId` | Yes      | Script processor ID (e.g., `"Interface"`)                    |
-| `type`     | Yes      | Component type (e.g., `"ScriptButton"`, `"ScriptSlider"`, `"ScriptPanel"`) |
-| `id`       | Yes      | Unique component ID (e.g., `"PlayButton"`)                   |
-| `x`        | No       | X position in pixels (default: 0)                            |
-| `y`        | No       | Y position in pixels (default: 0)                            |
-| `width`    | No       | Width in pixels (default: type-dependent)                    |
-| `height`   | No       | Height in pixels (default: type-dependent)                   |
-| `parentId` | No       | Parent panel ID (default: root content area)                 |
-
-**Response**:
-```json
-{
-  "success": true,
-  "result": "Component created",
-  "component": {
-    "id": "PlayButton",
-    "type": "ScriptButton",
-    "x": 100,
-    "y": 200,
-    "width": 128,
-    "height": 32,
-    "parentId": ""
-  },
-  "logs": [],
-  "errors": []
-}
-```
-
-**Error cases**:
-- 400: `type` is not a valid component type
-- 400: `id` already exists
-- 400: `id` is empty or contains invalid characters
-- 404: `moduleId` is not a valid script processor
-- 404: `parentId` does not exist or is not a ScriptPanel
-
-**Implementation notes**: Maps component types to `Content::add*` methods:
-`ScriptButton` → `addButton()`, `ScriptSlider` → `addKnob()`,
-`ScriptPanel` → `addPanel()`, `ScriptComboBox` → `addComboBox()`,
-`ScriptLabel` → `addLabel()`, `ScriptImage` → `addImage()`,
-`ScriptTable` → `addTable()`, `ScriptSliderPack` → `addSliderPack()`,
-`ScriptAudioWaveform` → `addAudioWaveform()`,
-`ScriptFloatingTile` → `addFloatingTile()`,
-`ScriptWebView` → `addWebView()`,
-`ScriptedViewport` → `addViewport()`.
-After creation, sets position/size via `setPosition()` and parent via
-`set_component_properties` `parentComponent` property.
-
----
-
-### POST /api/ui/remove_component
-
-Remove a component from the interface.
-
-**JSON Body**:
-
-| Field      | Required | Description                              |
-|------------|----------|------------------------------------------|
-| `moduleId` | Yes      | Script processor ID                      |
-| `id`       | Yes      | Component ID to remove                   |
-
-**Response**:
-```json
-{
-  "success": true,
-  "result": "Component removed",
-  "logs": [],
-  "errors": []
-}
-```
-
-**Error cases**:
-- 400: `id` is empty
-- 404: `moduleId` is not a valid script processor
-- 404: component `id` does not exist
-
-**Implementation notes**: Uses the Content API to remove the component.
-Child components of a panel are removed recursively.
-
----
-
-### POST /api/ui/rename_component
-
-Rename a component (change its ID).
-
-**JSON Body**:
-
-| Field      | Required | Description                              |
-|------------|----------|------------------------------------------|
-| `moduleId` | Yes      | Script processor ID                      |
-| `id`       | Yes      | Current component ID                     |
-| `newId`    | Yes      | New component ID                         |
-
-**Response**:
-```json
-{
-  "success": true,
-  "result": "Component renamed",
-  "oldId": "Button1",
-  "newId": "PlayButton",
-  "logs": [],
-  "errors": []
-}
-```
-
-**Error cases**:
-- 400: `newId` already exists
-- 400: `newId` is empty or contains invalid characters
-- 404: `moduleId` is not a valid script processor
-- 404: component `id` does not exist
-
----
-
-### POST /api/ui/move_component
-
-Change a component's position and/or size.
-
-**JSON Body**:
-
-| Field      | Required | Description                              |
-|------------|----------|------------------------------------------|
-| `moduleId` | Yes      | Script processor ID                      |
-| `id`       | Yes      | Component ID                             |
-| `x`        | No       | New X position (unchanged if omitted)    |
-| `y`        | No       | New Y position (unchanged if omitted)    |
-| `width`    | No       | New width (unchanged if omitted)         |
-| `height`   | No       | New height (unchanged if omitted)        |
-
-**Response**:
-```json
-{
-  "success": true,
-  "result": "Component moved",
-  "component": {
-    "id": "PlayButton",
-    "x": 300,
-    "y": 400,
-    "width": 128,
-    "height": 32
-  },
-  "logs": [],
-  "errors": []
-}
-```
-
-**Error cases**:
-- 400: no position/size fields provided
-- 404: `moduleId` is not a valid script processor
-- 404: component `id` does not exist
-
-**Implementation notes**: Uses `setPosition(x, y, w, h)` on the component.
-Only provided fields are changed; omitted fields retain current values.
-
----
-
-### POST /api/ui/reparent_component
-
-Move a component to a different parent panel.
-
-**JSON Body**:
-
-| Field         | Required | Description                                     |
-|---------------|----------|-------------------------------------------------|
-| `moduleId`    | Yes      | Script processor ID                             |
-| `id`          | Yes      | Component ID to reparent                        |
-| `newParentId` | Yes      | Target parent panel ID (empty string for root)  |
-
-**Response**:
-```json
-{
-  "success": true,
-  "result": "Component reparented",
-  "component": {
-    "id": "PlayButton",
-    "parentId": "MainPanel"
-  },
-  "logs": [],
-  "errors": []
-}
-```
-
-**Error cases**:
-- 400: `newParentId` is the component itself (circular)
-- 400: `newParentId` is a descendant of the component (circular)
-- 404: `moduleId` is not a valid script processor
-- 404: component `id` does not exist
-- 404: `newParentId` does not exist or is not a ScriptPanel
-
-**Implementation notes**: Uses the `parentComponent` property via
-`set_component_properties`. Validates that the target is a ScriptPanel
-(or empty string for root) and checks for circular parent references.
+| `moduleId` | Yes      | Script processor ID (e.g., `Interface`) |
 
 ---
 

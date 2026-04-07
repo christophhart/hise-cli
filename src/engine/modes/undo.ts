@@ -104,29 +104,39 @@ export class UndoMode implements Mode {
 		await this.ensureHistory(conn);
 		await this.syncPlanState(conn);
 
+		// Commands that mutate state — invalidate all mode trees after
+		const MUTATING = new Set(["back", "forward", "clear", "apply", "discard"]);
+
+		let result: CommandResult;
 		switch (keyword) {
 			case "back":
-				return this.handleBack(conn);
+				result = await this.handleBack(conn);
+				break;
 
 			case "forward":
-				return this.handleForward(conn);
+				result = await this.handleForward(conn);
+				break;
 
 			case "clear":
-				return this.handleClear(conn);
+				result = await this.handleClear(conn);
+				break;
 
 			case "plan": {
 				if (this.inPlan) return errorResult("Already in a plan group.");
 				const name = extractQuotedArg(trimmed.slice(4).trim()) || "Plan";
-				return this.handlePlan(conn, name);
+				result = await this.handlePlan(conn, name);
+				break;
 			}
 
 			case "apply":
 				if (!this.inPlan) return errorResult("Not in a plan group.");
-				return this.handleApply(conn);
+				result = await this.handleApply(conn);
+				break;
 
 			case "discard":
 				if (!this.inPlan) return errorResult("Not in a plan group.");
-				return this.handleDiscard(conn);
+				result = await this.handleDiscard(conn);
+				break;
 
 			case "diff":
 				return this.handleDiff(conn);
@@ -140,6 +150,14 @@ export class UndoMode implements Mode {
 					`Available: back, forward, clear, plan, apply, discard, diff, history`,
 				);
 		}
+
+		// After mutating undo operations, invalidate all mode trees
+		// so builder/ui/etc re-fetch their state on next access
+		if (MUTATING.has(keyword!) && result.type !== "error") {
+			session.invalidateAllTrees?.();
+		}
+
+		return result;
 	}
 
 	// ── Command handlers ────────────────────────────────────────

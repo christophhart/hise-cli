@@ -69,7 +69,8 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	}
 
 	const tailParts = args.filter((arg) => arg !== commandFlag && arg !== targetArg && arg !== "--mock");
-	const tail = tailParts.join(" ").trim();
+	// Re-quote args that contain spaces (shell strips the user's quotes)
+	const tail = tailParts.map((p) => p.includes(" ") ? `"${p}"` : p).join(" ").trim();
 
 	if (entry.kind === "mode" && tail === "") {
 		return { kind: "error", message: `${commandFlag} requires a one-shot command or expression` };

@@ -15,6 +15,7 @@ export const MODE_ACCENTS = {
 	compile: "#f92672",
 	undo: "#66d9ef",
 	wizard: "#e8a060",
+	ui: "#66d9ef",
 } as const;
 
 export type ModeId =
@@ -27,7 +28,8 @@ export type ModeId =
 	| "project"
 	| "compile"
 	| "undo"
-	| "wizard";
+	| "wizard"
+	| "ui";
 
 export interface CompletionItem {
 	label: string;
@@ -49,6 +51,8 @@ export interface SessionContext {
 	readonly connection: import("../hise.js").HiseConnection | null;
 	/** Exit the current mode (pops the mode stack). At root, signals quit. */
 	popMode(): import("../result.js").CommandResult;
+	/** Invalidate all cached mode trees — call after undo/redo operations. */
+	invalidateAllTrees?(): void;
 }
 
 export interface Mode {
