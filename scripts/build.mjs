@@ -1,5 +1,6 @@
 import { build } from "esbuild";
 import { chmodSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { resolve } from "node:path";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
@@ -8,6 +9,23 @@ const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 // Pass --ink to force stock Ink only (disables Rezi at build time).
 const useInk = process.argv.includes("--ink");
 const useRezi = !useInk;
+
+// ── Ink shim plugin ─────────────────────────────────────────────────
+// Third-party packages (in node_modules/) that import "ink" get
+// redirected to src/tui/ink-shim.ts, which provides runtime-dispatched
+// exports (Rezi or stock Ink depending on terminal capabilities).
+// Our own "ink-stock" import resolves to real "ink" via alias + external.
+const inkShimPlugin = {
+	name: "ink-shim-redirect",
+	setup(build) {
+		build.onResolve({ filter: /^ink$/ }, (args) => {
+			if (args.importer.includes("node_modules")) {
+				return { path: resolve("src/tui/ink-shim.ts") };
+			}
+			return null;
+		});
+	},
+};
 
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
@@ -28,14 +46,15 @@ await build({
 	loader: {
 		".yaml": "text",
 	},
-	// Rezi mode: two aliases for runtime renderer dispatch.
-	//   "ink" → "@rezi-ui/ink-compat"  (third-party packages get Rezi)
-	//   "ink-stock" → "ink"            (shim imports real Ink for fallback)
+	plugins: useRezi ? [inkShimPlugin] : [],
+	// Rezi mode: "ink-stock" → "ink" lets the shim import real Ink for
+	// fallback.  Third-party "ink" imports are handled by inkShimPlugin
+	// (redirected to the shim), NOT aliased to Rezi at build time.
 	// --ink mode: only stock Ink, everything bundled.
 	external: useRezi
-		? ["@rezi-ui/ink-compat", "@rezi-ui/native", "ink", "ink-stock", "react", "react-reconciler"]
+		? ["@rezi-ui/ink-compat", "@rezi-ui/native", "ink", "react", "react-reconciler"]
 		: [],
-	...(useRezi ? { alias: { "ink-stock": "ink", "ink": "@rezi-ui/ink-compat" } } : {}),
+	...(useRezi ? { alias: { "ink-stock": "ink" } } : {}),
 	sourcemap: false,
 	logLevel: "info",
 });

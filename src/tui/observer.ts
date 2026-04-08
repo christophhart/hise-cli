@@ -29,8 +29,13 @@ export function startObserverServer(
 		}
 	});
 
-	server.on("error", () => {
-		// Best-effort only. If the port is unavailable, observer mirroring is disabled.
+	server.on("error", (err: NodeJS.ErrnoException) => {
+		if (err.code === "EADDRINUSE" && !process.env.VITEST) {
+			process.stderr.write(
+				`[observer] port ${port} already in use — a stale hise-cli process may be running. ` +
+				`Run: kill $(lsof -ti :${port}) to free it.\n`,
+			);
+		}
 	});
 	server.listen(port, "127.0.0.1");
 	return server;

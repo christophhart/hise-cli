@@ -2,18 +2,15 @@
 //
 // Detects terminal capabilities at startup and re-exports from either
 // @rezi-ui/ink-compat (truecolor terminals) or stock ink (256-color
-// terminals like macOS Terminal.app).
+// terminals, macOS Terminal.app, Windows).
 //
 // All TUI components import from this module instead of "ink" directly.
-// Both packages are externalized in the build; no esbuild alias needed.
+// Third-party packages are redirected here by the esbuild inkShimPlugin.
 
 // Types always come from stock Ink (tsc can resolve "ink" normally).
-// The esbuild alias (ink → rezi) only affects the bundle, not tsc.
 import type * as InkTypes from "ink";
 
-// "ink-stock" is an esbuild alias pointing to the real "ink" package,
-// bypassing the "ink" → "@rezi-ui/ink-compat" alias that third-party
-// packages (e.g. ScrollBar) need.
+// "ink-stock" is an esbuild alias pointing to the real "ink" package.
 // @ts-ignore — virtual alias, resolved by esbuild and vitest
 import * as stockInk from "ink-stock";
 import * as reziInk from "@rezi-ui/ink-compat";
@@ -28,6 +25,9 @@ function shouldUseRezi(): boolean {
 
 	// macOS Terminal.app — no truecolor, Rezi's FORCED_TRUECOLOR breaks it
 	if (process.env.TERM_PROGRAM === "Apple_Terminal") return false;
+
+	// Windows — ConPTY buffering causes visible flicker with Rezi
+	if (process.platform === "win32") return false;
 
 	// Generic truecolor check
 	const ct = process.env.COLORTERM ?? "";
@@ -48,6 +48,7 @@ export const Box: typeof InkTypes.Box = active.Box as typeof InkTypes.Box;
 export const Text: typeof InkTypes.Text = active.Text as typeof InkTypes.Text;
 export const useApp: typeof InkTypes.useApp = active.useApp as typeof InkTypes.useApp;
 export const useInput: typeof InkTypes.useInput = active.useInput as typeof InkTypes.useInput;
+export const useStdin: typeof InkTypes.useStdin = active.useStdin as typeof InkTypes.useStdin;
 export const useStdout: typeof InkTypes.useStdout = active.useStdout as typeof InkTypes.useStdout;
 
 // Type re-exports
