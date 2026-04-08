@@ -120,6 +120,14 @@ function createModeHandler(modeId: ModeId): CommandHandler {
 				mode.setContext(context);
 			}
 
+			// If already in this mode, don't push again
+			if (session.currentModeId === modeId) {
+				const label = context ? `${modeId}.${context}` : modeId;
+				const result = textResult(`Already in ${label} mode.`);
+				result.accent = mode.accent;
+				return result;
+			}
+
 			// Push mode onto stack
 			const pushResult = session.pushMode(modeId);
 			if (pushResult) return pushResult;
