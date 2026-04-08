@@ -18,6 +18,7 @@ USAGE
   hise-cli repl [--mock] [--no-animation]   Open TUI with options
   hise-cli -<mode> "<command>"              One-shot mode command (JSON output)
   hise-cli wizard <subcommand>              Wizard operations (JSON output)
+  hise-cli diagnose <filepath>              Diagnose HiseScript file (JSON output)
   hise-cli --help                           Show this help
   hise-cli -<mode> --help                   Show mode-specific help
 
@@ -333,4 +334,62 @@ EXAMPLES
   hise-cli wizard new_project --schema
   hise-cli wizard new_project --answers '{"ProjectName":"MyPlugin","DefaultProjectFolder":"/path","Template":"0"}'
   hise-cli wizard recompile --answers '{"clearGlobals":"1","clearFonts":"0","clearAudioFiles":"0","clearImages":"0"}'`,
+
+	diagnose: `hise-cli diagnose — HiseScript shadow parser diagnostics
+
+SYNTAX
+  hise-cli diagnose <filepath> [--format=pretty|json] [--errors-only]
+
+Runs the HISE shadow parser on a script file and returns diagnostics.
+Accepts an absolute file path — the CLI resolves it to a project-relative
+path automatically.
+
+The file must be included in a ScriptProcessor and compiled at least once
+for diagnostics to be available. If the file is in the scripts folder but
+not yet included, a warning is returned.
+
+OPTIONS
+  --format=json      JSON output (default)
+  --format=pretty    Human-readable file:line:col format on stderr
+  --errors-only      Filter to error-severity diagnostics only
+
+EXIT CODES
+  0    No errors (or file not in project)
+  1    Errors found (JSON mode) or connection failure
+  2    Errors found (pretty mode) — Claude Code hook "block" signal
+
+OUTPUT FORMAT (JSON, default)
+  { "ok": false, "file": "/path/to/script.js", "diagnostics": [
+    { "line": 6, "column": 15, "severity": "error",
+      "source": "api-validation",
+      "message": "Function / constant not found: Console.prins",
+      "suggestions": ["print"] }
+  ]}
+
+OUTPUT FORMAT (pretty, --format=pretty)
+  /path/to/script.js:6:15: error: Function / constant not found: Console.prins (did you mean: print?)
+
+CLAUDE CODE HOOK
+  Create ~/.claude/hise-lsp.sh:
+    #!/bin/bash
+    INPUT=$(cat)
+    FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+    if [[ "$FILE" == */Scripts/*.js ]]; then
+      DIAG=$(hise-cli diagnose "$FILE" --format=pretty --errors-only 2>&1)
+      if [ -n "$DIAG" ]; then
+        echo "" >&2
+        echo "$DIAG" >&2
+        exit 2
+      fi
+    fi
+
+  Add to ~/.claude/settings.json (global hook):
+    { "hooks": { "PostToolUse": [{ "matcher": "Edit|Write",
+        "hooks": [{ "type": "command",
+          "command": "bash ~/.claude/hise-lsp.sh" }] }] } }
+
+EXAMPLES
+  hise-cli diagnose /path/to/Scripts/ext.js
+  hise-cli diagnose /path/to/Scripts/ext.js --format=pretty --errors-only
+  hise-cli diagnose --help`,
 };

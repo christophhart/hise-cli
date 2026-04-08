@@ -52,6 +52,50 @@ src/cli/       CLI frontend — structured JSON output
 The engine layer is isomorphic (runs in Node.js and browsers) to enable
 a future web frontend.
 
+## HiseScript diagnostics in Claude Code
+
+hise-cli can act as a lightweight LSP replacement — run `hise-cli diagnose`
+as a post-edit hook so Claude Code sees script errors after every file change.
+
+**1. Create `~/.claude/hise-lsp.sh`:**
+
+```bash
+#!/bin/bash
+INPUT=$(cat)
+FILE=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+if [[ "$FILE" == */Scripts/*.js ]]; then
+  DIAG=$(hise-cli diagnose "$FILE" --format=pretty --errors-only 2>&1)
+  if [ -n "$DIAG" ]; then
+    echo "" >&2
+    echo "$DIAG" >&2
+    exit 2
+  fi
+fi
+```
+
+**2. Add to `~/.claude/settings.json`:**
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hise-lsp.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+HISE must be running with the project open. Scripts must be included in a
+ScriptProcessor and compiled at least once for diagnostics to work.
+
 ## Requirements
 
 - Node.js 18+

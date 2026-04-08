@@ -103,6 +103,36 @@ async function launchRepl(args: string[]): Promise<void> {
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+	// Fast-path: diagnose subcommand (no session bootstrap needed)
+	if (process.argv[2] === "diagnose") {
+		const args = process.argv.slice(3);
+		if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+			console.log(renderCliHelp([], "diagnose"));
+			process.exit(0);
+		}
+		const { executeDiagnose, parseDiagnoseFlags, formatDiagnoseOutput } = await import("./cli/diagnose.js");
+		const { filePath, flags } = parseDiagnoseFlags(args);
+		if (!filePath) {
+			console.error("diagnose requires a file path argument");
+			process.exit(1);
+		}
+		const connection = new HttpHiseConnection();
+		const result = await executeDiagnose(filePath, connection);
+		connection.destroy();
+
+		if (flags.format === "pretty") {
+			const output = formatDiagnoseOutput(result, flags);
+			if (output) {
+				process.stderr.write(output + "\n");
+			}
+			// Exit 2 = hook "block" signal (shows stderr to Claude), 0 = clean
+			process.exit(result.ok ? 0 : 2);
+		}
+
+		console.log(JSON.stringify(result));
+		process.exit(result.ok ? 0 : 1);
+	}
+
 	const bootstrap = createSession({ connection: null });
 	const cliCommands = listCliCommands(bootstrap.session.allCommands());
 	const cliResult = await executeCliCommand(process.argv, cliCommands, dataLoader, { handlerRegistry });
@@ -120,6 +150,12 @@ async function main(): Promise<void> {
 	if (cliResult.kind === "json") {
 		console.log(JSON.stringify(cliResult.payload));
 		process.exit(cliResult.payload.ok ? 0 : 1);
+	}
+
+	if (cliResult.kind === "diagnose") {
+		// Should not reach here — handled by fast-path above
+		console.error("diagnose must be handled before session bootstrap");
+		process.exit(1);
 	}
 
 	await launchRepl(cliResult.args);

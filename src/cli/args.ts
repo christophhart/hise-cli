@@ -4,6 +4,7 @@ export type CliParseResult =
 	| { kind: "tui"; args: string[] }
 	| { kind: "help"; scope?: string }
 	| { kind: "error"; message: string }
+	| { kind: "diagnose"; filePath: string }
 	| {
 		kind: "execute";
 		entry: CommandEntry;
@@ -31,6 +32,14 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	const first = args[0]!;
 	if (first === "repl") {
 		return { kind: "tui", args: args.slice(1) };
+	}
+
+	if (first === "diagnose") {
+		const rest = args.slice(1);
+		if (rest.length === 0) {
+			return { kind: "error", message: "diagnose requires a file path argument" };
+		}
+		return { kind: "diagnose", filePath: rest[0]! };
 	}
 
 	if (first === "wizard") {
