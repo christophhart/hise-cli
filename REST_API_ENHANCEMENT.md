@@ -582,34 +582,119 @@ Fade out all voices matching a layer/group.
 ## DSP (Scriptnode)
 
 Wraps the DspNetwork and Node scripting APIs for scriptnode graph editing.
+Follows the same `GET /tree` + `POST /apply` pattern as builder and UI modes.
+All mutations go through `POST /api/dsp/apply` as a batched operations array
+(single undo transaction via the cross-domain `/api/undo/*` system).
 
-### GET /api/dsp/graph
+### GET /api/dsp/list
 
-Returns the current node graph as a hierarchical structure.
+Returns available DspNetwork names. Scans the project's `DspNetworks/` folder
+for `.xml` files.
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": ["MyDSP", "MyEffect", "Reverb"],
+  "logs": [],
+  "errors": []
+}
+```
+
+The result is a flat string array of network names (without `.xml` extension).
+These names can be passed to `POST /api/dsp/init` or used as the `network`
+parameter in `GET /api/dsp/tree` and `POST /api/dsp/apply`.
+
+---
+
+### POST /api/dsp/init
+
+Creates or loads a DspNetwork. Maps to `DspNetwork::Holder::getOrCreate()` on
+the C++ side. If the network XML file does not exist, it is created. If it
+already exists, it is loaded.
+
+**JSON Body**:
+
+| Field      | Required | Description                                              |
+|------------|----------|----------------------------------------------------------|
+| `name`     | Yes      | Network name (sanitized to valid C++ identifier)         |
+| `embedded` | No       | Create as embedded network (default: `false`)            |
+
+**Response** — returns the initial tree (same shape as `GET /api/dsp/tree`):
+```json
+{
+  "success": true,
+  "result": {
+    "id": "MyDSP",
+    "path": "container.chain",
+    "bypassed": false,
+    "parameters": [],
+    "connections": [],
+    "children": []
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+**Notes**:
+- The `name` is sanitized to a valid C++ identifier (same as
+  `snex::cppgen::StringHelpers::makeValidCppName()`).
+- For file-based networks, the XML is created at
+  `DspNetworks/<name>.xml` if it doesn't exist.
+- For embedded networks, the ID is derived from the parent processor name.
+- The builder `set_effect` / `load ... into` command can later alias to
+  this endpoint.
+
+---
+
+### GET /api/dsp/tree
+
+Returns the scriptnode network hierarchy for a given network.
 
 **Query Parameters**:
 
-| Parameter | Required | Description           |
-|-----------|----------|-----------------------|
-| `network` | Yes      | DspNetwork module ID  |
+| Parameter | Required | Description                                        |
+|-----------|----------|----------------------------------------------------|
+| `network` | Yes      | DspNetwork ID (e.g., `"MyDSP"`)                   |
+| `verbose` | No       | Include full parameter ranges/metadata (default: `false`) |
 
 **Response**:
 ```json
 {
   "success": true,
   "result": {
-    "root": {
-      "id": "Main",
-      "path": "container.chain",
-      "bypassed": false,
-      "parameters": {"Value": 1.0},
-      "children": [
-        {"id": "Osc1", "path": "core.oscillator", "parameters": {"Frequency": 440, "Mode": "Sine"}, "children": []},
-        {"id": "Filter1", "path": "filters.svf", "parameters": {"Frequency": 2000, "Q": 0.5}, "children": []}
-      ]
-    },
-    "connections": [
-      {"source": "lfo1", "sourceOutput": "Value", "target": "Filter1", "parameter": "Frequency"}
+    "id": "MyDSP",
+    "path": "container.chain",
+    "bypassed": false,
+    "parameters": [
+      {"id": "Value", "value": 1.0}
+    ],
+    "children": [
+      {
+        "id": "Osc1",
+        "path": "core.oscillator",
+        "bypassed": false,
+        "parameters": [
+          {"id": "Frequency", "value": 440},
+          {"id": "Mode", "value": 0}
+        ],
+        "connections": [],
+        "children": []
+      },
+      {
+        "id": "Filter1",
+        "path": "filters.svf",
+        "bypassed": false,
+        "parameters": [
+          {"id": "Frequency", "value": 2000},
+          {"id": "Q", "value": 0.5}
+        ],
+        "connections": [
+          {"source": "lfo1", "sourceOutput": "Value", "parameter": "Frequency"}
+        ],
+        "children": []
+      }
     ]
   },
   "logs": [],
@@ -617,133 +702,210 @@ Returns the current node graph as a hierarchical structure.
 }
 ```
 
----
+Each node in the tree:
 
-### POST /api/dsp/create_and_add
+| Field         | Type      | Description                                               |
+|---------------|-----------|-----------------------------------------------------------|
+| `id`          | `string`  | Node instance ID (unique within network)                  |
+| `path`        | `string`  | Factory path (e.g., `"core.oscillator"`, `"filters.svf"`) |
+| `bypassed`    | `boolean` | Whether the node is bypassed                              |
+| `parameters`  | `array`   | Parameter array (see below)                               |
+| `connections` | `array`   | Incoming modulation connections (see below)                |
+| `children`    | `array`   | Child nodes (empty array for leaf nodes)                  |
 
-Add a node to the scriptnode graph.
+Each parameter object:
 
-**JSON Body**:
+| Field          | Type     | Description                                             |
+|----------------|----------|---------------------------------------------------------|
+| `id`           | `string` | Parameter ID (e.g., `"Frequency"`)                      |
+| `value`        | `number` | Current value                                           |
 
-| Field      | Required | Description                                            |
-|------------|----------|--------------------------------------------------------|
-| `network`  | Yes      | DspNetwork module ID                                   |
-| `path`     | Yes      | Node factory path (e.g., `"core.oscillator"`)          |
-| `parent`   | Yes      | Parent container node ID                               |
-| `id`       | No       | Custom node ID (auto-generated if omitted)             |
-| `validate` | No       | Validate without executing (default: `false`)          |
+With `?verbose=true`, each parameter additionally includes range metadata
+using the canonical REST ID set:
 
----
+| Field            | Type     | Description                                           |
+|------------------|----------|-------------------------------------------------------|
+| `min`            | `number` | Minimum value                                         |
+| `max`            | `number` | Maximum value                                         |
+| `stepSize`       | `number` | Step size (0 = continuous)                             |
+| `middlePosition` | `number` | Value at 50% of the range (omitted if linear / skew = 1.0) |
+| `defaultValue`   | `number` | Default value                                         |
 
-### POST /api/dsp/remove
+Each connection object (per-node, representing incoming modulation):
 
-Remove a node from the graph.
+| Field          | Type     | Description                                             |
+|----------------|----------|---------------------------------------------------------|
+| `source`       | `string` | Source node ID                                          |
+| `sourceOutput` | `string` | Source output name (e.g., `"Value"`)                    |
+| `parameter`    | `string` | Target parameter name on this node                      |
 
-**JSON Body**:
-
-| Field     | Required | Description          |
-|-----------|----------|----------------------|
-| `network` | Yes      | DspNetwork module ID |
-| `id`      | Yes      | Node ID to remove    |
-
----
-
-### POST /api/dsp/move
-
-Move a node to a different container.
-
-**JSON Body**:
-
-| Field     | Required | Description                    |
-|-----------|----------|--------------------------------|
-| `network` | Yes      | DspNetwork module ID           |
-| `id`      | Yes      | Node ID to move                |
-| `parent`  | Yes      | Target container node ID       |
-| `index`   | No       | Position within the container  |
+**Error cases**:
+- 404: `network` is not a valid DspNetwork ID
 
 ---
 
-### POST /api/dsp/connect
+### POST /api/dsp/apply
 
-Connect a node output to a parameter.
-
-**JSON Body**:
-
-| Field          | Required | Description                    |
-|----------------|----------|--------------------------------|
-| `network`      | Yes      | DspNetwork module ID           |
-| `source`       | Yes      | Source node ID                 |
-| `sourceOutput` | No       | Source output name (default: first output) |
-| `target`       | Yes      | Target node ID                 |
-| `parameter`    | Yes      | Target parameter name          |
-
----
-
-### POST /api/dsp/disconnect
-
-Disconnect a node from a parameter.
+Apply a batch of scriptnode operations. Returns a diff of what changed,
+scoped to a single undo transaction (same envelope as `POST /api/builder/apply`
+and `POST /api/ui/apply`).
 
 **JSON Body**:
 
-| Field       | Required | Description                    |
-|-------------|----------|--------------------------------|
-| `network`   | Yes      | DspNetwork module ID           |
-| `source`    | Yes      | Source node ID                 |
-| `target`    | Yes      | Target node ID                 |
-| `parameter` | Yes      | Target parameter name          |
+| Field        | Required | Description                                     |
+|--------------|----------|-------------------------------------------------|
+| `network`    | Yes      | DspNetwork ID                                   |
+| `operations` | Yes      | Array of operation objects (see below)           |
 
----
+**Operation types**:
 
-### POST /api/dsp/set
+Each operation object requires an `op` field.
 
-Set a property on a node.
+#### `add` — Add a node
 
-**JSON Body**:
+| Field    | Required | Description                                       |
+|----------|----------|---------------------------------------------------|
+| `op`     | —        | `"add"`                                           |
+| `path`   | Yes      | Factory path (e.g., `"core.oscillator"`)          |
+| `parent` | Yes      | Parent container node ID                          |
+| `id`     | No       | Custom node ID (auto-generated if omitted)        |
+| `index`  | No       | Position within parent (appended if omitted)      |
 
-| Field      | Required | Description                    |
-|------------|----------|--------------------------------|
-| `network`  | Yes      | DspNetwork module ID           |
-| `node`     | Yes      | Node ID                        |
-| `property` | Yes      | Property name                  |
-| `value`    | Yes      | New value                      |
+#### `remove` — Remove a node
 
----
+| Field | Required | Description  |
+|-------|----------|--------------|
+| `op`  | —        | `"remove"`   |
+| `id`  | Yes      | Node ID      |
 
-### POST /api/dsp/bypass
+#### `move` — Move a node to a different container
 
-Set the bypass state of a node.
+| Field    | Required | Description                       |
+|----------|----------|-----------------------------------|
+| `op`     | —        | `"move"`                          |
+| `id`     | Yes      | Node ID to move                   |
+| `parent` | Yes      | Target container node ID          |
+| `index`  | No       | Position within target container  |
 
-**JSON Body**:
+#### `connect` — Connect a modulation source to a parameter
 
-| Field      | Required | Description                    |
-|------------|----------|--------------------------------|
-| `network`  | Yes      | DspNetwork module ID           |
-| `node`     | Yes      | Node ID                        |
-| `bypassed` | Yes      | `true` or `false`              |
+| Field          | Required | Description                                   |
+|----------------|----------|-----------------------------------------------|
+| `op`           | —        | `"connect"`                                   |
+| `source`       | Yes      | Source node ID                                |
+| `target`       | Yes      | Target node ID                                |
+| `parameter`    | Yes      | Target parameter name                         |
+| `sourceOutput` | No       | Source output name (default: first output)    |
 
----
+The synthetic parameter name `"Bypass"` connects to the node's bypass button
+(maps to `Node.connectToBypass()` on the C++ side). Example:
+`{"op": "connect", "source": "lfo1", "target": "Filter1", "parameter": "Bypass"}`
 
-### POST /api/dsp/undo
+#### `disconnect` — Disconnect a modulation source
 
-Undo the last scriptnode operation.
+| Field       | Required | Description              |
+|-------------|----------|--------------------------|
+| `op`        | —        | `"disconnect"`           |
+| `source`    | Yes      | Source node ID           |
+| `target`    | Yes      | Target node ID           |
+| `parameter` | Yes      | Target parameter name    |
 
-**JSON Body**:
+#### `set` — Set a parameter value or node property
 
-| Field     | Required | Description          |
-|-----------|----------|----------------------|
-| `network` | Yes      | DspNetwork module ID |
+Works for both parameters and properties — HISE resolves which one. No
+collision between parameter IDs and property names.
 
----
+| Field   | Required | Description                               |
+|---------|----------|-------------------------------------------|
+| `op`    | —        | `"set"`                                   |
+| `node`  | Yes      | Node ID                                   |
+| `id`    | Yes      | Parameter or property name                |
+| `value` | Yes      | New value                                 |
 
-### POST /api/dsp/clear
+#### `bypass` — Set bypass state
 
-Clear all nodes from the network.
+| Field      | Required | Description           |
+|------------|----------|-----------------------|
+| `op`       | —        | `"bypass"`            |
+| `node`     | Yes      | Node ID               |
+| `bypassed` | Yes      | `true` or `false`     |
 
-**JSON Body**:
+#### `create_parameter` — Create a dynamic parameter on a container
 
-| Field     | Required | Description          |
-|-----------|----------|----------------------|
-| `network` | Yes      | DspNetwork module ID |
+Used for containers that support user-defined parameters (e.g., `container.chain`).
+Maps to `Node.getOrCreateParameter()` on the C++ side.
+
+| Field  | Required | Description                                          |
+|--------|----------|------------------------------------------------------|
+| `op`   | —        | `"create_parameter"`                                 |
+| `node` | Yes      | Container node ID                                    |
+| `id`   | Yes      | Parameter name                                       |
+| `min`  | No       | Minimum value (default: `0.0`)                       |
+| `max`  | No       | Maximum value (default: `1.0`)                       |
+| `defaultValue` | No | Default value (default: `0.0`)                    |
+| `stepSize`     | No | Step size, 0 = continuous (default: `0.0`)         |
+| `middlePosition` | No | Value at 50% of the range — computes skew so this value sits at 50%. Mutually exclusive with `skewFactor` |
+| `skewFactor`   | No | Raw skew factor (default: `1.0`). Mutually exclusive with `middlePosition` |
+
+**Range property naming**: The canonical REST spelling uses the `ScriptComponents`
+ID set: `min`, `max`, `stepSize`, `middlePosition`, `defaultValue`. Domain-native
+IDs are also accepted — the C++ layer auto-detects the ID set via
+`RangeHelpers::getIdSetForJSON()`:
+
+| Canonical (REST) | scriptnode | MidiAutomation |
+|------------------|------------|----------------|
+| `min`            | `MinValue` | `Start`        |
+| `max`            | `MaxValue` | `End`          |
+| `stepSize`       | `StepSize` | `Interval`     |
+| `middlePosition` | `SkewFactor` | `Skew`       |
+
+When `middlePosition` is provided, HISE computes the `SkewFactor` internally.
+When `SkewFactor` or `Skew` is provided directly, it is used as-is. Do not
+mix ID sets in a single operation — the auto-detector picks the first match.
+
+#### `clear` — Clear all nodes from the network
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `op`  | —        | `"clear"`   |
+
+**Response** — diff summary:
+```json
+{
+  "success": true,
+  "result": {
+    "actions": [
+      {"type": "+", "id": "Osc1", "path": "core.oscillator", "parent": "Main"},
+      {"type": "+", "id": "Filter1", "path": "filters.svf", "parent": "Main"},
+      {"type": "*", "id": "Filter1", "message": "set parameter Frequency to 2000"},
+      {"type": "*", "id": "lfo1", "message": "connect lfo1.Value -> Filter1.Frequency"},
+      {"type": "-", "id": "OldNode"}
+    ]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+Each diff action:
+
+| Field     | Type     | Description                                              |
+|-----------|----------|----------------------------------------------------------|
+| `type`    | `string` | `"+"` (add), `"-"` (remove), `"*"` (modify)             |
+| `id`      | `string` | Affected node ID                                         |
+| `path`    | `string` | Factory path (on `+` actions)                            |
+| `parent`  | `string` | Parent node ID (on `+` actions)                          |
+| `message` | `string` | Human-readable description (on `*` actions)              |
+
+The `message` field on `*` actions distinguishes parameter vs property changes
+(e.g., `"set parameter Frequency to 2000"` vs `"set property FilterMode to Ramp"`)
+and describes connection changes (e.g., `"connect lfo1.Value -> Filter1.Frequency"`).
+
+**Error cases**:
+- 404: `network` is not a valid DspNetwork ID
+- 400: invalid operation (unknown node ID, invalid factory path, etc.)
+- Partial failure: if one operation in the batch fails, the entire batch is
+  rolled back (undo transaction) and the error is returned
 
 ---
 
@@ -1405,24 +1567,24 @@ Returns scripting API namespaces and their method signatures.
 
 ## Project
 
-### POST /api/project/save
+Project lifecycle endpoints: listing, switching, saving/loading files, settings,
+file tree with runtime cross-references, and snippet I/O.
 
-Save the current preset as XML.
+### GET /api/project/list
 
-**JSON Body**: `{}` (empty)
-
----
-
-### GET /api/project/unused_images
-
-Find images not referenced by the project.
+List available HISE projects. Parses `project_info.xml` in each known project
+folder to extract the project name.
 
 **Response**:
 ```json
 {
   "success": true,
   "result": {
-    "images": ["bg_unused.png", "old_knob.png"]
+    "projects": [
+      { "name": "MyPlugin", "path": "/Users/foo/HISE Projects/MyPlugin" },
+      { "name": "TestSynth", "path": "/Users/foo/HISE Projects/TestSynth" }
+    ],
+    "active": "MyPlugin"
   },
   "logs": [],
   "errors": []
@@ -1431,11 +1593,283 @@ Find images not referenced by the project.
 
 ---
 
-### POST /api/project/export_snippet
+### GET /api/project/tree
+
+Project file structure with runtime cross-reference flags. Each file node
+carries `referenced` to indicate whether HISE's runtime actively uses it
+(included scripts, loaded samplemaps, referenced images, active DSP networks).
+Unreferenced files are dimmed in the CLI sidebar.
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "projectName": "MyPlugin",
+    "root": {
+      "name": "MyPlugin",
+      "type": "folder",
+      "children": [
+        {
+          "name": "Scripts",
+          "type": "folder",
+          "children": [
+            { "name": "Interface.js", "type": "file", "referenced": true },
+            { "name": "Unused.js", "type": "file", "referenced": false }
+          ]
+        },
+        {
+          "name": "SampleMaps",
+          "type": "folder",
+          "children": [
+            { "name": "MainSamples.xml", "type": "file", "referenced": true }
+          ]
+        },
+        {
+          "name": "Images",
+          "type": "folder",
+          "children": [
+            { "name": "knob.png", "type": "file", "referenced": true },
+            { "name": "old_bg.png", "type": "file", "referenced": false }
+          ]
+        },
+        {
+          "name": "DspNetworks",
+          "type": "folder",
+          "children": [
+            { "name": "MyEffect.xml", "type": "file", "referenced": true }
+          ]
+        },
+        {
+          "name": "UserPresets",
+          "type": "folder",
+          "children": [
+            { "name": "Default.preset", "type": "file", "referenced": true }
+          ]
+        },
+        {
+          "name": "Binaries",
+          "type": "folder",
+          "children": []
+        }
+      ]
+    }
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### GET /api/project/files
+
+List saveable project files (XmlPresetBackups and HIP files).
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "files": [
+      { "name": "MyPlugin.xml", "type": "xml", "path": "XmlPresetBackups/MyPlugin.xml", "modified": "2026-04-09T14:30:00Z" },
+      { "name": "MyPlugin.hip", "type": "hip", "path": "MyPlugin.hip", "modified": "2026-04-10T09:15:00Z" },
+      { "name": "Autosave_1.hip", "type": "hip", "path": "Autosave_1.hip", "modified": "2026-04-10T10:00:00Z" }
+    ]
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### GET /api/project/settings/list
+
+All project-scoped settings from `project_info.xml`.
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": {
+    "settings": {
+      "Name": "MyPlugin",
+      "Version": "1.0.0",
+      "Description": "",
+      "BundleName": "",
+      "PluginCode": "Mypl",
+      "EmbedImageFiles": "1",
+      "EmbedAudioFiles": "1",
+      "SupportFullDynamicsHLAC": "0",
+      "AdditionalDspLibraries": "",
+      "VST3Support": "1",
+      "AUSupport": "1",
+      "AAXSupport": "0",
+      "UseRawFrontend": "0",
+      "ExtraDefinitionsWindows": "",
+      "ExtraDefinitionsMacOS": "",
+      "ExtraDefinitionsLinux": "",
+      "ExtraDefinitionsIOS": ""
+    }
+  },
+  "logs": [],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/project/settings/set
+
+Update a project setting.
+
+**JSON Body**:
+
+| Field   | Required | Description     |
+|---------|----------|-----------------|
+| `key`   | Yes      | Setting key     |
+| `value` | Yes      | New value       |
+
+**Request**:
+```json
+{
+  "key": "Version",
+  "value": "1.1.0"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "OK",
+  "logs": ["Updated Version to 1.1.0"],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/project/save
+
+Save current state as XML or HIP. Optional filename override. Saving a HIP
+with a custom filename renames the master chain to match (preexisting HISE
+behaviour).
+
+**JSON Body**:
+
+| Field      | Required | Description                            |
+|------------|----------|----------------------------------------|
+| `format`   | Yes      | `"xml"` or `"hip"`                     |
+| `filename` | No       | Override filename (without extension)   |
+
+**Request**:
+```json
+{
+  "format": "xml",
+  "filename": "MyPlugin_v2"
+}
+```
+
+**Response** (XML):
+```json
+{
+  "success": true,
+  "result": {
+    "path": "XmlPresetBackups/MyPlugin_v2.xml"
+  },
+  "logs": ["Saved as MyPlugin_v2.xml"],
+  "errors": []
+}
+```
+
+**Response** (HIP with custom filename — master chain rename):
+```json
+{
+  "success": true,
+  "result": {
+    "path": "QuickTest.hip",
+    "masterChainRenamed": true,
+    "newName": "QuickTest"
+  },
+  "logs": ["Saved as QuickTest.hip", "Renamed master chain to QuickTest"],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/project/load
+
+Load an XML or HIP file into the current project.
+
+**JSON Body**:
+
+| Field  | Required | Description                                  |
+|--------|----------|----------------------------------------------|
+| `file` | Yes      | Relative path to XML or HIP file             |
+
+**Request**:
+```json
+{
+  "file": "XmlPresetBackups/MyPlugin.xml"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "OK",
+  "logs": ["Loaded MyPlugin.xml"],
+  "errors": []
+}
+```
+
+---
+
+### POST /api/project/switch
+
+Switch active project by name or absolute path. HISE resolves: if `project`
+matches a known project name (from `/api/project/list`), use that. Otherwise
+treat it as an absolute path. Error if neither resolves.
+
+**JSON Body**:
+
+| Field     | Required | Description                              |
+|-----------|----------|------------------------------------------|
+| `project` | Yes      | Project name or absolute filesystem path |
+
+**Request** (by name):
+```json
+{
+  "project": "TestSynth"
+}
+```
+
+**Request** (by path):
+```json
+{
+  "project": "/Users/foo/HISE Projects/SomeOtherPlugin"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "OK",
+  "logs": ["Switched to TestSynth"],
+  "errors": []
+}
+```
+
+---
+
+### GET /api/project/export_snippet
 
 Export the current project as a HISE snippet string.
-
-**JSON Body**: `{}` (empty)
 
 **Response**:
 ```json
@@ -1460,6 +1894,16 @@ Import a HISE snippet.
 | Field     | Required | Description              |
 |-----------|----------|--------------------------|
 | `snippet` | Yes      | HISE snippet string      |
+
+**Response**:
+```json
+{
+  "success": true,
+  "result": "OK",
+  "logs": ["Imported snippet"],
+  "errors": []
+}
+```
 
 ---
 

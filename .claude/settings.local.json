@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://127.0.0.1:1900/api/status)",
+      "Bash(curl -s http://127.0.0.1:1900/api/builder/tree)",
+      "Bash(python3 -m json.tool)",
+      "Bash(curl -s -X POST http://127.0.0.1:1900/api/builder/apply -H 'Content-Type: application/json' -d '{\"\"\"\"ops\"\"\"\":[{\"\"\"\"type\"\"\"\":\"\"\"\"add\"\"\"\",\"\"\"\"target\"\"\"\":\"\"\"\"SineSynth\"\"\"\",\"\"\"\"parent\"\"\"\":\"\"\"\"Master Chain\"\"\"\"}]}')",
+      "Bash(curl -s -X POST http://127.0.0.1:1900/api/builder/apply -H 'Content-Type: application/json' -d '{\"\"\"\"operations\"\"\"\":[{\"\"\"\"type\"\"\"\":\"\"\"\"add\"\"\"\",\"\"\"\"target\"\"\"\":\"\"\"\"SineSynth\"\"\"\",\"\"\"\"parent\"\"\"\":\"\"\"\"Master Chain\"\"\"\"}]}')",
+      "Bash(curl -s -X POST http://127.0.0.1:1900/api/builder/apply -H 'Content-Type: application/json' -d '{\"\"\"\"operations\"\"\"\":[{\"\"\"\"op\"\"\"\":\"\"\"\"add\"\"\"\",\"\"\"\"target\"\"\"\":\"\"\"\"SineSynth\"\"\"\",\"\"\"\"parent\"\"\"\":\"\"\"\"Master Chain\"\"\"\"}]}')",
+      "Bash(curl -s -X POST http://127.0.0.1:1900/api/builder/apply -H 'Content-Type: application/json' -d '{\"\"\"\"operations\"\"\"\":[{\"\"\"\"op\"\"\"\":\"\"\"\"add\"\"\"\",\"\"\"\"type\"\"\"\":\"\"\"\"SineSynth\"\"\"\",\"\"\"\"parent\"\"\"\":\"\"\"\"Master Chain\"\"\"\"}]}')",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:rezi.run)",
+      "WebFetch(domain:rezitui.dev)",
+      "mcp__hise__hise_runtime_status",
+      "mcp__hise__hise_runtime_launch",
+      "mcp__hise__query_scripting_api"
+    ]
+  }
+}

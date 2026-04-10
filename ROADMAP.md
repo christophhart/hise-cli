@@ -722,14 +722,19 @@ Phase 3.5: `/expansions switch "Pack 1"` one-shot switches.
 ### 6.5 DSP (Scriptnode) mode — C++ first
 
 Tracks [#6](https://github.com/christoph-hart/hise-cli/issues/6).
-**REST-first**: requires `POST /api/dsp/*` endpoints (see
-[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md) § DSP).
+**REST-first**: uses consolidated `GET /api/dsp/list`, `GET /api/dsp/tree`,
+`POST /api/dsp/apply` endpoints (same pattern as builder/UI modes). See
+[REST_API_ENHANCEMENT.md](REST_API_ENHANCEMENT.md) § DSP.
 C++ endpoints implemented and tested before CLI-side mode code.
 
 Chevrotain grammar for graph editing, nodes from `scriptnodeList.json`.
 Shares token types with builder mode grammar (quoted strings, dot-paths,
 identifiers, numbers). Tree sidebar shows the scriptnode network hierarchy
 (root network as single root node, containers and nodes as children).
+`set` works uniformly for parameters and properties (e.g.,
+`set Osc1.Frequency 440`, `set Filter1.Frequency.SkewFactor 0.5`).
+Parameters returned as `[{id, value}]` arrays; `?verbose=true` adds
+range metadata. Connections are per-node (incoming modulation sources).
 
 ### 6.6 Script mode — full implementation
 
