@@ -74,7 +74,16 @@ Enter a mode to start working, or use /wizard for guided workflows.
 - **/setup** — Install and build HISE from source (wizard alias)
 
 One-shot syntax: \`/builder add SimpleGain\` executes without entering the mode.
-Dot-context: \`/builder.Master add LFO\` sets the context path first.`,
+Dot-context: \`/builder.Master add LFO\` sets the context path first.
+
+## Script Runner & Testing
+
+- **/run** \`<file.hsc>\` — Execute a .hsc script (multiline recipes & tests)
+- **/parse** \`<file.hsc>\` — Validate a script without executing (dry run)
+- **/wait** \`<duration>\` — Pause execution (e.g., \`/wait 500ms\`, \`/wait 0.5s\`)
+- **/expect** \`<cmd> is <value>\` — Assert a command result (float tolerance: 0.01)
+  - \`/expect getValue() is 0.5 within 0.001\` — custom tolerance
+  - \`/expect isDefined(Knob1) is 1 or abort\` — abort script on failure`,
 
 	script: `# Script Mode
 

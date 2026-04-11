@@ -9,6 +9,9 @@ import { serializeCliOutput, type CliOutputPayload } from "./output.js";
 import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { createDefaultMockRuntime } from "../mock/runtime.js";
 import type { WizardHandlerRegistry } from "../engine/wizard/handler-registry.js";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { watch } from "node:fs";
 
 export interface CliCommandOptions {
 	connectionOverride?: HiseConnection;
@@ -27,9 +30,12 @@ export async function executeCliCommand(
 		: (connectionOrOptions as CliCommandOptions) ?? {};
 
 	const parsed = parseCliArgs(argv, commands);
+	if (parsed.kind === "run") {
+		return executeRunCommand(parsed, dataLoader, opts);
+	}
 	if (parsed.kind !== "execute") return parsed;
 
-	const mockRuntime = !opts.connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
+	const mockRuntime: ReturnType<typeof createDefaultMockRuntime> | null = !opts.connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
 	const connection = new CapturingHiseConnection(
 		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
 	);
@@ -40,6 +46,14 @@ export async function executeCliCommand(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 	});
+	// Wire up script file loader for /run and /parse commands
+	session.loadScriptFile = async (filePath: string) => {
+		const { readFile } = await import("node:fs/promises");
+		const { resolve } = await import("node:path");
+		const resolved = resolve(filePath);
+		return readFile(resolved, "utf-8");
+	};
+
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 	for (const mode of session.modeStack) {
 		if (datasets.moduleList && "setModuleList" in mode && typeof mode.setModuleList === "function") {
@@ -75,4 +89,193 @@ export async function executeCliCommand(
 	} finally {
 		connection.destroy();
 	}
+}
+
+// ── --run command execution ─────────────────────────────────────────
+
+async function executeRunCommand(
+	parsed: Extract<import("./args.js").CliParseResult, { kind: "run" }>,
+	dataLoader: DataLoader,
+	opts: CliCommandOptions,
+): Promise<{ kind: "json"; payload: CliOutputPayload }> {
+	// Watch mode: enter long-running loop (never returns via normal path)
+	if (parsed.watch && parsed.source.type === "file") {
+		await runWatchMode(parsed, dataLoader, opts);
+		// runWatchMode only returns on error
+		return { kind: "json", payload: { ok: true, value: "Watch ended." } };
+	}
+
+	// Read the script source
+	let source: string;
+	try {
+		source = await readRunSource(parsed.source);
+	} catch (err) {
+		return {
+			kind: "json",
+			payload: { ok: false, error: `Failed to load script: ${err instanceof Error ? err.message : String(err)}` },
+		};
+	}
+
+	// Create session with connection
+	const mockRuntime = !opts.connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
+	const connection = new CapturingHiseConnection(
+		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
+	);
+	let datasets: import("../session-bootstrap.js").SessionDatasets = {};
+	const { session, completionEngine } = createSession({
+		connection,
+		getModuleList: () => datasets.moduleList,
+		getComponentProperties: () => datasets.componentProperties,
+	});
+	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
+	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
+
+	try {
+		// Parse
+		const { parseScript } = await import("../engine/run/parser.js");
+		const script = parseScript(source);
+
+		if (script.lines.length === 0) {
+			return { kind: "json", payload: { ok: true, value: "Script is empty (no executable lines)." } };
+		}
+
+		// Validate
+		const { validateScript } = await import("../engine/run/validator.js");
+		const validation = validateScript(script, session);
+
+		if (parsed.dryRun) {
+			// Structured output: VS Code extension parses errors array
+			return { kind: "json", payload: { ok: true, value: { lines: script.lines.length, errors: validation.errors } } };
+		}
+
+		if (!validation.ok) {
+			const { formatValidationReport } = await import("../engine/run/validator.js");
+			return {
+				kind: "json",
+				payload: { ok: false, error: formatValidationReport(validation) },
+			};
+		}
+
+		// Execute
+		const { executeScript } = await import("../engine/run/executor.js");
+		const result = await executeScript(script, session);
+
+		if (result.ok) {
+			return { kind: "json", payload: { ok: true, value: result } };
+		}
+		return { kind: "json", payload: { ok: false, error: JSON.stringify(result) } };
+	} finally {
+		connection.destroy();
+	}
+}
+
+// ── Watch mode ──────────────────────────────────────────────────────
+
+async function runWatchMode(
+	parsed: Extract<import("./args.js").CliParseResult, { kind: "run" }>,
+	dataLoader: DataLoader,
+	opts: CliCommandOptions,
+): Promise<void> {
+	if (parsed.source.type !== "file") return;
+	const filePath = resolve(parsed.source.path);
+
+	// Create persistent session
+	const mockRuntime = !opts.connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
+	const connection = new CapturingHiseConnection(
+		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
+	);
+	let datasets: import("../session-bootstrap.js").SessionDatasets = {};
+	const { session, completionEngine } = createSession({
+		connection,
+		getModuleList: () => datasets.moduleList,
+		getComponentProperties: () => datasets.componentProperties,
+	});
+	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
+	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
+
+	const timestamp = () => {
+		const d = new Date();
+		return `[${d.toLocaleTimeString("en-GB", { hour12: false })}]`;
+	};
+
+	const runOnce = async () => {
+		let source: string;
+		try {
+			source = await readFile(filePath, "utf-8");
+		} catch (err) {
+			console.error(`${timestamp()} Failed to read ${parsed.source.type === "file" ? parsed.source.path : filePath}: ${err instanceof Error ? err.message : String(err)}`);
+			return;
+		}
+
+		const { parseScript } = await import("../engine/run/parser.js");
+		const script = parseScript(source);
+
+		if (script.lines.length === 0) {
+			console.log(`${timestamp()} Script is empty`);
+			return;
+		}
+
+		const { validateScript, formatValidationReport } = await import("../engine/run/validator.js");
+		const validation = validateScript(script, session);
+
+		if (!validation.ok) {
+			console.error(`${timestamp()} \u2717 ${formatValidationReport(validation)}`);
+			return;
+		}
+
+		if (parsed.dryRun) {
+			console.log(`${timestamp()} \u2713 ${script.lines.length} lines validated`);
+			return;
+		}
+
+		const { executeScript, formatRunReport } = await import("../engine/run/executor.js");
+		const result = await executeScript(script, session);
+		const report = formatRunReport(result);
+
+		if (result.ok) {
+			console.log(`${timestamp()} \u2713 ${report}`);
+		} else {
+			console.error(`${timestamp()} \u2717 ${report}`);
+		}
+	};
+
+	console.log(`${timestamp()} Watching ${parsed.source.path}... (Ctrl+C to stop)`);
+	await runOnce();
+
+	// Debounce: ignore rapid successive changes
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	watch(filePath, () => {
+		if (debounceTimer) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => {
+			console.log("");
+			void runOnce();
+		}, 200);
+	});
+
+	// Keep process alive
+	await new Promise<void>(() => {});
+}
+
+type RunSource = Extract<import("./args.js").CliParseResult, { kind: "run" }>["source"];
+
+async function readRunSource(source: RunSource): Promise<string> {
+	switch (source.type) {
+		case "file":
+			return readFile(resolve(source.path), "utf-8");
+		case "inline":
+			return source.content;
+		case "stdin":
+			return readStdin();
+	}
+}
+
+function readStdin(): Promise<string> {
+	return new Promise((res, reject) => {
+		const chunks: Buffer[] = [];
+		process.stdin.setEncoding("utf-8");
+		process.stdin.on("data", (chunk: Buffer) => chunks.push(chunk));
+		process.stdin.on("end", () => res(Buffer.concat(chunks).toString("utf-8")));
+		process.stdin.on("error", reject);
+	});
 }

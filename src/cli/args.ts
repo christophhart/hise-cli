@@ -5,6 +5,7 @@ export type CliParseResult =
 	| { kind: "help"; scope?: string }
 	| { kind: "error"; message: string }
 	| { kind: "diagnose"; filePath: string }
+	| { kind: "run"; source: { type: "file"; path: string } | { type: "stdin" } | { type: "inline"; content: string }; dryRun: boolean; useMock: boolean; watch: boolean }
 	| {
 		kind: "execute";
 		entry: CommandEntry;
@@ -13,7 +14,21 @@ export type CliParseResult =
 		useMock: boolean;
 	};
 
-const RESERVED_FLAGS = new Set(["--help", "-h", "--mock"]);
+const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch"]);
+
+/**
+ * Reverse MSYS/git-bash path mangling on inline script content.
+ * Git-bash on Windows converts leading `/word` in arguments to
+ * `C:/Program Files/Git/word`. This undoes that for each line.
+ * E.g. "C:/Program Files/Git/script" → "/script"
+ */
+function demangleMsys(content: string): string {
+	// Only applies on Windows with MSYS-style paths
+	return content.replace(
+		/^([A-Z]:\/(?:Program Files|msys64)\/Git\/)(\S+)/gm,
+		(_match, _prefix, rest) => `/${rest}`,
+	);
+}
 
 export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParseResult {
 	const args = argv.slice(2);
@@ -30,6 +45,39 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	}
 
 	const first = args[0]!;
+
+	// --run <file.hsc | - | --inline "script"> [--mock] [--dry-run]
+	if (first === "--run" || first === "-run" || first === "run") {
+		const rest = args.slice(1);
+		const useMock = rest.includes("--mock");
+		const dryRun = rest.includes("--dry-run");
+		const watch = rest.includes("--watch");
+		const inlineIdx = rest.indexOf("--inline");
+
+		if (inlineIdx !== -1) {
+			const content = rest[inlineIdx + 1];
+			if (!content) {
+				return { kind: "error", message: "--inline requires a script string argument" };
+			}
+			if (watch) {
+				return { kind: "error", message: "--watch cannot be used with --inline" };
+			}
+			return { kind: "run", source: { type: "inline", content: demangleMsys(content) }, dryRun, useMock, watch: false };
+		}
+
+		const positional = rest.find((a) => !a.startsWith("--"));
+		if (!positional) {
+			return { kind: "error", message: "--run requires a file path, -, or --inline <script>" };
+		}
+		if (positional === "-") {
+			if (watch) {
+				return { kind: "error", message: "--watch cannot be used with stdin" };
+			}
+			return { kind: "run", source: { type: "stdin" }, dryRun, useMock, watch: false };
+		}
+		return { kind: "run", source: { type: "file", path: positional }, dryRun, useMock, watch };
+	}
+
 	if (first === "repl") {
 		return { kind: "tui", args: args.slice(1) };
 	}

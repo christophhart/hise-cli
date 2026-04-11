@@ -322,6 +322,129 @@ async function handleDensity(
 	return textResult(`Density: ${arg || "auto"}`);
 }
 
+// ── /wait command ──────────────────────────────────────────────────
+
+async function handleWait(
+	args: string,
+	_session: CommandSession,
+): Promise<CommandResult> {
+	const { parseWait } = await import("../run/parser.js");
+	const parsed = parseWait(args);
+	if (typeof parsed === "string") {
+		return errorResult(parsed);
+	}
+	await new Promise((resolve) => setTimeout(resolve, parsed.ms));
+	return textResult(`Waited ${args.trim()}`);
+}
+
+// ── /expect command ────────────────────────────────────────────────
+
+async function handleExpect(
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	const { parseExpect, compareValues } = await import("../run/parser.js");
+	const { extractResultValue } = await import("../run/executor.js");
+	const parsed = parseExpect(args);
+	if (typeof parsed === "string") {
+		return errorResult(parsed);
+	}
+
+	if (session.currentModeId === "root") {
+		return errorResult("/expect requires an active mode (e.g., /script, /builder)");
+	}
+
+	// Execute the command in the current mode
+	const mode = session.getOrCreateMode(session.currentModeId);
+	const sessionContext = {
+		connection: session.connection,
+		popMode: () => session.popMode(true),
+		invalidateAllTrees: () => {},
+	};
+	const result = await mode.parse(parsed.command, sessionContext);
+	const actual = extractResultValue(result);
+	const passed = compareValues(actual, parsed.expected, parsed.tolerance);
+
+	if (passed) {
+		return textResult(`\u2713 ${parsed.command} is ${parsed.expected}`);
+	}
+	return errorResult(`\u2717 Expected ${parsed.expected}, got ${actual}`);
+}
+
+// ── /run and /parse commands ───────────────────────────────────────
+
+async function handleRun(
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	return runOrParse(args, session, false);
+}
+
+async function handleParse(
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	return runOrParse(args, session, true);
+}
+
+async function runOrParse(
+	args: string,
+	session: CommandSession,
+	dryRun: boolean,
+): Promise<CommandResult> {
+	const filePath = args.trim();
+	if (!filePath) {
+		return errorResult(`Usage: /${dryRun ? "parse" : "run"} <file.hsc>`);
+	}
+
+	if (!session.loadScriptFile) {
+		return errorResult("Script file loading not available in this environment.");
+	}
+
+	let source: string;
+	try {
+		source = await session.loadScriptFile(filePath);
+	} catch (err) {
+		return errorResult(`Failed to load "${filePath}": ${err instanceof Error ? err.message : String(err)}`);
+	}
+
+	const { parseScript } = await import("../run/parser.js");
+	const script = parseScript(source);
+
+	if (script.lines.length === 0) {
+		return textResult("Script is empty (no executable lines).");
+	}
+
+	// Validation phase (always runs)
+	const { validateScript, formatValidationReport } = await import("../run/validator.js");
+	// validateScript needs a Session, but we have CommandSession.
+	// Cast is safe because the concrete type is always Session.
+	const { Session } = await import("../session.js");
+	if (!(session instanceof Session)) {
+		return errorResult("Script execution requires a full Session instance.");
+	}
+
+	const validation = validateScript(script, session);
+
+	if (dryRun) {
+		return textResult(formatValidationReport(validation));
+	}
+
+	if (!validation.ok) {
+		return errorResult(formatValidationReport(validation));
+	}
+
+	// Execution phase
+	const { executeScript, formatRunReport } = await import("../run/executor.js");
+	const result = await executeScript(script, session);
+	const report = formatRunReport(result);
+
+	if (result.ok) {
+		return textResult(report);
+	}
+	return errorResult(report);
+}
+
 // ── Registration ────────────────────────────────────────────────────
 
 // ── Connect command ──────────────────────────────────────────────────
@@ -483,6 +606,42 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "compact",
 		description: "Toggle compact tree view (hide chains, show modules only)",
 		handler: async (_args, _session) => textResult("compact:toggle"),
+		kind: "command",
+		surfaces: ["tui"],
+	});
+
+	registry.register({
+		name: "wait",
+		description: "Pause execution for a duration (e.g., /wait 500ms, /wait 0.5s)",
+		handler: handleWait,
+		kind: "command",
+	});
+
+	registry.register({
+		name: "expect",
+		description: "Assert a command result (e.g., /expect getValue() is 0.5)",
+		handler: handleExpect,
+		kind: "command",
+	});
+
+	registry.register({
+		name: "run",
+		description: "Execute a .hsc script file",
+		handler: handleRun,
+		kind: "command",
+	});
+
+	registry.register({
+		name: "parse",
+		description: "Validate a .hsc script file (dry run, no execution)",
+		handler: handleParse,
+		kind: "command",
+	});
+
+	registry.register({
+		name: "edit",
+		description: "Open multiline script editor (Ctrl+Enter to run, Escape to cancel)",
+		handler: async (_args, _session) => textResult("edit:open"),
 		kind: "command",
 		surfaces: ["tui"],
 	});

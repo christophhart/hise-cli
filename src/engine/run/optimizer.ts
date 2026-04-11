@@ -1,0 +1,123 @@
+// ── Builder batch optimizer — minimize HTTP requests ────────────────
+//
+// Scans parsed script lines and merges consecutive builder-mode commands
+// into single comma-chained lines. This leverages the builder's existing
+// comma-chaining support to batch operations into one API call.
+//
+// Segment boundaries are forced by:
+// - Mode switches (/builder, /script, etc.)
+// - Tool commands (/wait, /expect, /midi)
+// - /undo plan / /undo apply
+// - /exit
+// - cd commands (change relative path context)
+// - Navigation commands (ls, pwd, reset)
+
+import type { ParsedScript, ScriptLine } from "./types.js";
+
+/** Commands that force a segment boundary (can't be batched). */
+const BOUNDARY_PREFIXES = ["cd ", "cd\t", "ls", "pwd", "reset"];
+
+/**
+ * Optimize a parsed script by merging consecutive batchable builder
+ * commands into comma-chained single lines.
+ *
+ * Only operates on mode-command lines (non-slash) that appear while
+ * the virtual mode is "builder". Slash commands are never merged.
+ */
+export function optimizeScript(script: ParsedScript): ParsedScript {
+	const result: ScriptLine[] = [];
+	let currentMode = "root";
+	let batch: ScriptLine[] = [];
+
+	const flushBatch = () => {
+		if (batch.length === 0) return;
+		if (batch.length === 1) {
+			result.push(batch[0]!);
+		} else {
+			// Merge into a single comma-chained line
+			const merged: ScriptLine = {
+				lineNumber: batch[0]!.lineNumber,
+				raw: batch.map((l) => l.raw).join("\n"),
+				content: batch.map((l) => l.content).join(", "),
+				kind: "command",
+			};
+			result.push(merged);
+		}
+		batch = [];
+	};
+
+	for (const line of script.lines) {
+		if (line.kind === "slash") {
+			flushBatch();
+
+			// Track mode transitions
+			const cmd = extractSlashName(line.content);
+			if (isModeCommand(cmd)) {
+				if (!cmd.args) {
+					// Entering mode
+					currentMode = cmd.name;
+				}
+				// One-shot mode commands are not batchable
+			} else if (cmd.name === "exit") {
+				currentMode = "root";
+			}
+
+			result.push(line);
+			continue;
+		}
+
+		// Mode-specific command
+		if (currentMode === "builder" && isBatchable(line.content)) {
+			batch.push(line);
+		} else {
+			flushBatch();
+			result.push(line);
+		}
+	}
+
+	flushBatch();
+	return { lines: result };
+}
+
+/**
+ * Check if a builder command can be safely batched with others.
+ * Navigation commands (cd, ls, pwd, reset) force boundaries.
+ */
+function isBatchable(content: string): boolean {
+	const lower = content.toLowerCase();
+	for (const prefix of BOUNDARY_PREFIXES) {
+		if (lower === prefix.trimEnd() || lower.startsWith(prefix)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+const MODE_IDS = new Set([
+	"builder", "script", "dsp", "sampler", "inspect",
+	"project", "compile", "undo", "ui",
+]);
+
+function isModeCommand(cmd: { name: string; args: string }): boolean {
+	return MODE_IDS.has(cmd.name);
+}
+
+function extractSlashName(content: string): { name: string; args: string } {
+	const withoutSlash = content.slice(1);
+	const dotIdx = withoutSlash.indexOf(".");
+	const spaceIdx = withoutSlash.indexOf(" ");
+
+	let nameEnd: number;
+	if (dotIdx !== -1 && (spaceIdx === -1 || dotIdx < spaceIdx)) {
+		nameEnd = dotIdx;
+	} else if (spaceIdx !== -1) {
+		nameEnd = spaceIdx;
+	} else {
+		nameEnd = withoutSlash.length;
+	}
+
+	return {
+		name: withoutSlash.slice(0, nameEnd),
+		args: withoutSlash.slice(nameEnd).trim(),
+	};
+}

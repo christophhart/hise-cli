@@ -138,3 +138,73 @@ describe("wizard subcommand", () => {
 		}
 	});
 });
+
+describe("--run subcommand", () => {
+	it("parses --run with file path", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "test.hsc"], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") {
+			expect(result.source).toEqual({ type: "file", path: "test.hsc" });
+			expect(result.dryRun).toBe(false);
+			expect(result.useMock).toBe(false);
+		}
+	});
+
+	it("parses --run with stdin", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "-"], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") {
+			expect(result.source).toEqual({ type: "stdin" });
+		}
+	});
+
+	it("parses --run with --inline", () => {
+		const script = "/builder\nadd SineSynth\n/script\n/expect Engine.getSampleRate() is 44100";
+		const result = parseCliArgs(["node", "hise-cli", "--run", "--inline", script], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") {
+			expect(result.source).toEqual({ type: "inline", content: script });
+		}
+	});
+
+	it("supports --mock flag", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "test.hsc", "--mock"], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") {
+			expect(result.useMock).toBe(true);
+		}
+	});
+
+	it("supports --dry-run flag", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "test.hsc", "--dry-run"], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") {
+			expect(result.dryRun).toBe(true);
+		}
+	});
+
+	it("errors on --inline without content", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "--inline"], getCliCommands());
+		expect(result.kind).toBe("error");
+	});
+
+	it("errors on --run with no source", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run"], getCliCommands());
+		expect(result.kind).toBe("error");
+	});
+
+	it("accepts bare run (no dashes)", () => {
+		const result = parseCliArgs(["node", "hise-cli", "run", "test.hsc"], getCliCommands());
+		expect(result.kind).toBe("run");
+	});
+
+	it("demangles MSYS path conversion in --inline", () => {
+		// Git-bash converts /script to C:/Program Files/Git/script
+		const mangled = "C:/Program Files/Git/script\n/expect Engine.getSampleRate() is 44100";
+		const result = parseCliArgs(["node", "hise-cli", "--run", "--inline", mangled], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run" && result.source.type === "inline") {
+			expect(result.source.content).toBe("/script\n/expect Engine.getSampleRate() is 44100");
+		}
+	});
+});

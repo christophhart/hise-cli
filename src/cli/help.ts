@@ -17,6 +17,9 @@ USAGE
   hise-cli                                  Open the interactive TUI
   hise-cli repl [--mock] [--no-animation]   Open TUI with options
   hise-cli -<mode> "<command>"              One-shot mode command (JSON output)
+  hise-cli --run <file.hsc> [--mock] [--dry-run]  Run a .hsc script file
+  hise-cli --run --inline "<script>"             Run an inline script
+  hise-cli --run - < script.hsc                  Run script from stdin
   hise-cli wizard <subcommand>              Wizard operations (JSON output)
   hise-cli diagnose <filepath>              Diagnose HiseScript file (JSON output)
   hise-cli --help                           Show this help
@@ -334,6 +337,82 @@ EXAMPLES
   hise-cli wizard new_project --schema
   hise-cli wizard new_project --answers '{"ProjectName":"MyPlugin","DefaultProjectFolder":"/path","Template":"0"}'
   hise-cli wizard recompile --answers '{"clearGlobals":"1","clearFonts":"0","clearAudioFiles":"0","clearImages":"0"}'`,
+
+	run: `hise-cli --run — script runner & test framework
+
+SYNTAX
+  hise-cli --run <file.hsc>              Execute a .hsc script file
+  hise-cli --run --inline "<script>"     Execute an inline script string
+  hise-cli --run - < script.hsc          Execute script from stdin
+  hise-cli --run <file.hsc> --mock       Execute with mock HISE connection
+  hise-cli --run <file.hsc> --dry-run    Validate only (no execution)
+
+SCRIPT SOURCES
+  File:   hise-cli --run test.hsc
+  Inline: hise-cli --run --inline "/builder\nadd SineSynth\n/script\n/expect Engine.getSampleRate() is 44100"
+  Stdin:  echo "/script" | hise-cli --run -
+          hise-cli --run - <<'EOF'
+          /builder
+          add SineSynth
+          EOF
+
+  The --inline flag is designed for LLM tool use where the script is passed
+  as a JSON string argument with literal \n newlines — no shell quoting issues.
+
+.HSC SCRIPT FORMAT
+  Each line is a command. Lines starting with # are comments.
+  Empty lines are ignored. Leading whitespace is stripped (cosmetic only).
+  Mode switches (/builder, /script, etc.) persist across lines.
+
+  Shebang support: add #!/usr/bin/env hise-cli run as the first line
+  to make .hsc files directly executable on Unix (chmod +x test.hsc).
+
+TOOL COMMANDS (available in scripts and TUI)
+  /wait <duration>           Pause (e.g., /wait 500ms, /wait 0.5s)
+  /expect <cmd> is <value>   Assert a command's result
+    Float tolerance: default 0.01, customize with "within <tol>"
+    Abort on failure: append "or abort"
+
+ERROR HANDLING
+  Parse phase:   Multi-recovery — all syntax errors reported together
+  Runtime phase: Fail-fast — aborts on first error
+  /expect:       Continues on failure (collects all results)
+                 Unless "or abort" is specified
+
+EXAMPLE SCRIPT (test.hsc)
+  # Set up a module tree
+  /builder
+  add SineSynth as MySynth
+  set MySynth.Volume -6
+
+  # Verify parameter
+  /expect get MySynth.Volume is -6
+
+  # Test script evaluation
+  /script
+  /expect Engine.getSampleRate() is 44100 within 1
+
+OUTPUT FORMAT (JSON)
+  { "ok": true|false, "value": {
+    "linesExecuted": 8,
+    "expects": [
+      { "line": 7, "command": "...", "expected": "...", "actual": "...", "passed": true }
+    ],
+    "error": null
+  }}
+
+SHEBANG (Unix)
+  Make .hsc files directly executable:
+    #!/usr/bin/env hise-cli run
+    /script
+    /expect Engine.getSampleRate() is 44100
+
+  Then: chmod +x test.hsc && ./test.hsc
+
+EXAMPLES
+  hise-cli --run test.hsc
+  hise-cli --run test.hsc --mock
+  hise-cli --run test.hsc --dry-run`,
 
 	diagnose: `hise-cli diagnose — HiseScript shadow parser diagnostics
 

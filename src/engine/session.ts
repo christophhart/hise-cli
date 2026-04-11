@@ -36,6 +36,7 @@ export class Session implements SessionContext, CommandSession {
 	wizardRegistry: WizardRegistry | null = null;
 	handlerRegistry: WizardHandlerRegistry | null = null;
 	projectName: string | null = null;
+	loadScriptFile?: (filePath: string) => Promise<string>;
 
 	private readonly modeFactories = new Map<string, ModeFactory>();
 	private readonly modeCache = new Map<string, Mode>();

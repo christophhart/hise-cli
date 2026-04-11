@@ -22,6 +22,8 @@ export interface CommandSession {
 	readonly wizardRegistry: import("../wizard/registry.js").WizardRegistry | null;
 	/** Internal wizard handler registry (task + init functions) */
 	readonly handlerRegistry: import("../wizard/handler-registry.js").WizardHandlerRegistry | null;
+	/** Load a .hsc script file by path. Set by TUI/CLI layer. */
+	loadScriptFile?(filePath: string): Promise<string>;
 }
 
 export type CommandHandler = (

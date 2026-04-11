@@ -20,7 +20,7 @@ import {
 } from "./components/Output.js";
 import type { PrerenderedBlock } from "./components/prerender.js";
 import { renderEcho, renderResult, truncateAnsi, wrapAnsi, fgHex, RESET } from "./components/prerender.js";
-import { Input, type InputHandle } from "./components/Input.js";
+import { Input, type InputHandle, offsetToLineCol, lineColToOffset } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
 import { TreeSidebar, type TreeSidebarHandle, type TreeSidebarState } from "./components/TreeSidebar.js";
@@ -119,6 +119,19 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	}
 	const session = sessionRef.current;
 
+	// Wire up script file loader for /run and /parse commands
+	if (!session.loadScriptFile) {
+		session.loadScriptFile = async (filePath: string) => {
+			const { readFile } = await import("node:fs/promises");
+			const { resolve } = await import("node:path");
+			const resolved = resolve(filePath);
+			return readFile(resolved, "utf-8");
+		};
+	}
+
+	// Multiline editor mode — toggled by /edit command
+	const [multilineMode, setMultilineMode] = useState(false);
+
 	// Input imperative handle + mouse support
 	const inputHandleRef = useRef<InputHandle>(null);
 	const inputBoxRef = useRef<DOMElement>(null);
@@ -138,10 +151,49 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		return Math.max(0, Math.min(len, relX + scrollStart));
 	}, []);
 
-	useOnPress(inputBoxRef, useCallback((event: { x: number }) => {
+	/** Convert mouse (x, y) to flat offset in multiline mode. */
+	const inputXYToCharOffset = useCallback((absX: number, absY: number) => {
+		const handle = inputHandleRef.current;
+		if (!handle) return 0;
+		const rect = getBoundingClientRect(inputBoxRef.current);
+		const boxLeft = rect?.left ?? 0;
+		const boxTop = rect?.top ?? 0;
+		const { padLen } = handle.getLayoutMetrics();
+		const value = handle.getValue();
+		const lines = value.split("\n");
+		const lineCount = lines.length;
+
+		// Row 0 is the top border, content starts at row 1
+		const clickRow = absY - boxTop - 1;
+
+		// Compute vScrollStart (same logic as render)
+		const { line: cursorLine } = offsetToLineCol(value, handle.getCursorPos());
+		const maxLinesVal = editorMaxLines;
+		let vScrollStart = 0;
+		if (lineCount > maxLinesVal) {
+			vScrollStart = Math.max(0, Math.min(
+				cursorLine - Math.floor(maxLinesVal * 0.5),
+				lineCount - maxLinesVal,
+			));
+		}
+
+		const targetLine = Math.max(0, Math.min(lineCount - 1, vScrollStart + clickRow));
+
+		// Gutter width: pad + lineNumberWidth + space
+		const lineNumberWidth = String(Math.max(lineCount, maxLinesVal)).length;
+		const gutterWidth = padLen + lineNumberWidth + 1;
+		const relX = absX - boxLeft - gutterWidth;
+		const col = Math.max(0, Math.min(lines[targetLine]!.length, relX));
+
+		return lineColToOffset(value, targetLine, col);
+	}, []);
+
+	useOnPress(inputBoxRef, useCallback((event: { x: number; y: number }) => {
 		const handle = inputHandleRef.current;
 		if (!handle) return;
-		const charPos = inputXToCharOffset(event.x);
+		const charPos = multilineMode
+			? inputXYToCharOffset(event.x, event.y)
+			: inputXToCharOffset(event.x);
 		const now = Date.now();
 		const last = lastInputClickRef.current;
 
@@ -152,14 +204,16 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			lastInputClickRef.current = { x: event.x, time: now };
 			handle.setCursorAt(charPos);
 		}
-	}, [inputXToCharOffset]));
+	}, [multilineMode, inputXToCharOffset, inputXYToCharOffset]));
 
-	useOnDrag(inputBoxRef, useCallback((event: { x: number }) => {
+	useOnDrag(inputBoxRef, useCallback((event: { x: number; y: number }) => {
 		const handle = inputHandleRef.current;
 		if (!handle) return;
-		const charPos = inputXToCharOffset(event.x);
+		const charPos = multilineMode
+			? inputXYToCharOffset(event.x, event.y)
+			: inputXToCharOffset(event.x);
 		handle.setCursorAt(charPos, true);
-	}, [inputXToCharOffset]));
+	}, [multilineMode, inputXToCharOffset, inputXYToCharOffset]));
 
 	// Tree sidebar
 	const treeSidebarRef = useRef<TreeSidebarHandle>(null);
@@ -246,7 +300,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// Viewport height for output (within the main area)
 	// When wizard is active, Input is hidden — output gets the full height
-	const inputOverhead = wizardForm ? 0 : GAP_ROWS + INPUT_SECTION_ROWS;
+	// When multiline editor is active, it takes ~40% of terminal height
+	const editorMaxLines = Math.floor(rows * 0.4);
+	const editorSectionRows = multilineMode ? editorMaxLines + 2 : INPUT_SECTION_ROWS; // +2 for borders
+	const inputOverhead = wizardForm ? 0 : GAP_ROWS + editorSectionRows;
 	const outputHeight = Math.max(
 		layout.minOutputRows,
 		mainAreaHeight - inputOverhead,
@@ -294,6 +351,20 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	//
 	// Priority: Global hotkeys > CompletionPopup >
 	//           TreeSidebar (focused) > Input > App (scroll)
+
+	// Raw stdin listener for Delete key (Ink can't distinguish Delete from Backspace).
+	// Delete sends \x1b[3~ which Ink maps to key.delete same as Backspace (\x7f).
+	// We intercept the raw sequence before Ink processes it.
+	const deleteForwardRef = useRef(false);
+	useEffect(() => {
+		const onData = (data: Buffer) => {
+			if (data.toString() === "\x1b[3~") {
+				deleteForwardRef.current = true;
+			}
+		};
+		process.stdin.on("data", onData);
+		return () => { process.stdin.off("data", onData); };
+	}, []);
 
 	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
 	// the leading \x1b from unrecognized CSI sequences, so mouse events
@@ -557,6 +628,46 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		const handle = inputHandleRef.current;
 		if (!handle) return;
 
+		// ── Multiline overrides ───────────────────────────────────
+		if (multilineMode) {
+			if (key.ctrl && key.return) {
+				// Ctrl+Enter → submit in multiline mode
+				setCompletionState(null);
+				handle.submit();
+				setMultilineMode(false);
+				return;
+			}
+			if (key.return) {
+				// Enter → insert newline
+				handle.insertChar("\n");
+				return;
+			}
+			if (key.escape) {
+				// Escape → exit multiline mode without executing
+				setMultilineMode(false);
+				handle.setValue("");
+				return;
+			}
+			if (key.upArrow) {
+				handle.moveCursor("up", key.shift);
+				return;
+			}
+			if (key.downArrow) {
+				handle.moveCursor("down", key.shift);
+				return;
+			}
+			// Home/End → line-level in multiline (Cmd/Meta → global)
+			if (key.home && !key.meta && !key.ctrl) {
+				handle.moveCursor("lineHome", key.shift);
+				return;
+			}
+			if (key.end && !key.meta && !key.ctrl) {
+				handle.moveCursor("lineEnd", key.shift);
+				return;
+			}
+			// Fall through to shared key handlers below
+		}
+
 		if (key.return) {
 			setCompletionState(null);
 			handle.submit();
@@ -591,9 +702,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			handle.moveCursor("wordRight");
 			return;
 		}
-		// Ctrl+A — start of line (readline style)
+		// Ctrl+A — select all
 		else if (key.ctrl && input === "a") {
-			handle.moveCursor("home");
+			handle.selectAll();
 			return;
 		}
 		// Ctrl+C — copy selection to clipboard via OSC 52
@@ -636,8 +747,18 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			return;
 		}
 		// Backspace / Delete
+		// Ctrl+D — delete forward (readline convention)
+		else if (key.ctrl && input === "d") {
+			handle.deleteForward();
+		}
+		// Backspace / Delete — distinguished via raw stdin interception
 		else if (key.backspace || key.delete) {
-			handle.deleteBackward();
+			if (deleteForwardRef.current) {
+				deleteForwardRef.current = false;
+				handle.deleteForward();
+			} else {
+				handle.deleteBackward();
+			}
 			return;
 		}
 		// Tab — trigger/accept completion (when sidebar not visible)
@@ -674,6 +795,18 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			scrollBy(-SCROLL_WHEEL_LINES);
 		} else if (event.button === "wheel-down") {
 			scrollBy(SCROLL_WHEEL_LINES);
+		}
+	});
+
+	// Mouse wheel on input box: scroll the multiline editor without moving cursor
+	useOnWheel(inputBoxRef, (event) => {
+		if (!multilineMode) return;
+		const handle = inputHandleRef.current;
+		if (!handle) return;
+		if (event.button === "wheel-up") {
+			handle.scrollEditor(-SCROLL_WHEEL_LINES);
+		} else if (event.button === "wheel-down") {
+			handle.scrollEditor(SCROLL_WHEEL_LINES);
 		}
 	});
 
@@ -795,6 +928,66 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	}, [handleObserverEvent]);
 
 	const handleSubmit = useCallback(async (input: string) => {
+		// ── /edit command: toggle multiline editor mode ──────────
+		if (input.trim() === "/edit" || input.trim().startsWith("/edit ")) {
+			const arg = input.trim().slice("/edit".length).trim();
+			if (arg && session.loadScriptFile) {
+				// /edit file.hsc — load file into editor
+				try {
+					const content = await session.loadScriptFile(arg);
+					setMultilineMode(true);
+					const handle = inputHandleRef.current;
+					if (handle) {
+						handle.setValue(content.replace(/\r\n/g, "\n").trimEnd());
+					}
+				} catch (err) {
+					const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+					const block = renderResult({ type: "error", message: `Failed to load "${arg}": ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
+					if (block) addBlocks([block]);
+				}
+			} else {
+				setMultilineMode(true);
+			}
+			return;
+		}
+
+		// ── Multiline submit: execute as .hsc script ────────────
+		if (multilineMode) {
+			const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+			disabledRef.current = true;
+			setDisabled(true);
+			try {
+				const { parseScript } = await import("../engine/run/parser.js");
+				const { validateScript, formatValidationReport } = await import("../engine/run/validator.js");
+				const { executeScript, formatRunReport } = await import("../engine/run/executor.js");
+
+				const script = parseScript(input);
+				const validation = validateScript(script, session);
+
+				if (!validation.ok) {
+					const block = renderResult({ type: "error", message: formatValidationReport(validation) }, scheme, innerW);
+					if (block) addBlocks([block]);
+					return;
+				}
+
+				const result = await executeScript(script, session);
+				const report = formatRunReport(result);
+				const block = renderResult(
+					result.ok ? { type: "text", content: report } : { type: "error", message: report },
+					scheme,
+					innerW,
+				);
+				if (block) addBlocks([block]);
+			} catch (err) {
+				const block = renderResult({ type: "error", message: `Script error: ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
+				if (block) addBlocks([block]);
+			} finally {
+				disabledRef.current = false;
+				setDisabled(false);
+			}
+			return;
+		}
+
 		const mode = session.currentMode();
 		const currentAccent = mode.accent;
 		const echoSpans = mode.tokenizeInput?.(input);
@@ -1324,6 +1517,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							columns={contentColumns}
 							disabled={disabled}
 							focused={!sidebarFocused}
+							multiline={multilineMode}
+							maxLines={editorMaxLines}
 							onSubmit={(v) => {
 								setCompletionState(null);
 								void handleSubmit(v);

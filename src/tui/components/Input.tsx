@@ -4,6 +4,7 @@ import React, {
 	useCallback,
 	useEffect,
 	useImperativeHandle,
+	useMemo,
 	useReducer,
 	useRef,
 	useState,
@@ -13,10 +14,11 @@ import React, {
 import { Box, Text } from "../ink-shim.js";
 
 import { useTheme } from "../theme-context.js";
-import { lightenHex, lerpHex } from "../theme.js";
+import { lightenHex, lerpHex, darkenHex } from "../theme.js";
 import type { TokenSpan } from "../../engine/highlight/tokens.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import { sliceSpans, splitSpansAtCursor } from "../../engine/highlight/split.js";
+import { buildModeMap, tokenizerForLine } from "../../engine/run/mode-map.js";
 
 // ── Word boundary helpers ───────────────────────────────────────────
 
@@ -36,6 +38,45 @@ export function wordBoundaryRight(text: string, pos: number): number {
 	return i;
 }
 
+// ── Multiline cursor helpers ───────────────────────────────────────
+
+/** Convert a flat cursor offset to (line, col) in a multiline string. */
+export function offsetToLineCol(value: string, offset: number): { line: number; col: number } {
+	let line = 0;
+	let lineStart = 0;
+	for (let i = 0; i < offset; i++) {
+		if (value[i] === "\n") {
+			line++;
+			lineStart = i + 1;
+		}
+	}
+	return { line, col: offset - lineStart };
+}
+
+/** Convert (line, col) back to a flat offset. Clamps col to line length. */
+export function lineColToOffset(value: string, line: number, col: number): number {
+	const lines = value.split("\n");
+	const targetLine = Math.max(0, Math.min(line, lines.length - 1));
+	let offset = 0;
+	for (let i = 0; i < targetLine; i++) {
+		offset += lines[i]!.length + 1; // +1 for \n
+	}
+	const lineLen = lines[targetLine]!.length;
+	return offset + Math.min(col, lineLen);
+}
+
+/** Get the start offset of the line containing `offset`. */
+function lineStartOffset(value: string, offset: number): number {
+	const idx = value.lastIndexOf("\n", offset - 1);
+	return idx === -1 ? 0 : idx + 1;
+}
+
+/** Get the end offset (exclusive, before \n) of the line containing `offset`. */
+function lineEndOffset(value: string, offset: number): number {
+	const idx = value.indexOf("\n", offset);
+	return idx === -1 ? value.length : idx;
+}
+
 // ── Input reducer — atomic value + cursorOffset updates ─────────────
 // Inspired by @inkjs/ui's useTextInputState. Using useReducer avoids
 // stale-closure bugs when multiple keystrokes arrive before React
@@ -51,7 +92,7 @@ type InputAction =
 	| { type: "insert"; text: string }
 	| { type: "delete" }
 	| { type: "delete-forward" }
-	| { type: "move"; dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight"; select?: boolean }
+	| { type: "move"; dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight" | "up" | "down" | "lineHome" | "lineEnd"; select?: boolean }
 	| { type: "select-all" }
 	| { type: "set-cursor"; offset: number; select?: boolean }
 	| { type: "set-value"; value: string; cursorOffset?: number };
@@ -63,8 +104,21 @@ function computeMoveDest(state: InputState, dir: string): number {
 		case "right": return Math.min(state.value.length, state.cursorOffset + 1);
 		case "home": return 0;
 		case "end": return state.value.length;
+		case "lineHome": return lineStartOffset(state.value, state.cursorOffset);
+		case "lineEnd": return lineEndOffset(state.value, state.cursorOffset);
 		case "wordLeft": return wordBoundaryLeft(state.value, state.cursorOffset);
 		case "wordRight": return wordBoundaryRight(state.value, state.cursorOffset);
+		case "up": {
+			const { line, col } = offsetToLineCol(state.value, state.cursorOffset);
+			if (line === 0) return state.cursorOffset; // already on first line
+			return lineColToOffset(state.value, line - 1, col);
+		}
+		case "down": {
+			const { line, col } = offsetToLineCol(state.value, state.cursorOffset);
+			const lineCount = state.value.split("\n").length;
+			if (line >= lineCount - 1) return state.cursorOffset; // already on last line
+			return lineColToOffset(state.value, line + 1, col);
+		}
 		default: return state.cursorOffset;
 	}
 }
@@ -217,12 +271,16 @@ export interface InputHandle {
 	insertChar(ch: string): void;
 	deleteBackward(): void;
 	deleteForward(): void;
-	moveCursor(direction: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight", select?: boolean): void;
+	moveCursor(direction: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight" | "up" | "down" | "lineHome" | "lineEnd", select?: boolean): void;
 	setCursorAt(offset: number, select?: boolean): void;
 	selectAll(): void;
 	getSelection(): { start: number; end: number; text: string } | null;
 	/** Returns layout metrics for converting mouse x to char offset. */
 	getLayoutMetrics(): { padLen: number; promptWidth: number; scrollStart: number };
+	/** Returns current line info for multiline mode. */
+	getLineInfo(): { line: number; col: number; lineCount: number };
+	/** Scroll the multiline viewport without moving the cursor. */
+	scrollEditor(delta: number): void;
 	submit(): void;
 	historyUp(): void;
 	historyDown(): void;
@@ -236,6 +294,10 @@ export interface InputProps {
 	columns: number;
 	disabled?: boolean;
 	onSubmit: (value: string) => void;
+	/** Enable multiline editing (Enter inserts newline, Ctrl+Enter submits) */
+	multiline?: boolean;
+	/** Maximum visible lines in multiline mode (default 10) */
+	maxLines?: number;
 	/** Ghost text to show after cursor (muted color, top completion candidate) */
 	ghostText?: string;
 	/** The input value that ghostText was computed for (suppresses stale ghost on jitter) */
@@ -267,6 +329,8 @@ export const Input = React.memo(function Input({
 	inputRef,
 	tokenize,
 	focused = true,
+	multiline = false,
+	maxLines = 10,
 }: InputProps) {
 	const { scheme, brand, layout } = useTheme();
 
@@ -275,6 +339,9 @@ export const Input = React.memo(function Input({
 		cursorOffset: 0,
 		selectionAnchor: null,
 	});
+
+	// Multiline: independent scroll offset (null = follow cursor)
+	const [editorScroll, setEditorScroll] = useState<number | null>(null);
 
 	const {
 		addToHistory,
@@ -294,6 +361,15 @@ export const Input = React.memo(function Input({
 		}
 	}, [state.value, state.cursorOffset, onValueChange]);
 
+	// Reset independent scroll when cursor moves (keyboard snaps viewport to cursor)
+	const prevCursorRef = useRef(state.cursorOffset);
+	useEffect(() => {
+		if (state.cursorOffset !== prevCursorRef.current) {
+			prevCursorRef.current = state.cursorOffset;
+			if (editorScroll !== null) setEditorScroll(null);
+		}
+	}, [state.cursorOffset, editorScroll]);
+
 	// Expose imperative handle for all key handling. The central
 	// dispatcher in app.tsx calls these methods — Input has no
 	// useInput of its own (single-action-per-keystroke by design).
@@ -304,7 +380,7 @@ export const Input = React.memo(function Input({
 		insertChar: (ch: string) => dispatch({ type: "insert", text: ch }),
 		deleteBackward: () => dispatch({ type: "delete" }),
 		deleteForward: () => dispatch({ type: "delete-forward" }),
-		moveCursor: (dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight", select?: boolean) => {
+		moveCursor: (dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight" | "up" | "down" | "lineHome" | "lineEnd", select?: boolean) => {
 			dispatch({ type: "move", dir, select });
 		},
 		setCursorAt: (offset: number, select?: boolean) => {
@@ -312,6 +388,22 @@ export const Input = React.memo(function Input({
 		},
 		selectAll: () => dispatch({ type: "select-all" }),
 		getLayoutMetrics: () => layoutRef.current,
+		getLineInfo: () => {
+			const { line, col } = offsetToLineCol(state.value, state.cursorOffset);
+			return { line, col, lineCount: state.value.split("\n").length };
+		},
+		scrollEditor: (delta: number) => {
+			const lineCount = state.value.split("\n").length;
+			if (lineCount <= maxLines) return;
+			const maxScroll = lineCount - maxLines;
+			setEditorScroll((prev) => {
+				const current = prev ?? Math.max(0, Math.min(
+					offsetToLineCol(state.value, state.cursorOffset).line - Math.floor(maxLines * 0.5),
+					maxScroll,
+				));
+				return Math.max(0, Math.min(maxScroll, current + delta));
+			});
+		},
 		getSelection: () => {
 			if (state.selectionAnchor === null) return null;
 			const start = Math.min(state.selectionAnchor, state.cursorOffset);
@@ -466,6 +558,199 @@ export const Input = React.memo(function Input({
 			</Text>
 		));
 
+	// ── Multiline render path ──────────────────────────────────────
+	// Fixed-height editor: always renders maxLines rows (like a textarea).
+	// Content is scrolled within that fixed region.
+	// Mode map: always computed (hooks can't be conditional), only used in multiline
+	const modeMap = useMemo(
+		() => multiline ? buildModeMap(state.value.split("\n")) : [],
+		[state.value, multiline],
+	);
+
+	if (multiline) {
+		const lines = state.value.split("\n");
+		const { line: cursorLine, col: cursorCol } = offsetToLineCol(state.value, state.cursorOffset);
+		const lineCount = lines.length;
+
+		// Vertical scroll: use independent scroll if set (mouse wheel),
+		// otherwise follow cursor
+		let vScrollStart = 0;
+		if (lineCount > maxLines) {
+			if (editorScroll !== null) {
+				vScrollStart = editorScroll;
+			} else {
+				vScrollStart = Math.max(0, Math.min(
+					cursorLine - Math.floor(maxLines * 0.5),
+					lineCount - maxLines,
+				));
+			}
+		}
+
+		// Scrollbar
+		const showScrollbar = lineCount > maxLines;
+		const scrollbarWidth = showScrollbar ? 1 : 0;
+		const scrollThumbPos = showScrollbar
+			? Math.round((vScrollStart / Math.max(1, lineCount - maxLines)) * (maxLines - 1))
+			: -1;
+
+		// Layout widths
+		const maxLineNum = Math.max(lineCount, maxLines);
+		const lineNumberWidth = String(maxLineNum).length;
+		const gutterWidth = pad.length + lineNumberWidth + 1 + 1 + 1; // +1 indicator +1 space
+		const bodyWidth = columns - pad.length * 2 - gutterWidth - scrollbarWidth;
+		const emptyRowWidth = columns - pad.length * 2; // for rows past content
+
+		// Build all rows as one <Text> block with \n separators.
+		// Always exactly maxLines rows.
+		const gutterBg = darkenHex(scheme.backgrounds.raised, 0.9);
+		const elements: React.ReactNode[] = [];
+
+		for (let row = 0; row < maxLines; row++) {
+			if (row > 0) elements.push("\n");
+
+			const lineIdx = vScrollStart + row;
+			const scrollChar = showScrollbar
+				? (row === scrollThumbPos ? "\u2588" : "\u2502")
+				: "";
+
+			// Past content: render empty row with gutter
+			if (lineIdx >= lineCount) {
+				const emptyGutter = " ".repeat(pad.length + lineNumberWidth + 1 + 1); // linenum + indicator
+				const emptyFill = " ".repeat(bodyWidth + 1); // +1 for separator space
+				elements.push(
+					<Text key={`e${row}`} backgroundColor={gutterBg}>
+						{emptyGutter}
+					</Text>,
+					<Text key={`ef${row}`}>
+						{emptyFill}
+						<Text color={scheme.foreground.muted}>{scrollChar}</Text>
+						{pad}
+					</Text>,
+				);
+				continue;
+			}
+
+			const lineText = lines[lineIdx]!;
+			const lineNum = String(lineIdx + 1).padStart(lineNumberWidth, " ");
+			const isCursorLine = lineIdx === cursorLine;
+
+			// Gutter: line number + mode indicator
+			const gutterColor = isCursorLine ? brand.signal : scheme.foreground.muted;
+			const modeEntry = modeMap[lineIdx];
+			let modeIndicator = " ";
+			let indicatorColor = scheme.foreground.muted;
+			if (modeEntry && modeEntry.modeId !== "root") {
+				indicatorColor = modeEntry.accent;
+				modeIndicator = "\u2595";
+			}
+			elements.push(
+				<Text key={`g${lineIdx}`} color={gutterColor} backgroundColor={gutterBg}>{pad}{lineNum}</Text>,
+				<Text key={`gi${lineIdx}`} color={indicatorColor} backgroundColor={gutterBg}>{modeIndicator}</Text>,
+				<Text key={`gs${lineIdx}`}> </Text>,
+			);
+
+			// Compute flat offset range for this line
+			const lineOffset = lineColToOffset(state.value, lineIdx, 0);
+
+			// Selection range overlap with this line
+			const selBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.5) : undefined;
+			const selStart = hasSelection ? Math.min(state.selectionAnchor!, state.cursorOffset) : -1;
+			const selEnd = hasSelection ? Math.max(state.selectionAnchor!, state.cursorOffset) : -1;
+			// Selection range within this line (relative to line start)
+			const lineSelStart = hasSelection ? Math.max(0, selStart - lineOffset) : -1;
+			const lineSelEnd = hasSelection ? Math.min(lineText.length, selEnd - lineOffset) : -1;
+			const lineHasSelection = hasSelection && lineSelStart < lineSelEnd && lineSelStart < lineText.length;
+
+			// Helper: push a text segment, splitting by selection if needed
+			const pushSegment = (text: string, startCol: number, color: string, keyBase: string) => {
+				if (!lineHasSelection || text.length === 0) {
+					elements.push(<Text key={keyBase} color={color}>{text}</Text>);
+					return;
+				}
+				// Split text into before-sel, in-sel, after-sel
+				const segStart = startCol;
+				const segEnd = startCol + text.length;
+				const overlapStart = Math.max(segStart, lineSelStart) - segStart;
+				const overlapEnd = Math.min(segEnd, lineSelEnd) - segStart;
+				if (overlapStart >= overlapEnd) {
+					// No overlap
+					elements.push(<Text key={keyBase} color={color}>{text}</Text>);
+					return;
+				}
+				if (overlapStart > 0) {
+					elements.push(<Text key={`${keyBase}p`} color={color}>{text.slice(0, overlapStart)}</Text>);
+				}
+				elements.push(<Text key={`${keyBase}s`} color={color} backgroundColor={selBg}>{text.slice(overlapStart, overlapEnd)}</Text>);
+				if (overlapEnd < text.length) {
+					elements.push(<Text key={`${keyBase}q`} color={color}>{text.slice(overlapEnd)}</Text>);
+				}
+			};
+
+			// Per-line tokenizer from mode map
+			const lineTokenizer = modeEntry ? tokenizerForLine(modeEntry, lineText) : tokenize;
+
+			if (isCursorLine && !disabled) {
+				if (lineTokenizer && lineText.length > 0) {
+					const spans = lineTokenizer(lineText);
+					const split = splitSpansAtCursor(spans, cursorCol);
+					let col = 0;
+					for (let j = 0; j < split.before.length; j++) {
+						const s = split.before[j]!;
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${lineIdx}b${j}`);
+						col += s.text.length;
+					}
+					// Cursor char — check if it's in selection
+					const cursorInSel = lineHasSelection && cursorCol >= lineSelStart && cursorCol < lineSelEnd;
+					elements.push(
+						<Text key={`${lineIdx}c`} color={TOKEN_COLORS[split.cursorToken]} backgroundColor={cursorInSel ? selBg : cursorBg}>
+							{cursorCol < lineText.length ? split.cursorChar : " "}
+						</Text>,
+					);
+					col = cursorCol + 1;
+					for (let j = 0; j < split.after.length; j++) {
+						const s = split.after[j]!;
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${lineIdx}a${j}`);
+						col += s.text.length;
+					}
+				} else {
+					const before = lineText.slice(0, cursorCol);
+					const after = lineText.slice(cursorCol + 1);
+					const cc = cursorCol < lineText.length ? lineText[cursorCol]! : " ";
+					if (before) pushSegment(before, 0, scheme.foreground.bright, `${lineIdx}bt`);
+					const cursorInSel = lineHasSelection && cursorCol >= lineSelStart && cursorCol < lineSelEnd;
+					elements.push(<Text key={`${lineIdx}c`} color={scheme.foreground.bright} backgroundColor={cursorInSel ? selBg : cursorBg}>{cc}</Text>);
+					if (after) pushSegment(after, cursorCol + 1, scheme.foreground.bright, `${lineIdx}at`);
+				}
+				const cursorExtra = cursorCol >= lineText.length ? 1 : 0;
+				const fill = Math.max(0, bodyWidth - lineText.length - cursorExtra);
+				elements.push(<Text key={`${lineIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+			} else {
+				if (lineTokenizer && lineText.length > 0) {
+					const spans = lineTokenizer(lineText);
+					let col = 0;
+					for (let j = 0; j < spans.length; j++) {
+						const s = spans[j]!;
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${lineIdx}s${j}`);
+						col += s.text.length;
+					}
+				} else if (lineText) {
+					pushSegment(lineText, 0, scheme.foreground.bright, `${lineIdx}t`);
+				}
+				const fill = Math.max(0, bodyWidth - lineText.length);
+				elements.push(<Text key={`${lineIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+			}
+		}
+
+		return (
+			<Box flexDirection="column">
+				<Text backgroundColor={scheme.backgrounds.raised}>
+					{" ".repeat(columns)}{"\n"}{elements}{"\n"}{" ".repeat(columns)}
+				</Text>
+			</Box>
+		);
+	}
+
+	// ── Single-line render path (unchanged) ────────────────────────
 	return (
 		<Box flexDirection="column">
 			<Text backgroundColor={scheme.backgrounds.raised}>{" ".repeat(columns)}</Text>
