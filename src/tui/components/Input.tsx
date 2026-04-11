@@ -77,6 +77,63 @@ function lineEndOffset(value: string, offset: number): number {
 	return idx === -1 ? value.length : idx;
 }
 
+// ── Visual row map — soft-wrap support for multiline editor ─────────
+
+export interface VisualRow {
+	/** Logical line index */
+	lineIdx: number;
+	/** Char offset within the logical line where this visual row begins */
+	sliceStart: number;
+	/** Char offset end (exclusive) */
+	sliceEnd: number;
+	/** First visual row of the logical line (shows line number) */
+	isFirst: boolean;
+	/** Continuation row (blank gutter, wrap marker) */
+	isContinuation: boolean;
+}
+
+/**
+ * Build a visual row map: splits each logical line into one or more
+ * visual rows based on `bodyWidth`. Empty lines produce 1 visual row.
+ */
+export function buildVisualRowMap(lines: string[], bodyWidth: number): VisualRow[] {
+	const rows: VisualRow[] = [];
+	const safeWidth = Math.max(1, bodyWidth);
+
+	for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+		const len = lines[lineIdx]!.length;
+		if (len <= safeWidth) {
+			rows.push({ lineIdx, sliceStart: 0, sliceEnd: len, isFirst: true, isContinuation: false });
+		} else {
+			let offset = 0;
+			let first = true;
+			while (offset < len) {
+				const end = Math.min(offset + safeWidth, len);
+				rows.push({ lineIdx, sliceStart: offset, sliceEnd: end, isFirst: first, isContinuation: !first });
+				first = false;
+				offset = end;
+			}
+		}
+	}
+
+	return rows;
+}
+
+/** Find the visual row index for a given (lineIdx, col). */
+export function findVisualRow(vrMap: VisualRow[], lineIdx: number, col: number): number {
+	for (let i = 0; i < vrMap.length; i++) {
+		const vr = vrMap[i]!;
+		if (vr.lineIdx === lineIdx && col >= vr.sliceStart && (col < vr.sliceEnd || (vr.sliceEnd === col && i + 1 < vrMap.length && vrMap[i + 1]!.lineIdx !== lineIdx))) {
+			return i;
+		}
+		// Last visual row of the line: cursor can be at sliceEnd (past last char)
+		if (vr.lineIdx === lineIdx && col >= vr.sliceStart && (i + 1 >= vrMap.length || vrMap[i + 1]!.lineIdx !== lineIdx)) {
+			return i;
+		}
+	}
+	return vrMap.length - 1;
+}
+
 // ── Input reducer — atomic value + cursorOffset updates ─────────────
 // Inspired by @inkjs/ui's useTextInputState. Using useReducer avoids
 // stale-closure bugs when multiple keystrokes arrive before React
@@ -393,12 +450,15 @@ export const Input = React.memo(function Input({
 			return { line, col, lineCount: state.value.split("\n").length };
 		},
 		scrollEditor: (delta: number) => {
-			const lineCount = state.value.split("\n").length;
-			if (lineCount <= maxLines) return;
-			const maxScroll = lineCount - maxLines;
+			const lines = state.value.split("\n");
+			const bw = Math.max(1, columns - (pad.length * 2) - (pad.length + String(Math.max(lines.length, maxLines)).length + 3) - 1);
+			const vrMap = buildVisualRowMap(lines, bw);
+			if (vrMap.length <= maxLines) return;
+			const maxScroll = vrMap.length - maxLines;
+			const { line: cl, col: cc } = offsetToLineCol(state.value, state.cursorOffset);
 			setEditorScroll((prev) => {
 				const current = prev ?? Math.max(0, Math.min(
-					offsetToLineCol(state.value, state.cursorOffset).line - Math.floor(maxLines * 0.5),
+					findVisualRow(vrMap, cl, cc) - Math.floor(maxLines * 0.5),
 					maxScroll,
 				));
 				return Math.max(0, Math.min(maxScroll, current + delta));
@@ -561,6 +621,9 @@ export const Input = React.memo(function Input({
 	// ── Multiline render path ──────────────────────────────────────
 	// Fixed-height editor: always renders maxLines rows (like a textarea).
 	// Content is scrolled within that fixed region.
+	// Multiline scroll tracking: remembers last scroll position to avoid re-centering
+	const prevScrollRef = useRef(0);
+
 	// Mode map: always computed (hooks can't be conditional), only used in multiline
 	const modeMap = useMemo(
 		() => multiline ? buildModeMap(state.value.split("\n")) : [],
@@ -572,108 +635,127 @@ export const Input = React.memo(function Input({
 		const { line: cursorLine, col: cursorCol } = offsetToLineCol(state.value, state.cursorOffset);
 		const lineCount = lines.length;
 
-		// Vertical scroll: use independent scroll if set (mouse wheel),
-		// otherwise follow cursor
+		// Layout widths (need bodyWidth before visual row map)
+		const maxLineNum = Math.max(lineCount, maxLines);
+		const lineNumberWidth = String(maxLineNum).length;
+		const gutterChars = pad.length + lineNumberWidth + 1 + 1; // indicator + space
+		// Reserve 1 col for scrollbar (always, to avoid layout shift when it appears)
+		const bodyWidth = Math.max(1, columns - gutterChars - 1 - pad.length); // gutter already includes left pad
+
+		// Visual row map: soft-wrap long lines
+		const vrMap = buildVisualRowMap(lines, bodyWidth);
+		const totalVRows = vrMap.length;
+
+		// Find cursor's visual row
+		const cursorVRow = findVisualRow(vrMap, cursorLine, cursorCol);
+
+		// Vertical scroll in visual-row space.
+		// Only scroll when cursor leaves the viewport — don't re-center.
 		let vScrollStart = 0;
-		if (lineCount > maxLines) {
+		if (totalVRows > maxLines) {
 			if (editorScroll !== null) {
 				vScrollStart = editorScroll;
 			} else {
-				vScrollStart = Math.max(0, Math.min(
-					cursorLine - Math.floor(maxLines * 0.5),
-					lineCount - maxLines,
-				));
+				const prev = prevScrollRef.current;
+				if (cursorVRow < prev) {
+					// Cursor above viewport — scroll up to show it
+					vScrollStart = cursorVRow;
+				} else if (cursorVRow >= prev + maxLines) {
+					// Cursor below viewport — scroll down to show it
+					vScrollStart = cursorVRow - maxLines + 1;
+				} else {
+					// Cursor is within viewport — keep current scroll
+					vScrollStart = prev;
+				}
+				vScrollStart = Math.max(0, Math.min(vScrollStart, totalVRows - maxLines));
 			}
 		}
 
+		prevScrollRef.current = vScrollStart;
+
 		// Scrollbar
-		const showScrollbar = lineCount > maxLines;
-		const scrollbarWidth = showScrollbar ? 1 : 0;
+		const showScrollbar = totalVRows > maxLines;
 		const scrollThumbPos = showScrollbar
-			? Math.round((vScrollStart / Math.max(1, lineCount - maxLines)) * (maxLines - 1))
+			? Math.round((vScrollStart / Math.max(1, totalVRows - maxLines)) * (maxLines - 1))
 			: -1;
 
-		// Layout widths
-		const maxLineNum = Math.max(lineCount, maxLines);
-		const lineNumberWidth = String(maxLineNum).length;
-		const gutterWidth = pad.length + lineNumberWidth + 1 + 1 + 1; // +1 indicator +1 space
-		const bodyWidth = columns - pad.length * 2 - gutterWidth - scrollbarWidth;
-		const emptyRowWidth = columns - pad.length * 2; // for rows past content
-
-		// Build all rows as one <Text> block with \n separators.
-		// Always exactly maxLines rows.
 		const gutterBg = darkenHex(scheme.backgrounds.raised, 0.9);
+		const selBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.5) : undefined;
+		const selStart = hasSelection ? Math.min(state.selectionAnchor!, state.cursorOffset) : -1;
+		const selEnd = hasSelection ? Math.max(state.selectionAnchor!, state.cursorOffset) : -1;
+
 		const elements: React.ReactNode[] = [];
 
 		for (let row = 0; row < maxLines; row++) {
 			if (row > 0) elements.push("\n");
 
-			const lineIdx = vScrollStart + row;
+			const vrIdx = vScrollStart + row;
 			const scrollChar = showScrollbar
 				? (row === scrollThumbPos ? "\u2588" : "\u2502")
-				: "";
+				: " ";
 
-			// Past content: render empty row with gutter
-			if (lineIdx >= lineCount) {
-				const emptyGutter = " ".repeat(pad.length + lineNumberWidth + 1 + 1); // linenum + indicator
-				const emptyFill = " ".repeat(bodyWidth + 1); // +1 for separator space
+			// Past content: empty row (gutter bg covers line number + indicator column)
+			if (vrIdx >= totalVRows) {
+				const emptyNum = " ".repeat(pad.length + lineNumberWidth + 1); // +1 for indicator col
 				elements.push(
-					<Text key={`e${row}`} backgroundColor={gutterBg}>
-						{emptyGutter}
-					</Text>,
-					<Text key={`ef${row}`}>
-						{emptyFill}
-						<Text color={scheme.foreground.muted}>{scrollChar}</Text>
-						{pad}
-					</Text>,
+					<Text key={`e${row}`} backgroundColor={gutterBg}>{emptyNum}</Text>,
+					<Text key={`es${row}`}> </Text>,
+					<Text key={`ef${row}`}>{" ".repeat(bodyWidth)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>,
 				);
 				continue;
 			}
 
+			const vr = vrMap[vrIdx]!;
+			const lineIdx = vr.lineIdx;
 			const lineText = lines[lineIdx]!;
-			const lineNum = String(lineIdx + 1).padStart(lineNumberWidth, " ");
-			const isCursorLine = lineIdx === cursorLine;
+			const sliceText = lineText.slice(vr.sliceStart, vr.sliceEnd);
+			const sliceLen = sliceText.length;
+			const isLastSlice = vrIdx + 1 >= totalVRows || vrMap[vrIdx + 1]!.lineIdx !== lineIdx;
+			const isCursorVRow = vrIdx === cursorVRow;
 
-			// Gutter: line number + mode indicator
-			const gutterColor = isCursorLine ? brand.signal : scheme.foreground.muted;
-			const modeEntry = modeMap[lineIdx];
-			let modeIndicator = " ";
-			let indicatorColor = scheme.foreground.muted;
-			if (modeEntry && modeEntry.modeId !== "root") {
-				indicatorColor = modeEntry.accent;
-				modeIndicator = "\u2595";
+			// ── Gutter ──
+			if (vr.isFirst) {
+				const lineNum = String(lineIdx + 1).padStart(lineNumberWidth, " ");
+				const gutterColor = isCursorVRow ? brand.signal : scheme.foreground.muted;
+				const modeEntry = modeMap[lineIdx];
+				let modeIndicator = " ";
+				let indicatorColor = scheme.foreground.muted;
+				if (modeEntry && modeEntry.modeId !== "root") {
+					indicatorColor = modeEntry.accent;
+					modeIndicator = "\u2595";
+				}
+				elements.push(
+					<Text key={`g${vrIdx}`} color={gutterColor} backgroundColor={gutterBg}>{pad}{lineNum}</Text>,
+					<Text key={`gi${vrIdx}`} color={indicatorColor} backgroundColor={gutterBg}>{modeIndicator}</Text>,
+					<Text key={`gs${vrIdx}`}> </Text>,
+				);
+			} else {
+				// Continuation row: blank gutter with wrap marker
+				const blankNum = " ".repeat(lineNumberWidth);
+				elements.push(
+					<Text key={`g${vrIdx}`} color={scheme.foreground.muted} backgroundColor={gutterBg}>{pad}{blankNum}</Text>,
+					<Text key={`gi${vrIdx}`} color={scheme.foreground.muted} backgroundColor={gutterBg}>{"\u21AA"}</Text>,
+					<Text key={`gs${vrIdx}`}> </Text>,
+				);
 			}
-			elements.push(
-				<Text key={`g${lineIdx}`} color={gutterColor} backgroundColor={gutterBg}>{pad}{lineNum}</Text>,
-				<Text key={`gi${lineIdx}`} color={indicatorColor} backgroundColor={gutterBg}>{modeIndicator}</Text>,
-				<Text key={`gs${lineIdx}`}> </Text>,
-			);
 
-			// Compute flat offset range for this line
+			// ── Selection range for this visual row (relative to slice) ──
 			const lineOffset = lineColToOffset(state.value, lineIdx, 0);
+			const absSliceStart = lineOffset + vr.sliceStart;
+			const vrSelStart = hasSelection ? Math.max(0, selStart - absSliceStart) : -1;
+			const vrSelEnd = hasSelection ? Math.min(sliceLen, selEnd - absSliceStart) : -1;
+			const vrHasSelection = hasSelection && vrSelStart < vrSelEnd && vrSelStart < sliceLen;
 
-			// Selection range overlap with this line
-			const selBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.5) : undefined;
-			const selStart = hasSelection ? Math.min(state.selectionAnchor!, state.cursorOffset) : -1;
-			const selEnd = hasSelection ? Math.max(state.selectionAnchor!, state.cursorOffset) : -1;
-			// Selection range within this line (relative to line start)
-			const lineSelStart = hasSelection ? Math.max(0, selStart - lineOffset) : -1;
-			const lineSelEnd = hasSelection ? Math.min(lineText.length, selEnd - lineOffset) : -1;
-			const lineHasSelection = hasSelection && lineSelStart < lineSelEnd && lineSelStart < lineText.length;
-
-			// Helper: push a text segment, splitting by selection if needed
 			const pushSegment = (text: string, startCol: number, color: string, keyBase: string) => {
-				if (!lineHasSelection || text.length === 0) {
+				if (!vrHasSelection || text.length === 0) {
 					elements.push(<Text key={keyBase} color={color}>{text}</Text>);
 					return;
 				}
-				// Split text into before-sel, in-sel, after-sel
 				const segStart = startCol;
 				const segEnd = startCol + text.length;
-				const overlapStart = Math.max(segStart, lineSelStart) - segStart;
-				const overlapEnd = Math.min(segEnd, lineSelEnd) - segStart;
+				const overlapStart = Math.max(segStart, vrSelStart) - segStart;
+				const overlapEnd = Math.min(segEnd, vrSelEnd) - segStart;
 				if (overlapStart >= overlapEnd) {
-					// No overlap
 					elements.push(<Text key={keyBase} color={color}>{text}</Text>);
 					return;
 				}
@@ -686,65 +768,82 @@ export const Input = React.memo(function Input({
 				}
 			};
 
-			// Per-line tokenizer from mode map
+			// ── Content ──
+			const modeEntry = modeMap[lineIdx];
 			const lineTokenizer = modeEntry ? tokenizerForLine(modeEntry, lineText) : tokenize;
+			const visCursorCol = cursorCol - vr.sliceStart; // cursor col relative to this slice
 
-			if (isCursorLine && !disabled) {
-				if (lineTokenizer && lineText.length > 0) {
-					const spans = lineTokenizer(lineText);
-					const split = splitSpansAtCursor(spans, cursorCol);
+			if (isCursorVRow && !disabled) {
+				if (lineTokenizer && sliceText.length > 0) {
+					// Tokenize full line, slice to this visual row's range
+					const fullSpans = lineTokenizer(lineText);
+					const vrSpans = sliceSpans(fullSpans, vr.sliceStart, sliceLen);
+					const split = splitSpansAtCursor(vrSpans, visCursorCol);
 					let col = 0;
 					for (let j = 0; j < split.before.length; j++) {
 						const s = split.before[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${lineIdx}b${j}`);
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}b${j}`);
 						col += s.text.length;
 					}
-					// Cursor char — check if it's in selection
-					const cursorInSel = lineHasSelection && cursorCol >= lineSelStart && cursorCol < lineSelEnd;
+					const cursorInSel = vrHasSelection && visCursorCol >= vrSelStart && visCursorCol < vrSelEnd;
 					elements.push(
-						<Text key={`${lineIdx}c`} color={TOKEN_COLORS[split.cursorToken]} backgroundColor={cursorInSel ? selBg : cursorBg}>
-							{cursorCol < lineText.length ? split.cursorChar : " "}
+						<Text key={`${vrIdx}c`} color={TOKEN_COLORS[split.cursorToken]} backgroundColor={cursorInSel ? selBg : cursorBg}>
+							{visCursorCol < sliceLen ? split.cursorChar : " "}
 						</Text>,
 					);
-					col = cursorCol + 1;
+					col = visCursorCol + 1;
 					for (let j = 0; j < split.after.length; j++) {
 						const s = split.after[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${lineIdx}a${j}`);
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}a${j}`);
 						col += s.text.length;
 					}
 				} else {
-					const before = lineText.slice(0, cursorCol);
-					const after = lineText.slice(cursorCol + 1);
-					const cc = cursorCol < lineText.length ? lineText[cursorCol]! : " ";
-					if (before) pushSegment(before, 0, scheme.foreground.bright, `${lineIdx}bt`);
-					const cursorInSel = lineHasSelection && cursorCol >= lineSelStart && cursorCol < lineSelEnd;
-					elements.push(<Text key={`${lineIdx}c`} color={scheme.foreground.bright} backgroundColor={cursorInSel ? selBg : cursorBg}>{cc}</Text>);
-					if (after) pushSegment(after, cursorCol + 1, scheme.foreground.bright, `${lineIdx}at`);
+					const before = sliceText.slice(0, visCursorCol);
+					const after = sliceText.slice(visCursorCol + 1);
+					const cc = visCursorCol < sliceLen ? sliceText[visCursorCol]! : " ";
+					if (before) pushSegment(before, 0, scheme.foreground.bright, `${vrIdx}bt`);
+					const cursorInSel = vrHasSelection && visCursorCol >= vrSelStart && visCursorCol < vrSelEnd;
+					elements.push(<Text key={`${vrIdx}c`} color={scheme.foreground.bright} backgroundColor={cursorInSel ? selBg : cursorBg}>{cc}</Text>);
+					if (after) pushSegment(after, visCursorCol + 1, scheme.foreground.bright, `${vrIdx}at`);
 				}
-				const cursorExtra = cursorCol >= lineText.length ? 1 : 0;
-				const fill = Math.max(0, bodyWidth - lineText.length - cursorExtra);
-				elements.push(<Text key={`${lineIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+				const cursorExtra = visCursorCol >= sliceLen ? 1 : 0;
+				const fill = Math.max(0, bodyWidth - sliceLen - cursorExtra);
+				elements.push(<Text key={`${vrIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
 			} else {
-				if (lineTokenizer && lineText.length > 0) {
-					const spans = lineTokenizer(lineText);
+				if (lineTokenizer && sliceText.length > 0) {
+					const fullSpans = lineTokenizer(lineText);
+					const vrSpans = sliceSpans(fullSpans, vr.sliceStart, sliceLen);
 					let col = 0;
-					for (let j = 0; j < spans.length; j++) {
-						const s = spans[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${lineIdx}s${j}`);
+					for (let j = 0; j < vrSpans.length; j++) {
+						const s = vrSpans[j]!;
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}s${j}`);
 						col += s.text.length;
 					}
-				} else if (lineText) {
-					pushSegment(lineText, 0, scheme.foreground.bright, `${lineIdx}t`);
+				} else if (sliceText) {
+					pushSegment(sliceText, 0, scheme.foreground.bright, `${vrIdx}t`);
 				}
-				const fill = Math.max(0, bodyWidth - lineText.length);
-				elements.push(<Text key={`${lineIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+				// Wrap indicator on non-terminal visual rows
+				if (!isLastSlice) {
+					const fill = Math.max(0, bodyWidth - sliceLen - 1);
+					elements.push(<Text key={`${vrIdx}w`} color={scheme.foreground.muted}>{" ".repeat(fill)}{"\u2936"}</Text>);
+					elements.push(<Text key={`${vrIdx}f`}><Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+				} else {
+					const fill = Math.max(0, bodyWidth - sliceLen);
+					elements.push(<Text key={`${vrIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+				}
 			}
 		}
+
+		// Top/bottom borders: gutter portion (num + indicator) gets gutter bg
+		const borderGutter = " ".repeat(pad.length + lineNumberWidth + 1);
+		const borderRest = " ".repeat(columns - pad.length - lineNumberWidth - 1);
 
 		return (
 			<Box flexDirection="column">
 				<Text backgroundColor={scheme.backgrounds.raised}>
-					{" ".repeat(columns)}{"\n"}{elements}{"\n"}{" ".repeat(columns)}
+					<Text backgroundColor={gutterBg}>{borderGutter}</Text>{borderRest}
+					{"\n"}{elements}{"\n"}
+					<Text backgroundColor={gutterBg}>{borderGutter}</Text>{borderRest}
 				</Text>
 			</Box>
 		);

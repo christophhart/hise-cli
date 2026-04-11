@@ -20,7 +20,7 @@ import {
 } from "./components/Output.js";
 import type { PrerenderedBlock } from "./components/prerender.js";
 import { renderEcho, renderResult, truncateAnsi, wrapAnsi, fgHex, RESET } from "./components/prerender.js";
-import { Input, type InputHandle, offsetToLineCol, lineColToOffset } from "./components/Input.js";
+import { Input, type InputHandle, offsetToLineCol, lineColToOffset, buildVisualRowMap, findVisualRow } from "./components/Input.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
 import { TreeSidebar, type TreeSidebarHandle, type TreeSidebarState } from "./components/TreeSidebar.js";
@@ -162,31 +162,40 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		const value = handle.getValue();
 		const lines = value.split("\n");
 		const lineCount = lines.length;
+		const maxLinesVal = editorMaxLines;
 
-		// Row 0 is the top border, content starts at row 1
-		const clickRow = absY - boxTop - 1;
+		// Layout (must match render calculations — use box width, not terminal columns)
+		const boxWidth = rect?.width ?? columns;
+		const lineNumberWidth = String(Math.max(lineCount, maxLinesVal)).length;
+		const gutterChars = padLen + lineNumberWidth + 1 + 1 + 1;
+		const bodyWidth = Math.max(1, boxWidth - padLen * 2 - gutterChars - 1);
+
+		// Build visual row map
+		const vrMap = buildVisualRowMap(lines, bodyWidth);
+		const totalVRows = vrMap.length;
 
 		// Compute vScrollStart (same logic as render)
-		const { line: cursorLine } = offsetToLineCol(value, handle.getCursorPos());
-		const maxLinesVal = editorMaxLines;
+		const { line: cursorLine, col: cursorCol } = offsetToLineCol(value, handle.getCursorPos());
+		const cursorVRow = findVisualRow(vrMap, cursorLine, cursorCol);
 		let vScrollStart = 0;
-		if (lineCount > maxLinesVal) {
+		if (totalVRows > maxLinesVal) {
 			vScrollStart = Math.max(0, Math.min(
-				cursorLine - Math.floor(maxLinesVal * 0.5),
-				lineCount - maxLinesVal,
+				cursorVRow - Math.floor(maxLinesVal * 0.5),
+				totalVRows - maxLinesVal,
 			));
 		}
 
-		const targetLine = Math.max(0, Math.min(lineCount - 1, vScrollStart + clickRow));
+		// Row 0 is the top border, content starts at row 1
+		const clickRow = absY - boxTop - 1;
+		const vrIdx = Math.max(0, Math.min(totalVRows - 1, vScrollStart + clickRow));
+		const vr = vrMap[vrIdx];
+		if (!vr) return 0;
 
-		// Gutter width: pad + lineNumberWidth + space
-		const lineNumberWidth = String(Math.max(lineCount, maxLinesVal)).length;
-		const gutterWidth = padLen + lineNumberWidth + 1;
-		const relX = absX - boxLeft - gutterWidth;
-		const col = Math.max(0, Math.min(lines[targetLine]!.length, relX));
+		const relX = absX - boxLeft - gutterChars;
+		const col = vr.sliceStart + Math.max(0, Math.min(vr.sliceEnd - vr.sliceStart, relX));
 
-		return lineColToOffset(value, targetLine, col);
-	}, []);
+		return lineColToOffset(value, vr.lineIdx, col);
+	}, [columns]);
 
 	useOnPress(inputBoxRef, useCallback((event: { x: number; y: number }) => {
 		const handle = inputHandleRef.current;
@@ -202,6 +211,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			handle.selectAll();
 		} else {
 			lastInputClickRef.current = { x: event.x, time: now };
+
 			handle.setCursorAt(charPos);
 		}
 	}, [multilineMode, inputXToCharOffset, inputXYToCharOffset]));
@@ -212,6 +222,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		const charPos = multilineMode
 			? inputXYToCharOffset(event.x, event.y)
 			: inputXToCharOffset(event.x);
+
 		handle.setCursorAt(charPos, true);
 	}, [multilineMode, inputXToCharOffset, inputXYToCharOffset]));
 
@@ -766,12 +777,20 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			handleTab();
 			return;
 		}
-		// Regular character input
+		// Regular character input (including pasted text)
 		else if (input && !key.ctrl && !key.meta) {
-			const code = input.charCodeAt(0);
-			if (code < 0x20 || code === 0x7f) return;
 			if (MOUSE_SEQ_RE.test(input)) return;
-			handle.insertChar(input);
+			if (multilineMode) {
+				// In multiline: normalize line endings, filter control chars, allow newlines
+				const normalized = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+				const cleaned = normalized.replace(/[^\n\x20-\x7e\x80-\uffff]/g, "");
+				if (cleaned) handle.insertChar(cleaned);
+			} else {
+				// In single-line: strip all control chars including newlines
+				const code = input.charCodeAt(0);
+				if (code < 0x20 || code === 0x7f) return;
+				handle.insertChar(input);
+			}
 			return;
 		}
 

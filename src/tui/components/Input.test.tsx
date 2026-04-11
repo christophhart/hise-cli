@@ -8,6 +8,8 @@ import {
 	useCommandHistory,
 	wordBoundaryLeft,
 	wordBoundaryRight,
+	buildVisualRowMap,
+	findVisualRow,
 	type InputHandle,
 } from "./Input.js";
 import { defaultScheme } from "../theme.js";
@@ -425,5 +427,63 @@ describe("wordBoundaryRight", () => {
 
 	it("handles multiple spaces", () => {
 		expect(wordBoundaryRight("a  b  c", 0)).toBe(3);
+	});
+});
+
+// ── Visual row map tests ──────────────────────────────────────────
+
+describe("buildVisualRowMap", () => {
+	it("short lines produce one visual row each", () => {
+		const rows = buildVisualRowMap(["hello", "world"], 80);
+		expect(rows).toHaveLength(2);
+		expect(rows[0]).toMatchObject({ lineIdx: 0, sliceStart: 0, sliceEnd: 5, isFirst: true, isContinuation: false });
+		expect(rows[1]).toMatchObject({ lineIdx: 1, sliceStart: 0, sliceEnd: 5, isFirst: true, isContinuation: false });
+	});
+
+	it("long line wraps into multiple visual rows", () => {
+		const rows = buildVisualRowMap(["abcdefghij"], 4);
+		expect(rows).toHaveLength(3);
+		expect(rows[0]).toMatchObject({ lineIdx: 0, sliceStart: 0, sliceEnd: 4, isFirst: true, isContinuation: false });
+		expect(rows[1]).toMatchObject({ lineIdx: 0, sliceStart: 4, sliceEnd: 8, isFirst: false, isContinuation: true });
+		expect(rows[2]).toMatchObject({ lineIdx: 0, sliceStart: 8, sliceEnd: 10, isFirst: false, isContinuation: true });
+	});
+
+	it("empty line produces one visual row", () => {
+		const rows = buildVisualRowMap([""], 80);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ lineIdx: 0, sliceStart: 0, sliceEnd: 0, isFirst: true });
+	});
+
+	it("exact width line produces one visual row", () => {
+		const rows = buildVisualRowMap(["abcd"], 4);
+		expect(rows).toHaveLength(1);
+		expect(rows[0]).toMatchObject({ sliceStart: 0, sliceEnd: 4 });
+	});
+
+	it("mixed short and long lines", () => {
+		const rows = buildVisualRowMap(["hi", "abcdefghij", "yo"], 4);
+		expect(rows).toHaveLength(5);
+		expect(rows[0]).toMatchObject({ lineIdx: 0, isFirst: true });
+		expect(rows[1]).toMatchObject({ lineIdx: 1, sliceStart: 0, isFirst: true });
+		expect(rows[2]).toMatchObject({ lineIdx: 1, sliceStart: 4, isContinuation: true });
+		expect(rows[3]).toMatchObject({ lineIdx: 1, sliceStart: 8, isContinuation: true });
+		expect(rows[4]).toMatchObject({ lineIdx: 2, isFirst: true });
+	});
+});
+
+describe("findVisualRow", () => {
+	it("finds correct visual row for short lines", () => {
+		const rows = buildVisualRowMap(["hello", "world"], 80);
+		expect(findVisualRow(rows, 0, 3)).toBe(0);
+		expect(findVisualRow(rows, 1, 0)).toBe(1);
+	});
+
+	it("finds correct visual row on wrapped line", () => {
+		const rows = buildVisualRowMap(["abcdefghij"], 4);
+		expect(findVisualRow(rows, 0, 0)).toBe(0);  // first row
+		expect(findVisualRow(rows, 0, 3)).toBe(0);  // still first row
+		expect(findVisualRow(rows, 0, 4)).toBe(1);  // second row
+		expect(findVisualRow(rows, 0, 9)).toBe(2);  // third row
+		expect(findVisualRow(rows, 0, 10)).toBe(2); // past end, last row
 	});
 });
