@@ -9,7 +9,7 @@ import type { TokenSpan, TokenType } from "./tokens.js";
 // Mode IDs that get their own token type (= accent color)
 const MODE_IDS = new Set<TokenType>([
 	"builder", "script", "dsp", "sampler",
-	"inspect", "project", "compile",
+	"inspect", "project", "compile", "undo", "ui",
 ]);
 
 // Argument token rules (applied after the slash command)
@@ -50,7 +50,7 @@ export function tokenizeSlash(source: string): TokenSpan[] {
 		? (cmdName as TokenType)
 		: "command";
 
-	spans.push({ text: cmdText, token: cmdToken });
+	spans.push({ text: cmdText, token: cmdToken, bold: true });
 
 	// Tokenize the rest as arguments
 	let pos = cmdText.length;
@@ -86,7 +86,7 @@ function mergeAdjacentSpans(spans: TokenSpan[]): TokenSpan[] {
 	for (let i = 1; i < spans.length; i++) {
 		const prev = merged[merged.length - 1]!;
 		const curr = spans[i]!;
-		if (prev.token === curr.token) {
+		if (prev.token === curr.token && prev.bold === curr.bold) {
 			prev.text += curr.text;
 		} else {
 			merged.push({ ...curr });

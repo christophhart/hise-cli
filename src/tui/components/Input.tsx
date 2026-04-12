@@ -552,6 +552,7 @@ export const Input = React.memo(function Input({
 	let beforeSpans: TokenSpan[];
 	let cursorChar: string;
 	let cursorTokenColor: string;
+	let cursorIsBold: boolean | undefined;
 	let afterSpans: TokenSpan[];
 
 	if (tokenize && state.value.length > 0) {
@@ -570,6 +571,7 @@ export const Input = React.memo(function Input({
 		} else {
 			cursorChar = split.cursorChar;
 			cursorTokenColor = TOKEN_COLORS[split.cursorToken];
+			cursorIsBold = split.cursorBold;
 		}
 	} else {
 		// Plain path: no tokenizer, flat foreground.bright
@@ -596,7 +598,7 @@ export const Input = React.memo(function Input({
 
 	// ── Selection segments ────────────────────────────────────────
 	// Split before/after spans at selection boundary for highlight rendering.
-	const selectionBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.5) : undefined;
+	const selectionBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.25) : undefined;
 	let seg1 = beforeSpans;      // before selection (normal)
 	let seg2: TokenSpan[] = [];   // selected before cursor
 	let seg4: TokenSpan[] = [];   // selected after cursor
@@ -632,7 +634,7 @@ export const Input = React.memo(function Input({
 	// Helper: render a TokenSpan[] as colored <Text> elements
 	const renderSpans = (spans: TokenSpan[], keyPrefix: string, bg?: string) =>
 		spans.map((span, i) => (
-			<Text key={`${keyPrefix}-${i}`} color={tokenize ? TOKEN_COLORS[span.token] : scheme.foreground.bright} backgroundColor={bg}>
+			<Text key={`${keyPrefix}-${i}`} color={tokenize ? TOKEN_COLORS[span.token] : scheme.foreground.bright} backgroundColor={bg} bold={span.bold}>
 				{span.text}
 			</Text>
 		));
@@ -699,7 +701,7 @@ export const Input = React.memo(function Input({
 			: -1;
 
 		const gutterBg = darkenHex(scheme.backgrounds.raised, 0.9);
-		const selBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.5) : undefined;
+		const selBg = hasSelection ? lerpHex(scheme.backgrounds.raised, scheme.foreground.bright, 0.25) : undefined;
 		const selStart = hasSelection ? Math.min(state.selectionAnchor!, state.cursorOffset) : -1;
 		const selEnd = hasSelection ? Math.max(state.selectionAnchor!, state.cursorOffset) : -1;
 
@@ -770,9 +772,9 @@ export const Input = React.memo(function Input({
 			const vrSelEnd = hasSelection ? Math.min(sliceLen, selEnd - absSliceStart) : -1;
 			const vrHasSelection = hasSelection && vrSelStart < vrSelEnd && vrSelStart < sliceLen;
 
-			const pushSegment = (text: string, startCol: number, color: string, keyBase: string) => {
+			const pushSegment = (text: string, startCol: number, color: string, keyBase: string, isBold?: boolean) => {
 				if (!vrHasSelection || text.length === 0) {
-					elements.push(<Text key={keyBase} color={color}>{text}</Text>);
+					elements.push(<Text key={keyBase} color={color} bold={isBold}>{text}</Text>);
 					return;
 				}
 				const segStart = startCol;
@@ -780,15 +782,15 @@ export const Input = React.memo(function Input({
 				const overlapStart = Math.max(segStart, vrSelStart) - segStart;
 				const overlapEnd = Math.min(segEnd, vrSelEnd) - segStart;
 				if (overlapStart >= overlapEnd) {
-					elements.push(<Text key={keyBase} color={color}>{text}</Text>);
+					elements.push(<Text key={keyBase} color={color} bold={isBold}>{text}</Text>);
 					return;
 				}
 				if (overlapStart > 0) {
-					elements.push(<Text key={`${keyBase}p`} color={color}>{text.slice(0, overlapStart)}</Text>);
+					elements.push(<Text key={`${keyBase}p`} color={color} bold={isBold}>{text.slice(0, overlapStart)}</Text>);
 				}
-				elements.push(<Text key={`${keyBase}s`} color={color} backgroundColor={selBg}>{text.slice(overlapStart, overlapEnd)}</Text>);
+				elements.push(<Text key={`${keyBase}s`} color={color} bold={isBold} backgroundColor={selBg}>{text.slice(overlapStart, overlapEnd)}</Text>);
 				if (overlapEnd < text.length) {
-					elements.push(<Text key={`${keyBase}q`} color={color}>{text.slice(overlapEnd)}</Text>);
+					elements.push(<Text key={`${keyBase}q`} color={color} bold={isBold}>{text.slice(overlapEnd)}</Text>);
 				}
 			};
 
@@ -806,19 +808,19 @@ export const Input = React.memo(function Input({
 					let col = 0;
 					for (let j = 0; j < split.before.length; j++) {
 						const s = split.before[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}b${j}`);
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}b${j}`, s.bold);
 						col += s.text.length;
 					}
 					const cursorInSel = vrHasSelection && visCursorCol >= vrSelStart && visCursorCol < vrSelEnd;
 					elements.push(
-						<Text key={`${vrIdx}c`} color={TOKEN_COLORS[split.cursorToken]} backgroundColor={cursorInSel ? selBg : cursorBg}>
+						<Text key={`${vrIdx}c`} color={TOKEN_COLORS[split.cursorToken]} bold={split.cursorBold} backgroundColor={cursorInSel ? selBg : cursorBg}>
 							{visCursorCol < sliceLen ? split.cursorChar : " "}
 						</Text>,
 					);
 					col = visCursorCol + 1;
 					for (let j = 0; j < split.after.length; j++) {
 						const s = split.after[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}a${j}`);
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}a${j}`, s.bold);
 						col += s.text.length;
 					}
 				} else {
@@ -840,7 +842,7 @@ export const Input = React.memo(function Input({
 					let col = 0;
 					for (let j = 0; j < vrSpans.length; j++) {
 						const s = vrSpans[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}s${j}`);
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}s${j}`, s.bold);
 						col += s.text.length;
 					}
 				} else if (sliceText) {
@@ -896,7 +898,7 @@ export const Input = React.memo(function Input({
 					<>
 						{renderSpans(seg1, "b")}
 						{seg2.length > 0 && renderSpans(seg2, "sb", selectionBg)}
-						<Text color={cursorTokenColor} backgroundColor={cursorBg}>{cursorChar}</Text>
+						<Text color={cursorTokenColor} bold={cursorIsBold} backgroundColor={cursorBg}>{cursorChar}</Text>
 						{seg4.length > 0 && renderSpans(seg4, "sa", selectionBg)}
 						{renderSpans(seg5, "a")}
 						{displayGhost ? (

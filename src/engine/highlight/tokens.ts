@@ -28,6 +28,7 @@ export type TokenType =
 	| "inspect"
 	| "project"
 	| "compile"
+	| "undo"
 	| "ui";
 
 export const TOKEN_COLORS: Record<TokenType, string> = {
@@ -53,6 +54,7 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 	inspect: MODE_ACCENTS.inspect,
 	project: MODE_ACCENTS.project,
 	compile: MODE_ACCENTS.compile,
+	undo: MODE_ACCENTS.undo,
 	ui: MODE_ACCENTS.ui,
 } as const;
 
@@ -63,4 +65,6 @@ export interface TokenSpan {
 	 *  precedence over TOKEN_COLORS mapping. Used for theme-aware colors
 	 *  like table cell separators. */
 	color?: string;
+	/** When true, render this span in bold. */
+	bold?: boolean;
 }

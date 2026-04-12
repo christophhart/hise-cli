@@ -6,26 +6,26 @@ describe("tokenizeSlash", () => {
 
 	it("classifies /builder as builder token", () => {
 		const spans = tokenizeSlash("/builder");
-		expect(spans).toEqual([{ text: "/builder", token: "builder" }]);
+		expect(spans).toEqual([{ text: "/builder", token: "builder", bold: true }]);
 	});
 
 	it("classifies /script as script token", () => {
 		const spans = tokenizeSlash("/script");
-		expect(spans).toEqual([{ text: "/script", token: "script" }]);
+		expect(spans).toEqual([{ text: "/script", token: "script", bold: true }]);
 	});
 
 	it("classifies /dsp as dsp token", () => {
 		const spans = tokenizeSlash("/dsp");
-		expect(spans).toEqual([{ text: "/dsp", token: "dsp" }]);
+		expect(spans).toEqual([{ text: "/dsp", token: "dsp", bold: true }]);
 	});
 
 	it("classifies /inspect as inspect token", () => {
 		const spans = tokenizeSlash("/inspect");
-		expect(spans).toEqual([{ text: "/inspect", token: "inspect" }]);
+		expect(spans).toEqual([{ text: "/inspect", token: "inspect", bold: true }]);
 	});
 
 	it("classifies all mode IDs correctly", () => {
-		const modes = ["builder", "script", "dsp", "sampler", "inspect", "project", "compile"];
+		const modes = ["builder", "script", "dsp", "sampler", "inspect", "project", "compile", "undo", "ui"];
 		for (const mode of modes) {
 			const spans = tokenizeSlash(`/${mode}`);
 			expect(spans[0]!.token).toBe(mode);
@@ -36,22 +36,22 @@ describe("tokenizeSlash", () => {
 
 	it("classifies /help as command token", () => {
 		const spans = tokenizeSlash("/help");
-		expect(spans).toEqual([{ text: "/help", token: "command" }]);
+		expect(spans).toEqual([{ text: "/help", token: "command", bold: true }]);
 	});
 
 	it("classifies /clear as command token", () => {
 		const spans = tokenizeSlash("/clear");
-		expect(spans).toEqual([{ text: "/clear", token: "command" }]);
+		expect(spans).toEqual([{ text: "/clear", token: "command", bold: true }]);
 	});
 
 	it("classifies /exit as command token", () => {
 		const spans = tokenizeSlash("/exit");
-		expect(spans).toEqual([{ text: "/exit", token: "command" }]);
+		expect(spans).toEqual([{ text: "/exit", token: "command", bold: true }]);
 	});
 
 	it("classifies /modes as command token", () => {
 		const spans = tokenizeSlash("/modes");
-		expect(spans).toEqual([{ text: "/modes", token: "command" }]);
+		expect(spans).toEqual([{ text: "/modes", token: "command", bold: true }]);
 	});
 
 	// ── Arguments are tokenized ─────────────────────────────────────
@@ -59,7 +59,7 @@ describe("tokenizeSlash", () => {
 	it("tokenizes arguments after mode command", () => {
 		const spans = tokenizeSlash("/script Interface");
 		expect(spans).toEqual([
-			{ text: "/script", token: "script" },
+			{ text: "/script", token: "script", bold: true },
 			{ text: " ", token: "plain" },
 			{ text: "Interface", token: "identifier" },
 		]);
@@ -68,7 +68,7 @@ describe("tokenizeSlash", () => {
 	it("tokenizes string arguments", () => {
 		const spans = tokenizeSlash('/help "modes"');
 		expect(spans).toEqual([
-			{ text: "/help", token: "command" },
+			{ text: "/help", token: "command", bold: true },
 			{ text: " ", token: "plain" },
 			{ text: '"modes"', token: "string" },
 		]);
@@ -77,7 +77,7 @@ describe("tokenizeSlash", () => {
 	it("tokenizes numeric arguments", () => {
 		const spans = tokenizeSlash("/script 42");
 		expect(spans).toEqual([
-			{ text: "/script", token: "script" },
+			{ text: "/script", token: "script", bold: true },
 			{ text: " ", token: "plain" },
 			{ text: "42", token: "integer" },
 		]);
@@ -86,7 +86,7 @@ describe("tokenizeSlash", () => {
 	it("tokenizes float arguments", () => {
 		const spans = tokenizeSlash("/script 3.14");
 		expect(spans).toEqual([
-			{ text: "/script", token: "script" },
+			{ text: "/script", token: "script", bold: true },
 			{ text: " ", token: "plain" },
 			{ text: "3.14", token: "float" },
 		]);
@@ -95,7 +95,7 @@ describe("tokenizeSlash", () => {
 	it("tokenizes dotted path arguments", () => {
 		const spans = tokenizeSlash("/builder SineGenerator.pitch");
 		expect(spans).toEqual([
-			{ text: "/builder", token: "builder" },
+			{ text: "/builder", token: "builder", bold: true },
 			{ text: " ", token: "plain" },
 			{ text: "SineGenerator.pitch", token: "identifier" },
 		]);
@@ -116,7 +116,7 @@ describe("tokenizeSlash", () => {
 	it("handles multiple spaces between args", () => {
 		const spans = tokenizeSlash("/builder  Interface");
 		expect(spans).toEqual([
-			{ text: "/builder", token: "builder" },
+			{ text: "/builder", token: "builder", bold: true },
 			{ text: "  ", token: "plain" },
 			{ text: "Interface", token: "identifier" },
 		]);

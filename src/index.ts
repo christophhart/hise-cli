@@ -74,7 +74,7 @@ async function launchTui(
 			handlerRegistry,
 		}),
 		{
-			exitOnCtrlC: true,
+			exitOnCtrlC: false,
 			maxFps: 60,
 		},
 	);

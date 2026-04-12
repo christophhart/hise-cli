@@ -27,12 +27,12 @@ describe("tokenizeInspect", () => {
 
 	it("delegates slash commands to tokenizeSlash", () => {
 		const spans = tokenizeInspect("/exit");
-		expect(spans).toEqual([{ text: "/exit", token: "command" }]);
+		expect(spans).toEqual([{ text: "/exit", token: "command", bold: true }]);
 	});
 
 	it("delegates mode commands with accent", () => {
 		const spans = tokenizeInspect("/builder");
-		expect(spans).toEqual([{ text: "/builder", token: "builder" }]);
+		expect(spans).toEqual([{ text: "/builder", token: "builder", bold: true }]);
 	});
 
 	// ── Edge cases ─────────────────────────────────────────────────

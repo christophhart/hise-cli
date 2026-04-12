@@ -103,12 +103,12 @@ describe("tokenizeBuilder", () => {
 
 	it("delegates slash commands to tokenizeSlash", () => {
 		const spans = tokenizeBuilder("/help");
-		expect(spans).toEqual([{ text: "/help", token: "command" }]);
+		expect(spans).toEqual([{ text: "/help", token: "command", bold: true }]);
 	});
 
 	it("delegates mode commands to tokenizeSlash with mode accent", () => {
 		const spans = tokenizeBuilder("/script Interface");
-		expect(spans[0]).toEqual({ text: "/script", token: "script" });
+		expect(spans[0]).toEqual({ text: "/script", token: "script", bold: true });
 	});
 
 	// ── Edge cases ─────────────────────────────────────────────────

@@ -80,6 +80,10 @@ function renderProgressLine(
 		if (cmd.label) {
 			return [bg + dimmed + "\u2502 \u2500\u2500 " + cmd.label + " \u2500\u2500" + RESET];
 		}
+		// Suppress mode entry/exit messages
+		if (cmd.result.type === "text" && /^(Entered |Exited |Already in )/.test(cmd.result.content)) {
+			return [];
+		}
 		const val = formatResultForLog(cmd.result);
 		if (!val) return [];
 		const modeEntry = modeMap && cmd.line > 0 && cmd.line <= modeMap.length
@@ -318,9 +322,19 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		return lineColToOffset(value, vr.lineIdx, col);
 	}, [columns]);
 
-	useOnPress(inputBoxRef, useCallback((event: { x: number; y: number }) => {
+	useOnPress(inputBoxRef, useCallback((event: { x: number; y: number; button?: string }) => {
 		const handle = inputHandleRef.current;
 		if (!handle) return;
+
+		// Right-click: copy selection to clipboard, preserve selection
+		if (event.button === "right") {
+			const sel = handle.getSelection();
+			if (sel) {
+				process.stdout.write(`\x1b]52;c;${Buffer.from(sel.text).toString("base64")}\x07`);
+			}
+			return;
+		}
+
 		const charPos = multilineMode
 			? inputXYToCharOffset(event.x, event.y)
 			: inputXToCharOffset(event.x);
@@ -869,11 +883,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			handle.selectAll();
 			return;
 		}
-		// Ctrl+C — copy selection to clipboard via OSC 52
+		// Ctrl+C — copy selection to clipboard, or exit if no selection
 		else if (key.ctrl && input === "c") {
 			const sel = handle.getSelection();
 			if (sel) {
 				process.stdout.write(`\x1b]52;c;${Buffer.from(sel.text).toString("base64")}\x07`);
+			} else {
+				exit();
 			}
 			return;
 		}

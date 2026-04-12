@@ -41,7 +41,10 @@ export function sliceSpans(
 		const clipped = span.text.slice(clipStart, clipEnd);
 
 		if (clipped.length > 0) {
-			result.push({ text: clipped, token: span.token });
+			const entry: TokenSpan = { text: clipped, token: span.token };
+			if (span.bold) entry.bold = span.bold;
+			if (span.color) entry.color = span.color;
+			result.push(entry);
 		}
 
 		pos = spanEnd;
@@ -59,6 +62,8 @@ export interface CursorSplit {
 	cursorChar: string;
 	/** Token type of the character under the cursor */
 	cursorToken: TokenType;
+	/** Whether the cursor character is bold */
+	cursorBold?: boolean;
 	/** Spans after the cursor */
 	after: TokenSpan[];
 }
@@ -91,6 +96,7 @@ export function splitSpansAtCursor(
 	const after: TokenSpan[] = [];
 	let cursorChar = " ";
 	let cursorToken: TokenType = "plain";
+	let cursorBold: boolean | undefined;
 	let pos = 0;
 	let found = false;
 
@@ -103,15 +109,16 @@ export function splitSpansAtCursor(
 				const localPos = cursorPos - pos;
 				cursorChar = span.text[localPos]!;
 				cursorToken = span.token;
+				cursorBold = span.bold;
 				found = true;
 
 				// Part before cursor in this span
 				if (localPos > 0) {
-					before.push({ text: span.text.slice(0, localPos), token: span.token });
+					before.push({ text: span.text.slice(0, localPos), token: span.token, bold: span.bold });
 				}
 				// Part after cursor in this span
 				if (localPos + 1 < span.text.length) {
-					after.push({ text: span.text.slice(localPos + 1), token: span.token });
+					after.push({ text: span.text.slice(localPos + 1), token: span.token, bold: span.bold });
 				}
 			} else {
 				// Entire span is before cursor
@@ -125,5 +132,5 @@ export function splitSpansAtCursor(
 		pos = spanEnd;
 	}
 
-	return { before, cursorChar, cursorToken, after };
+	return { before, cursorChar, cursorToken, cursorBold, after };
 }
