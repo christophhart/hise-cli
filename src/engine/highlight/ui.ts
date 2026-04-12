@@ -8,7 +8,7 @@ import { tokenizeSlash } from "./slash.js";
 
 const UI_KEYWORDS = new Set([
 	"add", "remove", "move", "rename", "set", "get", "show",
-	"to", "at", "into", "as",
+	"to", "at", "into", "as", "tree",
 	"cd", "ls", "dir", "pwd",
 ]);
 

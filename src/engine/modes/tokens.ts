@@ -217,6 +217,7 @@ export const UI_TOKENS = [
 	To,
 	As,
 	At,
+	Tree,
 	Comma,
 	Dot,
 	Identifier,

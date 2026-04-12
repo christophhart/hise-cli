@@ -21,7 +21,7 @@ import {
 import type { CompletionEngine } from "../completion/engine.js";
 import { fuzzyFilter } from "../completion/engine.js";
 import {
-	Add, Remove, Move, Rename, Into, Show, Set, Get, To, As, At,
+	Add, Remove, Move, Rename, Into, Show, Set, Get, To, As, At, Tree,
 	Identifier, QuotedString, NumberLiteral, Dot,
 	uiLexer, UI_TOKENS, UI_VERB_KEYWORDS,
 } from "./tokens.js";
@@ -48,7 +48,7 @@ export type ComponentPropertyMap = Record<string, Record<string, ComponentProper
 
 /** Common properties shared by all ScriptComponent subclasses. */
 const COMMON_COMPONENT_PROPERTIES = [
-	"text", "visible", "enabled", "locked",
+	"value", "text", "visible", "enabled", "locked",
 	"x", "y", "width", "height",
 	"min", "max", "defaultValue",
 	"tooltip", "bgColour", "itemColour", "itemColour2", "textColour",
@@ -75,7 +75,7 @@ class UiParser extends CstParser {
 		]);
 	});
 
-	// add <type> ["<name>"] [at <x> <y> <w> <h>]
+	// add <type> [as] ["<name>"] [at <x> <y> <w> <h>]
 	public addCommand = this.RULE("addCommand", () => {
 		this.CONSUME(Add);
 		this.OR2([
@@ -83,6 +83,7 @@ class UiParser extends CstParser {
 			{ ALT: () => this.AT_LEAST_ONE2(() => this.CONSUME2(Identifier, { LABEL: "componentType" })) },
 		]);
 		this.OPTION(() => {
+			this.OPTION5(() => { this.CONSUME(As); });
 			this.CONSUME(QuotedString, { LABEL: "name" });
 		});
 		this.OPTION2(() => {
@@ -139,10 +140,13 @@ class UiParser extends CstParser {
 		this.CONSUME(QuotedString, { LABEL: "newName" });
 	});
 
-	// show <target>
+	// show tree | show <target>
 	public showCommand = this.RULE("showCommand", () => {
 		this.CONSUME(Show);
-		this.SUBRULE(this.targetRef, { LABEL: "target" });
+		this.OR([
+			{ ALT: () => this.CONSUME(Tree, { LABEL: "tree" }) },
+			{ ALT: () => this.SUBRULE(this.targetRef, { LABEL: "target" }) },
+		]);
 	});
 
 	// get <target>.<prop>
@@ -217,7 +221,8 @@ export interface UiGetCommand {
 
 export interface UiShowCommand {
 	type: "show";
-	target: string;
+	what: "tree" | "target";
+	target?: string;
 }
 
 export type UiCommand =
@@ -459,8 +464,11 @@ function extractRenameCommand(
 function extractShowCommand(
 	node: any,
 ): { command: UiShowCommand } | { error: string } {
+	if (node.children.tree) {
+		return { command: { type: "show", what: "tree" } };
+	}
 	const target = extractTargetRef(node.children.target[0]);
-	return { command: { type: "show", target } };
+	return { command: { type: "show", what: "target", target } };
 }
 
 function stripQuotes(s: string): string {
@@ -719,9 +727,19 @@ export class UiMode implements Mode {
 			return this.completeSet(tokens, trailingSpace, offset, inputLength, segment, componentItems);
 		}
 
-		// ── show <target> ──
+		// ── show tree | show <target> ──
 		if (verb === "show") {
-			return this.completeTarget(tokens, trailingSpace, offset, inputLength, segment, componentItems, "Components");
+			const treeItem: CompletionItem = { label: "tree", detail: "Show component tree" };
+			if (tokens.length === 1 && trailingSpace) {
+				return { items: [treeItem, ...componentItems], from: offset + segment.length, to: inputLength, label: "Show" };
+			}
+			if (tokens.length === 2 && !trailingSpace) {
+				const prefix = tokens[1].image;
+				const items = fuzzyFilter(prefix, [treeItem, ...componentItems]);
+				const from = offset + tokens[1].startOffset;
+				return { items, from, to: inputLength, label: "Show" };
+			}
+			return { items: [], from: offset, to: inputLength };
 		}
 
 		// ── Commands that take a single target: remove, move, rename ──
@@ -1041,9 +1059,17 @@ export class UiMode implements Mode {
 		cmd: UiCommand,
 		session: SessionContext,
 	): Promise<CommandResult> {
-		// Get command — fetch single property value
+		// Get command — fetch single property or component value
 		if (cmd.type === "get") {
+			if (cmd.prop === "value") {
+				return this.handleGetValue(cmd.target, session.connection ?? null);
+			}
 			return this.handleGet(cmd, session.connection ?? null);
+		}
+
+		// Set value — uses dedicated /api/set_component_value endpoint
+		if (cmd.type === "set" && cmd.prop === "value") {
+			return this.handleSetValue(cmd.target, cmd.value, session.connection ?? null);
 		}
 
 		// Show command — fetch properties from HISE and display as table
@@ -1131,17 +1157,24 @@ export class UiMode implements Mode {
 		return textResult(summary);
 	}
 
-	/** Handle show command — fetch component properties from HISE. */
+	/** Handle show command — show tree or fetch component properties from HISE. */
 	private async handleShow(
 		cmd: UiShowCommand,
 		connection: import("../hise.js").HiseConnection | null,
 	): Promise<CommandResult> {
+		if (cmd.what === "tree") {
+			if (!this.treeRoot) {
+				return textResult("No component tree available (requires HISE connection).");
+			}
+			return textResult(renderTreeText(this.treeRoot, 0));
+		}
+
 		if (!connection) {
 			return textResult(`show ${cmd.target} (no HISE connection)`);
 		}
 
 		const response = await connection.get(
-			`/api/get_component_properties?moduleId=${encodeURIComponent(this.moduleId)}&id=${encodeURIComponent(cmd.target)}`,
+			`/api/get_component_properties?moduleId=${encodeURIComponent(this.moduleId)}&id=${encodeURIComponent(cmd.target!)}`,
 		);
 
 		if (isErrorResponse(response)) {
@@ -1173,6 +1206,64 @@ export class UiMode implements Mode {
 			["Property", "Value", ""],
 			rows,
 		);
+	}
+
+	/** Set a component's runtime value via /api/set_component_value. */
+	private async handleSetValue(
+		target: string,
+		value: string | number,
+		connection: import("../hise.js").HiseConnection | null,
+	): Promise<CommandResult> {
+		if (!connection) {
+			return textResult(`set ${target}.value ${value} (no HISE connection)`);
+		}
+
+		const response = await connection.post("/api/set_component_value", {
+			moduleId: this.moduleId,
+			id: target,
+			value,
+		});
+
+		if (isErrorResponse(response)) {
+			return errorResult(response.message);
+		}
+		if (isEnvelopeResponse(response) && !response.success) {
+			const msg = response.errors.length > 0
+				? response.errors.map((e) => e.errorMessage).join("\n")
+				: `Failed to set value on "${target}"`;
+			return errorResult(msg);
+		}
+
+		// Echo back the actual value from HISE
+		const echo = await this.handleGetValue(target, connection);
+		return echo;
+	}
+
+	/** Get a component's runtime value via /api/get_component_value. */
+	private async handleGetValue(
+		target: string,
+		connection: import("../hise.js").HiseConnection | null,
+	): Promise<CommandResult> {
+		if (!connection) {
+			return textResult(`get ${target}.value (no HISE connection)`);
+		}
+
+		const response = await connection.get(
+			`/api/get_component_value?moduleId=${encodeURIComponent(this.moduleId)}&id=${encodeURIComponent(target)}`,
+		);
+
+		if (isErrorResponse(response)) {
+			return errorResult(response.message);
+		}
+
+		const data = response as unknown as Record<string, unknown>;
+		if (data.success === false) {
+			const errors = (data as { errors?: Array<{ errorMessage: string }> }).errors;
+			const msg = errors?.[0]?.errorMessage ?? `Could not get value for "${target}"`;
+			return errorResult(msg);
+		}
+
+		return textResult(String(data.value ?? ""));
 	}
 
 	/** Handle get command — fetch a single property value from HISE. */
@@ -1252,7 +1343,21 @@ export class UiMode implements Mode {
 			case "get":
 				return textResult(`get ${cmd.target}.${cmd.prop} (no HISE connection)`);
 			case "show":
-				return textResult(`show ${cmd.target} (no HISE connection)`);
+				return textResult(`show ${cmd.target ?? "tree"} (no HISE connection)`);
 		}
 	}
+}
+
+/** Simple text rendering of the component tree for `show tree` command. */
+function renderTreeText(node: TreeNode, depth: number): string {
+	const indent = "  ".repeat(depth);
+	const typeInfo = node.type ? ` (${node.type})` : "";
+	let line = `${indent}${node.label}${typeInfo}`;
+
+	if (node.children) {
+		for (const child of node.children) {
+			line += "\n" + renderTreeText(child, depth + 1);
+		}
+	}
+	return line;
 }
