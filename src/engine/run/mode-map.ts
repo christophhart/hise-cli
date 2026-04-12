@@ -9,6 +9,8 @@ export interface ModeMapEntry {
 	modeId: ModeId;
 	/** This line IS a mode-entry command (/builder, /script, etc.) */
 	isModeEntry: boolean;
+	/** This line IS a one-shot mode command (/script Math.random(), /builder add X) */
+	isOneShot: boolean;
 	/** This line IS /exit */
 	isModeExit: boolean;
 	/** Accent color for the active mode */
@@ -35,7 +37,7 @@ export function buildModeMap(lines: string[]): ModeMapEntry[] {
 
 		// Empty/comment lines inherit current mode
 		if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith("//")) {
-			map.push({ modeId: current, isModeEntry: false, isModeExit: false, accent: MODE_ACCENTS[current] });
+			map.push({ modeId: current, isModeEntry: false, isOneShot: false, isModeExit: false, accent: MODE_ACCENTS[current] });
 			continue;
 		}
 
@@ -49,28 +51,28 @@ export function buildModeMap(lines: string[]): ModeMapEntry[] {
 
 				if (rest) {
 					// One-shot: mode for this line only, don't push stack
-					map.push({ modeId, isModeEntry: true, isModeExit: false, accent: MODE_ACCENTS[modeId] });
+					map.push({ modeId, isModeEntry: true, isOneShot: true, isModeExit: false, accent: MODE_ACCENTS[modeId] });
 				} else {
 					// Enter mode
 					modeStack.push(modeId);
-					map.push({ modeId, isModeEntry: true, isModeExit: false, accent: MODE_ACCENTS[modeId] });
+					map.push({ modeId, isModeEntry: true, isOneShot: false, isModeExit: false, accent: MODE_ACCENTS[modeId] });
 				}
 				continue;
 			}
 
 			if (cmdName === "exit") {
-				map.push({ modeId: current, isModeEntry: false, isModeExit: true, accent: MODE_ACCENTS[current] });
+				map.push({ modeId: current, isModeEntry: false, isOneShot: false, isModeExit: true, accent: MODE_ACCENTS[current] });
 				if (modeStack.length > 1) modeStack.pop();
 				continue;
 			}
 
 			// Other slash commands (tool commands, builtins) — current mode
-			map.push({ modeId: current, isModeEntry: false, isModeExit: false, accent: MODE_ACCENTS[current] });
+			map.push({ modeId: current, isModeEntry: false, isOneShot: false, isModeExit: false, accent: MODE_ACCENTS[current] });
 			continue;
 		}
 
 		// Non-slash: mode-specific command in current mode
-		map.push({ modeId: current, isModeEntry: false, isModeExit: false, accent: MODE_ACCENTS[current] });
+		map.push({ modeId: current, isModeEntry: false, isOneShot: false, isModeExit: false, accent: MODE_ACCENTS[current] });
 	}
 
 	return map;

@@ -66,6 +66,7 @@ function createMockSession(): CommandSession & { modes: string[]; quitRequested:
 			modes.pop();
 			return result;
 		},
+		resolveScriptPath(fp: string) { return fp; },
 		wizardRegistry: null,
 		handlerRegistry: null,
 	};

@@ -18,6 +18,11 @@ export function serializeCliOutput(
 		}
 	}
 
+	// run-report: compact summary for LLM consumers
+	if (result.type === "run-report") {
+		return serializeRunReport(result);
+	}
+
 	return {
 		ok: result.type !== "error",
 		result: stripAccent(result),
@@ -60,6 +65,44 @@ function serializeScriptOutput(
 	}
 
 	return null;
+}
+
+function serializeRunReport(
+	result: Extract<CommandResult, { type: "run-report" }>,
+): CliOutputPayload {
+	const r = result.runResult;
+	const passed = r.expects.filter(e => e.passed).length;
+	const total = r.expects.length;
+
+	const payload: Record<string, unknown> = {
+		ok: r.ok,
+		linesExecuted: r.linesExecuted,
+	};
+
+	if (r.error) {
+		payload.error = { line: r.error.line, message: r.error.message };
+	}
+
+	if (total > 0) {
+		payload.expects = { passed, total };
+		const failures = r.expects.filter(e => !e.passed);
+		if (failures.length > 0) {
+			payload.failures = failures.map(e => ({
+				line: e.line,
+				command: e.command,
+				expected: e.expected,
+				actual: e.actual,
+			}));
+		}
+	}
+
+	// Summary line
+	const parts: string[] = [];
+	if (r.linesExecuted > 0) parts.push(`${r.linesExecuted} commands`);
+	if (total > 0) parts.push(r.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
+	payload.summary = (r.ok ? "\u2713 " : "\u2717 ") + parts.join(", ");
+
+	return { ok: r.ok, value: payload } as CliOutputPayload;
 }
 
 function stripAccent(result: CommandResult): CommandResult {

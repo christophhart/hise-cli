@@ -22,8 +22,14 @@ export interface CommandSession {
 	readonly wizardRegistry: import("../wizard/registry.js").WizardRegistry | null;
 	/** Internal wizard handler registry (task + init functions) */
 	readonly handlerRegistry: import("../wizard/handler-registry.js").WizardHandlerRegistry | null;
+	/** Resolve a script path relative to project Scripts folder or CWD. */
+	resolveScriptPath(filePath: string): string;
 	/** Load a .hsc script file by path. Set by TUI/CLI layer. */
 	loadScriptFile?(filePath: string): Promise<string>;
+	/** Save a .hsc script file by path. Set by TUI/CLI layer. */
+	saveScriptFile?(filePath: string, content: string): Promise<void>;
+	/** Expand a glob pattern to matching file paths. Set by TUI/CLI layer. */
+	globScriptFiles?(pattern: string): Promise<string[]>;
 }
 
 export type CommandHandler = (

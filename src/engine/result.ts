@@ -4,6 +4,7 @@
 // TUI renders them visually; CLI serializes them as JSON.
 
 import type { WizardDefinition, WizardAnswers } from "./wizard/types.js";
+import type { RunResult } from "./run/types.js";
 
 export interface TreeNode {
 	label: string;
@@ -47,6 +48,7 @@ export type CommandResult =
 	| { type: "tree"; root: TreeNode; accent?: string }
 	| { type: "markdown"; content: string; accent?: string }
 	| { type: "wizard"; definition: WizardDefinition; prefill: WizardAnswers; autoRun: boolean; accent?: string }
+	| { type: "run-report"; source: string; runResult: RunResult; accent?: string }
 	| { type: "empty"; accent?: string };
 
 // ── Result factory helpers ──────────────────────────────────────────
@@ -90,6 +92,10 @@ export function wizardResult(
 	autoRun = false,
 ): CommandResult {
 	return { type: "wizard", definition, prefill, autoRun, accent: "#e8a060" };
+}
+
+export function runReportResult(source: string, runResult: RunResult): CommandResult {
+	return { type: "run-report", source, runResult };
 }
 
 export function emptyResult(): CommandResult {

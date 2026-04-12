@@ -4,6 +4,7 @@ import type { CommandResult } from "../result.js";
 import {
 	emptyResult,
 	errorResult,
+	runReportResult,
 	tableResult,
 	textResult,
 	wizardResult,
@@ -397,6 +398,36 @@ async function runOrParse(
 		return errorResult(`Usage: /${dryRun ? "parse" : "run"} <file.hsc>`);
 	}
 
+	// Glob expansion for wildcards
+	if (!dryRun && (filePath.includes("*") || filePath.includes("?"))) {
+		if (!session.globScriptFiles) {
+			return errorResult("Glob expansion not available in this environment.");
+		}
+		let files: string[];
+		try {
+			files = await session.globScriptFiles(filePath);
+		} catch (err) {
+			return errorResult(`Glob failed: ${err instanceof Error ? err.message : String(err)}`);
+		}
+		if (files.length === 0) {
+			return errorResult(`No files matched "${filePath}"`);
+		}
+		const reports: string[] = [];
+		let allPassed = true;
+		for (const file of files) {
+			const name = file.split(/[\\/]/).pop() ?? file;
+			const result = await runOrParse(file, session, false);
+			if (result.type === "error") {
+				reports.push(`\u2717 ${name}: ${result.message}`);
+				allPassed = false;
+			} else {
+				reports.push(`\u2713 ${name}`);
+			}
+		}
+		const summary = reports.join("\n");
+		return allPassed ? textResult(summary) : errorResult(summary);
+	}
+
 	if (!session.loadScriptFile) {
 		return errorResult("Script file loading not available in this environment.");
 	}
@@ -435,14 +466,9 @@ async function runOrParse(
 	}
 
 	// Execution phase
-	const { executeScript, formatRunReport } = await import("../run/executor.js");
+	const { executeScript } = await import("../run/executor.js");
 	const result = await executeScript(script, session);
-	const report = formatRunReport(result);
-
-	if (result.ok) {
-		return textResult(report);
-	}
-	return errorResult(report);
+	return runReportResult(source, result);
 }
 
 // ── Registration ────────────────────────────────────────────────────

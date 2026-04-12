@@ -22,6 +22,8 @@ import type { PrerenderedBlock } from "./components/prerender.js";
 import { renderEcho, renderResult, truncateAnsi, wrapAnsi, fgHex, bgHex, RESET } from "./components/prerender.js";
 import { Input, type InputHandle, offsetToLineCol, lineColToOffset, buildVisualRowMap, findVisualRow } from "./components/Input.js";
 import { buildModeMap } from "../engine/run/mode-map.js";
+import type { RunResult } from "../engine/run/types.js";
+import { formatResultForLog, filterLogNoise } from "../engine/run/executor.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
 import { TreeSidebar, type TreeSidebarHandle, type TreeSidebarState } from "./components/TreeSidebar.js";
@@ -60,6 +62,95 @@ import { listPathCompletions } from "./wizard-files.js";
 
 const SCROLL_WHEEL_LINES = 1; // lines per mouse wheel tick
 const ENTER_ACCEPTS_COMPLETION = false; // true = Enter accepts popup selection, false = Enter submits typed text
+
+// ── Shared script log formatter ──────────────────────────────────────
+
+function formatScriptLog(
+	source: string,
+	result: RunResult,
+	scheme: ColorScheme,
+): PrerenderedBlock {
+	const scriptLines = source.split("\n").map(l => l.trim());
+	const modeMap = buildModeMap(scriptLines);
+
+	const dimmed = fgHex(scheme.foreground.muted);
+	const bg = bgHex(scheme.backgrounds.standard);
+	const outputLines: string[] = [];
+
+	// Build a lookup from line number to result
+	const resultsByLine = new Map<number, typeof result.results[number]>();
+	for (const cmd of result.results) {
+		resultsByLine.set(cmd.line, cmd);
+	}
+
+	// Walk raw lines to interleave comments, blanks, and results
+	let actionCount = 0;
+	for (let i = 0; i < scriptLines.length; i++) {
+		const rawLine = scriptLines[i]!;
+		const lineNum = i + 1;
+		const modeEntry = modeMap[i];
+
+		// Comment lines (# or //) → dimmed, strip prefix
+		if (rawLine.startsWith("#") || rawLine.startsWith("//")) {
+			const commentText = rawLine.startsWith("//")
+				? rawLine.slice(2).trim()
+				: rawLine.slice(1).trim();
+			outputLines.push(bg + dimmed + "\u2502 " + commentText + RESET);
+			continue;
+		}
+
+		// Empty lines → skip
+		if (rawLine === "") continue;
+
+		// Mode entry/exit → skip (but keep one-shot commands)
+		if ((modeEntry?.isModeEntry && !modeEntry?.isOneShot) || modeEntry?.isModeExit) continue;
+
+		// Look up result for this line
+		const cmd = resultsByLine.get(lineNum);
+		if (!cmd) continue;
+
+		const val = formatResultForLog(cmd.result);
+		if (!val) continue;
+
+		actionCount++;
+
+		const barColor = (modeEntry && modeEntry.modeId !== "root" && modeEntry.accent)
+			? fgHex(modeEntry.accent)
+			: dimmed;
+
+		for (const line of val.split("\n")) {
+			outputLines.push(bg + barColor + "\u2502" + RESET + bg + " " + line + RESET);
+		}
+	}
+
+	// Expect results
+	const errFg = fgHex(brand.error);
+	const okFg = fgHex(brand.ok);
+	for (const expect of result.expects) {
+		const icon = expect.passed ? "\u2713" : "\u2717";
+		const color = expect.passed ? okFg : errFg;
+		let line = `${icon} line ${expect.line}: ${expect.command} is ${expect.expected}`;
+		if (!expect.passed) line += ` \u2014 got ${expect.actual}`;
+		outputLines.push(bg + color + "\u2502 " + line + RESET);
+	}
+
+	// Error with ✗ icon
+	if (result.error) {
+		outputLines.push(bg + errFg + "\u2502 \u2717 " + `ABORTED at line ${result.error.line}: ${filterLogNoise(result.error.message)}` + RESET);
+	}
+
+	// Footer summary
+	const passed = result.expects.filter(e => e.passed).length;
+	const total = result.expects.length;
+	const statusColor = result.ok ? okFg : errFg;
+	const statusIcon = result.ok ? "\u2713" : "\u2717";
+	const statusParts: string[] = [];
+	if (actionCount > 0) statusParts.push(`${actionCount} command${actionCount !== 1 ? "s" : ""} executed`);
+	if (total > 0) statusParts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
+	outputLines.push(bg + statusColor + "\u2502 " + statusIcon + " " + statusParts.join(", ") + RESET);
+
+	return { lines: [...outputLines, ""], height: outputLines.length + 1 };
+}
 
 // ── App props ───────────────────────────────────────────────────────
 
@@ -121,19 +212,46 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	}
 	const session = sessionRef.current;
 
-	// Wire up script file loader for /run and /parse commands
+	// Wire up script file I/O for /run, /parse, and /edit commands.
+	// Path resolution (project Scripts folder vs CWD) is handled by session.resolveScriptPath().
 	if (!session.loadScriptFile) {
 		session.loadScriptFile = async (filePath: string) => {
 			const { readFile } = await import("node:fs/promises");
 			const { resolve } = await import("node:path");
-			const resolved = resolve(filePath);
-			return readFile(resolved, "utf-8");
+			return readFile(resolve(session.resolveScriptPath(filePath)), "utf-8");
 		};
 	}
+	if (!session.saveScriptFile) {
+		session.saveScriptFile = async (filePath: string, content: string) => {
+			const { writeFile } = await import("node:fs/promises");
+			const { resolve } = await import("node:path");
+			await writeFile(resolve(session.resolveScriptPath(filePath)), content, "utf-8");
+		};
+	}
+	if (!session.globScriptFiles) {
+		session.globScriptFiles = async (pattern: string) => {
+			const { readdir } = await import("node:fs/promises");
+			const { resolve, dirname, basename } = await import("node:path");
+			const resolved = resolve(session.resolveScriptPath(pattern));
+			const dir = dirname(resolved);
+			const glob = basename(resolved);
+			const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+			const entries = await readdir(dir);
+			return entries.filter(f => re.test(f)).sort().map(f => resolve(dir, f));
+		};
+	}
+
+	// Project info (fetched on first successful probe)
+	const [projectName, setProjectName] = useState<string | undefined>(undefined);
+	const [projectPath, setProjectPath] = useState<string | undefined>(undefined);
 
 	// Multiline editor mode — toggled by /edit command
 	const [multilineMode, setMultilineMode] = useState(false);
 	const [editorErrorLine, setEditorErrorLine] = useState<number | undefined>(undefined);
+	const [editorFilePath, setEditorFilePath] = useState<string | null>(null);
+	// Saved content for swapping between single-line and multiline modes
+	const editorContentRef = useRef<string>("");
+	const singleLineContentRef = useRef<string>("");
 
 	// Input imperative handle + mouse support
 	const inputHandleRef = useRef<InputHandle>(null);
@@ -680,8 +798,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				if (escTimestampRef.current > 0 && (now - escTimestampRef.current) < 500) {
 					escTimestampRef.current = 0;
 					setCompletionState(null);
+					// Save multiline content, restore single-line content
+					editorContentRef.current = handle.getValue();
 					setMultilineMode(false);
-					handle.setValue("");
+					setEditorErrorLine(undefined);
+					handle.setValue(singleLineContentRef.current);
 				} else {
 					escTimestampRef.current = now;
 					// Toggle completion popup
@@ -872,6 +993,25 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				const alive = await connection.probe();
 				if (!cancelled) {
 					setConnectionStatus(alive ? "connected" : "error");
+					// Fetch project info on first successful connection
+					if (alive && !session.projectFolder) {
+						try {
+							const resp = await connection.get("/api/status");
+							// /api/status returns project info at the top level, not inside value/result
+							const data = resp as unknown as Record<string, unknown>;
+							if (data.success && data.project && typeof data.project === "object") {
+								const proj = data.project as Record<string, unknown>;
+								const name = typeof proj.name === "string" ? proj.name : undefined;
+								const folder = typeof proj.projectFolder === "string" ? proj.projectFolder : undefined;
+								if (name) session.projectName = name;
+								if (folder) session.projectFolder = folder;
+								if (!cancelled) {
+									setProjectName(name);
+									setProjectPath(folder);
+								}
+							}
+						} catch { /* ignore — project info is optional */ }
+					}
 				}
 			} catch {
 				if (!cancelled) setConnectionStatus("error");
@@ -979,23 +1119,46 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const handleSubmit = useCallback(async (input: string) => {
 		// ── /edit command: toggle multiline editor mode ──────────
 		if (input.trim() === "/edit" || input.trim().startsWith("/edit ")) {
-			const arg = input.trim().slice("/edit".length).trim();
+			let arg = input.trim().slice("/edit".length).trim();
+			// Strip surrounding quotes from filename
+			if ((arg.startsWith('"') && arg.endsWith('"')) || (arg.startsWith("'") && arg.endsWith("'"))) {
+				arg = arg.slice(1, -1);
+			}
+			const handle = inputHandleRef.current;
 			if (arg && session.loadScriptFile) {
-				// /edit file.hsc — load file into editor
+				// /edit file.hsc — load file or create if missing
 				try {
 					const content = await session.loadScriptFile(arg);
+					// Save single-line content, switch to multiline
+					if (handle) singleLineContentRef.current = handle.getValue();
+					setEditorFilePath(arg);
 					setMultilineMode(true);
-					const handle = inputHandleRef.current;
-					if (handle) {
-						handle.setValue(content.replace(/\r\n/g, "\n").trimEnd());
+					if (handle) handle.setValue(content.replace(/\r\n/g, "\n").trimEnd());
+				} catch (err: any) {
+					if (err?.code === "ENOENT" && session.saveScriptFile) {
+						// File doesn't exist — create it and open empty editor
+						try {
+							await session.saveScriptFile(arg, "");
+							if (handle) singleLineContentRef.current = handle.getValue();
+							setEditorFilePath(arg);
+							setMultilineMode(true);
+							if (handle) handle.setValue("");
+						} catch (saveErr) {
+							const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+							const block = renderResult({ type: "error", message: `Failed to create "${arg}": ${saveErr instanceof Error ? saveErr.message : String(saveErr)}` }, scheme, innerW);
+							if (block) addBlocks([block]);
+						}
+					} else {
+						const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+						const block = renderResult({ type: "error", message: `Failed to load "${arg}": ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
+						if (block) addBlocks([block]);
 					}
-				} catch (err) {
-					const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
-					const block = renderResult({ type: "error", message: `Failed to load "${arg}": ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
-					if (block) addBlocks([block]);
 				}
 			} else {
+				// /edit with no arg — restore previous editor content
+				if (handle) singleLineContentRef.current = handle.getValue();
 				setMultilineMode(true);
+				if (handle) handle.setValue(editorContentRef.current);
 			}
 			return;
 		}
@@ -1008,10 +1171,21 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			try {
 				const { parseScript } = await import("../engine/run/parser.js");
 				const { validateScript, formatValidationReport } = await import("../engine/run/validator.js");
-				const { executeScript, formatRunReport, formatResultForLog, filterLogNoise } = await import("../engine/run/executor.js");
+				const { executeScript } = await import("../engine/run/executor.js");
 
 				// Clear previous error highlight
 				setEditorErrorLine(undefined);
+
+				// Save to file if associated
+				if (editorFilePath && session.saveScriptFile) {
+					try {
+						await session.saveScriptFile(editorFilePath, input);
+					} catch (err) {
+						const block = renderResult({ type: "error", message: `Save failed: ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
+						if (block) addBlocks([block]);
+						return;
+					}
+				}
 
 				const script = parseScript(input);
 				const validation = validateScript(script, session);
@@ -1026,8 +1200,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					return;
 				}
 
-				// Echo: show entire script as dimmed text
-				const echoBlock = renderEcho(input, scheme.foreground.muted, scheme.backgrounds.darker, innerW);
+				// Echo: condensed when file is associated, full script otherwise
+				const echoText = editorFilePath
+					? `Execute script "${editorFilePath.split(/[\\/]/).pop()}"`
+					: input;
+				const echoBlock = renderEcho(echoText, scheme.foreground.muted, scheme.backgrounds.darker, innerW);
 				addBlocks([echoBlock]);
 
 				const result = await executeScript(script, session);
@@ -1037,90 +1214,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					setEditorErrorLine(result.error.line);
 				}
 
-				// Build mode map to colorize output and filter meta commands
-				const scriptLines = input.split("\n").map(l => l.trim());
-				const modeMap = buildModeMap(scriptLines);
-
-				// Assemble per-command outputs with mode color bars
-				const dimmed = fgHex(scheme.foreground.muted);
-				const bg = bgHex(scheme.backgrounds.standard);
-				const outputLines: string[] = [];
-				outputLines.push(bg + dimmed + "\u2502 " + "Executing script..." + RESET);
-
-				// Build a lookup from line number to result
-				const resultsByLine = new Map<number, typeof result.results[number]>();
-				for (const cmd of result.results) {
-					resultsByLine.set(cmd.line, cmd);
-				}
-
-				// Walk raw lines to interleave comments, blanks, and results
-				let actionCount = 0;
-				for (let i = 0; i < scriptLines.length; i++) {
-					const rawLine = scriptLines[i]!;
-					const lineNum = i + 1; // 1-based
-					const modeEntry = modeMap[i];
-
-					// Comment lines (# or //) → dimmed, strip prefix
-					if (rawLine.startsWith("#") || rawLine.startsWith("//")) {
-						const commentText = rawLine.startsWith("//")
-							? rawLine.slice(2).trim()
-							: rawLine.slice(1).trim();
-						outputLines.push(bg + dimmed + "\u2502 " + commentText + RESET);
-						continue;
-					}
-
-					// Empty lines → skip
-					if (rawLine === "") continue;
-
-					// Mode entry/exit → skip
-					if (modeEntry?.isModeEntry || modeEntry?.isModeExit) continue;
-
-					// Look up result for this line
-					const cmd = resultsByLine.get(lineNum);
-					if (!cmd) continue;
-
-					const val = formatResultForLog(cmd.result);
-					if (!val) continue;
-
-					actionCount++;
-
-					const barColor = (modeEntry && modeEntry.modeId !== "root" && modeEntry.accent)
-						? fgHex(modeEntry.accent)
-						: dimmed;
-
-					for (const line of val.split("\n")) {
-						outputLines.push(bg + barColor + "\u2502" + RESET + bg + " " + line + RESET);
-					}
-				}
-
-				// Expect results
-				const errFg = fgHex(brand.error);
-				const okFg = fgHex(brand.ok);
-				for (const expect of result.expects) {
-					const icon = expect.passed ? "\u2713" : "\u2717";
-					const color = expect.passed ? okFg : errFg;
-					let line = `${icon} line ${expect.line}: ${expect.command} is ${expect.expected}`;
-					if (!expect.passed) line += ` \u2014 got ${expect.actual}`;
-					outputLines.push(bg + color + "\u2502 " + line + RESET);
-				}
-
-				// Error with ✗ icon
-				if (result.error) {
-					outputLines.push(bg + errFg + "\u2502 \u2717 " + `ABORTED at line ${result.error.line}: ${filterLogNoise(result.error.message)}` + RESET);
-				}
-
-				// Footer summary
-				const passed = result.expects.filter(e => e.passed).length;
-				const total = result.expects.length;
-				const statusColor = result.ok ? okFg : errFg;
-				const statusIcon = result.ok ? "\u2713" : "\u2717";
-				const statusParts: string[] = [];
-				if (actionCount > 0) statusParts.push(`${actionCount} command${actionCount !== 1 ? "s" : ""} executed`);
-				if (total > 0) statusParts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
-				outputLines.push(bg + statusColor + "\u2502 " + statusIcon + " " + statusParts.join(", ") + RESET);
-
-				// Build pre-rendered block directly (ANSI codes would be mangled by markdown)
-				const block = { lines: [...outputLines, ""], height: outputLines.length + 1 };
+				// Format and display script execution log
+				const block = formatScriptLog(input, result, scheme);
 				addBlocks([block]);
 			} catch (err) {
 				const block = renderResult({ type: "error", message: `Script error: ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
@@ -1206,6 +1301,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					const block = renderResult({ type: "text", content: "/compact is only available in builder mode" }, scheme, innerW);
 					if (block) addBlocks([block]);
 				}
+			} else if (result.type === "run-report") {
+				const logBlock = formatScriptLog(result.source, result.runResult, scheme);
+				addBlocks([logBlock]);
 			} else if (result.type === "empty" && input.startsWith("/")) {
 				if (input.trim() === "/clear") {
 					setOutputBlocks([]);
@@ -1646,6 +1744,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					connectionStatus={connectionStatus}
 					columns={columns}
 					treeLabel={treeLabel}
+					projectName={projectName}
+					projectPath={projectPath ?? process.cwd()}
 				/>
 				<Box flexDirection="row" height={mainAreaHeight}>
 					{sidebarVisible && (

@@ -77,7 +77,7 @@ describe("buildModeMap", () => {
 
 describe("tokenizerForLine", () => {
 	it("returns slash tokenizer for / lines", () => {
-		const entry = { modeId: "builder" as const, isModeEntry: true, isModeExit: false, accent: "" };
+		const entry = { modeId: "builder" as const, isModeEntry: true, isOneShot: false, isModeExit: false, accent: "" };
 		const tok = tokenizerForLine(entry, "/builder");
 		expect(tok).toBeDefined();
 		const spans = tok!("/builder");
@@ -85,7 +85,7 @@ describe("tokenizerForLine", () => {
 	});
 
 	it("returns builder tokenizer for builder mode lines", () => {
-		const entry = { modeId: "builder" as const, isModeEntry: false, isModeExit: false, accent: "" };
+		const entry = { modeId: "builder" as const, isModeEntry: false, isOneShot: false, isModeExit: false, accent: "" };
 		const tok = tokenizerForLine(entry, "add SineSynth");
 		expect(tok).toBeDefined();
 		const spans = tok!("add SineSynth");
@@ -93,19 +93,19 @@ describe("tokenizerForLine", () => {
 	});
 
 	it("returns script tokenizer for script mode lines", () => {
-		const entry = { modeId: "script" as const, isModeEntry: false, isModeExit: false, accent: "" };
+		const entry = { modeId: "script" as const, isModeEntry: false, isOneShot: false, isModeExit: false, accent: "" };
 		const tok = tokenizerForLine(entry, "Engine.getSampleRate()");
 		expect(tok).toBeDefined();
 	});
 
 	it("returns undefined for modes without tokenizers", () => {
-		const entry = { modeId: "dsp" as const, isModeEntry: false, isModeExit: false, accent: "" };
+		const entry = { modeId: "dsp" as const, isModeEntry: false, isOneShot: false, isModeExit: false, accent: "" };
 		const tok = tokenizerForLine(entry, "some command");
 		expect(tok).toBeUndefined();
 	});
 
 	it("returns undefined for root mode non-slash lines", () => {
-		const entry = { modeId: "root" as const, isModeEntry: false, isModeExit: false, accent: "" };
+		const entry = { modeId: "root" as const, isModeEntry: false, isOneShot: false, isModeExit: false, accent: "" };
 		const tok = tokenizerForLine(entry, "plain text");
 		expect(tok).toBeUndefined();
 	});

@@ -274,6 +274,17 @@ function sleep(ms: number): Promise<void> {
 export function formatRunReport(result: RunResult): string {
 	const lines: string[] = [];
 
+	// Per-command results
+	for (const cmd of result.results) {
+		const val = formatResultForLog(cmd.result);
+		if (val) {
+			for (const line of val.split("\n")) {
+				lines.push(line);
+			}
+		}
+	}
+
+	// Expect results
 	for (const expect of result.expects) {
 		const icon = expect.passed ? "\u2713" : "\u2717";
 		const line = ` ${icon} line ${expect.line}: ${expect.command} is ${expect.expected}`;
@@ -289,17 +300,18 @@ export function formatRunReport(result: RunResult): string {
 		lines.push(`ABORTED at line ${result.error.line}: ${result.error.message}`);
 	}
 
+	// Summary footer
+	const parts: string[] = [];
+	if (result.linesExecuted > 0) parts.push(`${result.linesExecuted} commands executed`);
 	if (result.expects.length > 0) {
 		const passed = result.expects.filter((e) => e.passed).length;
 		const total = result.expects.length;
+		parts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
+	}
+	if (parts.length > 0) {
 		lines.push("");
-		if (result.ok) {
-			lines.push(`PASSED: ${passed}/${total} assertions`);
-		} else {
-			lines.push(`FAILED: ${passed}/${total} passed`);
-		}
-	} else if (result.ok) {
-		lines.push(`OK: ${result.linesExecuted} commands executed`);
+		const icon = result.ok ? "\u2713" : "\u2717";
+		lines.push(`${icon} ${parts.join(", ")}`);
 	}
 
 	return lines.join("\n");

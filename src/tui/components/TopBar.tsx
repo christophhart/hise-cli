@@ -12,6 +12,10 @@ export interface TopBarProps {
 	columns: number;
 	/** Tree sidebar content label (e.g. "Module Tree"). Only shown when provided. */
 	treeLabel?: string;
+	/** Project name for display (e.g. "Demo Project"). */
+	projectName?: string;
+	/** Folder path for display (project folder or CWD). */
+	projectPath?: string;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -20,6 +24,8 @@ export const TopBar = React.memo(function TopBar({
 	connectionStatus,
 	columns,
 	treeLabel,
+	projectName,
+	projectPath,
 }: TopBarProps) {
 	const { scheme, brand, statusColor, layout } = useTheme();
 
@@ -32,6 +38,12 @@ export const TopBar = React.memo(function TopBar({
 	const leftText = treeLabel ?? "";
 	const leftWidth = leftText ? pad.length + leftText.length : 0;
 
+	// ── Project info: "Name | Path" or just path ──
+	const projectDisplay = projectName && projectPath
+		? `${projectName} | ${projectPath}`
+		: projectPath ?? "";
+	const projectWidth = projectDisplay ? pad.length + projectDisplay.length : 0;
+
 	// ── Right side: brand + renderer + [mode] + dot ──
 	const brandText = "HISE CLI";
 	const rendererTag = isRezi ? " rezi" : " ink";
@@ -40,7 +52,7 @@ export const TopBar = React.memo(function TopBar({
 	const rightWidth = rightContent.length + pad.length;
 
 	// Fill between left and right
-	const fillWidth = Math.max(0, columns - leftWidth - rightWidth);
+	const fillWidth = Math.max(0, columns - leftWidth - projectWidth - rightWidth);
 
 	const bg = scheme.backgrounds.darker;
 	const barPadRow = layout.barVerticalPad > 0
@@ -55,6 +67,19 @@ export const TopBar = React.memo(function TopBar({
 						<>
 							<Text>{pad}</Text>
 							<Text color={modeAccent} bold>{leftText}</Text>
+						</>
+					) : null}
+					{projectDisplay ? (
+						<>
+							<Text>{pad}</Text>
+							{projectName ? (
+								<>
+									<Text bold>{projectName}</Text>
+									<Text color={scheme.foreground.muted}>{" | "}{projectPath}</Text>
+								</>
+							) : (
+								<Text color={scheme.foreground.muted}>{projectPath}</Text>
+							)}
 						</>
 					) : null}
 					<Text>{" ".repeat(fillWidth)}</Text>

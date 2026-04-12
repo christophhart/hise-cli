@@ -13,6 +13,28 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { watch } from "node:fs";
 
+/** Wire file I/O onto a session. Uses session.resolveScriptPath() for path resolution. */
+function wireScriptFileOps(session: import("../engine/session.js").Session): void {
+	const origLoad = session.loadScriptFile;
+	if (origLoad) {
+		session.loadScriptFile = async (fp: string) => origLoad(resolve(session.resolveScriptPath(fp)));
+	}
+	session.saveScriptFile = async (fp: string, content: string) => {
+		const { writeFile } = await import("node:fs/promises");
+		await writeFile(resolve(session.resolveScriptPath(fp)), content, "utf-8");
+	};
+	session.globScriptFiles = async (pattern: string) => {
+		const { readdir } = await import("node:fs/promises");
+		const { dirname, basename } = await import("node:path");
+		const resolved = resolve(session.resolveScriptPath(pattern));
+		const dir = dirname(resolved);
+		const glob = basename(resolved);
+		const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
+		const entries = await readdir(dir);
+		return entries.filter(f => re.test(f)).sort().map(f => resolve(dir, f));
+	};
+}
+
 export interface CliCommandOptions {
 	connectionOverride?: HiseConnection;
 	handlerRegistry?: WizardHandlerRegistry;
@@ -46,13 +68,14 @@ export async function executeCliCommand(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 	});
-	// Wire up script file loader for /run and /parse commands
+	// Wire up script file I/O for /run, /parse, and /edit commands
 	session.loadScriptFile = async (filePath: string) => {
 		const { readFile } = await import("node:fs/promises");
 		const { resolve } = await import("node:path");
 		const resolved = resolve(filePath);
 		return readFile(resolved, "utf-8");
 	};
+	wireScriptFileOps(session);
 
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 	for (const mode of session.modeStack) {
@@ -128,6 +151,7 @@ async function executeRunCommand(
 		getComponentProperties: () => datasets.componentProperties,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
+	wireScriptFileOps(session);
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 
 	try {
@@ -158,12 +182,10 @@ async function executeRunCommand(
 
 		// Execute
 		const { executeScript } = await import("../engine/run/executor.js");
+		const { runReportResult } = await import("../engine/result.js");
+		const { serializeCliOutput } = await import("./output.js");
 		const result = await executeScript(script, session);
-
-		if (result.ok) {
-			return { kind: "json", payload: { ok: true, value: result } };
-		}
-		return { kind: "json", payload: { ok: false, error: JSON.stringify(result) } };
+		return { kind: "json", payload: serializeCliOutput("run", runReportResult(source, result)) };
 	} finally {
 		connection.destroy();
 	}
@@ -191,6 +213,7 @@ async function runWatchMode(
 		getComponentProperties: () => datasets.componentProperties,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
+	wireScriptFileOps(session);
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 
 	const timestamp = () => {

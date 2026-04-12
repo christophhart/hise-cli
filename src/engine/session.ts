@@ -36,7 +36,27 @@ export class Session implements SessionContext, CommandSession {
 	wizardRegistry: WizardRegistry | null = null;
 	handlerRegistry: WizardHandlerRegistry | null = null;
 	projectName: string | null = null;
+	projectFolder: string | null = null;
 	loadScriptFile?: (filePath: string) => Promise<string>;
+	saveScriptFile?: (filePath: string, content: string) => Promise<void>;
+	globScriptFiles?: (pattern: string) => Promise<string[]>;
+
+	/**
+	 * Resolve a script file path. Absolute paths pass through.
+	 * Relative paths resolve against projectFolder/Scripts/ when HISE
+	 * is connected, or are returned unchanged (for node:path.resolve
+	 * to handle against CWD in the I/O layer).
+	 */
+	resolveScriptPath(filePath: string): string {
+		// Absolute: Unix /path or Windows D:\path / D:/path
+		if (filePath.startsWith("/") || /^[a-zA-Z]:[/\\]/.test(filePath)) {
+			return filePath;
+		}
+		if (this.projectFolder) {
+			return this.projectFolder + "/" + filePath;
+		}
+		return filePath;
+	}
 
 	private readonly modeFactories = new Map<string, ModeFactory>();
 	private readonly modeCache = new Map<string, Mode>();

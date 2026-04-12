@@ -60,7 +60,7 @@ describe("formatRunReport", () => {
 		const report = formatRunReport(result);
 		expect(report).toContain("\u2713 line 3");
 		expect(report).toContain("\u2713 line 5");
-		expect(report).toContain("PASSED: 2/2");
+		expect(report).toContain("PASSED 2/2");
 	});
 
 	it("formats failing test report", () => {
@@ -77,7 +77,7 @@ describe("formatRunReport", () => {
 		expect(report).toContain("\u2713 line 3");
 		expect(report).toContain("\u2717 line 5");
 		expect(report).toContain("got 3");
-		expect(report).toContain("FAILED: 1/2");
+		expect(report).toContain("FAILED 1/2");
 	});
 
 	it("formats report with abort error", () => {
@@ -101,6 +101,6 @@ describe("formatRunReport", () => {
 			results: [],
 		};
 		const report = formatRunReport(result);
-		expect(report).toContain("OK: 5 commands executed");
+		expect(report).toContain("5 commands executed");
 	});
 });
