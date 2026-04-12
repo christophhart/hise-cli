@@ -1659,6 +1659,8 @@ export class BuilderMode implements Mode {
 		this.treeRoot = null;
 		this.currentPath = [];
 		this.treeFetched = false;
+		// HISE discards undo groups on reset — sync the TUI's plan state
+		session.resetPlanState?.();
 		await this.fetchTree(session.connection);
 		return textResult(response.logs.length > 0 ? response.logs.join("; ") : "Module tree reset");
 	}

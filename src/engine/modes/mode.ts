@@ -53,6 +53,8 @@ export interface SessionContext {
 	popMode(): import("../result.js").CommandResult;
 	/** Invalidate all cached mode trees — call after undo/redo operations. */
 	invalidateAllTrees?(): void;
+	/** Reset the undo mode's local plan tracking state (HISE discards groups on reset). */
+	resetPlanState?(): void;
 }
 
 export interface Mode {

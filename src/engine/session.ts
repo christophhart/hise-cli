@@ -117,6 +117,14 @@ export class Session implements SessionContext, CommandSession {
 		}
 	}
 
+	/** Reset the undo mode's local plan tracking state. */
+	resetPlanState(): void {
+		const undoMode = this.modeCache.get("undo");
+		if (undoMode && "resetPlanState" in undoMode) {
+			(undoMode as import("./modes/undo.js").UndoMode).resetPlanState();
+		}
+	}
+
 	// ── Mode stack ──────────────────────────────────────────────────
 
 	currentMode(): Mode {

@@ -14,6 +14,7 @@ import type {
 import { parseExpect, parseWait, compareValues } from "./parser.js";
 import { optimizeScript } from "./optimizer.js";
 import { buildModeMap } from "./mode-map.js";
+import { isEnvelopeResponse } from "../hise.js";
 
 /**
  * Execute a parsed .hsc script against a live session.
@@ -36,6 +37,18 @@ export async function executeScript(
 	const results: import("./types.js").CommandOutput[] = [];
 	let linesExecuted = 0;
 	let abortError: { line: number; message: string } | undefined;
+
+	// Check if already in a plan group before execution (for unclosed detection)
+	let wasInPlan = false;
+	if (session.connection) {
+		try {
+			const resp = await session.connection.get("/api/undo/diff?scope=group");
+			if (isEnvelopeResponse(resp) && resp.success) {
+				const r = resp.result as Record<string, unknown> | null;
+				wasInPlan = typeof r?.groupName === "string" && r.groupName !== "root";
+			}
+		} catch { /* no connection — skip check */ }
+	}
 
 	try {
 		for (const line of script.lines) {
@@ -140,6 +153,24 @@ export async function executeScript(
 		}
 	} finally {
 		restoreModeStack(session, savedStack);
+	}
+
+	// Detect unclosed plan group opened during script execution
+	if (!abortError && session.connection) {
+		try {
+			const resp = await session.connection.get("/api/undo/diff?scope=group");
+			if (isEnvelopeResponse(resp) && resp.success) {
+				const r = resp.result as Record<string, unknown> | null;
+				const nowInPlan = typeof r?.groupName === "string" && r.groupName !== "root";
+				if (!wasInPlan && nowInPlan) {
+					abortError = {
+						line: script.lines[script.lines.length - 1]?.lineNumber ?? 0,
+						message: `Unclosed plan group "${r!.groupName}" \u2014 add /undo apply or /undo discard`,
+					};
+					onProgress?.({ type: "error", line: abortError.line, message: abortError.message });
+				}
+			}
+		} catch { /* no connection — skip check */ }
 	}
 
 	const allPassed = expects.every((e) => e.passed);

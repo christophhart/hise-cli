@@ -46,6 +46,13 @@ export class UndoMode implements Mode {
 		this.completionEngine = completionEngine ?? null;
 	}
 
+	/** Reset local plan tracking state. Called when HISE discards groups externally (e.g. builder reset). */
+	resetPlanState(): void {
+		this.inPlan = false;
+		this.planName = "";
+		this.planDiff = null;
+	}
+
 	get prompt(): string {
 		return this.inPlan ? `[plan:${this.planName}] > ` : "[undo] > ";
 	}
