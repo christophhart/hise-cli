@@ -41,6 +41,9 @@ export class Session implements SessionContext, CommandSession {
 	saveScriptFile?: (filePath: string, content: string) => Promise<void>;
 	globScriptFiles?: (pattern: string) => Promise<string[]>;
 
+	/** Stack of script files currently executing (recursion guard). */
+	readonly scriptStack: string[] = [];
+
 	/**
 	 * Resolve a script file path. Absolute paths pass through.
 	 * Relative paths resolve against projectFolder/Scripts/ when HISE

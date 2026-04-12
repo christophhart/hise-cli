@@ -13,6 +13,22 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { watch } from "node:fs";
 
+/** Fetch project info from HISE so resolveScriptPath uses the project folder. */
+async function fetchProjectInfo(
+	session: import("../engine/session.js").Session,
+	connection: import("../engine/hise.js").HiseConnection,
+): Promise<void> {
+	try {
+		const resp = await connection.get("/api/status");
+		const data = resp as unknown as Record<string, unknown>;
+		if (data.success && data.project && typeof data.project === "object") {
+			const proj = data.project as Record<string, unknown>;
+			if (typeof proj.name === "string") session.projectName = proj.name;
+			if (typeof proj.projectFolder === "string") session.projectFolder = proj.projectFolder;
+		}
+	} catch { /* no connection — resolve against CWD */ }
+}
+
 /** Wire file I/O onto a session. Uses session.resolveScriptPath() for path resolution. */
 function wireScriptFileOps(session: import("../engine/session.js").Session): void {
 	const origLoad = session.loadScriptFile;
@@ -76,6 +92,7 @@ export async function executeCliCommand(
 		return readFile(resolved, "utf-8");
 	};
 	wireScriptFileOps(session);
+	await fetchProjectInfo(session, connection);
 
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 	for (const mode of session.modeStack) {
@@ -128,18 +145,7 @@ async function executeRunCommand(
 		return { kind: "json", payload: { ok: true, value: "Watch ended." } };
 	}
 
-	// Read the script source
-	let source: string;
-	try {
-		source = await readRunSource(parsed.source);
-	} catch (err) {
-		return {
-			kind: "json",
-			payload: { ok: false, error: `Failed to load script: ${err instanceof Error ? err.message : String(err)}` },
-		};
-	}
-
-	// Create session with connection
+	// Create session with connection (before reading source, so path resolution works)
 	const mockRuntime = !opts.connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
 	const connection = new CapturingHiseConnection(
 		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
@@ -152,7 +158,23 @@ async function executeRunCommand(
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
+	await fetchProjectInfo(session, connection);
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
+
+	// Read the script source (after project info, so file paths resolve to project folder)
+	let source: string;
+	try {
+		if (parsed.source.type === "file") {
+			source = await readFile(resolve(session.resolveScriptPath(parsed.source.path)), "utf-8");
+		} else {
+			source = await readRunSource(parsed.source);
+		}
+	} catch (err) {
+		return {
+			kind: "json",
+			payload: { ok: false, error: `Failed to load script: ${err instanceof Error ? err.message : String(err)}` },
+		};
+	}
 
 	try {
 		// Parse
@@ -214,6 +236,7 @@ async function runWatchMode(
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
+	await fetchProjectInfo(session, connection);
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 
 	const timestamp = () => {

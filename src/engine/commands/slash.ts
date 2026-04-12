@@ -465,10 +465,22 @@ async function runOrParse(
 		return errorResult(formatValidationReport(validation));
 	}
 
+	// Recursion guard: check if this file is already on the script stack
+	const resolvedPath = session.resolveScriptPath(filePath);
+	if (session.scriptStack.includes(resolvedPath)) {
+		const chain = [...session.scriptStack, resolvedPath].map(p => p.split(/[\\/]/).pop()).join(" → ");
+		return errorResult(`Recursive script call detected: ${chain}`);
+	}
+
 	// Execution phase
-	const { executeScript } = await import("../run/executor.js");
-	const result = await executeScript(script, session);
-	return runReportResult(source, result);
+	session.scriptStack.push(resolvedPath);
+	try {
+		const { executeScript } = await import("../run/executor.js");
+		const result = await executeScript(script, session);
+		return runReportResult(source, result);
+	} finally {
+		session.scriptStack.pop();
+	}
 }
 
 // ── Registration ────────────────────────────────────────────────────
