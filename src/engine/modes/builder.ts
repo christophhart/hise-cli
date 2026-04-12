@@ -134,6 +134,7 @@ import {
 	Bypass,
 	Clone,
 	Enable,
+	Get,
 	Into,
 	Load,
 	Move,
@@ -282,6 +283,17 @@ class BuilderParser extends CstParser {
 		]);
 	});
 
+	// get <target>.<param>
+	public getCommand = this.RULE("getCommand", () => {
+		this.CONSUME(Get);
+		this.OR([
+			{ ALT: () => this.CONSUME(QuotedString, { LABEL: "quotedTarget" }) },
+			{ ALT: () => this.AT_LEAST_ONE(() => this.CONSUME(Identifier, { LABEL: "targetWords" })) },
+		]);
+		this.CONSUME(Dot);
+		this.CONSUME2(Identifier, { LABEL: "param" });
+	});
+
 	// Top-level entry: dispatches to sub-rules
 	public command = this.RULE("command", () => {
 		this.OR([
@@ -291,6 +303,7 @@ class BuilderParser extends CstParser {
 			{ ALT: () => this.SUBRULE(this.moveCommand) },
 			{ ALT: () => this.SUBRULE(this.renameCommand) },
 			{ ALT: () => this.SUBRULE(this.setCommand) },
+			{ ALT: () => this.SUBRULE(this.getCommand) },
 			{ ALT: () => this.SUBRULE(this.loadCommand) },
 			{ ALT: () => this.SUBRULE(this.bypassCommand) },
 			{ ALT: () => this.SUBRULE(this.enableCommand) },
@@ -358,6 +371,12 @@ export interface EnableCommand {
 	target: string;
 }
 
+export interface GetCommand {
+	type: "get";
+	target: string;
+	param: string;
+}
+
 export interface ShowCommand {
 	type: "show";
 	what: "tree" | "types" | "target";
@@ -372,6 +391,7 @@ export type BuilderCommand =
 	| MoveCommand
 	| RenameCommand
 	| SetCommand
+	| GetCommand
 	| LoadCommand
 	| BypassCommand
 	| EnableCommand
@@ -446,12 +466,12 @@ export function parseBuilderInput(
 		if (isKeyword) {
 			toParse = trimmed;
 			lastVerb = firstToken;
-		} else if (lastVerb === "set" && !trimmed.includes(".")) {
-			// Set continuation without dot — inherit target
+		} else if ((lastVerb === "set" || lastVerb === "get") && !trimmed.includes(".")) {
+			// Set/get continuation without dot — inherit target
 			if (!lastSetTarget) {
 				return { error: `No target to inherit in segment: ${trimmed}` };
 			}
-			toParse = `set ${lastSetTarget}.${trimmed}`;
+			toParse = `${lastVerb} ${lastSetTarget}.${trimmed}`;
 		} else if (lastVerb) {
 			toParse = `${lastVerb} ${trimmed}`;
 		} else {
@@ -464,8 +484,10 @@ export function parseBuilderInput(
 		}
 		commands.push(result.command);
 
-		// Track last set target for inheritance
+		// Track last set/get target for inheritance
 		if (result.command.type === "set") {
+			lastSetTarget = result.command.target;
+		} else if (result.command.type === "get") {
 			lastSetTarget = result.command.target;
 		}
 	}
@@ -488,6 +510,7 @@ function extractCommand(
 	if (c.moveCommand) return extractMoveCommand(c.moveCommand[0]);
 	if (c.renameCommand) return extractRenameCommand(c.renameCommand[0]);
 	if (c.setCommand) return extractSetCommand(c.setCommand[0]);
+	if (c.getCommand) return extractGetCommand(c.getCommand[0]);
 	if (c.loadCommand) return extractLoadCommand(c.loadCommand[0]);
 	if (c.bypassCommand) return extractTargetCommand(c.bypassCommand[0], "bypass");
 	if (c.enableCommand) return extractTargetCommand(c.enableCommand[0], "enable");
@@ -595,6 +618,20 @@ function extractSetCommand(
 	}
 
 	return { command: { type: "set", target, param, value } };
+}
+
+function extractGetCommand(
+	node: any,
+): { command: GetCommand } | { error: string } {
+	let target: string;
+	if (node.children.quotedTarget) {
+		target = stripQuotes((node.children.quotedTarget[0] as IToken).image);
+	} else {
+		const words = (node.children.targetWords as IToken[]).map((t) => t.image);
+		target = words.join(" ");
+	}
+	const param = (node.children.param[0] as IToken).image;
+	return { command: { type: "get", target, param } };
 }
 
 function extractLoadCommand(
@@ -1041,6 +1078,8 @@ export function commandToOps(
 			return { ops: [{ op: "set_effect", target: cmd.target, effect: cmd.source }] };
 		case "move":
 			return { error: "move is not yet supported by the HISE C++ API" };
+		case "get":
+			return { error: "get commands are handled locally" };
 		case "show":
 			return { error: "show commands are handled locally" };
 	}
@@ -1217,7 +1256,8 @@ export class BuilderMode implements Mode {
 		}
 
 		// ── set <target>.<param> [to] <value> ──
-		if (verb === "set") {
+		// ── get <target>.<param> ──
+		if (verb === "set" || verb === "get") {
 			return this.completeSet(tokens, trailingSpace, offset, inputLength, segment, modules);
 		}
 
@@ -1629,6 +1669,11 @@ export class BuilderMode implements Mode {
 		cmd: BuilderCommand,
 		session: SessionContext,
 	): Promise<CommandResult> {
+		// Get command — fetch single parameter value
+		if (cmd.type === "get") {
+			return this.handleGet(cmd, session.connection ?? null);
+		}
+
 		// Show commands are always local (except show target which may fetch params)
 		if (cmd.type === "show") {
 			return this.handleShow(cmd, session.connection ?? null);
@@ -1784,6 +1829,8 @@ export class BuilderMode implements Mode {
 				return textResult(`bypass ${cmd.target} (no HISE connection)`);
 			case "enable":
 				return textResult(`enable ${cmd.target} (no HISE connection)`);
+			case "get":
+				return textResult(`get ${cmd.target}.${cmd.param} (no HISE connection)`);
 			default:
 				return textResult("(no HISE connection)");
 		}
@@ -1825,6 +1872,43 @@ export class BuilderMode implements Mode {
 			return textResult("No module tree available (requires HISE connection).");
 		}
 		return textResult(renderTreeText(this.treeRoot, 0));
+	}
+
+	private async handleGet(
+		cmd: GetCommand,
+		connection: import("../hise.js").HiseConnection | null,
+	): Promise<CommandResult> {
+		if (!connection) {
+			return textResult(`get ${cmd.target}.${cmd.param} (no HISE connection)`);
+		}
+
+		const response = await connection.get(
+			`/api/builder/tree?moduleId=${encodeURIComponent(cmd.target)}`,
+		);
+
+		if (!isEnvelopeResponse(response) || !response.success) {
+			return errorResult(`Module "${cmd.target}" not found`);
+		}
+
+		const raw = response.result as Record<string, unknown>;
+		const params = raw.parameters as Array<{
+			id: string;
+			value: number;
+			valueAsString: string;
+			range: { min: number; max: number };
+			defaultValue: number;
+		}> | undefined;
+
+		if (!params) {
+			return errorResult(`Module "${cmd.target}" has no parameters`);
+		}
+
+		const param = params.find((p) => p.id === cmd.param);
+		if (!param) {
+			return errorResult(`Parameter "${cmd.param}" not found on "${cmd.target}"`);
+		}
+
+		return textResult(param.valueAsString ?? String(param.value));
 	}
 
 	private async handleShowTarget(

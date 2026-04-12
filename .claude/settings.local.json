@@ -17,7 +17,8 @@
       "WebFetch(domain:rezitui.dev)",
       "mcp__hise__hise_runtime_status",
       "mcp__hise__hise_runtime_launch",
-      "mcp__hise__query_scripting_api"
+      "mcp__hise__query_scripting_api",
+      "WebFetch(domain:getfresh.dev)"
     ]
   }
 }

@@ -112,6 +112,12 @@ export const Set = createToken({
 	longer_alt: Identifier,
 });
 
+export const Get = createToken({
+	name: "Get",
+	pattern: /get/i,
+	longer_alt: Identifier,
+});
+
 export const To = createToken({
 	name: "To",
 	pattern: /to/i,
@@ -174,6 +180,7 @@ export const BUILDER_TOKENS = [
 	Enable,
 	Show,
 	Set,
+	Get,
 	To,
 	As,
 	Tree,
@@ -187,7 +194,7 @@ export const BUILDER_TOKENS = [
 const _Set = globalThis.Set;
 export const VERB_KEYWORDS: ReadonlySet<string> = new _Set([
 	"add", "clone", "remove", "move", "rename",
-	"load", "set", "show", "bypass", "enable",
+	"load", "set", "get", "show", "bypass", "enable",
 ]);
 
 export const builderLexer = new Lexer(BUILDER_TOKENS);
@@ -206,6 +213,7 @@ export const UI_TOKENS = [
 	Into,
 	Show,
 	Set,
+	Get,
 	To,
 	As,
 	At,
@@ -215,7 +223,7 @@ export const UI_TOKENS = [
 ];
 
 export const UI_VERB_KEYWORDS: ReadonlySet<string> = new _Set([
-	"add", "remove", "move", "rename", "set", "show",
+	"add", "remove", "move", "rename", "set", "get", "show",
 ]);
 
 export const uiLexer = new Lexer(UI_TOKENS);

@@ -198,6 +198,26 @@ export class Session implements SessionContext, CommandSession {
 				const dotIndex = modeSpec.indexOf(".");
 				const baseModeId = dotIndex === -1 ? modeSpec : modeSpec.slice(0, dotIndex);
 				
+				// /expect: delegate command part to current mode's completion
+				if (baseModeId === "expect") {
+					const mode = this.currentMode();
+					if (mode.complete) {
+						// Only complete the command portion (before " is ")
+						const isIdx = args.lastIndexOf(" is ");
+						const commandPart = isIdx === -1 ? args : args.slice(0, isIdx);
+						const commandCursor = isIdx === -1
+							? cursor - (spaceIndex + 1)
+							: Math.min(cursor - (spaceIndex + 1), commandPart.length);
+						const result = mode.complete(commandPart, commandCursor);
+						return {
+							items: result.items,
+							from: result.from + spaceIndex + 1,
+							to: result.to + spaceIndex + 1,
+							label: result.label,
+						};
+					}
+				}
+
 				// Check if this mode is registered
 				if (this.modeFactories.has(baseModeId)) {
 					try {

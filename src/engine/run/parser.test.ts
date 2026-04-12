@@ -226,4 +226,46 @@ describe("compareValues", () => {
 		expect(compareValues("-6", "-6", 0.01)).toBe(true);
 		expect(compareValues("-6.005", "-6", 0.01)).toBe(true);
 	});
+
+	// ── Truthy/falsy coercion ──────────────────────────────────
+	it("coerces true == 1", () => {
+		expect(compareValues("1", "true", 0.01)).toBe(true);
+		expect(compareValues("true", "1", 0.01)).toBe(true);
+	});
+
+	it("coerces false == 0", () => {
+		expect(compareValues("0", "false", 0.01)).toBe(true);
+		expect(compareValues("false", "0", 0.01)).toBe(true);
+	});
+
+	it("coerces true != false", () => {
+		expect(compareValues("true", "false", 0.01)).toBe(false);
+		expect(compareValues("1", "false", 0.01)).toBe(false);
+		expect(compareValues("0", "true", 0.01)).toBe(false);
+	});
+
+	it("coerces case-insensitively for booleans", () => {
+		expect(compareValues("True", "1", 0.01)).toBe(true);
+		expect(compareValues("FALSE", "0", 0.01)).toBe(true);
+	});
+
+	// ── Percentage comparison ──────────────────────────────────
+	it("compares 0.25 == 25%", () => {
+		expect(compareValues("0.25", "25%", 0.01)).toBe(true);
+		expect(compareValues("25%", "0.25", 0.01)).toBe(true);
+	});
+
+	it("compares 1.0 == 100%", () => {
+		expect(compareValues("1", "100%", 0.01)).toBe(true);
+	});
+
+	it("rejects mismatched percentages", () => {
+		expect(compareValues("0.5", "25%", 0.01)).toBe(false);
+	});
+
+	// ── Case-insensitive strings ───────────────────────────────
+	it("compares strings case-insensitively", () => {
+		expect(compareValues("Hello", "hello", 0.01)).toBe(true);
+		expect(compareValues("Funky", "FUNKY", 0.01)).toBe(true);
+	});
 });

@@ -387,6 +387,7 @@ export class CompletionEngine {
 			{ label: "move", detail: "Move a module (stub)" },
 			{ label: "rename", detail: "Rename a module" },
 			{ label: "set", detail: "Set a module parameter" },
+			{ label: "get", detail: "Get a parameter value" },
 			{ label: "load", detail: "Load DSP network into module" },
 			{ label: "bypass", detail: "Bypass a module" },
 			{ label: "enable", detail: "Enable a bypassed module" },

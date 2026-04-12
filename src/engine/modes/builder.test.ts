@@ -800,8 +800,8 @@ describe("BuilderMode completion", () => {
 	it("completes keywords for empty input", () => {
 		const mode = createBuilderWithEngine();
 		const result = mode.complete!("", 0);
-		// 10 builder keywords + cd, ls, pwd = 13
-		expect(result.items).toHaveLength(13);
+		// 11 builder keywords + cd, ls, pwd = 14
+		expect(result.items).toHaveLength(14);
 		const labels = result.items.map((i) => i.label);
 		expect(labels).toContain("add");
 		expect(labels).toContain("clone");

@@ -21,7 +21,7 @@ import {
 import type { CompletionEngine } from "../completion/engine.js";
 import { fuzzyFilter } from "../completion/engine.js";
 import {
-	Add, Remove, Move, Rename, Into, Show, Set, To, As, At,
+	Add, Remove, Move, Rename, Into, Show, Set, Get, To, As, At,
 	Identifier, QuotedString, NumberLiteral, Dot,
 	uiLexer, UI_TOKENS, UI_VERB_KEYWORDS,
 } from "./tokens.js";
@@ -145,12 +145,24 @@ class UiParser extends CstParser {
 		this.SUBRULE(this.targetRef, { LABEL: "target" });
 	});
 
+	// get <target>.<prop>
+	public getCommand = this.RULE("getCommand", () => {
+		this.CONSUME(Get);
+		this.OR([
+			{ ALT: () => this.CONSUME(QuotedString, { LABEL: "quotedTarget" }) },
+			{ ALT: () => this.AT_LEAST_ONE(() => this.CONSUME(Identifier, { LABEL: "targetWords" })) },
+		]);
+		this.CONSUME(Dot);
+		this.CONSUME2(Identifier, { LABEL: "prop" });
+	});
+
 	// Top-level entry
 	public command = this.RULE("command", () => {
 		this.OR([
 			{ ALT: () => this.SUBRULE(this.addCommand) },
 			{ ALT: () => this.SUBRULE(this.removeCommand) },
 			{ ALT: () => this.SUBRULE(this.setCommand) },
+			{ ALT: () => this.SUBRULE(this.getCommand) },
 			{ ALT: () => this.SUBRULE(this.moveCommand) },
 			{ ALT: () => this.SUBRULE(this.renameCommand) },
 			{ ALT: () => this.SUBRULE(this.showCommand) },
@@ -197,6 +209,12 @@ export interface UiRenameCommand {
 	newName: string;
 }
 
+export interface UiGetCommand {
+	type: "get";
+	target: string;
+	prop: string;
+}
+
 export interface UiShowCommand {
 	type: "show";
 	target: string;
@@ -206,6 +224,7 @@ export type UiCommand =
 	| UiAddCommand
 	| UiRemoveCommand
 	| UiSetCommand
+	| UiGetCommand
 	| UiMoveCommand
 	| UiRenameCommand
 	| UiShowCommand;
@@ -279,12 +298,12 @@ export function parseUiInput(
 		if (isKeyword) {
 			toParse = trimmed;
 			lastVerb = firstToken;
-		} else if (lastVerb === "set" && !trimmed.includes(".")) {
-			// Set continuation without dot — inherit target
+		} else if ((lastVerb === "set" || lastVerb === "get") && !trimmed.includes(".")) {
+			// Set/get continuation without dot — inherit target
 			if (!lastSetTarget) {
 				return { error: `No target to inherit in segment: ${trimmed}` };
 			}
-			toParse = `set ${lastSetTarget}.${trimmed}`;
+			toParse = `${lastVerb} ${lastSetTarget}.${trimmed}`;
 		} else if (lastVerb) {
 			toParse = `${lastVerb} ${trimmed}`;
 		} else {
@@ -297,8 +316,10 @@ export function parseUiInput(
 		}
 		commands.push(result.command);
 
-		// Track last set target for inheritance
+		// Track last set/get target for inheritance
 		if (result.command.type === "set") {
+			lastSetTarget = result.command.target;
+		} else if (result.command.type === "get") {
 			lastSetTarget = result.command.target;
 		}
 	}
@@ -318,6 +339,7 @@ function extractCommand(
 	if (c.addCommand) return extractAddCommand(c.addCommand[0]);
 	if (c.removeCommand) return extractTargetCommand(c.removeCommand[0], "remove");
 	if (c.setCommand) return extractSetCommand(c.setCommand[0]);
+	if (c.getCommand) return extractGetCommand(c.getCommand[0]);
 	if (c.moveCommand) return extractMoveCommand(c.moveCommand[0]);
 	if (c.renameCommand) return extractRenameCommand(c.renameCommand[0]);
 	if (c.showCommand) return extractShowCommand(c.showCommand[0]);
@@ -399,6 +421,20 @@ function extractSetCommand(
 	}
 
 	return { command: { type: "set", target, prop, value } };
+}
+
+function extractGetCommand(
+	node: any,
+): { command: UiGetCommand } | { error: string } {
+	let target: string;
+	if (node.children.quotedTarget) {
+		target = stripQuotes((node.children.quotedTarget[0] as IToken).image);
+	} else {
+		const words = (node.children.targetWords as IToken[]).map((t) => t.image);
+		target = words.join(" ");
+	}
+	const prop = (node.children.prop[0] as IToken).image;
+	return { command: { type: "get", target, prop } };
 }
 
 function extractMoveCommand(
@@ -506,6 +542,8 @@ export function commandToOps(
 		}
 		case "rename":
 			return { ops: [{ op: "rename", target: cmd.target, newId: cmd.newName }] };
+		case "get":
+			return { error: "get commands are handled locally" };
 		case "show":
 			return { error: "show commands are handled locally" };
 	}
@@ -649,7 +687,7 @@ export class UiMode implements Mode {
 		// No tokens or typing first word — suggest UI keywords
 		if (tokens.length === 0 || (tokens.length === 1 && !trailingSpace)) {
 			const prefix = tokens.length > 0 ? tokens[0].image.toLowerCase() : "";
-			const keywords = ["add", "remove", "set", "move", "rename", "show", "cd", "ls", "pwd"];
+			const keywords = ["add", "remove", "set", "get", "move", "rename", "show", "cd", "ls", "pwd"];
 			const items: CompletionItem[] = keywords
 				.filter((k) => k.startsWith(prefix))
 				.map((k) => ({ label: k }));
@@ -676,7 +714,8 @@ export class UiMode implements Mode {
 		}
 
 		// ── set <target>.<prop> [to] <value> ──
-		if (verb === "set") {
+		// ── get <target>.<prop> ──
+		if (verb === "set" || verb === "get") {
 			return this.completeSet(tokens, trailingSpace, offset, inputLength, segment, componentItems);
 		}
 
@@ -1002,6 +1041,11 @@ export class UiMode implements Mode {
 		cmd: UiCommand,
 		session: SessionContext,
 	): Promise<CommandResult> {
+		// Get command — fetch single property value
+		if (cmd.type === "get") {
+			return this.handleGet(cmd, session.connection ?? null);
+		}
+
 		// Show command — fetch properties from HISE and display as table
 		if (cmd.type === "show") {
 			return this.handleShow(cmd, session.connection ?? null);
@@ -1131,6 +1175,43 @@ export class UiMode implements Mode {
 		);
 	}
 
+	/** Handle get command — fetch a single property value from HISE. */
+	private async handleGet(
+		cmd: UiGetCommand,
+		connection: import("../hise.js").HiseConnection | null,
+	): Promise<CommandResult> {
+		if (!connection) {
+			return textResult(`get ${cmd.target}.${cmd.prop} (no HISE connection)`);
+		}
+
+		const response = await connection.get(
+			`/api/get_component_properties?moduleId=${encodeURIComponent(this.moduleId)}&id=${encodeURIComponent(cmd.target)}`,
+		);
+
+		if (isErrorResponse(response)) {
+			return errorResult(response.message);
+		}
+
+		const data = response as unknown as Record<string, unknown>;
+		if (!data.success) {
+			const errors = (data as { errors?: Array<{ errorMessage: string }> }).errors;
+			const msg = errors?.[0]?.errorMessage ?? `Could not fetch properties for "${cmd.target}"`;
+			return errorResult(msg);
+		}
+
+		const properties = data.properties as Array<{ id: string; value: unknown }> | undefined;
+		if (!properties) {
+			return errorResult(`${cmd.target}: no properties`);
+		}
+
+		const prop = properties.find((p) => p.id === cmd.prop);
+		if (!prop) {
+			return errorResult(`Property "${cmd.prop}" not found on "${cmd.target}"`);
+		}
+
+		return textResult(String(prop.value));
+	}
+
 	/** After a successful set, fetch the property back from HISE and echo it. */
 	private async echoSetProperty(
 		cmd: UiSetCommand,
@@ -1168,6 +1249,8 @@ export class UiMode implements Mode {
 				return textResult(`move ${cmd.target} to ${cmd.parent}${cmd.index !== undefined ? ` at ${cmd.index}` : ""} (no HISE connection)`);
 			case "rename":
 				return textResult(`rename ${cmd.target} to "${cmd.newName}" (no HISE connection)`);
+			case "get":
+				return textResult(`get ${cmd.target}.${cmd.prop} (no HISE connection)`);
 			case "show":
 				return textResult(`show ${cmd.target} (no HISE connection)`);
 		}

@@ -668,7 +668,7 @@ describe("CompletionEngine", () => {
 	describe("completeBuilderKeyword", () => {
 		it("returns all keywords for empty prefix", () => {
 			const items = engine.completeBuilderKeyword("");
-			expect(items).toHaveLength(13); // add, show, set, cd, ls, pwd, clone, remove, move, rename, load, bypass, enable
+			expect(items).toHaveLength(14); // add, show, set, get, cd, ls, pwd, clone, remove, move, rename, load, bypass, enable
 		});
 
 		it("filters by prefix", () => {

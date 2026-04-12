@@ -140,22 +140,61 @@ export function parseWait(args: string): ParsedWait | string {
 
 // ── /expect comparison ──────────────────────────────────────────────
 
+const TRUTHY = new Set(["true", "1"]);
+const FALSY = new Set(["false", "0"]);
+
+/** Normalize a value to a canonical form for lenient comparison. */
+function normalize(s: string): string {
+	const lower = s.toLowerCase();
+	if (TRUTHY.has(lower)) return "true";
+	if (FALSY.has(lower)) return "false";
+	return s;
+}
+
+/** Parse a percentage string ("25%") to its decimal value, or NaN. */
+function parsePercent(s: string): number {
+	if (s.endsWith("%")) {
+		const n = Number(s.slice(0, -1));
+		return Number.isNaN(n) ? NaN : n / 100;
+	}
+	return NaN;
+}
+
 /**
  * Compare an actual result string against an expected value.
- * - If both parse as numbers: float comparison with tolerance
- * - Otherwise: strict string equality
+ *
+ * Comparison tiers (first match wins):
+ * 1. Truthy/falsy coercion: true == 1 == "true" == "1", false == 0 == "false" == "0"
+ * 2. Numeric with tolerance (including percentage: 0.25 == "25%")
+ * 3. Case-insensitive string equality
  */
 export function compareValues(
 	actual: string,
 	expected: string,
 	tolerance: number,
 ): boolean {
-	const actualNum = Number(actual);
-	const expectedNum = Number(expected);
+	// 1. Truthy/falsy coercion
+	const normActual = normalize(actual);
+	const normExpected = normalize(expected);
+	if (
+		(TRUTHY.has(actual.toLowerCase()) || FALSY.has(actual.toLowerCase())) &&
+		(TRUTHY.has(expected.toLowerCase()) || FALSY.has(expected.toLowerCase()))
+	) {
+		return normActual === normExpected;
+	}
+
+	// 2. Numeric comparison (with percentage support)
+	let actualNum = Number(actual);
+	let expectedNum = Number(expected);
+
+	// Try percentage parsing if one side is a percent string
+	if (Number.isNaN(actualNum)) actualNum = parsePercent(actual);
+	if (Number.isNaN(expectedNum)) expectedNum = parsePercent(expected);
 
 	if (!Number.isNaN(actualNum) && !Number.isNaN(expectedNum)) {
 		return Math.abs(actualNum - expectedNum) <= tolerance;
 	}
 
-	return actual === expected;
+	// 3. Case-insensitive string equality
+	return actual.toLowerCase() === expected.toLowerCase();
 }
