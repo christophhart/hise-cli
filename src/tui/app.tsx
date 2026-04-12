@@ -21,8 +21,8 @@ import {
 import type { PrerenderedBlock } from "./components/prerender.js";
 import { renderEcho, renderResult, truncateAnsi, wrapAnsi, fgHex, bgHex, RESET } from "./components/prerender.js";
 import { Input, type InputHandle, offsetToLineCol, lineColToOffset, buildVisualRowMap, findVisualRow } from "./components/Input.js";
-import { buildModeMap } from "../engine/run/mode-map.js";
-import type { RunResult } from "../engine/run/types.js";
+import { buildModeMap, type ModeMapEntry } from "../engine/run/mode-map.js";
+import type { RunResult, ScriptProgressEvent, CommandOutput } from "../engine/run/types.js";
 import { formatResultForLog, filterLogNoise } from "../engine/run/executor.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
@@ -65,104 +65,91 @@ const ENTER_ACCEPTS_COMPLETION = false; // true = Enter accepts popup selection,
 
 // ── Shared script log formatter ──────────────────────────────────────
 
+/** Render a single script progress event as ANSI output lines. */
+function renderProgressLine(
+	event: ScriptProgressEvent,
+	scheme: ColorScheme,
+	modeMap?: ModeMapEntry[],
+): string[] {
+	const dimmed = fgHex(scheme.foreground.muted);
+	const bg = bgHex(scheme.backgrounds.standard);
+
+	if (event.type === "command") {
+		const cmd = event.output;
+		// Section header for nested /run
+		if (cmd.label) {
+			return [bg + dimmed + "\u2502 \u2500\u2500 " + cmd.label + " \u2500\u2500" + RESET];
+		}
+		const val = formatResultForLog(cmd.result);
+		if (!val) return [];
+		const modeEntry = modeMap && cmd.line > 0 && cmd.line <= modeMap.length
+			? modeMap[cmd.line - 1] : undefined;
+		const accent = cmd.accent
+			?? (modeEntry && modeEntry.modeId !== "root" ? modeEntry.accent : undefined);
+		const barColor = accent ? fgHex(accent) : dimmed;
+		return val.split("\n").map(line =>
+			bg + barColor + "\u2502" + RESET + bg + " " + line + RESET);
+	}
+
+	if (event.type === "expect") {
+		const e = event.result;
+		const icon = e.passed ? "\u2713" : "\u2717";
+		const color = e.passed ? fgHex(brand.ok) : fgHex(brand.error);
+		let line = `${icon} line ${e.line}: ${e.command} is ${e.expected}`;
+		if (!e.passed) line += ` \u2014 got ${e.actual}`;
+		return [bg + color + "\u2502 " + line + RESET];
+	}
+
+	if (event.type === "error") {
+		const errFg = fgHex(brand.error);
+		return [bg + errFg + "\u2502 \u2717 " + `ABORTED at line ${event.line}: ${filterLogNoise(event.message)}` + RESET];
+	}
+
+	return [];
+}
+
+/** Render the summary footer for a completed script run. */
+function renderScriptFooter(
+	result: RunResult,
+	scheme: ColorScheme,
+	actionCount: number,
+): string[] {
+	const bg = bgHex(scheme.backgrounds.standard);
+	const errFg = fgHex(brand.error);
+	const okFg = fgHex(brand.ok);
+	const passed = result.expects.filter(e => e.passed).length;
+	const total = result.expects.length;
+	const statusColor = result.ok ? okFg : errFg;
+	const statusIcon = result.ok ? "\u2713" : "\u2717";
+	const parts: string[] = [];
+	if (actionCount > 0) parts.push(`${actionCount} command${actionCount !== 1 ? "s" : ""} executed`);
+	if (total > 0) parts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
+	return [bg + statusColor + "\u2502 " + statusIcon + " " + parts.join(", ") + RESET, ""];
+}
+
+/** Non-streaming fallback: format a complete RunResult as a block. */
 function formatScriptLog(
 	source: string,
 	result: RunResult,
 	scheme: ColorScheme,
 ): PrerenderedBlock {
-	const scriptLines = source.split("\n").map(l => l.trim());
-	const modeMap = buildModeMap(scriptLines);
-
-	const dimmed = fgHex(scheme.foreground.muted);
-	const bg = bgHex(scheme.backgrounds.standard);
-	const outputLines: string[] = [];
-
-	// Two sources of output: comments from source lines, and results from execution.
-	// Results are in execution order (with flattened inner /run results inline).
-	// We interleave comments from the source at their correct positions.
-
-	// Collect comments by line number
-	const commentsByLine = new Map<number, string>();
-	for (let i = 0; i < scriptLines.length; i++) {
-		const rawLine = scriptLines[i]!;
-		if (rawLine.startsWith("#") || rawLine.startsWith("//")) {
-			const text = rawLine.startsWith("//") ? rawLine.slice(2).trim() : rawLine.slice(1).trim();
-			commentsByLine.set(i + 1, text);
-		}
-	}
-
+	const modeMap = buildModeMap(source.split("\n").map(l => l.trim()));
+	const lines: string[] = [];
 	let actionCount = 0;
-	let lastSourceLine = 0;
-
 	for (const cmd of result.results) {
-		// Emit any comments between the last result and this one (for outer script lines)
-		if (cmd.line > lastSourceLine && cmd.line <= scriptLines.length) {
-			for (let ln = lastSourceLine + 1; ln <= cmd.line; ln++) {
-				const comment = commentsByLine.get(ln);
-				if (comment !== undefined) {
-					outputLines.push(bg + dimmed + "\u2502 " + comment + RESET);
-				}
-			}
-			lastSourceLine = cmd.line;
-		}
-
-		// Section header for nested /run
-		if (cmd.label) {
-			outputLines.push(bg + dimmed + "\u2502 \u2500\u2500 " + cmd.label + " \u2500\u2500" + RESET);
-			continue;
-		}
-
-		const val = formatResultForLog(cmd.result);
-		if (!val) continue;
-
-		actionCount++;
-
-		// Use pre-tagged accent (from flattened inner results), source mode map, or dimmed
-		const modeEntry = cmd.line <= scriptLines.length ? modeMap[cmd.line - 1] : undefined;
-		const accent = cmd.accent
-			?? (modeEntry && modeEntry.modeId !== "root" ? modeEntry.accent : undefined);
-		const barColor = accent ? fgHex(accent) : dimmed;
-
-		for (const line of val.split("\n")) {
-			outputLines.push(bg + barColor + "\u2502" + RESET + bg + " " + line + RESET);
-		}
+		const event: ScriptProgressEvent = { type: "command", output: cmd };
+		const rendered = renderProgressLine(event, scheme, modeMap);
+		if (rendered.length > 0 && !cmd.label) actionCount++;
+		lines.push(...rendered);
 	}
-
-	// Emit trailing comments after last result
-	for (let ln = lastSourceLine + 1; ln <= scriptLines.length; ln++) {
-		const comment = commentsByLine.get(ln);
-		if (comment !== undefined) {
-			outputLines.push(bg + dimmed + "\u2502 " + comment + RESET);
-		}
+	for (const exp of result.expects) {
+		lines.push(...renderProgressLine({ type: "expect", result: exp }, scheme));
 	}
-
-	// Expect results
-	const errFg = fgHex(brand.error);
-	const okFg = fgHex(brand.ok);
-	for (const expect of result.expects) {
-		const icon = expect.passed ? "\u2713" : "\u2717";
-		const color = expect.passed ? okFg : errFg;
-		let line = `${icon} line ${expect.line}: ${expect.command} is ${expect.expected}`;
-		if (!expect.passed) line += ` \u2014 got ${expect.actual}`;
-		outputLines.push(bg + color + "\u2502 " + line + RESET);
-	}
-
-	// Error with ✗ icon
 	if (result.error) {
-		outputLines.push(bg + errFg + "\u2502 \u2717 " + `ABORTED at line ${result.error.line}: ${filterLogNoise(result.error.message)}` + RESET);
+		lines.push(...renderProgressLine({ type: "error", line: result.error.line, message: result.error.message }, scheme));
 	}
-
-	// Footer summary
-	const passed = result.expects.filter(e => e.passed).length;
-	const total = result.expects.length;
-	const statusColor = result.ok ? okFg : errFg;
-	const statusIcon = result.ok ? "\u2713" : "\u2717";
-	const statusParts: string[] = [];
-	if (actionCount > 0) statusParts.push(`${actionCount} command${actionCount !== 1 ? "s" : ""} executed`);
-	if (total > 0) statusParts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
-	outputLines.push(bg + statusColor + "\u2502 " + statusIcon + " " + statusParts.join(", ") + RESET);
-
-	return { lines: [...outputLines, ""], height: outputLines.length + 1 };
+	lines.push(...renderScriptFooter(result, scheme, actionCount));
+	return { lines, height: lines.length };
 }
 
 // ── App props ───────────────────────────────────────────────────────
@@ -1130,6 +1117,81 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	}, [handleObserverEvent]);
 
 	const handleSubmit = useCallback(async (input: string) => {
+		// ── /run command: streaming execution ──────────────────
+		if (!multilineMode && input.trim().startsWith("/run ")) {
+			let arg = input.trim().slice("/run".length).trim();
+			if ((arg.startsWith('"') && arg.endsWith('"')) || (arg.startsWith("'") && arg.endsWith("'"))) {
+				arg = arg.slice(1, -1);
+			}
+			if (arg && session.loadScriptFile) {
+				const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+				disabledRef.current = true;
+				setDisabled(true);
+				try {
+					const { parseScript } = await import("../engine/run/parser.js");
+					const { validateScript, formatValidationReport } = await import("../engine/run/validator.js");
+					const { executeScript } = await import("../engine/run/executor.js");
+
+					let source: string;
+					try {
+						source = await session.loadScriptFile(arg);
+					} catch (err: any) {
+						const block = renderResult({ type: "error", message: `Failed to load "${arg}": ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
+						if (block) addBlocks([block]);
+						return;
+					}
+
+					const script = parseScript(source);
+					if (script.lines.length === 0) {
+						const block = renderResult({ type: "text", content: "Script is empty." }, scheme, innerW);
+						if (block) addBlocks([block]);
+						return;
+					}
+
+					const validation = validateScript(script, session);
+					if (!validation.ok) {
+						const block = renderResult({ type: "error", message: formatValidationReport(validation) }, scheme, innerW);
+						if (block) addBlocks([block]);
+						return;
+					}
+
+					// Echo
+					const fileName = arg.split(/[\\/]/).pop() ?? arg;
+					const accent = scheme.foreground.muted;
+					const echoBlock = renderEcho(`/run ${fileName}`, accent, scheme.backgrounds.darker, innerW);
+					addBlocks([echoBlock]);
+
+					// Streaming execution
+					const modeMap = buildModeMap(source.split("\n").map(l => l.trim()));
+					addBlocks([{ lines: [], height: 0 }]);
+					let streamActionCount = 0;
+
+					const result = await executeScript(script, session, (event) => {
+						const lines = renderProgressLine(event, scheme, modeMap);
+						if (lines.length === 0) return;
+						if (event.type === "command" && !event.output.label) streamActionCount++;
+						setOutputBlocks(prev => {
+							const last = prev[prev.length - 1]!;
+							return [...prev.slice(0, -1), { lines: [...last.lines, ...lines], height: last.height + lines.length }];
+						});
+					});
+
+					const footer = renderScriptFooter(result, scheme, streamActionCount);
+					setOutputBlocks(prev => {
+						const last = prev[prev.length - 1]!;
+						return [...prev.slice(0, -1), { lines: [...last.lines, ...footer], height: last.height + footer.length }];
+					});
+				} catch (err) {
+					const block = renderResult({ type: "error", message: `Script error: ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
+					if (block) addBlocks([block]);
+				} finally {
+					disabledRef.current = false;
+					setDisabled(false);
+				}
+				return;
+			}
+		}
+
 		// ── /edit command: toggle multiline editor mode ──────────
 		if (input.trim() === "/edit" || input.trim().startsWith("/edit ")) {
 			let arg = input.trim().slice("/edit".length).trim();
@@ -1220,16 +1282,35 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				const echoBlock = renderEcho(echoText, scheme.foreground.muted, scheme.backgrounds.darker, innerW);
 				addBlocks([echoBlock]);
 
-				const result = await executeScript(script, session);
+				// Build mode map for coloring
+				const scriptLines = input.split("\n").map(l => l.trim());
+				const modeMap = buildModeMap(scriptLines);
+
+				// Start streaming output block
+				addBlocks([{ lines: [], height: 0 }]);
+				let streamActionCount = 0;
+
+				const result = await executeScript(script, session, (event) => {
+					const lines = renderProgressLine(event, scheme, modeMap);
+					if (lines.length === 0) return;
+					if (event.type === "command" && !event.output.label) streamActionCount++;
+					setOutputBlocks(prev => {
+						const last = prev[prev.length - 1]!;
+						return [...prev.slice(0, -1), { lines: [...last.lines, ...lines], height: last.height + lines.length }];
+					});
+				});
 
 				// Highlight error line in editor if execution failed
 				if (result.error) {
 					setEditorErrorLine(result.error.line);
 				}
 
-				// Format and display script execution log
-				const block = formatScriptLog(input, result, scheme);
-				addBlocks([block]);
+				// Append summary footer
+				const footer = renderScriptFooter(result, scheme, streamActionCount);
+				setOutputBlocks(prev => {
+					const last = prev[prev.length - 1]!;
+					return [...prev.slice(0, -1), { lines: [...last.lines, ...footer], height: last.height + footer.length }];
+				});
 			} catch (err) {
 				const block = renderResult({ type: "error", message: `Script error: ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
 				if (block) addBlocks([block]);

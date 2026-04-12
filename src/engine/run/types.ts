@@ -83,6 +83,12 @@ export interface ParsedWait {
 	ms: number;
 }
 
+/** Progress event emitted during streaming script execution. */
+export type ScriptProgressEvent =
+	| { type: "command"; output: CommandOutput }
+	| { type: "expect"; result: ExpectResult }
+	| { type: "error"; line: number; message: string };
+
 /** Execution segment for the optimizer. */
 export type ExecutionSegment =
 	| { kind: "single"; line: ScriptLine }

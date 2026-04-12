@@ -9,6 +9,7 @@ import type {
 	RunResult,
 	ExpectResult,
 	ScriptLine,
+	ScriptProgressEvent,
 } from "./types.js";
 import { parseExpect, parseWait, compareValues } from "./parser.js";
 import { optimizeScript } from "./optimizer.js";
@@ -26,6 +27,7 @@ import { buildModeMap } from "./mode-map.js";
 export async function executeScript(
 	script: ParsedScript,
 	session: Session,
+	onProgress?: (event: ScriptProgressEvent) => void,
 ): Promise<RunResult> {
 	// Optimize: batch consecutive builder commands
 	script = optimizeScript(script);
@@ -65,6 +67,7 @@ export async function executeScript(
 						session,
 					);
 					expects.push(expectResult);
+					onProgress?.({ type: "expect", result: expectResult });
 					linesExecuted++;
 
 					if (!expectResult.passed && parsed.abortOnFail) {
@@ -72,6 +75,7 @@ export async function executeScript(
 							line: line.lineNumber,
 							message: `Assertion failed (abort): expected ${parsed.expected}, got ${expectResult.actual}`,
 						};
+						onProgress?.({ type: "error", line: line.lineNumber, message: abortError.message });
 						break;
 					}
 					continue;
@@ -87,7 +91,9 @@ export async function executeScript(
 				const inner = result.runResult;
 				const fileName = line.content.replace(/^\/run\s+/, "").replace(/^["']|["']$/g, "");
 				// Section header
-				results.push({ line: line.lineNumber, content: line.content, result: textResult(fileName), label: fileName });
+				const labelEntry = { line: line.lineNumber, content: line.content, result: textResult(fileName), label: fileName };
+				results.push(labelEntry);
+				onProgress?.({ type: "command", output: labelEntry });
 				// Build mode map from inner source to filter mode entries and tag accents
 				const innerLines = result.source.split("\n").map(l => l.trim());
 				const innerModeMap = buildModeMap(innerLines);
@@ -101,25 +107,34 @@ export async function executeScript(
 					if (entry && entry.isModeExit) continue;
 					// Tag with mode accent (propagate if not already set)
 					const accent = cmd.accent ?? entry?.accent;
-					results.push(accent ? { ...cmd, accent } : cmd);
+					const tagged = accent ? { ...cmd, accent } : cmd;
+					results.push(tagged);
+					onProgress?.({ type: "command", output: tagged });
 				}
-				for (const exp of inner.expects) expects.push(exp);
+				for (const exp of inner.expects) {
+					expects.push(exp);
+					onProgress?.({ type: "expect", result: exp });
+				}
 				linesExecuted += inner.linesExecuted;
 				// Propagate abort
 				if (inner.error) {
 					abortError = { line: line.lineNumber, message: `${fileName}: ${inner.error.message}` };
+					onProgress?.({ type: "error", line: line.lineNumber, message: abortError.message });
 					break;
 				}
 				continue;
 			}
 
-			results.push({ line: line.lineNumber, content: line.content, result });
+			const output = { line: line.lineNumber, content: line.content, result };
+			results.push(output);
+			onProgress?.({ type: "command", output });
 
 			if (result.type === "error") {
 				abortError = {
 					line: line.lineNumber,
 					message: result.message,
 				};
+				onProgress?.({ type: "error", line: line.lineNumber, message: result.message });
 				break;
 			}
 		}
