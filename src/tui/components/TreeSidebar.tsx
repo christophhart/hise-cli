@@ -686,6 +686,8 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 
 	// Connector line color — dimmer than foreground.muted
 	const connectorColor = darkenHex(scheme.foreground.muted, 0.5);
+	// Sidebar background — 10% darker than the standard output background
+	const sidebarBg = darkenHex(scheme.backgrounds.standard, 0.9);
 	const leftPad = sidebarLeftPad > 0 ? " ".repeat(sidebarLeftPad) : "";
 
 	if (!tree) {
@@ -698,10 +700,10 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 				const padRight = Math.max(0, contentWidth - leftPad.length - label.length);
 				emptyRows.push(
 					<Box key={i}>
-						<Text backgroundColor={scheme.backgrounds.sidebar}>
+						<Text backgroundColor={sidebarBg}>
 							{leftPad}<Text color={scheme.foreground.muted}>{label}</Text>{" ".repeat(padRight)}
 						</Text>
-						<Text backgroundColor={scheme.backgrounds.sidebar}>
+						<Text backgroundColor={sidebarBg}>
 							{" ".repeat(GAP_WIDTH)}
 						</Text>
 					</Box>,
@@ -709,10 +711,10 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			} else {
 				emptyRows.push(
 					<Box key={i}>
-						<Text backgroundColor={scheme.backgrounds.sidebar}>
+						<Text backgroundColor={sidebarBg}>
 							{leftPad}{" ".repeat(contentWidth)}
 						</Text>
-						<Text backgroundColor={scheme.backgrounds.sidebar}>
+						<Text backgroundColor={sidebarBg}>
 							{" ".repeat(GAP_WIDTH)}
 						</Text>
 					</Box>,
@@ -720,7 +722,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			}
 		}
 		// Build a minimal search bar for the empty state
-		const emptySearchBg = scheme.backgrounds.sidebar;
+		const emptySearchBg = sidebarBg;
 		const emptyIconColor = scheme.foreground.muted;
 		const emptySearchRow = (
 			<Box key="search-bar">
@@ -729,7 +731,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 					<Text color={emptyIconColor}>{SEARCH_ICON} </Text>
 					<Text>{" ".repeat(Math.max(0, contentWidth - SEARCH_ICON.length - 1))}</Text>
 				</Text>
-				<Text backgroundColor={scheme.backgrounds.darker}>
+				<Text backgroundColor={sidebarBg}>
 					{" ".repeat(GAP_WIDTH)}
 				</Text>
 			</Box>
@@ -752,11 +754,11 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 			const padW = contentWidth - (sb ? 1 : 0);
 			renderedRows.push(
 				<Box key={i}>
-					<Text backgroundColor={scheme.backgrounds.sidebar}>
+					<Text backgroundColor={sidebarBg}>
 						{leftPad}{" ".repeat(Math.max(0, padW))}
 						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 					</Text>
-					<Text backgroundColor={scheme.backgrounds.sidebar}>
+					<Text backgroundColor={sidebarBg}>
 						{" ".repeat(GAP_WIDTH)}
 					</Text>
 				</Box>,
@@ -795,7 +797,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 
 			renderedRows.push(
 				<Box key={i}>
-					<Text backgroundColor={scheme.backgrounds.sidebar}>
+					<Text backgroundColor={sidebarBg}>
 						{leftPad}
 						{segments.map((seg, si) => (
 							<Text key={si} color={seg.color}>{seg.text}</Text>
@@ -803,7 +805,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 						<Text>{" ".repeat(padW)}</Text>
 						{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 					</Text>
-					<Text backgroundColor={scheme.backgrounds.sidebar}>
+					<Text backgroundColor={sidebarBg}>
 						{" ".repeat(GAP_WIDTH)}
 					</Text>
 				</Box>,
@@ -819,7 +821,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 
 		// Determine colors
 		let fg = scheme.foreground.default;
-		let bg = scheme.backgrounds.sidebar;
+		let bg = sidebarBg;
 
 		// Diff is indicated by the +/-/* character only — no row background tint
 
@@ -950,7 +952,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 					<Text>{" ".repeat(padRight)}</Text>
 					{sb ? <Text color={sb.color}>{sb.char}</Text> : null}
 				</Text>
-				<Text backgroundColor={scheme.backgrounds.darker}>
+				<Text backgroundColor={sidebarBg}>
 					{" ".repeat(GAP_WIDTH)}
 				</Text>
 			</Box>,
@@ -966,7 +968,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 				: scheme.foreground.muted;
 		const searchBg = searchFocused
 			? scheme.backgrounds.raised
-			: scheme.backgrounds.sidebar;
+			: sidebarBg;
 		const textColor = searchFocused
 			? scheme.foreground.bright
 			: scheme.foreground.muted;
@@ -998,7 +1000,7 @@ export const TreeSidebar = React.memo(function TreeSidebar({
 					<Text>{" ".repeat(Math.max(0, searchFocused ? padWithCount - 1 : padWithCount))}</Text>
 					{countStr ? <Text color={scheme.foreground.muted}>{countStr}</Text> : null}
 				</Text>
-				<Text backgroundColor={scheme.backgrounds.darker}>
+				<Text backgroundColor={sidebarBg}>
 					{" ".repeat(GAP_WIDTH)}
 				</Text>
 			</Box>
