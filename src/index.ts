@@ -126,11 +126,13 @@ async function main(): Promise<void> {
 				process.stderr.write(output + "\n");
 			}
 			// Exit 2 = hook "block" signal (shows stderr to Claude), 0 = clean
-			process.exit(result.ok ? 0 : 2);
+			process.exitCode = result.ok ? 0 : 2;
+			return;
 		}
 
 		console.log(JSON.stringify(result));
-		process.exit(result.ok ? 0 : 1);
+		process.exitCode = result.ok ? 0 : 1;
+		return;
 	}
 
 	const bootstrap = createSession({ connection: null });
@@ -144,12 +146,14 @@ async function main(): Promise<void> {
 
 	if (cliResult.kind === "error") {
 		console.error(chalk.red(cliResult.message));
-		process.exit(1);
+		process.exitCode = 1;
+		return;
 	}
 
 	if (cliResult.kind === "json") {
 		console.log(JSON.stringify(cliResult.payload));
-		process.exit(cliResult.payload.ok ? 0 : 1);
+		process.exitCode = cliResult.payload.ok ? 0 : 1;
+		return;
 	}
 
 	if (cliResult.kind === "diagnose") {

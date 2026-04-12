@@ -192,8 +192,14 @@ async function executeRunCommand(
 		const validation = validateScript(script, session);
 
 		if (parsed.dryRun) {
-			// Structured output: VS Code extension parses errors array
-			return { kind: "json", payload: { ok: true, value: { lines: script.lines.length, errors: validation.errors } } };
+			// Phase 1 failed — return static errors immediately
+			if (!validation.ok) {
+				return { kind: "json", payload: { ok: true, value: { lines: script.lines.length, errors: validation.errors } } };
+			}
+			// Phase 2: live dry-run (undo-group-wrapped execution against HISE)
+			const { dryRunScript } = await import("../engine/run/executor.js");
+			const liveResult = await dryRunScript(script, session);
+			return { kind: "json", payload: { ok: true, value: { lines: script.lines.length, errors: liveResult.errors } } };
 		}
 
 		if (!validation.ok) {

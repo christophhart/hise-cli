@@ -365,8 +365,8 @@ export interface InputProps {
 	onValueChange?: (value: string, cursorPos: number) => void;
 	/** Ref for imperative control */
 	inputRef?: React.Ref<InputHandle>;
-	/** Line with error (1-based) — highlighted with error tint in multiline mode */
-	errorLine?: number;
+	/** Lines with errors (1-based) — highlighted with error tint in multiline mode */
+	errorLines?: number[];
 	/** Tokenizer for syntax highlighting. If provided, input text is rendered
 	 *  with per-token colors from TOKEN_COLORS. Falls back to flat foreground.bright. */
 	tokenize?: (value: string) => TokenSpan[];
@@ -392,7 +392,7 @@ export const Input = React.memo(function Input({
 	focused = true,
 	multiline = false,
 	maxLines = 10,
-	errorLine,
+	errorLines,
 }: InputProps) {
 	const { scheme, brand, layout } = useTheme();
 
@@ -735,7 +735,7 @@ export const Input = React.memo(function Input({
 			const isCursorVRow = vrIdx === cursorVRow;
 
 			// ── Error tint and active line highlight ──
-			const isErrorLine = errorLine !== undefined && (lineIdx + 1) === errorLine;
+			const isErrorLine = errorLines !== undefined && errorLines.includes(lineIdx + 1);
 			const isActiveLine = isCursorVRow && !isErrorLine && focused;
 			const lineGutterBg = isErrorLine
 				? lerpHex(gutterBg, brand.error, 0.15)

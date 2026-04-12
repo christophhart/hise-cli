@@ -7,6 +7,7 @@ import type { ModeId } from "../modes/mode.js";
 import type { Session } from "../session.js";
 import type { ParsedScript, ParseError, ValidationResult } from "./types.js";
 import { parseExpect, parseWait } from "./parser.js";
+import { parseBuilderInput } from "../modes/builder.js";
 
 /** Set of mode IDs that can be entered via slash command. */
 const MODE_IDS = new Set<string>([
@@ -135,23 +136,22 @@ function validateModeCommand(
 	input: string,
 	modeId: ModeId,
 	lineNumber: number,
-	session: Session,
+	_session: Session,
 	errors: ParseError[],
 ): void {
-	// For builder mode, we can do syntax validation via Chevrotain
+	// For builder mode, run full Chevrotain parse (lexer + parser).
+	// This catches syntax errors that tokenization alone misses.
+	// Semantic validation (module existence, parameter ranges) is
+	// deferred to the live dry-run which has the actual module tree.
 	if (modeId === "builder") {
-		try {
-			const mode = session.getOrCreateMode(modeId);
-			// Try tokenization only — some modes expose tokenizeInput
-			if (mode.tokenizeInput) {
-				// If tokenization succeeds, syntax is at least lexically valid
-				mode.tokenizeInput(input);
-			}
-		} catch (err) {
-			errors.push({
-				line: lineNumber,
-				message: `Builder parse error: ${err instanceof Error ? err.message : String(err)}`,
-			});
+		// Skip navigation commands — they don't go through the parser
+		const first = input.split(/\s/)[0]?.toLowerCase();
+		if (first === "cd" || first === "ls" || first === "pwd" || first === "reset") {
+			return;
+		}
+		const result = parseBuilderInput(input);
+		if ("error" in result) {
+			errors.push({ line: lineNumber, message: result.error });
 		}
 		return;
 	}

@@ -14,7 +14,8 @@ import type {
 import { parseExpect, parseWait, compareValues } from "./parser.js";
 import { optimizeScript } from "./optimizer.js";
 import { buildModeMap } from "./mode-map.js";
-import { isEnvelopeResponse } from "../hise.js";
+import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
+import type { ParseError } from "./types.js";
 
 /**
  * Execute a parsed .hsc script against a live session.
@@ -183,7 +184,74 @@ export async function executeScript(
 	};
 }
 
-// ── /expect execution ───────────────────────────────────────────────
+// ── Dry-run validation — undo-group-wrapped execution ───────────────
+//
+// Pushes an undo group, executes the script for real (so HISE validates
+// every operation against the live module tree), then discards the group.
+// Collects all errors rather than failing on the first one.
+
+/**
+ * Dry-run a parsed script against a live HISE session.
+ *
+ * Wraps execution in an undo group that is always discarded, so the
+ * project state is unchanged. Skips /wait and /expect lines (they are
+ * not relevant for structural validation). Continues past errors to
+ * collect as many diagnostics as possible.
+ *
+ * Requires a live HISE connection. Returns a ValidationResult.
+ */
+export async function dryRunScript(
+	script: ParsedScript,
+	session: Session,
+): Promise<import("./types.js").ValidationResult> {
+	const conn = session.connection;
+	if (!conn) {
+		return { ok: false, errors: [{ line: 0, message: "No HISE connection — cannot validate live" }] };
+	}
+
+	// Optimize builder batches (same as real execution)
+	script = optimizeScript(script);
+	const savedStack = saveModeStack(session);
+	const errors: ParseError[] = [];
+
+	// Push a disposable undo group
+	const pushResp = await conn.post("/api/undo/push_group", { name: "validate" });
+	if (isErrorResponse(pushResp)) {
+		return { ok: false, errors: [{ line: 0, message: `Failed to open undo group: ${pushResp.message}` }] };
+	}
+
+	try {
+		for (const line of script.lines) {
+			if (line.kind === "slash") {
+				const cmd = extractSlashCommand(line.content);
+
+				// Skip timing/assertion commands — not relevant for validation
+				if (cmd.name === "wait" || cmd.name === "expect") continue;
+
+				// Skip /run — nested scripts are validated separately
+				if (cmd.name === "run") continue;
+			}
+
+			// Execute against HISE (inside the undo group)
+			const result = await session.handleInput(line.content);
+
+			if (result.type === "error") {
+				errors.push({ line: line.lineNumber, message: result.message });
+				// Continue to collect more errors — but mode state may be
+				// unreliable after a failure, so subsequent errors could be
+				// cascading. That's acceptable for diagnostics.
+			}
+		}
+	} finally {
+		// Always discard the undo group and restore mode stack
+		restoreModeStack(session, savedStack);
+		await conn.post("/api/undo/pop_group", { cancel: true }).catch(() => {});
+	}
+
+	return { ok: errors.length === 0, errors };
+}
+
+// ── /expect execution ──────────────────────────────────���────────────
 
 async function executeExpect(
 	parsed: import("./types.js").ParsedExpect,

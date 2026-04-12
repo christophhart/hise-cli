@@ -276,7 +276,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// Multiline editor mode — toggled by /edit command
 	const [multilineMode, setMultilineMode] = useState(false);
-	const [editorErrorLine, setEditorErrorLine] = useState<number | undefined>(undefined);
+	const [editorErrorLines, setEditorErrorLines] = useState<number[] | undefined>(undefined);
 	const [editorFilePath, setEditorFilePath] = useState<string | null>(null);
 	// Saved content for swapping between single-line and multiline modes
 	const editorContentRef = useRef<string>("");
@@ -545,6 +545,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// We intercept the raw sequence before Ink processes it.
 	const deleteForwardRef = useRef(false);
 	const f5PressedRef = useRef(false);
+	const f7PressedRef = useRef(false);
 	useEffect(() => {
 		const onData = (data: Buffer) => {
 			const str = data.toString();
@@ -554,6 +555,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			// F5: \x1b[15~ or \x1b[[E
 			if (str === "\x1b[15~" || str === "\x1b[[E") {
 				f5PressedRef.current = true;
+			}
+			// F7: \x1b[18~
+			if (str === "\x1b[18~") {
+				f7PressedRef.current = true;
 			}
 		};
 		process.stdin.on("data", onData);
@@ -836,6 +841,59 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				handle.submit();
 				return;
 			}
+			// F7 — validate script (static + live dry-run, save on success)
+			if (f7PressedRef.current) {
+				f7PressedRef.current = false;
+				setCompletionState(null);
+				const value = handle.getValue();
+				const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
+				void (async () => {
+					const { parseScript } = await import("../engine/run/parser.js");
+					const { validateScript, formatValidationReport } = await import("../engine/run/validator.js");
+					const { dryRunScript } = await import("../engine/run/executor.js");
+
+					setEditorErrorLines(undefined);
+
+					// Phase 1: static validation (multi-recovery)
+					const script = parseScript(value);
+					const staticResult = validateScript(script, session);
+
+					if (!staticResult.ok) {
+						setEditorErrorLines(staticResult.errors.map(e => e.line));
+						const block = renderResult({ type: "error", message: formatValidationReport(staticResult) }, scheme, innerW);
+						if (block) addBlocks([block]);
+						return;
+					}
+
+					// Phase 2: live dry-run (undo-group-wrapped execution)
+					if (session.connection) {
+						const liveResult = await dryRunScript(script, session);
+
+						if (!liveResult.ok) {
+							setEditorErrorLines(liveResult.errors.map(e => e.line));
+							const block = renderResult({ type: "error", message: formatValidationReport(liveResult) }, scheme, innerW);
+							if (block) addBlocks([block]);
+							return;
+						}
+					}
+
+					// Both phases passed — save if editing a file
+					if (editorFilePath && session.saveScriptFile) {
+						try {
+							await session.saveScriptFile(editorFilePath, value);
+							const block = renderResult({ type: "text", content: `Validation passed — saved "${editorFilePath.split(/[\\/]/).pop()}"` }, scheme, innerW);
+							if (block) addBlocks([block]);
+						} catch (err) {
+							const block = renderResult({ type: "error", message: `Save failed: ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
+							if (block) addBlocks([block]);
+						}
+					} else {
+						const block = renderResult({ type: "text", content: "Validation passed — no errors found." }, scheme, innerW);
+						if (block) addBlocks([block]);
+					}
+				})();
+				return;
+			}
 			if (key.ctrl && key.return) {
 				// Ctrl+Enter → submit in multiline mode
 				setCompletionState(null);
@@ -857,7 +915,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					// Save multiline content, clear single-line input
 					editorContentRef.current = handle.getValue();
 					setMultilineMode(false);
-					setEditorErrorLine(undefined);
+					setEditorErrorLines(undefined);
 					handle.setValue("");
 					// Refresh .hsc file cache (new files may have been created)
 					void session.refreshScriptFileCache();
@@ -1312,7 +1370,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				const { executeScript } = await import("../engine/run/executor.js");
 
 				// Clear previous error highlight
-				setEditorErrorLine(undefined);
+				setEditorErrorLines(undefined);
 
 				// Save to file if associated
 				if (editorFilePath && session.saveScriptFile) {
@@ -1329,9 +1387,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				const validation = validateScript(script, session);
 
 				if (!validation.ok) {
-					// Highlight first error line in editor
+					// Highlight all error lines in editor
 					if (validation.errors.length > 0) {
-						setEditorErrorLine(validation.errors[0]!.line);
+						setEditorErrorLines(validation.errors.map(e => e.line));
 					}
 					const block = renderResult({ type: "error", message: formatValidationReport(validation) }, scheme, innerW);
 					if (block) addBlocks([block]);
@@ -1365,7 +1423,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 				// Highlight error line in editor if execution failed
 				if (result.error) {
-					setEditorErrorLine(result.error.line);
+					setEditorErrorLines([result.error.line]);
 				}
 
 				// Append summary footer
@@ -1691,7 +1749,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	const handleInputValueChange = useCallback((value: string, cursorPos: number) => {
 		// Clear error highlight when user edits
-		if (editorErrorLine !== undefined) setEditorErrorLine(undefined);
+		if (editorErrorLines !== undefined) setEditorErrorLines(undefined);
 
 		if (value.length < 1) {
 			setCompletionState(null);
@@ -2012,7 +2070,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							focused={!sidebarFocused}
 							multiline={multilineMode}
 							maxLines={editorMaxLines}
-							errorLine={editorErrorLine}
+							errorLines={editorErrorLines}
 							onSubmit={(v) => {
 								setCompletionState(null);
 								void handleSubmit(v);
