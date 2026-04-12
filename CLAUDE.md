@@ -1,4 +1,8 @@
-# AGENTS.md — hise-cli
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Overview — hise-cli
 
 Modal REPL and CLI for [HISE](https://hise.dev), an open-source framework for building
 audio plugins. Two frontends (TUI for humans, CLI for LLMs) share one engine layer.
@@ -53,7 +57,27 @@ npm run test           # vitest run
 npm run dev            # build + start
 ```
 
-All three gates must pass. Implementation roadmap: [ROADMAP.md](ROADMAP.md).
+All three gates (build, typecheck, test) must pass.
+
+### Running individual tests
+
+```bash
+npx vitest run src/engine/modes/builder.test.ts   # single file
+npx vitest run -t "test name pattern"             # by test name
+npm run test:watch                                # watch mode
+```
+
+### Specialized test suites
+
+```bash
+npm run test:live-contract          # requires HISE running on :1900
+npm run test:live-contract:inspect  # just inspect contract tests
+npm run test:live-contract:script   # just script contract tests
+npm run test:screencasts            # requires npm run build first, 60s timeout
+```
+
+Live contract tests live in `src/live-contract/**/*.live.test.ts`. Screencast tests
+use a separate vitest config (`vitest.screencast.config.ts`).
 
 **HISE source reference**: Clone `https://github.com/christoph-hart/HISE` (without
 `--recurse-submodules`) into `hise-source/` for C++ source inspection. This directory
@@ -111,8 +135,21 @@ When referencing implementation details, point to the source file location:
 
 ## Conventions
 
-For code style (formatting, imports, naming, types, React/Ink patterns, error handling),
-see [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
+For full code style reference, see [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
+
+### Critical formatting rules
+
+- **Tabs** (not spaces), **double quotes**, **semicolons required**, trailing commas in multi-line
+- `camelCase.ts` for files, `PascalCase.tsx` for React components
+- Interfaces over enums; string literal unions; `as const` assertions
+- Error handling: `try/catch`, extract with `String(error)`, return `null`/`false` for "not found"
+
+### TypeScript config
+
+- Target ES2022, module Node16, strict mode enabled
+- `.js` extensions required on local imports (Node16 module resolution)
+
+### Project rules
 
 - **Git commits**: lowercase, terse, no conventional-commits prefix
 - **No default exports** — named exports only

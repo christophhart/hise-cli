@@ -340,6 +340,10 @@ export interface InputHandle {
 	scrollEditor(delta: number): void;
 	/** Get cursor's row index within the visible viewport (0-based). */
 	getCursorViewportRow?(): number;
+	/** Undo the last edit (Ctrl+Z). */
+	undo(): void;
+	/** Redo the last undone edit (Ctrl+Y / Ctrl+Shift+Z). */
+	redo(): void;
 	submit(): void;
 	historyUp(): void;
 	historyDown(): void;
@@ -402,6 +406,34 @@ export const Input = React.memo(function Input({
 		selectionAnchor: null,
 	});
 
+	// ── Undo / redo stacks ─────────────────────────────────────────
+	// Snapshots are {value, cursorOffset}. Coalescing: consecutive
+	// same-type edits within UNDO_COALESCE_MS share one undo entry.
+	const undoStackRef = useRef<InputState[]>([]);
+	const redoStackRef = useRef<InputState[]>([]);
+	const lastEditTypeRef = useRef<string | null>(null);
+	const lastEditTimeRef = useRef(0);
+	const UNDO_COALESCE_MS = 500;
+	const UNDO_MAX_DEPTH = 200;
+
+	/** Push current state onto the undo stack, coalescing rapid same-type edits. */
+	const pushUndo = useCallback((editType: string) => {
+		const now = Date.now();
+		const coalesce =
+			editType === lastEditTypeRef.current &&
+			(now - lastEditTimeRef.current) < UNDO_COALESCE_MS;
+
+		if (!coalesce) {
+			const stack = undoStackRef.current;
+			stack.push({ ...state });
+			if (stack.length > UNDO_MAX_DEPTH) stack.shift();
+		}
+		// Any new edit clears the redo stack
+		redoStackRef.current.length = 0;
+		lastEditTypeRef.current = editType;
+		lastEditTimeRef.current = now;
+	}, [state]);
+
 	// Multiline: independent scroll offset (null = follow cursor)
 	const [editorScroll, setEditorScroll] = useState<number | null>(null);
 
@@ -437,11 +469,23 @@ export const Input = React.memo(function Input({
 	// useInput of its own (single-action-per-keystroke by design).
 	useImperativeHandle(inputRef, () => ({
 		getValue: () => state.value,
-		setValue: (v: string) => dispatch({ type: "set-value", value: v }),
+		setValue: (v: string) => {
+			pushUndo("set-value");
+			dispatch({ type: "set-value", value: v });
+		},
 		getCursorPos: () => state.cursorOffset,
-		insertChar: (ch: string) => dispatch({ type: "insert", text: ch }),
-		deleteBackward: () => dispatch({ type: "delete" }),
-		deleteForward: () => dispatch({ type: "delete-forward" }),
+		insertChar: (ch: string) => {
+			pushUndo("insert");
+			dispatch({ type: "insert", text: ch });
+		},
+		deleteBackward: () => {
+			pushUndo("delete");
+			dispatch({ type: "delete" });
+		},
+		deleteForward: () => {
+			pushUndo("delete-forward");
+			dispatch({ type: "delete-forward" });
+		},
 		moveCursor: (dir: "left" | "right" | "home" | "end" | "wordLeft" | "wordRight" | "up" | "down" | "lineHome" | "lineEnd", select?: boolean) => {
 			dispatch({ type: "move", dir, select });
 		},
@@ -488,6 +532,24 @@ export const Input = React.memo(function Input({
 			const curVRow = findVisualRow(vrMap, cl, cc);
 			return Math.max(0, curVRow - prevScrollRef.current);
 		},
+		undo: () => {
+			const stack = undoStackRef.current;
+			if (stack.length === 0) return;
+			// Push current state onto redo before restoring
+			redoStackRef.current.push({ ...state });
+			const prev = stack.pop()!;
+			lastEditTypeRef.current = null;
+			dispatch({ type: "set-value", value: prev.value, cursorOffset: prev.cursorOffset });
+		},
+		redo: () => {
+			const stack = redoStackRef.current;
+			if (stack.length === 0) return;
+			// Push current state onto undo before restoring
+			undoStackRef.current.push({ ...state });
+			const next = stack.pop()!;
+			lastEditTypeRef.current = null;
+			dispatch({ type: "set-value", value: next.value, cursorOffset: next.cursorOffset });
+		},
 		submit: () => {
 			const trimmed = state.value.trim();
 			if (!trimmed || disabled) return;
@@ -500,16 +562,18 @@ export const Input = React.memo(function Input({
 		historyUp: () => {
 			const prev = historyUp(state.value);
 			if (prev !== null) {
+				pushUndo("history");
 				dispatch({ type: "set-value", value: prev });
 			}
 		},
 		historyDown: () => {
 			const next = historyDown();
 			if (next !== null) {
+				pushUndo("history");
 				dispatch({ type: "set-value", value: next });
 			}
 		},
-	}), [state.value, state.cursorOffset, state.selectionAnchor, disabled, addToHistory, onSubmit, historyUp, historyDown]);
+	}), [state.value, state.cursorOffset, state.selectionAnchor, disabled, addToHistory, onSubmit, historyUp, historyDown, pushUndo]);
 
 	// ── Rendering ──────────────────────────────────────────────────
 

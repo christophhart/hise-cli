@@ -995,6 +995,16 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			}
 			return;
 		}
+		// Ctrl+Z — undo
+		else if (key.ctrl && input === "z") {
+			handle.undo();
+			return;
+		}
+		// Ctrl+Y — redo
+		else if (key.ctrl && input === "y") {
+			handle.redo();
+			return;
+		}
 		else if (key.ctrl && input === "e") {
 			handle.moveCursor("end");
 			return;
