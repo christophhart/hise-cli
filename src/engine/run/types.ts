@@ -48,6 +48,10 @@ export interface CommandOutput {
 	line: number;
 	content: string;
 	result: import("../result.js").CommandResult;
+	/** Section label for grouped results (e.g. filename from nested /run) */
+	label?: string;
+	/** Mode accent color (set when flattening nested /run results) */
+	accent?: string;
 }
 
 /** Result of a full script run. */

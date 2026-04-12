@@ -77,49 +77,62 @@ function formatScriptLog(
 	const bg = bgHex(scheme.backgrounds.standard);
 	const outputLines: string[] = [];
 
-	// Build a lookup from line number to result
-	const resultsByLine = new Map<number, typeof result.results[number]>();
-	for (const cmd of result.results) {
-		resultsByLine.set(cmd.line, cmd);
-	}
+	// Two sources of output: comments from source lines, and results from execution.
+	// Results are in execution order (with flattened inner /run results inline).
+	// We interleave comments from the source at their correct positions.
 
-	// Walk raw lines to interleave comments, blanks, and results
-	let actionCount = 0;
+	// Collect comments by line number
+	const commentsByLine = new Map<number, string>();
 	for (let i = 0; i < scriptLines.length; i++) {
 		const rawLine = scriptLines[i]!;
-		const lineNum = i + 1;
-		const modeEntry = modeMap[i];
-
-		// Comment lines (# or //) → dimmed, strip prefix
 		if (rawLine.startsWith("#") || rawLine.startsWith("//")) {
-			const commentText = rawLine.startsWith("//")
-				? rawLine.slice(2).trim()
-				: rawLine.slice(1).trim();
-			outputLines.push(bg + dimmed + "\u2502 " + commentText + RESET);
-			continue;
+			const text = rawLine.startsWith("//") ? rawLine.slice(2).trim() : rawLine.slice(1).trim();
+			commentsByLine.set(i + 1, text);
+		}
+	}
+
+	let actionCount = 0;
+	let lastSourceLine = 0;
+
+	for (const cmd of result.results) {
+		// Emit any comments between the last result and this one (for outer script lines)
+		if (cmd.line > lastSourceLine && cmd.line <= scriptLines.length) {
+			for (let ln = lastSourceLine + 1; ln <= cmd.line; ln++) {
+				const comment = commentsByLine.get(ln);
+				if (comment !== undefined) {
+					outputLines.push(bg + dimmed + "\u2502 " + comment + RESET);
+				}
+			}
+			lastSourceLine = cmd.line;
 		}
 
-		// Empty lines → skip
-		if (rawLine === "") continue;
-
-		// Mode entry/exit → skip (but keep one-shot commands)
-		if ((modeEntry?.isModeEntry && !modeEntry?.isOneShot) || modeEntry?.isModeExit) continue;
-
-		// Look up result for this line
-		const cmd = resultsByLine.get(lineNum);
-		if (!cmd) continue;
+		// Section header for nested /run
+		if (cmd.label) {
+			outputLines.push(bg + dimmed + "\u2502 \u2500\u2500 " + cmd.label + " \u2500\u2500" + RESET);
+			continue;
+		}
 
 		const val = formatResultForLog(cmd.result);
 		if (!val) continue;
 
 		actionCount++;
 
-		const barColor = (modeEntry && modeEntry.modeId !== "root" && modeEntry.accent)
-			? fgHex(modeEntry.accent)
-			: dimmed;
+		// Use pre-tagged accent (from flattened inner results), source mode map, or dimmed
+		const modeEntry = cmd.line <= scriptLines.length ? modeMap[cmd.line - 1] : undefined;
+		const accent = cmd.accent
+			?? (modeEntry && modeEntry.modeId !== "root" ? modeEntry.accent : undefined);
+		const barColor = accent ? fgHex(accent) : dimmed;
 
 		for (const line of val.split("\n")) {
 			outputLines.push(bg + barColor + "\u2502" + RESET + bg + " " + line + RESET);
+		}
+	}
+
+	// Emit trailing comments after last result
+	for (let ln = lastSourceLine + 1; ln <= scriptLines.length; ln++) {
+		const comment = commentsByLine.get(ln);
+		if (comment !== undefined) {
+			outputLines.push(bg + dimmed + "\u2502 " + comment + RESET);
 		}
 	}
 

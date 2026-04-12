@@ -12,6 +12,7 @@ import type {
 } from "./types.js";
 import { parseExpect, parseWait, compareValues } from "./parser.js";
 import { optimizeScript } from "./optimizer.js";
+import { buildModeMap } from "./mode-map.js";
 
 /**
  * Execute a parsed .hsc script against a live session.
@@ -80,6 +81,38 @@ export async function executeScript(
 			// Normal command: dispatch through session
 			const result = await session.handleInput(line.content);
 			linesExecuted++;
+
+			// Flatten nested /run results into this report
+			if (result.type === "run-report") {
+				const inner = result.runResult;
+				const fileName = line.content.replace(/^\/run\s+/, "").replace(/^["']|["']$/g, "");
+				// Section header
+				results.push({ line: line.lineNumber, content: line.content, result: textResult(fileName), label: fileName });
+				// Build mode map from inner source to filter mode entries and tag accents
+				const innerLines = result.source.split("\n").map(l => l.trim());
+				const innerModeMap = buildModeMap(innerLines);
+				// Inline inner results (skip mode entry/exit, tag with accent)
+				for (const cmd of inner.results) {
+					const entry = cmd.line > 0 && cmd.line <= innerModeMap.length
+						? innerModeMap[cmd.line - 1]
+						: undefined;
+					// Skip mode entry/exit (but keep one-shots)
+					if (entry && entry.isModeEntry && !entry.isOneShot) continue;
+					if (entry && entry.isModeExit) continue;
+					// Tag with mode accent (propagate if not already set)
+					const accent = cmd.accent ?? entry?.accent;
+					results.push(accent ? { ...cmd, accent } : cmd);
+				}
+				for (const exp of inner.expects) expects.push(exp);
+				linesExecuted += inner.linesExecuted;
+				// Propagate abort
+				if (inner.error) {
+					abortError = { line: line.lineNumber, message: `${fileName}: ${inner.error.message}` };
+					break;
+				}
+				continue;
+			}
+
 			results.push({ line: line.lineNumber, content: line.content, result });
 
 			if (result.type === "error") {
