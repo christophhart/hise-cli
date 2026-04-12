@@ -30,6 +30,7 @@ export async function executeScript(
 	script = optimizeScript(script);
 	const savedStack = saveModeStack(session);
 	const expects: ExpectResult[] = [];
+	const results: import("./types.js").CommandOutput[] = [];
 	let linesExecuted = 0;
 	let abortError: { line: number; message: string } | undefined;
 
@@ -79,6 +80,7 @@ export async function executeScript(
 			// Normal command: dispatch through session
 			const result = await session.handleInput(line.content);
 			linesExecuted++;
+			results.push({ line: line.lineNumber, content: line.content, result });
 
 			if (result.type === "error") {
 				abortError = {
@@ -97,6 +99,7 @@ export async function executeScript(
 		ok: !abortError && allPassed,
 		linesExecuted,
 		expects,
+		results,
 		error: abortError,
 	};
 }
@@ -146,14 +149,89 @@ export function extractResultValue(result: CommandResult): string {
 			}
 			return result.content.trim();
 		}
-		case "error":
-			return `ERROR: ${result.message}`;
+		case "error": {
+			// Strip noisy REPL callstack lines (e.g. "eval() at Interface.js:1:1")
+			const msg = result.message.split("\n")
+				.filter(l => !l.trim().startsWith("eval()") && !l.trim().match(/^at\s/))
+				.join("\n")
+				.trim();
+			return `ERROR: ${msg}`;
+		}
 		case "code":
 			return result.content.trim();
 		case "empty":
 			return "";
 		default:
 			return `[${result.type}]`;
+	}
+}
+
+// ── Run log formatting ──────────────────────────────────────────────
+//
+// Formats a CommandResult for the run log output. Separate from
+// extractResultValue() which is used for /expect comparisons and needs
+// raw values. This pipeline produces human-friendly one-line summaries
+// and applies noise filters.
+
+/** Filters applied to log output lines. Add new filters here. */
+const LOG_LINE_FILTERS: Array<(line: string) => boolean> = [
+	// Strip REPL callstack noise
+	(l) => !l.trim().startsWith("eval()"),
+	(l) => !l.trim().match(/^at\s/),
+];
+
+/** Filter noise from a multi-line string. */
+export function filterLogNoise(text: string): string {
+	return text.split("\n")
+		.filter(l => LOG_LINE_FILTERS.every(f => f(l)))
+		.join("\n")
+		.trim();
+}
+
+/**
+ * Format a CommandResult for the run log.
+ * Returns null if the result should be suppressed (empty, meta, etc.).
+ */
+export function formatResultForLog(result: CommandResult): string | null {
+	switch (result.type) {
+		case "empty":
+			return null;
+		case "text":
+			return filterLogNoise(result.content);
+		case "markdown": {
+			// Extract plain text: strip blockquotes (logs), keep return value
+			const sections = result.content.split("\n\n");
+			const parts: string[] = [];
+			for (const section of sections) {
+				const trimmed = section.trim();
+				if (trimmed.startsWith(">")) {
+					// Blockquoted log lines — strip > prefix
+					const logLines = trimmed.split("\n").map(l => l.replace(/^>\s?/, "")).join("\n");
+					parts.push(logLines);
+				} else if (trimmed) {
+					parts.push(trimmed);
+				}
+			}
+			return filterLogNoise(parts.join("\n")) || null;
+		}
+		case "error": {
+			const msg = filterLogNoise(result.message);
+			return msg ? `ERROR: ${msg}` : null;
+		}
+		case "code":
+			return filterLogNoise(result.content) || null;
+		case "table": {
+			// Summarize table as compact rows
+			if (result.rows.length === 0) return null;
+			const lines = result.rows.map(row => row.join("  "));
+			return lines.join("\n");
+		}
+		case "tree":
+			return null; // Trees are too complex for single-line log
+		case "wizard":
+			return null; // Wizard results don't belong in run log
+		default:
+			return null;
 	}
 }
 

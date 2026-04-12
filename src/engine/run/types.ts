@@ -43,11 +43,20 @@ export interface ExpectResult {
 	tolerance?: number;
 }
 
+/** Per-command output collected during script execution. */
+export interface CommandOutput {
+	line: number;
+	content: string;
+	result: import("../result.js").CommandResult;
+}
+
 /** Result of a full script run. */
 export interface RunResult {
 	ok: boolean;
 	linesExecuted: number;
 	expects: ExpectResult[];
+	/** Per-command results for rendering output */
+	results: CommandOutput[];
 	/** Set if execution was aborted by a runtime error or "or abort" */
 	error?: { line: number; message: string };
 }

@@ -34,7 +34,7 @@ export function buildModeMap(lines: string[]): ModeMapEntry[] {
 		const current = modeStack[modeStack.length - 1]!;
 
 		// Empty/comment lines inherit current mode
-		if (trimmed === "" || trimmed.startsWith("#")) {
+		if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith("//")) {
 			map.push({ modeId: current, isModeEntry: false, isModeExit: false, accent: MODE_ACCENTS[current] });
 			continue;
 		}
@@ -101,13 +101,63 @@ const MODE_TOKENIZERS: Partial<Record<ModeId, Tokenizer>> = {
  * Mode-specific lines use the mode's tokenizer (if available).
  */
 /** Tokenizer that returns the entire line as a comment span. */
-function tokenizeComment(source: string): TokenSpan[] {
+function tokenizeFullComment(source: string): TokenSpan[] {
 	return [{ text: source, token: "comment" }];
+}
+
+/**
+ * Find the start of an inline comment (# or //) in a line,
+ * respecting quoted strings. Returns -1 if no comment found.
+ */
+function findInlineComment(text: string): number {
+	let inDouble = false;
+	let inSingle = false;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i]!;
+		if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+		if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
+		if (inDouble || inSingle) continue;
+		if (ch === "#") return i;
+		if (ch === "/" && text[i + 1] === "/") return i;
+	}
+	return -1;
+}
+
+/**
+ * Wrap a mode tokenizer to handle inline comments.
+ * Splits at the comment start, tokenizes the code part with the mode
+ * tokenizer, and appends the comment as a dimmed span.
+ */
+function withInlineComment(base: Tokenizer | undefined, lineText: string): TokenSpan[] {
+	const commentIdx = findInlineComment(lineText);
+	if (commentIdx <= 0) {
+		// No inline comment (or full-line comment handled elsewhere)
+		return base ? base(lineText) : [{ text: lineText, token: "plain" }];
+	}
+	const codePart = lineText.slice(0, commentIdx);
+	const commentPart = lineText.slice(commentIdx);
+	const codeSpans = base ? base(codePart) : [{ text: codePart, token: "plain" as const }];
+	return [...codeSpans, { text: commentPart, token: "comment" as const }];
 }
 
 export function tokenizerForLine(entry: ModeMapEntry, lineText: string): Tokenizer | undefined {
 	const trimmed = lineText.trim();
-	if (trimmed.startsWith("#")) return tokenizeComment;
-	if (trimmed.startsWith("/")) return tokenizeSlash;
-	return MODE_TOKENIZERS[entry.modeId];
+	// Full-line comments (# or //)
+	if (trimmed.startsWith("#") || trimmed.startsWith("//")) return tokenizeFullComment;
+	// Slash commands (but not //)
+	if (trimmed.startsWith("/")) {
+		// Check for inline comment
+		const commentIdx = findInlineComment(lineText);
+		if (commentIdx > 0) {
+			return (src: string) => withInlineComment(tokenizeSlash, src);
+		}
+		return tokenizeSlash;
+	}
+	// Mode-specific with inline comment support
+	const baseTokenizer = MODE_TOKENIZERS[entry.modeId];
+	const commentIdx = findInlineComment(lineText);
+	if (commentIdx > 0) {
+		return (src: string) => withInlineComment(baseTokenizer, src);
+	}
+	return baseTokenizer;
 }

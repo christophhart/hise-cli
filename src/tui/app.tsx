@@ -19,8 +19,9 @@ import {
 	totalLineCount,
 } from "./components/Output.js";
 import type { PrerenderedBlock } from "./components/prerender.js";
-import { renderEcho, renderResult, truncateAnsi, wrapAnsi, fgHex, RESET } from "./components/prerender.js";
+import { renderEcho, renderResult, truncateAnsi, wrapAnsi, fgHex, bgHex, RESET } from "./components/prerender.js";
 import { Input, type InputHandle, offsetToLineCol, lineColToOffset, buildVisualRowMap, findVisualRow } from "./components/Input.js";
+import { buildModeMap } from "../engine/run/mode-map.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { CompletionPopup } from "./components/CompletionPopup.js";
 import { TreeSidebar, type TreeSidebarHandle, type TreeSidebarState } from "./components/TreeSidebar.js";
@@ -35,6 +36,7 @@ import {
 	type ConnectionStatus,
 } from "./theme.js";
 import { ThemeProvider } from "./theme-context.js";
+import { darkenHex } from "./theme.js";
 import {
 	computeLayout,
 	topBarHeight,
@@ -131,6 +133,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// Multiline editor mode — toggled by /edit command
 	const [multilineMode, setMultilineMode] = useState(false);
+	const [editorErrorLine, setEditorErrorLine] = useState<number | undefined>(undefined);
 
 	// Input imperative handle + mouse support
 	const inputHandleRef = useRef<InputHandle>(null);
@@ -367,10 +370,16 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// Delete sends \x1b[3~ which Ink maps to key.delete same as Backspace (\x7f).
 	// We intercept the raw sequence before Ink processes it.
 	const deleteForwardRef = useRef(false);
+	const f5PressedRef = useRef(false);
 	useEffect(() => {
 		const onData = (data: Buffer) => {
-			if (data.toString() === "\x1b[3~") {
+			const str = data.toString();
+			if (str === "\x1b[3~") {
 				deleteForwardRef.current = true;
+			}
+			// F5: \x1b[15~ or \x1b[[E
+			if (str === "\x1b[15~" || str === "\x1b[[E") {
+				f5PressedRef.current = true;
 			}
 		};
 		process.stdin.on("data", onData);
@@ -533,7 +542,12 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			}
 			if (key.escape) {
 				setCompletionState(null);
-				return; // consumed
+				if (multilineMode) {
+					// Don't consume — fall through to multiline handler
+					// so it can track the double-tap sequence
+				} else {
+					return; // consumed (single-line mode)
+				}
 			}
 			// All other keys fall through to tree/input
 		}
@@ -641,11 +655,17 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 		// ── Multiline overrides ───────────────────────────────────
 		if (multilineMode) {
+			// F5 — run script (HISE compile shortcut)
+			if (f5PressedRef.current) {
+				f5PressedRef.current = false;
+				setCompletionState(null);
+				handle.submit();
+				return;
+			}
 			if (key.ctrl && key.return) {
 				// Ctrl+Enter → submit in multiline mode
 				setCompletionState(null);
 				handle.submit();
-				setMultilineMode(false);
 				return;
 			}
 			if (key.return) {
@@ -654,9 +674,19 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				return;
 			}
 			if (key.escape) {
-				// Escape → exit multiline mode without executing
-				setMultilineMode(false);
-				handle.setValue("");
+				// Double-Escape (500ms) → exit multiline mode
+				// Single Escape → toggle completion popup (same as single-line)
+				const now = Date.now();
+				if (escTimestampRef.current > 0 && (now - escTimestampRef.current) < 500) {
+					escTimestampRef.current = 0;
+					setCompletionState(null);
+					setMultilineMode(false);
+					handle.setValue("");
+				} else {
+					escTimestampRef.current = now;
+					// Toggle completion popup
+					handleEscape();
+				}
 				return;
 			}
 			if (key.upArrow) {
@@ -978,25 +1008,120 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			try {
 				const { parseScript } = await import("../engine/run/parser.js");
 				const { validateScript, formatValidationReport } = await import("../engine/run/validator.js");
-				const { executeScript, formatRunReport } = await import("../engine/run/executor.js");
+				const { executeScript, formatRunReport, formatResultForLog, filterLogNoise } = await import("../engine/run/executor.js");
+
+				// Clear previous error highlight
+				setEditorErrorLine(undefined);
 
 				const script = parseScript(input);
 				const validation = validateScript(script, session);
 
 				if (!validation.ok) {
+					// Highlight first error line in editor
+					if (validation.errors.length > 0) {
+						setEditorErrorLine(validation.errors[0]!.line);
+					}
 					const block = renderResult({ type: "error", message: formatValidationReport(validation) }, scheme, innerW);
 					if (block) addBlocks([block]);
 					return;
 				}
 
+				// Echo: show entire script as dimmed text
+				const echoBlock = renderEcho(input, scheme.foreground.muted, scheme.backgrounds.darker, innerW);
+				addBlocks([echoBlock]);
+
 				const result = await executeScript(script, session);
-				const report = formatRunReport(result);
-				const block = renderResult(
-					result.ok ? { type: "text", content: report } : { type: "error", message: report },
-					scheme,
-					innerW,
-				);
-				if (block) addBlocks([block]);
+
+				// Highlight error line in editor if execution failed
+				if (result.error) {
+					setEditorErrorLine(result.error.line);
+				}
+
+				// Build mode map to colorize output and filter meta commands
+				const scriptLines = input.split("\n").map(l => l.trim());
+				const modeMap = buildModeMap(scriptLines);
+
+				// Assemble per-command outputs with mode color bars
+				const dimmed = fgHex(scheme.foreground.muted);
+				const bg = bgHex(scheme.backgrounds.standard);
+				const outputLines: string[] = [];
+				outputLines.push(bg + dimmed + "\u2502 " + "Executing script..." + RESET);
+
+				// Build a lookup from line number to result
+				const resultsByLine = new Map<number, typeof result.results[number]>();
+				for (const cmd of result.results) {
+					resultsByLine.set(cmd.line, cmd);
+				}
+
+				// Walk raw lines to interleave comments, blanks, and results
+				let actionCount = 0;
+				for (let i = 0; i < scriptLines.length; i++) {
+					const rawLine = scriptLines[i]!;
+					const lineNum = i + 1; // 1-based
+					const modeEntry = modeMap[i];
+
+					// Comment lines (# or //) → dimmed, strip prefix
+					if (rawLine.startsWith("#") || rawLine.startsWith("//")) {
+						const commentText = rawLine.startsWith("//")
+							? rawLine.slice(2).trim()
+							: rawLine.slice(1).trim();
+						outputLines.push(bg + dimmed + "\u2502 " + commentText + RESET);
+						continue;
+					}
+
+					// Empty lines → skip
+					if (rawLine === "") continue;
+
+					// Mode entry/exit → skip
+					if (modeEntry?.isModeEntry || modeEntry?.isModeExit) continue;
+
+					// Look up result for this line
+					const cmd = resultsByLine.get(lineNum);
+					if (!cmd) continue;
+
+					const val = formatResultForLog(cmd.result);
+					if (!val) continue;
+
+					actionCount++;
+
+					const barColor = (modeEntry && modeEntry.modeId !== "root" && modeEntry.accent)
+						? fgHex(modeEntry.accent)
+						: dimmed;
+
+					for (const line of val.split("\n")) {
+						outputLines.push(bg + barColor + "\u2502" + RESET + bg + " " + line + RESET);
+					}
+				}
+
+				// Expect results
+				const errFg = fgHex(brand.error);
+				const okFg = fgHex(brand.ok);
+				for (const expect of result.expects) {
+					const icon = expect.passed ? "\u2713" : "\u2717";
+					const color = expect.passed ? okFg : errFg;
+					let line = `${icon} line ${expect.line}: ${expect.command} is ${expect.expected}`;
+					if (!expect.passed) line += ` \u2014 got ${expect.actual}`;
+					outputLines.push(bg + color + "\u2502 " + line + RESET);
+				}
+
+				// Error with ✗ icon
+				if (result.error) {
+					outputLines.push(bg + errFg + "\u2502 \u2717 " + `ABORTED at line ${result.error.line}: ${filterLogNoise(result.error.message)}` + RESET);
+				}
+
+				// Footer summary
+				const passed = result.expects.filter(e => e.passed).length;
+				const total = result.expects.length;
+				const statusColor = result.ok ? okFg : errFg;
+				const statusIcon = result.ok ? "\u2713" : "\u2717";
+				const statusParts: string[] = [];
+				if (actionCount > 0) statusParts.push(`${actionCount} command${actionCount !== 1 ? "s" : ""} executed`);
+				if (total > 0) statusParts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
+				outputLines.push(bg + statusColor + "\u2502 " + statusIcon + " " + statusParts.join(", ") + RESET);
+
+				// Build pre-rendered block directly (ANSI codes would be mangled by markdown)
+				const block = { lines: [...outputLines, ""], height: outputLines.length + 1 };
+				addBlocks([block]);
 			} catch (err) {
 				const block = renderResult({ type: "error", message: `Script error: ${err instanceof Error ? err.message : String(err)}` }, scheme, innerW);
 				if (block) addBlocks([block]);
@@ -1283,9 +1408,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const scrollHint = totalLines > outputHeight ? "PgUp/PgDn scroll" : "";
 	const modeHint = wizardForm
 		? "" // Wizard has its own hint bar in the output block
-		: currentMode.id === "root"
-			? `/help for commands    [escape] for context menu  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
-			: `/exit to leave ${currentMode.name}  /help for commands  [escape] for context menu${scrollHint ? `  ${scrollHint}` : ""}`;
+		: multilineMode
+			? `[F5] run script  [escape] autocomplete  [escape x2] exit  [tab] complete`
+			: currentMode.id === "root"
+				? `/help for commands    [escape] for context menu  /script /builder /inspect to enter modes${scrollHint ? `  ${scrollHint}` : ""}`
+				: `/exit to leave ${currentMode.name}  /help for commands  [escape] for context menu${scrollHint ? `  ${scrollHint}` : ""}`;
 
 	// ── Completion handlers ────────────────────────────────────────
 
@@ -1308,25 +1435,81 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	);
 
 	const handleInputValueChange = useCallback((value: string, cursorPos: number) => {
+		// Clear error highlight when user edits
+		if (editorErrorLine !== undefined) setEditorErrorLine(undefined);
+
 		if (value.length < 1) {
 			setCompletionState(null);
 			return;
 		}
 
-		// Only show completions when cursor is at end of input
-		// (editing mid-string should not trigger the popup)
-		if (cursorPos < value.length) {
-			setCompletionState(null);
-			return;
+		let completionResult: import("../engine/modes/mode.js").CompletionResult;
+
+		if (multilineMode) {
+			// Multiline: complete based on the current line and its mode
+			const { line: lineIdx, col } = offsetToLineCol(value, cursorPos);
+			const lines = value.split("\n");
+			const lineText = lines[lineIdx] ?? "";
+
+			// Don't trigger completion on empty lines or comment lines
+			const trimmedLine = lineText.trim();
+			if (trimmedLine.length === 0 || trimmedLine.startsWith("#") || trimmedLine.startsWith("//")) {
+				setCompletionState(null);
+				return;
+			}
+
+			// Only complete when cursor is at end of the current line
+			if (col < lineText.length) {
+				setCompletionState(null);
+				return;
+			}
+
+			if (lineText.startsWith("/")) {
+				// Slash command: use session.complete which handles slash + mode args
+				completionResult = session.complete(lineText, col);
+			} else {
+				// Mode-specific: look up mode from mode map
+				const modeMap = buildModeMap(lines);
+				const entry = modeMap[lineIdx];
+				if (entry && entry.modeId !== "root") {
+					try {
+						const mode = session.getOrCreateMode(entry.modeId);
+						if (mode.complete) {
+							completionResult = mode.complete(lineText, col);
+						} else {
+							setCompletionState(null);
+							return;
+						}
+					} catch {
+						setCompletionState(null);
+						return;
+					}
+				} else {
+					// Root mode: try slash completion
+					completionResult = session.complete(lineText, col);
+				}
+			}
+
+			// Adjust result offsets from line-relative to absolute
+			const lineStart = lineColToOffset(value, lineIdx, 0);
+			completionResult = {
+				...completionResult,
+				from: completionResult.from + lineStart,
+				to: completionResult.to + lineStart,
+			};
+		} else {
+			// Single-line: cursor must be at end of input
+			if (cursorPos < value.length) {
+				setCompletionState(null);
+				return;
+			}
+			completionResult = session.complete(value, cursorPos);
 		}
 
-		const result = session.complete(value, cursorPos);
-		if (result.items.length > 0) {
-			// Auto-close: if any item exactly matches the typed token,
-			// dismiss the popup — Enter will submit normally. This handles
-			// cases like "/exit" where fuzzy matching also returns "/quit".
-			const token = value.slice(result.from);
-			if (token.length > 0 && result.items.some((item) => {
+		if (completionResult.items.length > 0) {
+			// Auto-close: if any item exactly matches the typed token
+			const token = value.slice(completionResult.from);
+			if (token.length > 0 && completionResult.items.some((item) => {
 				const itemText = item.insertText ?? item.label;
 				return token === itemText;
 			})) {
@@ -1334,9 +1517,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				return;
 			}
 
-			const ghostText = computeGhostText(value, result, 0);
+			const ghostText = computeGhostText(value, completionResult, 0);
 			setCompletionState({
-				result,
+				result: completionResult,
 				selectedIndex: 0,
 				visible: true,
 				ghostText,
@@ -1345,7 +1528,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		} else {
 			setCompletionState(null);
 		}
-	}, [session, computeGhostText]);
+	}, [session, multilineMode, computeGhostText]);
 
 	const handleTab = useCallback(() => {
 		if (!completionState) {
@@ -1386,8 +1569,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		const currentValue = handle.getValue();
 		const insertText = item.insertText ?? item.label;
 		const newValue =
-			currentValue.slice(0, result.from) + insertText;
+			currentValue.slice(0, result.from) + insertText + currentValue.slice(result.to);
 		handle.setValue(newValue);
+		handle.setCursorAt(result.from + insertText.length);
 		setCompletionState(null);
 	}, []);
 
@@ -1510,7 +1694,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					/>
 					)}
 					{!wizardForm && <Text backgroundColor={scheme.backgrounds.standard}>{" ".repeat(contentColumns)}</Text>}
-					{!wizardForm && completionState?.visible && (
+					{!wizardForm && !multilineMode && completionState?.visible && (
 						<CompletionPopup
 							items={completionState.result.items}
 							selectedIndex={completionState.selectedIndex}
@@ -1521,7 +1705,6 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							scheme={scheme}
 							label={completionState.result.label}
 							maxVisible={layout.completionMaxVisible}
-
 							rows={mainAreaHeight}
 							columns={contentColumns}
 							bottomOffset={INPUT_SECTION_ROWS}
@@ -1538,6 +1721,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							focused={!sidebarFocused}
 							multiline={multilineMode}
 							maxLines={editorMaxLines}
+							errorLine={editorErrorLine}
 							onSubmit={(v) => {
 								setCompletionState(null);
 								void handleSubmit(v);
@@ -1549,6 +1733,36 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							tokenize={modeTokenizer}
 						/>
 					</Box>
+					)}
+					{!wizardForm && multilineMode && completionState?.visible && (
+						<CompletionPopup
+							items={completionState.result.items}
+							selectedIndex={completionState.selectedIndex}
+							onSelect={handleCompletionSelect}
+							onAccept={handleCompletionAccept}
+							onDismiss={handleCompletionDismiss}
+							scheme={{ ...scheme, backgrounds: { ...scheme.backgrounds, overlay: darkenHex(scheme.backgrounds.raised, 0.9) } }}
+
+							leftOffset={(() => {
+								const val = inputHandleRef.current?.getValue() ?? "";
+								const { line: lineIdx } = offsetToLineCol(val, completionState.result.from);
+								const lineStart = lineColToOffset(val, lineIdx, 0);
+								const lineRelFrom = completionState.result.from - lineStart;
+								const gutterW = layout.horizontalPad + String(editorMaxLines).length + 2;
+								return lineRelFrom + gutterW;
+							})()}
+							label={completionState.result.label}
+							maxVisible={layout.completionMaxVisible}
+							rows={mainAreaHeight}
+							columns={contentColumns}
+							bottomOffset={(() => {
+								const handle = inputHandleRef.current;
+								if (!handle) return editorSectionRows;
+								const cursorViewportRow = handle.getCursorViewportRow?.() ?? 0;
+								const editorTop = mainAreaHeight - editorSectionRows;
+								return Math.max(0, mainAreaHeight - editorTop - cursorViewportRow - 1);
+							})()}
+						/>
 					)}
 					</Box>
 				</Box>

@@ -55,6 +55,7 @@ describe("formatRunReport", () => {
 				{ line: 3, command: "getValue()", expected: "0.5", actual: "0.5", passed: true, tolerance: 0.01 },
 				{ line: 5, command: "getCount()", expected: "2", actual: "2", passed: true, tolerance: 0.01 },
 			],
+			results: [],
 		};
 		const report = formatRunReport(result);
 		expect(report).toContain("\u2713 line 3");
@@ -70,6 +71,7 @@ describe("formatRunReport", () => {
 				{ line: 3, command: "getValue()", expected: "0.5", actual: "0.5", passed: true, tolerance: 0.01 },
 				{ line: 5, command: "getCount()", expected: "2", actual: "3", passed: false, tolerance: 0.01 },
 			],
+			results: [],
 		};
 		const report = formatRunReport(result);
 		expect(report).toContain("\u2713 line 3");
@@ -83,6 +85,7 @@ describe("formatRunReport", () => {
 			ok: false,
 			linesExecuted: 3,
 			expects: [],
+			results: [],
 			error: { line: 3, message: "Module not found" },
 		};
 		const report = formatRunReport(result);
@@ -95,6 +98,7 @@ describe("formatRunReport", () => {
 			ok: true,
 			linesExecuted: 5,
 			expects: [],
+			results: [],
 		};
 		const report = formatRunReport(result);
 		expect(report).toContain("OK: 5 commands executed");

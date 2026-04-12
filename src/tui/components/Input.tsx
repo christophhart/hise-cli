@@ -338,6 +338,8 @@ export interface InputHandle {
 	getLineInfo(): { line: number; col: number; lineCount: number };
 	/** Scroll the multiline viewport without moving the cursor. */
 	scrollEditor(delta: number): void;
+	/** Get cursor's row index within the visible viewport (0-based). */
+	getCursorViewportRow?(): number;
 	submit(): void;
 	historyUp(): void;
 	historyDown(): void;
@@ -363,6 +365,8 @@ export interface InputProps {
 	onValueChange?: (value: string, cursorPos: number) => void;
 	/** Ref for imperative control */
 	inputRef?: React.Ref<InputHandle>;
+	/** Line with error (1-based) — highlighted with error tint in multiline mode */
+	errorLine?: number;
 	/** Tokenizer for syntax highlighting. If provided, input text is rendered
 	 *  with per-token colors from TOKEN_COLORS. Falls back to flat foreground.bright. */
 	tokenize?: (value: string) => TokenSpan[];
@@ -388,6 +392,7 @@ export const Input = React.memo(function Input({
 	focused = true,
 	multiline = false,
 	maxLines = 10,
+	errorLine,
 }: InputProps) {
 	const { scheme, brand, layout } = useTheme();
 
@@ -471,12 +476,26 @@ export const Input = React.memo(function Input({
 			if (start === end) return null;
 			return { start, end, text: state.value.slice(start, end) };
 		},
+		getCursorViewportRow: () => {
+			if (!multiline) return 0;
+			const lines = state.value.split("\n");
+			const { line: cl, col: cc } = offsetToLineCol(state.value, state.cursorOffset);
+			const maxLineNum = Math.max(lines.length, maxLines);
+			const lineNumW = String(maxLineNum).length;
+			const gc = pad.length + lineNumW + 1 + 1;
+			const bw = Math.max(1, columns - gc - 1 - pad.length);
+			const vrMap = buildVisualRowMap(lines, bw);
+			const curVRow = findVisualRow(vrMap, cl, cc);
+			return Math.max(0, curVRow - prevScrollRef.current);
+		},
 		submit: () => {
 			const trimmed = state.value.trim();
 			if (!trimmed || disabled) return;
 			addToHistory(trimmed);
 			onSubmit(trimmed);
-			dispatch({ type: "set-value", value: "", cursorOffset: 0 });
+			if (!multiline) {
+				dispatch({ type: "set-value", value: "", cursorOffset: 0 });
+			}
 		},
 		historyUp: () => {
 			const prev = historyUp(state.value);
@@ -713,10 +732,15 @@ export const Input = React.memo(function Input({
 			const isLastSlice = vrIdx + 1 >= totalVRows || vrMap[vrIdx + 1]!.lineIdx !== lineIdx;
 			const isCursorVRow = vrIdx === cursorVRow;
 
+			// ── Error tint for this line ──
+			const isErrorLine = errorLine !== undefined && (lineIdx + 1) === errorLine;
+			const lineGutterBg = isErrorLine ? lerpHex(gutterBg, brand.error, 0.15) : gutterBg;
+			const lineBg = isErrorLine ? lerpHex(scheme.backgrounds.raised, brand.error, 0.1) : undefined;
+
 			// ── Gutter ──
 			if (vr.isFirst) {
 				const lineNum = String(lineIdx + 1).padStart(lineNumberWidth, " ");
-				const gutterColor = isCursorVRow ? brand.signal : scheme.foreground.muted;
+				const gutterColor = isErrorLine ? brand.error : isCursorVRow ? brand.signal : scheme.foreground.muted;
 				const modeEntry = modeMap[lineIdx];
 				let modeIndicator = " ";
 				let indicatorColor = scheme.foreground.muted;
@@ -725,17 +749,17 @@ export const Input = React.memo(function Input({
 					modeIndicator = "\u2595";
 				}
 				elements.push(
-					<Text key={`g${vrIdx}`} color={gutterColor} backgroundColor={gutterBg}>{pad}{lineNum}</Text>,
-					<Text key={`gi${vrIdx}`} color={indicatorColor} backgroundColor={gutterBg}>{modeIndicator}</Text>,
-					<Text key={`gs${vrIdx}`}> </Text>,
+					<Text key={`g${vrIdx}`} color={gutterColor} backgroundColor={lineGutterBg}>{pad}{lineNum}</Text>,
+					<Text key={`gi${vrIdx}`} color={isErrorLine ? brand.error : indicatorColor} backgroundColor={lineGutterBg}>{modeIndicator}</Text>,
+					<Text key={`gs${vrIdx}`} backgroundColor={lineBg}> </Text>,
 				);
 			} else {
 				// Continuation row: blank gutter with wrap marker
 				const blankNum = " ".repeat(lineNumberWidth);
 				elements.push(
-					<Text key={`g${vrIdx}`} color={scheme.foreground.muted} backgroundColor={gutterBg}>{pad}{blankNum}</Text>,
-					<Text key={`gi${vrIdx}`} color={scheme.foreground.muted} backgroundColor={gutterBg}>{"\u21AA"}</Text>,
-					<Text key={`gs${vrIdx}`}> </Text>,
+					<Text key={`g${vrIdx}`} color={scheme.foreground.muted} backgroundColor={lineGutterBg}>{pad}{blankNum}</Text>,
+					<Text key={`gi${vrIdx}`} color={scheme.foreground.muted} backgroundColor={lineGutterBg}>{"\u21AA"}</Text>,
+					<Text key={`gs${vrIdx}`} backgroundColor={lineBg}> </Text>,
 				);
 			}
 
@@ -808,7 +832,7 @@ export const Input = React.memo(function Input({
 				}
 				const cursorExtra = visCursorCol >= sliceLen ? 1 : 0;
 				const fill = Math.max(0, bodyWidth - sliceLen - cursorExtra);
-				elements.push(<Text key={`${vrIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+				elements.push(<Text key={`${vrIdx}f`} backgroundColor={lineBg}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
 			} else {
 				if (lineTokenizer && sliceText.length > 0) {
 					const fullSpans = lineTokenizer(lineText);
@@ -825,11 +849,11 @@ export const Input = React.memo(function Input({
 				// Wrap indicator on non-terminal visual rows
 				if (!isLastSlice) {
 					const fill = Math.max(0, bodyWidth - sliceLen - 1);
-					elements.push(<Text key={`${vrIdx}w`} color={scheme.foreground.muted}>{" ".repeat(fill)}{"\u2936"}</Text>);
-					elements.push(<Text key={`${vrIdx}f`}><Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+					elements.push(<Text key={`${vrIdx}w`} color={scheme.foreground.muted} backgroundColor={lineBg}>{" ".repeat(fill)}{"\u2936"}</Text>);
+					elements.push(<Text key={`${vrIdx}f`} backgroundColor={lineBg}><Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
 				} else {
 					const fill = Math.max(0, bodyWidth - sliceLen);
-					elements.push(<Text key={`${vrIdx}f`}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
+					elements.push(<Text key={`${vrIdx}f`} backgroundColor={lineBg}>{" ".repeat(fill)}<Text color={scheme.foreground.muted}>{scrollChar}</Text>{pad}</Text>);
 				}
 			}
 		}

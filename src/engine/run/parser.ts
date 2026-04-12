@@ -22,14 +22,31 @@ export function parseScript(source: string): ParsedScript {
 		const raw = rawLines[i]!;
 		const trimmed = raw.trim();
 
-		// Skip empty lines and comments
-		if (trimmed === "" || trimmed.startsWith("#")) continue;
+		// Skip empty lines and full-line comments (# or //)
+		if (trimmed === "" || trimmed.startsWith("#") || trimmed.startsWith("//")) continue;
+
+		// Strip inline comments (# or //) respecting quoted strings
+		let content = trimmed;
+		let inDouble = false;
+		let inSingle = false;
+		for (let j = 0; j < content.length; j++) {
+			const ch = content[j]!;
+			if (ch === '"' && !inSingle) { inDouble = !inDouble; continue; }
+			if (ch === "'" && !inDouble) { inSingle = !inSingle; continue; }
+			if (inDouble || inSingle) continue;
+			if (ch === "#" || (ch === "/" && content[j + 1] === "/")) {
+				content = content.slice(0, j).trimEnd();
+				break;
+			}
+		}
+
+		if (content === "") continue;
 
 		lines.push({
 			lineNumber: i + 1,
 			raw,
-			content: trimmed,
-			kind: trimmed.startsWith("/") ? "slash" : "command",
+			content,
+			kind: content.startsWith("/") ? "slash" : "command",
 		});
 	}
 

@@ -116,7 +116,7 @@ export function fgHex(hex: string): string {
 	return `\x1b[38;5;${rgbTo256(r, g, b)}m`;
 }
 
-function bgHex(hex: string): string {
+export function bgHex(hex: string): string {
 	if (!hex || hex.length < 7) return "";
 	const [r, g, b] = hexToRgb(hex);
 	if (hasTrueColor) return `\x1b[48;2;${r};${g};${b}m`;
@@ -202,36 +202,34 @@ export function renderEcho(
 	const prefix = options?.prefix ?? "";
 	const prefixColor = options?.prefixColor ? fgHex(options.prefixColor) : "";
 
-	// Build the content line with optional syntax spans
-	let contentLine: string;
-	if (spans && spans.length > 0) {
-		const spanText = spans.map(span => {
-			const c = span.color || TOKEN_COLORS[span.token];
-			return fgHex(c) + span.text;
-		}).join("");
-		contentLine = bg + fg + border + "> " + prefixColor + prefix + spanText + RESET;
-	} else {
-		contentLine = bg + fg + border + "> " + prefixColor + prefix + input + RESET;
+	// Top/bottom border lines
+	const padBorder = bg + fg + border + RESET + bg + " ".repeat(Math.max(0, contentWidth - 2)) + RESET;
+
+	// Check for multiline input
+	const inputLines = input.split("\n");
+
+	if (inputLines.length === 1) {
+		// Single-line: original rendering with "> " prefix and optional spans
+		const paddedContent = bg + fg + border + "> " +
+			(prefix ? prefixColor + prefix : "") +
+			(spans && spans.length > 0
+				? spans.map(span => {
+					const c = span.color || TOKEN_COLORS[span.token];
+					return fgHex(c) + span.text;
+				}).join("")
+				: input
+			) + " ".repeat(Math.max(0, contentWidth - 2 - 2 - prefix.length - input.length)) + RESET;
+
+		return { lines: [padBorder, paddedContent, padBorder], height: 3 };
 	}
 
-	// Pad each line to fill contentWidth with darker bg
-	const borderLine = bg + fg + border + RESET;
-	// Pad the border-only lines to full width
-	const padBorder = bg + fg + border + RESET + bg + " ".repeat(Math.max(0, contentWidth - 2)) + RESET;
-	// Pad the content line to full width
-	const visibleContent = 2 + 2 + prefix.length + input.length; // border(2) + "> "(2) + text
-	const padContent = " ".repeat(Math.max(0, contentWidth - visibleContent));
-	const paddedContent = bg + fg + border + "> " +
-		(prefix ? prefixColor + prefix : "") +
-		(spans && spans.length > 0
-			? spans.map(span => {
-				const c = span.color || TOKEN_COLORS[span.token];
-				return fgHex(c) + span.text;
-			}).join("")
-			: input
-		) + padContent + RESET;
+	// Multiline: render each line with border + padding, no "> " prefix
+	const contentLines = inputLines.map((line) => {
+		const pad = " ".repeat(Math.max(0, contentWidth - 2 - line.length));
+		return bg + fg + border + RESET + bg + fgHex(accent) + line + pad + RESET;
+	});
 
-	const lines = [padBorder, paddedContent, padBorder];
+	const lines = [padBorder, ...contentLines, padBorder];
 	return { lines, height: lines.length };
 }
 

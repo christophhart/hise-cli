@@ -38,7 +38,7 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 	integer: "#DDAADD",
 	float: "#EEAA00",
 	string: "#DDAAAA",
-	comment: "#77CC77",
+	comment: "#666666",
 	operator: "#CCCCCC",
 	bracket: "#FFFFFF",
 	punctuation: "#CCCCCC",
