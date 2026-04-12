@@ -734,15 +734,20 @@ export const Input = React.memo(function Input({
 			const isLastSlice = vrIdx + 1 >= totalVRows || vrMap[vrIdx + 1]!.lineIdx !== lineIdx;
 			const isCursorVRow = vrIdx === cursorVRow;
 
-			// ── Error tint for this line ──
+			// ── Error tint and active line highlight ──
 			const isErrorLine = errorLine !== undefined && (lineIdx + 1) === errorLine;
-			const lineGutterBg = isErrorLine ? lerpHex(gutterBg, brand.error, 0.15) : gutterBg;
-			const lineBg = isErrorLine ? lerpHex(scheme.backgrounds.raised, brand.error, 0.1) : undefined;
+			const isActiveLine = isCursorVRow && !isErrorLine && focused;
+			const lineGutterBg = isErrorLine
+				? lerpHex(gutterBg, brand.error, 0.15)
+				: isActiveLine ? lightenHex(gutterBg, 0.05) : gutterBg;
+			const lineBg = isErrorLine
+				? lerpHex(scheme.backgrounds.raised, brand.error, 0.1)
+				: isActiveLine ? lightenHex(scheme.backgrounds.raised, 0.05) : undefined;
 
 			// ── Gutter ──
 			if (vr.isFirst) {
 				const lineNum = String(lineIdx + 1).padStart(lineNumberWidth, " ");
-				const gutterColor = isErrorLine ? brand.error : isCursorVRow ? brand.signal : scheme.foreground.muted;
+				const gutterColor = isErrorLine ? brand.error : isCursorVRow && focused ? brand.signal : isCursorVRow ? scheme.foreground.bright : scheme.foreground.muted;
 				const modeEntry = modeMap[lineIdx];
 				let modeIndicator = " ";
 				let indicatorColor = scheme.foreground.muted;
@@ -772,9 +777,9 @@ export const Input = React.memo(function Input({
 			const vrSelEnd = hasSelection ? Math.min(sliceLen, selEnd - absSliceStart) : -1;
 			const vrHasSelection = hasSelection && vrSelStart < vrSelEnd && vrSelStart < sliceLen;
 
-			const pushSegment = (text: string, startCol: number, color: string, keyBase: string, isBold?: boolean) => {
+			const pushSegment = (text: string, startCol: number, color: string, keyBase: string, isBold?: boolean, bgOverride?: string) => {
 				if (!vrHasSelection || text.length === 0) {
-					elements.push(<Text key={keyBase} color={color} bold={isBold}>{text}</Text>);
+					elements.push(<Text key={keyBase} color={color} bold={isBold} backgroundColor={bgOverride}>{text}</Text>);
 					return;
 				}
 				const segStart = startCol;
@@ -782,15 +787,15 @@ export const Input = React.memo(function Input({
 				const overlapStart = Math.max(segStart, vrSelStart) - segStart;
 				const overlapEnd = Math.min(segEnd, vrSelEnd) - segStart;
 				if (overlapStart >= overlapEnd) {
-					elements.push(<Text key={keyBase} color={color} bold={isBold}>{text}</Text>);
+					elements.push(<Text key={keyBase} color={color} bold={isBold} backgroundColor={bgOverride}>{text}</Text>);
 					return;
 				}
 				if (overlapStart > 0) {
-					elements.push(<Text key={`${keyBase}p`} color={color} bold={isBold}>{text.slice(0, overlapStart)}</Text>);
+					elements.push(<Text key={`${keyBase}p`} color={color} bold={isBold} backgroundColor={bgOverride}>{text.slice(0, overlapStart)}</Text>);
 				}
 				elements.push(<Text key={`${keyBase}s`} color={color} bold={isBold} backgroundColor={selBg}>{text.slice(overlapStart, overlapEnd)}</Text>);
 				if (overlapEnd < text.length) {
-					elements.push(<Text key={`${keyBase}q`} color={color} bold={isBold}>{text.slice(overlapEnd)}</Text>);
+					elements.push(<Text key={`${keyBase}q`} color={color} bold={isBold} backgroundColor={bgOverride}>{text.slice(overlapEnd)}</Text>);
 				}
 			};
 
@@ -808,7 +813,7 @@ export const Input = React.memo(function Input({
 					let col = 0;
 					for (let j = 0; j < split.before.length; j++) {
 						const s = split.before[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}b${j}`, s.bold);
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}b${j}`, s.bold, lineBg);
 						col += s.text.length;
 					}
 					const cursorInSel = vrHasSelection && visCursorCol >= vrSelStart && visCursorCol < vrSelEnd;
@@ -820,17 +825,17 @@ export const Input = React.memo(function Input({
 					col = visCursorCol + 1;
 					for (let j = 0; j < split.after.length; j++) {
 						const s = split.after[j]!;
-						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}a${j}`, s.bold);
+						pushSegment(s.text, col, TOKEN_COLORS[s.token], `${vrIdx}a${j}`, s.bold, lineBg);
 						col += s.text.length;
 					}
 				} else {
 					const before = sliceText.slice(0, visCursorCol);
 					const after = sliceText.slice(visCursorCol + 1);
 					const cc = visCursorCol < sliceLen ? sliceText[visCursorCol]! : " ";
-					if (before) pushSegment(before, 0, scheme.foreground.bright, `${vrIdx}bt`);
+					if (before) pushSegment(before, 0, scheme.foreground.bright, `${vrIdx}bt`, undefined, lineBg);
 					const cursorInSel = vrHasSelection && visCursorCol >= vrSelStart && visCursorCol < vrSelEnd;
 					elements.push(<Text key={`${vrIdx}c`} color={scheme.foreground.bright} backgroundColor={cursorInSel ? selBg : cursorBg}>{cc}</Text>);
-					if (after) pushSegment(after, visCursorCol + 1, scheme.foreground.bright, `${vrIdx}at`);
+					if (after) pushSegment(after, visCursorCol + 1, scheme.foreground.bright, `${vrIdx}at`, undefined, lineBg);
 				}
 				const cursorExtra = visCursorCol >= sliceLen ? 1 : 0;
 				const fill = Math.max(0, bodyWidth - sliceLen - cursorExtra);

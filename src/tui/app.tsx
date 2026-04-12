@@ -156,6 +156,31 @@ function formatScriptLog(
 	return { lines, height: lines.length };
 }
 
+// ── File browser tree for multiline editor sidebar ──────────────────
+
+function buildFileTree(files: string[]): TreeNode {
+	const root: TreeNode = { label: "HSC Files", id: ".", children: [] };
+	for (const file of files) {
+		const parts = file.split("/");
+		let current = root;
+		for (let i = 0; i < parts.length; i++) {
+			const part = parts[i]!;
+			const isFile = i === parts.length - 1;
+			if (isFile) {
+				current.children!.push({ label: part, id: file });
+			} else {
+				let dir = current.children!.find(c => c.label === part && c.children);
+				if (!dir) {
+					dir = { label: part, children: [], id: parts.slice(0, i + 1).join("/") };
+					current.children!.push(dir);
+				}
+				current = dir;
+			}
+		}
+	}
+	return root;
+}
+
 // ── App props ───────────────────────────────────────────────────────
 
 export interface AppProps {
@@ -235,13 +260,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	if (!session.globScriptFiles) {
 		session.globScriptFiles = async (pattern: string) => {
 			const { readdir } = await import("node:fs/promises");
-			const { resolve, dirname, basename } = await import("node:path");
+			const { resolve, dirname, basename, relative } = await import("node:path");
 			const resolved = resolve(session.resolveScriptPath(pattern));
 			const dir = dirname(resolved);
 			const glob = basename(resolved);
 			const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-			const entries = await readdir(dir);
-			return entries.filter(f => re.test(f)).sort().map(f => resolve(dir, f));
+			const entries = await readdir(dir, { recursive: true });
+			return entries.filter(f => re.test(basename(f))).sort().map(f => resolve(dir, f));
 		};
 	}
 
@@ -260,6 +285,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// Input imperative handle + mouse support
 	const inputHandleRef = useRef<InputHandle>(null);
 	const inputBoxRef = useRef<DOMElement>(null);
+	// Ref to grab sidebar focus setter (declared later, used in press handler)
+	const setSidebarFocusedRef = useRef<(v: boolean) => void>(() => {});
 	const DOUBLE_CLICK_MS = 300;
 	const lastInputClickRef = useRef<{ x: number; time: number } | null>(null);
 
@@ -335,6 +362,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			return;
 		}
 
+		// Click on editor grabs focus from sidebar
+		setSidebarFocusedRef.current(false);
+
 		const charPos = multilineMode
 			? inputXYToCharOffset(event.x, event.y)
 			: inputXToCharOffset(event.x);
@@ -364,12 +394,24 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// Tree sidebar
 	const treeSidebarRef = useRef<TreeSidebarHandle>(null);
 	const [sidebarVisible, setSidebarVisible] = useState(false);
+	const sidebarVisibleBeforeEditorRef = useRef(false);
 	const [sidebarFocused, setSidebarFocused] = useState(false);
+	setSidebarFocusedRef.current = setSidebarFocused;
 	// Persistent sidebar state survives close/reopen
 	const sidebarStateRef = useRef<TreeSidebarState | undefined>(undefined);
 	const handleSidebarStateChange = useCallback((state: TreeSidebarState) => {
 		sidebarStateRef.current = state;
 	}, []);
+
+	// Auto-show sidebar as file browser when entering editor mode
+	useEffect(() => {
+		if (multilineMode && session.scriptFileCache.length > 0) {
+			sidebarVisibleBeforeEditorRef.current = sidebarVisible;
+			if (!sidebarVisible) setSidebarVisible(true);
+		} else if (!multilineMode && sidebarVisibleBeforeEditorRef.current !== sidebarVisible) {
+			setSidebarVisible(sidebarVisibleBeforeEditorRef.current);
+		}
+	}, [multilineMode]);
 
 	// Tree sidebar search
 	const [searchFocused, setSearchFocused] = useState(false);
@@ -812,11 +854,13 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				if (escTimestampRef.current > 0 && (now - escTimestampRef.current) < 500) {
 					escTimestampRef.current = 0;
 					setCompletionState(null);
-					// Save multiline content, restore single-line content
+					// Save multiline content, clear single-line input
 					editorContentRef.current = handle.getValue();
 					setMultilineMode(false);
 					setEditorErrorLine(undefined);
-					handle.setValue(singleLineContentRef.current);
+					handle.setValue("");
+					// Refresh .hsc file cache (new files may have been created)
+					void session.refreshScriptFileCache();
 				} else {
 					escTimestampRef.current = now;
 					// Toggle completion popup
@@ -1020,7 +1064,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 								const name = typeof proj.name === "string" ? proj.name : undefined;
 								const folder = typeof proj.projectFolder === "string" ? proj.projectFolder : undefined;
 								if (name) session.projectName = name;
-								if (folder) session.projectFolder = folder;
+								if (folder) {
+									session.projectFolder = folder;
+									void session.refreshScriptFileCache();
+								}
 								if (!cancelled) {
 									setProjectName(name);
 									setProjectPath(folder);
@@ -1837,13 +1884,47 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const [modeTree, setModeTree] = useState<TreeNode | null>(currentMode.getTree?.() ?? null);
 	const [modeSelectedPath, setModeSelectedPath] = useState<string[]>(currentMode.getSelectedPath?.() ?? []);
 
+	// In multiline editor mode, override tree with file browser
+	const fileTree = useMemo(() =>
+		multilineMode && session.scriptFileCache.length > 0
+			? buildFileTree(session.scriptFileCache)
+			: null,
+		[multilineMode, session.scriptFileCache],
+	);
+	const effectiveTree = fileTree ?? modeTree;
+	const effectiveTreeLabel = multilineMode ? "HSC Files" : treeLabel;
+	// Build selected path matching the tree node IDs (dir ids are path prefixes, file id is full path)
+	const effectiveSelectedPath = useMemo(() => {
+		if (!multilineMode || !editorFilePath) return modeSelectedPath;
+		const parts = editorFilePath.split("/");
+		const path: string[] = [];
+		for (let i = 0; i < parts.length; i++) {
+			path.push(parts.slice(0, i + 1).join("/"));
+		}
+		return path;
+	}, [multilineMode, editorFilePath, modeSelectedPath]);
+
 	const handleTreeSelect = useCallback((path: string[]) => {
+		if (multilineMode) {
+			// File browser: load selected .hsc file into editor
+			const filePath = path[path.length - 1];
+			if (filePath?.endsWith(".hsc") && session.loadScriptFile) {
+				session.loadScriptFile(filePath).then(content => {
+					const handle = inputHandleRef.current;
+					if (handle) {
+						handle.setValue(content.replace(/\r\n/g, "\n").trimEnd());
+					}
+					setEditorFilePath(filePath);
+				}).catch(() => { /* ignore load errors */ });
+			}
+			return;
+		}
 		if (currentMode.selectNode) {
 			currentMode.selectNode(path);
 			setModeTree(currentMode.getTree?.() ?? null);
 			setModeSelectedPath(currentMode.getSelectedPath?.() ?? []);
 		}
-	}, [currentMode]);
+	}, [multilineMode, currentMode, session]);
 
 	return (
 		<ThemeProvider scheme={scheme} layout={layout}>
@@ -1853,15 +1934,15 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					modeAccent={modeAccent}
 					connectionStatus={connectionStatus}
 					columns={columns}
-					treeLabel={treeLabel}
+					treeLabel={effectiveTreeLabel}
 					projectName={projectName}
 					projectPath={projectPath ?? process.cwd()}
 				/>
 				<Box flexDirection="row" height={mainAreaHeight}>
 					{sidebarVisible && (
 					<TreeSidebar
-						tree={modeTree}
-						selectedPath={modeSelectedPath}
+						tree={effectiveTree}
+						selectedPath={effectiveSelectedPath}
 						width={sidebarW}
 						height={mainAreaHeight}
 						focused={sidebarFocused}

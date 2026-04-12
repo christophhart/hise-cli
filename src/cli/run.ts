@@ -46,8 +46,8 @@ function wireScriptFileOps(session: import("../engine/session.js").Session): voi
 		const dir = dirname(resolved);
 		const glob = basename(resolved);
 		const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-		const entries = await readdir(dir);
-		return entries.filter(f => re.test(f)).sort().map(f => resolve(dir, f));
+		const entries = await readdir(dir, { recursive: true });
+		return entries.filter(f => re.test(basename(f))).sort().map(f => resolve(dir, f));
 	};
 }
 
@@ -93,6 +93,7 @@ export async function executeCliCommand(
 	};
 	wireScriptFileOps(session);
 	await fetchProjectInfo(session, connection);
+	await session.refreshScriptFileCache();
 
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 	for (const mode of session.modeStack) {
@@ -159,6 +160,7 @@ async function executeRunCommand(
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
 	await fetchProjectInfo(session, connection);
+	await session.refreshScriptFileCache();
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 
 	// Read the script source (after project info, so file paths resolve to project folder)
@@ -237,6 +239,7 @@ async function runWatchMode(
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
 	await fetchProjectInfo(session, connection);
+	await session.refreshScriptFileCache();
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 
 	const timestamp = () => {

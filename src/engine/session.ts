@@ -44,6 +44,25 @@ export class Session implements SessionContext, CommandSession {
 	/** Stack of script files currently executing (recursion guard). */
 	readonly scriptStack: string[] = [];
 
+	/** Cached list of .hsc file paths (relative) for /edit and /run completion. */
+	scriptFileCache: string[] = [];
+
+	/** Refresh the script file cache. Requires globScriptFiles to be wired. */
+	async refreshScriptFileCache(): Promise<void> {
+		if (!this.globScriptFiles) return;
+		try {
+			const files = await this.globScriptFiles("*.hsc");
+			// Normalize to forward slashes and strip project folder prefix for relative paths
+			const base = this.projectFolder
+				? this.projectFolder.replace(/\\/g, "/") + "/"
+				: "";
+			this.scriptFileCache = files.map(f => {
+				const norm = f.replace(/\\/g, "/");
+				return base && norm.startsWith(base) ? norm.slice(base.length) : norm;
+			}).sort();
+		} catch { /* ignore — cache stays empty */ }
+	}
+
 	/**
 	 * Resolve a script file path. Absolute paths pass through.
 	 * Relative paths resolve against projectFolder/Scripts/ when HISE
@@ -229,6 +248,21 @@ export class Session implements SessionContext, CommandSession {
 				const dotIndex = modeSpec.indexOf(".");
 				const baseModeId = dotIndex === -1 ? modeSpec : modeSpec.slice(0, dotIndex);
 				
+				// /run and /edit: complete with .hsc files from cache
+				if (baseModeId === "run" || baseModeId === "edit") {
+					let prefix = args.replace(/^["']/, "");
+					if (prefix.endsWith('"') || prefix.endsWith("'")) prefix = prefix.slice(0, -1);
+					const items: CompletionResult["items"] = this.scriptFileCache
+						.filter(f => f.toLowerCase().includes(prefix.toLowerCase()))
+						.map(f => ({ label: f }));
+					return {
+						items,
+						from: spaceIndex + 1,
+						to: input.length,
+						label: "Script files",
+					};
+				}
+
 				// /expect: delegate command part to current mode's completion
 				if (baseModeId === "expect") {
 					const mode = this.currentMode();
