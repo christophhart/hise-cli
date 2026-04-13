@@ -9,7 +9,7 @@ import type { TokenSpan, TokenType } from "./tokens.js";
 // Mode IDs that get their own token type (= accent color)
 const MODE_IDS = new Set<TokenType>([
 	"builder", "script", "dsp", "sampler",
-	"inspect", "project", "compile", "undo", "ui",
+	"inspect", "project", "compile", "undo", "ui", "sequence",
 ]);
 
 // Argument token rules (applied after the slash command)

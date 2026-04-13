@@ -602,6 +602,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
+		name: "sequence",
+		description: "Enter sequence mode (timed MIDI sequences)",
+		handler: createModeHandler("sequence"),
+		kind: "mode",
+	});
+
+	registry.register({
 		name: "connect",
 		description: "Check HISE connection status",
 		handler: handleConnect,

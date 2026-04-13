@@ -227,4 +227,40 @@ ScriptMultipageDialog, ScriptWebView
 - **Set chaining**: \`set Knob.x 100, y 200, width 128\`
 - **Tab completion**: component types, IDs, property names
 - **Tree sidebar**: shows component hierarchy, dims invisible components, ★ for saveInPreset`,
+
+	sequence: `# Sequence Mode
+
+Compose and execute timed MIDI sequences via HISE's inject_midi endpoint.
+
+## Defining a Sequence
+
+| Command | Description |
+|---------|-------------|
+| \`create "<name>"\` | Start defining a named sequence |
+| \`<time> play <note> [<vel>] [for <dur>]\` | Schedule a MIDI note |
+| \`<time> play <signal> [at <freq>] [for <dur>]\` | Schedule a test signal |
+| \`<time> play sweep from <start> to <end> for <dur>\` | Schedule a sweep |
+| \`<time> send CC <ctrl> <val>\` | Schedule a CC message |
+| \`<time> send pitchbend <val>\` | Schedule a pitchbend |
+| \`<time> set <Proc.Param> <val>\` | Schedule an attribute change |
+| \`<time> eval <expr> as <id>\` | Schedule a script eval |
+| \`flush\` | End the sequence definition |
+
+## Managing Sequences
+
+| Command | Description |
+|---------|-------------|
+| \`show "<name>"\` | Show sequence details |
+| \`play "<name>"\` | Execute a sequence (blocking) |
+| \`record "<name>" as <path>\` | Record output to WAV |
+| \`stop\` | Send all-notes-off |
+| \`get <id>\` | Retrieve eval result from last playback |
+
+## Timestamps & Units
+
+- Durations: \`500ms\`, \`1.2s\`, \`2s\`
+- Frequencies: \`440Hz\`, \`1kHz\`, \`20kHz\`
+- Notes: \`C3\` (=60), \`C#4\`, \`Db3\`, or raw MIDI numbers
+- Velocity: 0-127 (auto-normalized to 0.0-1.0)
+- Signals: sine, saw, sweep, dirac, noise, silence`,
 };

@@ -377,6 +377,34 @@ export class CompletionEngine {
 	}
 
 	/**
+	 * Complete sequence mode commands and event verbs.
+	 */
+	completeSequence(prefix: string): CompletionItem[] {
+		const items: CompletionItem[] = [
+			{ label: "create", detail: "Start defining a named sequence" },
+			{ label: "flush", detail: "End the sequence definition" },
+			{ label: "show", detail: "Show sequence details" },
+			{ label: "play", detail: "Execute a sequence (blocking)" },
+			{ label: "record", detail: "Record sequence output to WAV" },
+			{ label: "stop", detail: "Send all-notes-off" },
+			{ label: "get", detail: "Retrieve eval result" },
+			{ label: "help", detail: "Show sequence mode commands" },
+			// Event verbs (for defining phase)
+			{ label: "send", detail: "Send CC or pitchbend" },
+			{ label: "set", detail: "Set module attribute" },
+			{ label: "eval", detail: "Evaluate script expression" },
+			// Signal types
+			{ label: "sine", detail: "Sine test signal" },
+			{ label: "saw", detail: "Saw test signal" },
+			{ label: "sweep", detail: "Frequency sweep signal" },
+			{ label: "dirac", detail: "Impulse test signal" },
+			{ label: "noise", detail: "White noise signal" },
+			{ label: "silence", detail: "Silence signal" },
+		];
+		return fuzzyFilter(prefix, items);
+	}
+
+	/**
 	 * Complete builder mode keywords at position 0.
 	 */
 	completeBuilderKeyword(prefix: string): CompletionItem[] {

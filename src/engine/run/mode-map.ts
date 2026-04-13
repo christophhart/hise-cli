@@ -19,7 +19,7 @@ export interface ModeMapEntry {
 
 const MODE_IDS = new Set<string>([
 	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "compile", "undo", "ui",
+	"project", "compile", "undo", "ui", "sequence",
 ]);
 
 /**
@@ -86,6 +86,7 @@ import { tokenize as tokenizeHiseScript } from "../highlight/hisescript.js";
 import { tokenizeUi } from "../highlight/ui.js";
 import { tokenizeUndo } from "../highlight/undo.js";
 import { tokenizeInspect } from "../highlight/inspect.js";
+import { tokenizeSequence } from "../highlight/sequence.js";
 
 type Tokenizer = (source: string) => TokenSpan[];
 
@@ -95,6 +96,7 @@ const MODE_TOKENIZERS: Partial<Record<ModeId, Tokenizer>> = {
 	ui: tokenizeUi,
 	undo: tokenizeUndo,
 	inspect: tokenizeInspect,
+	sequence: tokenizeSequence,
 };
 
 /**

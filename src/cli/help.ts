@@ -471,4 +471,40 @@ EXAMPLES
   hise-cli diagnose /path/to/Scripts/ext.js
   hise-cli diagnose /path/to/Scripts/ext.js --format=pretty --errors-only
   hise-cli diagnose --help`,
+
+	sequence: `hise-cli -sequence — timed MIDI sequence composer
+
+SYNTAX
+  hise-cli -sequence "<command>"
+
+COMMANDS (management)
+  create "<name>"               Start defining a named sequence
+  flush                         End sequence definition
+  show "<name>"                 Show sequence details
+  play "<name>"                 Execute sequence (blocking)
+  record "<name>" as <path>     Record output to WAV
+  stop                          Send all-notes-off
+  get <id>                      Retrieve eval result from last playback
+
+EVENT LINES (during define phase)
+  <time> play <note> [<vel>] [for <dur>]           MIDI note
+  <time> play <signal> [at <freq>] [for <dur>]     Test signal
+  <time> play sweep from <start> to <end> for <dur> Frequency sweep
+  <time> send CC <ctrl> <val>                       CC message
+  <time> send pitchbend <val>                       Pitchbend
+  <time> set <Proc.Param> <val>                     Module attribute
+  <time> eval <expr> as <id>                        Script eval
+
+UNITS
+  Durations:   500ms, 1.2s, 2s
+  Frequencies: 440Hz, 1kHz, 20kHz
+  Notes:       C3 (=60), C#4, Db3, or raw MIDI 0-127
+  Velocity:    0-127 (auto-normalized) or 0.0-1.0
+  Signals:     sine, saw, sweep, dirac, noise, silence
+
+EXAMPLES
+  hise-cli -sequence "create test"
+  hise-cli -sequence "0ms play C3 127 for 500ms"
+  hise-cli -sequence "flush"
+  hise-cli -sequence "play test"`,
 };

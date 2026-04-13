@@ -16,6 +16,7 @@ export const MODE_ACCENTS = {
 	undo: "#66d9ef",
 	wizard: "#e8a060",
 	ui: "#66d9ef",
+	sequence: "#56b6c2",
 } as const;
 
 export type ModeId =
@@ -29,7 +30,8 @@ export type ModeId =
 	| "compile"
 	| "undo"
 	| "wizard"
-	| "ui";
+	| "ui"
+	| "sequence";
 
 export interface CompletionItem {
 	label: string;

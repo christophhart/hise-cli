@@ -7,11 +7,12 @@ import { InspectMode } from "./engine/modes/inspect.js";
 import { ScriptMode } from "./engine/modes/script.js";
 import { UndoMode } from "./engine/modes/undo.js";
 import { UiMode, type ComponentPropertyMap } from "./engine/modes/ui.js";
+import { SequenceMode } from "./engine/modes/sequence.js";
 import { WizardRegistry } from "./engine/wizard/registry.js";
 import type { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { registerWizardAliases } from "./engine/commands/slash.js";
 
-export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo", "ui"] as const;
+export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo", "ui", "sequence"] as const;
 
 export interface CreateSessionOptions {
 	connection: HiseConnection | null;
@@ -41,6 +42,7 @@ export function createSession({
 		"ui",
 		(ctx) => new UiMode(completionEngine, ctx, getComponentProperties?.()),
 	);
+	session.registerMode("sequence", () => new SequenceMode(completionEngine));
 	return { session, completionEngine };
 }
 
