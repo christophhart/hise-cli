@@ -1,5 +1,6 @@
 import { isEnvelopeResponse, isErrorResponse, type HiseResponse } from "../engine/hise.js";
 import type { CommandResult } from "../engine/result.js";
+import { formatResultForLog } from "../engine/run/executor.js";
 
 export type CliOutputPayload =
 	| { ok: true; logs?: string[]; value?: unknown }
@@ -73,6 +74,7 @@ function serializeRunReport(
 	const r = result.runResult;
 	const passed = r.expects.filter(e => e.passed).length;
 	const total = r.expects.length;
+	const logs = collectRunLogs(r.results);
 
 	const payload: Record<string, unknown> = {
 		ok: r.ok,
@@ -102,7 +104,31 @@ function serializeRunReport(
 	if (total > 0) parts.push(r.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
 	payload.summary = (r.ok ? "\u2713 " : "\u2717 ") + parts.join(", ");
 
-	return { ok: r.ok, value: payload } as CliOutputPayload;
+	const cliPayload: { ok: boolean; value: Record<string, unknown>; logs?: string[] } = {
+		ok: r.ok,
+		value: payload,
+	};
+	if (logs.length > 0) {
+		cliPayload.logs = logs;
+	}
+	return cliPayload as CliOutputPayload;
+}
+
+function collectRunLogs(results: Array<{ result: CommandResult }>): string[] {
+	const lines: string[] = [];
+	for (const entry of results) {
+		const formatted = formatResultForLog(entry.result);
+		if (!formatted) {
+			continue;
+		}
+		for (const line of formatted.split("\n")) {
+			const trimmed = line.trim();
+			if (trimmed) {
+				lines.push(trimmed);
+			}
+		}
+	}
+	return lines;
 }
 
 function stripAccent(result: CommandResult): CommandResult {

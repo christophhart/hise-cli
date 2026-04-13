@@ -284,6 +284,59 @@ describe("executeCliCommand", () => {
 			},
 		});
 	});
+
+	it("runs callback compiler scripts through set_script", async () => {
+		mockObserverFetch();
+		const connection = new MockHiseConnection()
+			.setProbeResult(true)
+			.onPost("/api/set_script", () => ({
+				success: true,
+				result: "Compiled OK",
+				updatedCallbacks: ["onInit", "onNoteOn"],
+				logs: ["init from cli"],
+				errors: [],
+			}));
+
+		const result = await executeCliCommand(
+			[
+				"node",
+				"hise-cli",
+				"--run",
+				"--inline",
+				"/script\n/callback onInit\nContent.makeFrontInterface(600, 600);\n/callback onNoteOn\nConsole.print(Message.getNoteNumber());\n/compile",
+			],
+			getCliCommands(),
+			createDataLoader(),
+			connection,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(true);
+			if ("logs" in result.payload && Array.isArray(result.payload.logs)) {
+				expect(result.payload.logs.some((line) => line.startsWith("Entered script mode."))).toBe(false);
+				expect(result.payload.logs).toContain("Compiled OK for Interface (onInit, onNoteOn).");
+				expect(result.payload.logs).toContain("init from cli");
+				expect(result.payload.logs.some((line) => line.startsWith("Collecting raw body for "))).toBe(false);
+			} else {
+				expect.fail("Expected CLI run payload to include logs");
+			}
+			expect(result.payload).toMatchObject({
+				value: {
+					ok: true,
+					linesExecuted: 6,
+				},
+			});
+		}
+		expect(connection.calls.find((call) => call.endpoint === "/api/set_script")?.body).toEqual({
+			moduleId: "Interface",
+			compile: true,
+			callbacks: {
+				onInit: "Content.makeFrontInterface(600, 600);",
+				onNoteOn: "function onNoteOn()\n{\n\tConsole.print(Message.getNoteNumber());\n}",
+			},
+		});
+	});
 });
 
 describe("wizard subcommand", () => {

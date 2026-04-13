@@ -6,10 +6,18 @@
 
 import type { TokenSpan, TokenType } from "./tokens.js";
 
+const MIDI_CALLBACKS = new Set([
+	"onNoteOn",
+	"onNoteOff",
+	"onController",
+	"onTimer",
+	"onControl",
+]);
+
 // Mode IDs that get their own token type (= accent color)
 const MODE_IDS = new Set<TokenType>([
 	"builder", "script", "dsp", "sampler",
-	"inspect", "project", "compile", "undo", "ui", "sequence",
+	"inspect", "project", "export", "undo", "ui", "sequence",
 ]);
 
 // Argument token rules (applied after the slash command)
@@ -45,6 +53,10 @@ export function tokenizeSlash(source: string): TokenSpan[] {
 	const cmdName = cmdMatch[1];
 	const cmdText = cmdMatch[0]; // includes the "/"
 
+	if (cmdName === "callback") {
+		return tokenizeCallbackSlash(source, cmdText);
+	}
+
 	// Classify the command
 	const cmdToken: TokenType = MODE_IDS.has(cmdName as TokenType)
 		? (cmdName as TokenType)
@@ -76,6 +88,62 @@ export function tokenizeSlash(source: string): TokenSpan[] {
 	}
 
 	return mergeAdjacentSpans(spans);
+}
+
+function tokenizeCallbackSlash(source: string, cmdText: string): TokenSpan[] {
+	const spans: TokenSpan[] = [{ text: cmdText, token: "command", bold: true }];
+	let pos = cmdText.length;
+
+	while (pos < source.length) {
+		const remainder = source.slice(pos);
+		const wsMatch = remainder.match(/^\s+/);
+		if (wsMatch) {
+			spans.push({ text: wsMatch[0], token: "plain" });
+			pos += wsMatch[0].length;
+			continue;
+		}
+
+		const tokenMatch = remainder.match(/^[A-Za-z_$][A-Za-z0-9_$.:]*/);
+		if (tokenMatch) {
+			const token = tokenMatch[0];
+			const dotIndex = token.lastIndexOf(".");
+			const callbackName = dotIndex === -1 ? token : token.slice(dotIndex + 1);
+			const isCallback = isKnownMidiCallback(callbackName);
+
+			if (dotIndex !== -1) {
+				const processorId = token.slice(0, dotIndex);
+				if (processorId) {
+					spans.push({ text: processorId, token: "identifier" });
+					spans.push({ text: ".", token: "punctuation" });
+				}
+				spans.push({ text: callbackName, token: isCallback ? "keyword" : "identifier" });
+			} else {
+				spans.push({ text: token, token: isCallback ? "keyword" : "identifier" });
+			}
+
+			pos += token.length;
+			continue;
+		}
+
+		spans.push({ text: source[pos]!, token: "plain" });
+		pos++;
+	}
+
+	return mergeAdjacentSpans(spans);
+}
+
+function isKnownMidiCallback(name: string): boolean {
+	if (MIDI_CALLBACKS.has(name)) {
+		return true;
+	}
+
+	for (const callbackName of MIDI_CALLBACKS) {
+		if (callbackName.toLowerCase().startsWith(name.toLowerCase())) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 // Merge consecutive spans of the same token type

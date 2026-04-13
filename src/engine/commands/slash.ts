@@ -13,6 +13,8 @@ import { MODE_ACCENTS, type ModeId } from "../modes/mode.js";
 import type { CommandHandler, CommandRegistry, CommandSession } from "./registry.js";
 import { generateHelp } from "./help.js";
 import type { WizardAnswers } from "../wizard/types.js";
+import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
+import { ScriptMode } from "../modes/script.js";
 
 // ── Handler implementations ─────────────────────────────────────────
 
@@ -63,7 +65,7 @@ async function handleModes(
 		["sampler", "Sample maps", MODE_ACCENTS.sampler],
 		["inspect", "Runtime monitor", MODE_ACCENTS.inspect],
 		["project", "Project settings", MODE_ACCENTS.project],
-		["compile", "Build targets", MODE_ACCENTS.compile],
+		["export", "Build targets", MODE_ACCENTS.compile],
 		["undo", "Undo history & plan groups", MODE_ACCENTS.undo],
 	];
 
@@ -123,6 +125,9 @@ function createModeHandler(modeId: ModeId): CommandHandler {
 
 			// If already in this mode, don't push again
 			if (session.currentModeId === modeId) {
+				if (mode.onEnter) {
+					await mode.onEnter(session as unknown as import("../modes/mode.js").SessionContext);
+				}
 				const label = context ? `${modeId}.${context}` : modeId;
 				const result = textResult(`Already in ${label} mode.`);
 				result.accent = mode.accent;
@@ -135,7 +140,7 @@ function createModeHandler(modeId: ModeId): CommandHandler {
 
 			// Fetch initial data (tree, history) so sidebar shows content immediately
 			if (mode.onEnter) {
-				await mode.onEnter({ connection: session.connection, popMode: () => session.popMode() });
+				await mode.onEnter(session as unknown as import("../modes/mode.js").SessionContext);
 			}
 
 			const label = context ? `${modeId}.${context}` : modeId;
@@ -388,6 +393,83 @@ async function handleParse(
 	return runOrParse(args, session, true);
 }
 
+async function handleCallback(
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	if (session.currentModeId !== "script") {
+		return errorResult("/callback requires script mode.");
+	}
+
+	const scriptMode = session.getOrCreateMode("script");
+	if (!(scriptMode instanceof ScriptMode)) {
+		return errorResult("Active script mode is unavailable.");
+	}
+
+	const target = args.trim();
+	if (!target) {
+		return errorResult("Usage: /callback <name> or /callback <processor.callback>");
+	}
+
+	const resolved = resolveCallbackTarget(target, scriptMode.processorId);
+	if (typeof resolved === "string") {
+		return errorResult(resolved);
+	}
+
+	if (resolved.processorId !== scriptMode.processorId) {
+		return errorResult(
+			`Current script mode targets ${scriptMode.processorId}. Switch processors before collecting ${resolved.processorId}.${resolved.callbackId}.`,
+		);
+	}
+
+	session.setActiveScriptCallback?.(resolved.processorId, resolved.callbackId);
+	return textResult(`Collecting raw body for ${resolved.processorId}.${resolved.callbackId}.`);
+}
+
+async function handleCompileCallbacks(
+	_args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	if (session.currentModeId !== "script") {
+		return errorResult("/compile requires script mode.");
+	}
+
+	if (!session.connection) {
+		return errorResult("No HISE connection. Connect to HISE before compiling callbacks.");
+	}
+
+	const scriptMode = session.getOrCreateMode("script");
+	if (!(scriptMode instanceof ScriptMode)) {
+		return errorResult("Active script mode is unavailable.");
+	}
+
+	const collected = session.getCollectedScriptCallbacks?.(scriptMode.processorId) ?? {};
+	if (Object.keys(collected).length === 0) {
+		return errorResult(`No callbacks collected for ${scriptMode.processorId}.`);
+	}
+
+	const callbacks = Object.fromEntries(
+		Object.entries(collected).map(([callbackId, body]) => [
+			callbackId,
+			callbackId === "onInit"
+				? body
+				: wrapCallback(callbackId, body),
+		]),
+	);
+
+	const response = await session.connection.post("/api/set_script", {
+		moduleId: scriptMode.processorId,
+		callbacks,
+		compile: true,
+	});
+
+	const result = formatSetScriptResponse(response, scriptMode.processorId);
+	if (result.type !== "error") {
+		session.clearScriptCompilerState?.(scriptMode.processorId);
+	}
+	return result;
+}
+
 async function runOrParse(
 	args: string,
 	session: CommandSession,
@@ -581,10 +663,22 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
-		name: "compile",
-		description: "Enter compile mode (build targets)",
+		name: "export",
+		description: "Enter export mode (build targets)",
 		handler: createModeHandler("compile"),
 		kind: "mode",
+	});
+
+	registry.register({
+		name: "compile",
+		description: "Compile collected script callbacks in script mode",
+		handler: async (args, session) => {
+			if (session.currentModeId === "script" && args.trim() === "") {
+				return handleCompileCallbacks(args, session);
+			}
+			return errorResult("/compile is reserved for script callback compilation. Use /export for build targets.");
+		},
+		kind: "command",
 	});
 
 	registry.register({
@@ -684,12 +778,83 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
+		name: "callback",
+		description: "Collect raw callback body lines in script mode",
+		handler: handleCallback,
+		kind: "command",
+	});
+
+	registry.register({
 		name: "edit",
 		description: "Open multiline script editor (Ctrl+Enter to run, Escape to cancel)",
 		handler: async (_args, _session) => textResult("edit:open"),
 		kind: "command",
 		surfaces: ["tui"],
 	});
+}
+
+function resolveCallbackTarget(
+	target: string,
+	defaultProcessorId: string,
+): { processorId: string; callbackId: string } | string {
+	const trimmed = target.trim();
+	const parts = trimmed.split(".");
+	if (parts.length > 2) {
+		return `Invalid callback target: ${trimmed}`;
+	}
+
+	const processorId = parts.length === 2 ? parts[0]! : defaultProcessorId;
+	const callbackId = parts.length === 2 ? parts[1]! : parts[0]!;
+	if (!/^[A-Za-z_]\w*$/.test(processorId) || !/^[A-Za-z_]\w*$/.test(callbackId)) {
+		return `Invalid callback target: ${trimmed}`;
+	}
+
+	return { processorId, callbackId };
+}
+
+function wrapCallback(callbackId: string, body: string): string {
+	const lines = body.split("\n");
+	const indentedBody = lines.length === 1 && lines[0] === ""
+		? ""
+		: lines.map((line) => `\t${line}`).join("\n");
+	return indentedBody
+		? `function ${callbackId}()\n{\n${indentedBody}\n}`
+		: `function ${callbackId}()\n{\n}`;
+}
+
+function formatSetScriptResponse(
+	response: import("../hise.js").HiseResponse,
+	processorId: string,
+): CommandResult {
+	if (isErrorResponse(response)) {
+		return errorResult(response.message);
+	}
+
+	if (!isEnvelopeResponse(response)) {
+		return errorResult("Unexpected response from HISE");
+	}
+
+	if (response.errors.length > 0) {
+		const errorMessages = response.errors.map((e) => e.callstack.length > 0
+			? `${e.errorMessage}\n${e.callstack.join("\n")}`
+			: e.errorMessage).join("\n");
+		return errorResult(errorMessages);
+	}
+
+	if (!response.success) {
+		return errorResult(String(response.result ?? "Callback compilation failed"));
+	}
+
+	const body = response as unknown as {
+		updatedCallbacks?: string[];
+		result?: string | null;
+		logs?: string[];
+	};
+	const updated = body.updatedCallbacks?.length
+		? ` (${body.updatedCallbacks.join(", ")})`
+		: "";
+	const logs = body.logs && body.logs.length > 0 ? `\n${body.logs.join("\n")}` : "";
+	return textResult(`${String(body.result ?? "Compiled OK")} for ${processorId}${updated}.${logs}`.trim());
 }
 
 /**

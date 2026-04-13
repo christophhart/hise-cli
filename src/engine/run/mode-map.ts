@@ -19,7 +19,7 @@ export interface ModeMapEntry {
 
 const MODE_IDS = new Set<string>([
 	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "compile", "undo", "ui", "sequence",
+	"project", "export", "undo", "ui", "sequence",
 ]);
 
 /**
@@ -46,7 +46,7 @@ export function buildModeMap(lines: string[]): ModeMapEntry[] {
 			const cmdName = match?.[1] ?? "";
 
 			if (MODE_IDS.has(cmdName)) {
-				const modeId = cmdName as ModeId;
+				const modeId = (cmdName === "export" ? "compile" : cmdName) as ModeId;
 				const rest = trimmed.slice(match![0].length).trim();
 
 				if (rest) {

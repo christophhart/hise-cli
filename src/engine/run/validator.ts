@@ -12,7 +12,7 @@ import { parseBuilderInput } from "../modes/builder.js";
 /** Set of mode IDs that can be entered via slash command. */
 const MODE_IDS = new Set<string>([
 	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "compile", "undo", "ui", "sequence",
+	"project", "export", "undo", "ui", "sequence",
 ]);
 
 /** Slash commands that are valid tool commands (no mode needed). */
@@ -50,9 +50,23 @@ export function validateScript(
 		if (line.kind === "slash") {
 			const cmd = extractSlashName(line.content);
 
+			if (cmd.name === "compile" && currentModeId === "script" && !cmd.args) {
+				continue;
+			}
+
+			if (cmd.name === "callback") {
+				if (currentModeId !== "script") {
+					errors.push({
+						line: line.lineNumber,
+						message: "/callback requires script mode",
+					});
+				}
+				continue;
+			}
+
 			// Mode entry
 			if (MODE_IDS.has(cmd.name)) {
-				const modeId = cmd.name as ModeId;
+				const modeId = (cmd.name === "export" ? "compile" : cmd.name) as ModeId;
 				if (cmd.args) {
 					// One-shot: validate the command in that mode's context
 					validateModeCommand(cmd.args, modeId, line.lineNumber, session, errors);

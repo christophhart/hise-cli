@@ -95,7 +95,7 @@ function isBatchable(content: string): boolean {
 
 const MODE_IDS = new Set([
 	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "compile", "undo", "ui",
+	"project", "export", "undo", "ui",
 ]);
 
 function isModeCommand(cmd: { name: string; args: string }): boolean {

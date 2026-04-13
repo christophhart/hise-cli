@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { ScriptMode, extractLastToken, formatReplResponse } from "./script.js";
+import {
+	ScriptMode,
+	extractLastToken,
+	formatReplResponse,
+	getAvailableCallbacksForProcessor,
+} from "./script.js";
 import { MockHiseConnection } from "../hise.js";
 import type { SessionContext } from "./mode.js";
 import type { HiseEnvelopeResponse, HiseSuccessResponse } from "../hise.js";
@@ -14,9 +19,43 @@ import { normalizeReplResponse } from "../../mock/contracts/repl.js";
 function createMockSession(
 	mock: MockHiseConnection,
 ): SessionContext {
+	const compilerState = new Map<string, { activeCallback: string | null; callbacks: Map<string, string[]> }>();
 	return {
 		connection: mock,
 		popMode: () => ({ type: "text", content: "Exited Script mode." }),
+		clearScriptCompilerState(processorId: string) {
+			compilerState.set(processorId, { activeCallback: null, callbacks: new Map() });
+		},
+		clearAllScriptCompilerState() {
+			compilerState.clear();
+		},
+		setActiveScriptCallback(processorId: string, callbackId: string) {
+			let state = compilerState.get(processorId);
+			if (!state) {
+				state = { activeCallback: null, callbacks: new Map() };
+				compilerState.set(processorId, state);
+			}
+			state.activeCallback = callbackId;
+			state.callbacks.set(callbackId, []);
+		},
+		appendScriptCallbackLine(processorId: string, line: string) {
+			const state = compilerState.get(processorId);
+			if (!state?.activeCallback) return false;
+			const lines = state.callbacks.get(state.activeCallback) ?? [];
+			lines.push(line);
+			state.callbacks.set(state.activeCallback, lines);
+			return true;
+		},
+		getActiveScriptCallback(processorId: string) {
+			return compilerState.get(processorId)?.activeCallback ?? null;
+		},
+		getCollectedScriptCallbacks(processorId: string) {
+			const state = compilerState.get(processorId);
+			if (!state) return {};
+			return Object.fromEntries(
+				[...state.callbacks.entries()].map(([callbackId, lines]) => [callbackId, lines.join("\n")]),
+			);
+		},
 	};
 }
 
@@ -71,12 +110,36 @@ describe("ScriptMode", () => {
 		const session: SessionContext = {
 			connection: null,
 			popMode: () => ({ type: "text", content: "Exited Script mode." }),
+			clearScriptCompilerState() {},
 		};
 		const result = await mode.parse("Engine.getSampleRate()", session);
 		expect(result.type).toBe("error");
 		if (result.type === "error") {
 			expect(result.message).toContain("No HISE connection");
 		}
+	});
+
+	it("updates processor context via setContext", () => {
+		const mode = new ScriptMode();
+		mode.setContext!("MyProcessor");
+		expect(mode.processorId).toBe("MyProcessor");
+		expect(mode.prompt).toBe("[script:MyProcessor] > ");
+	});
+
+	it("clears transient compiler state on enter and exit", async () => {
+		const mock = new MockHiseConnection();
+		const mode = new ScriptMode();
+		const session = createMockSession(mock);
+		session.setActiveScriptCallback!("Interface", "onInit");
+		session.appendScriptCallbackLine!("Interface", "Console.print(1);");
+
+		await mode.onEnter!(session);
+		expect(session.getCollectedScriptCallbacks!("Interface")).toEqual({});
+
+		session.setActiveScriptCallback!("Interface", "onInit");
+		session.appendScriptCallbackLine!("Interface", "Console.print(2);");
+		mode.onExit!(session);
+		expect(session.getCollectedScriptCallbacks!("Interface")).toEqual({});
 	});
 });
 
@@ -265,6 +328,35 @@ describe("ScriptMode", () => {
 		expect(result.type).toBe("error");
 		if (result.type === "error") {
 			expect(result.message).toContain("Connection refused");
+		}
+	});
+
+	it("captures raw callback body lines when a callback is active", async () => {
+		const mock = new MockHiseConnection();
+		const mode = new ScriptMode();
+		const session = createMockSession(mock);
+		session.setActiveScriptCallback!("Interface", "onInit");
+
+		const result = await mode.parse("Content.makeFrontInterface(600, 600);", session);
+
+		expect(result.type).toBe("empty");
+		expect(session.getCollectedScriptCallbacks!("Interface")).toEqual({
+			onInit: "Content.makeFrontInterface(600, 600);",
+		});
+		expect(mock.calls).toHaveLength(0);
+	});
+
+	it("rejects function wrappers while collecting callback bodies", async () => {
+		const mock = new MockHiseConnection();
+		const mode = new ScriptMode();
+		const session = createMockSession(mock);
+		session.setActiveScriptCallback!("Interface", "onNoteOn");
+
+		const result = await mode.parse("function onNoteOn()", session);
+
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("raw callback body only");
 		}
 	});
 });
@@ -496,5 +588,30 @@ describe("ScriptMode completion", () => {
 		// completeScript("Engine.get") → dotIndex=6, from=7 (within token)
 		// Adjusted: 8 + 7 = 15
 		expect(result.from).toBe(15);
+	});
+
+	it("completes callback names for non-interface processors", () => {
+		const mode = new ScriptMode("MidiProcessor");
+		const result = mode.complete!("/callback onN", 13);
+		expect(result.items.some((i) => i.label === "onNoteOn")).toBe(true);
+		expect(result.items.some((i) => i.label === "onNoteOff")).toBe(true);
+		expect(result.from).toBe(10);
+		expect(result.label).toBe("Callbacks");
+	});
+
+	it("does not suggest MIDI callbacks for Interface", () => {
+		const mode = new ScriptMode("Interface");
+		const result = mode.complete!("/callback onN", 13);
+		expect(result.items).toEqual([]);
+	});
+});
+
+describe("getAvailableCallbacksForProcessor", () => {
+	it("returns MIDI callbacks for non-interface processors", () => {
+		expect(getAvailableCallbacksForProcessor("SynthProcessor")).toContain("onNoteOn");
+	});
+
+	it("returns no hardcoded callbacks for Interface", () => {
+		expect(getAvailableCallbacksForProcessor("Interface")).toEqual([]);
 	});
 });

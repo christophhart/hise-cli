@@ -30,6 +30,18 @@ export interface CommandSession {
 	saveScriptFile?(filePath: string, content: string): Promise<void>;
 	/** Expand a glob pattern to matching file paths. Set by TUI/CLI layer. */
 	globScriptFiles?(pattern: string): Promise<string[]>;
+	/** Clear transient script compiler state for a processor. */
+	clearScriptCompilerState?(processorId: string): void;
+	/** Clear all transient script compiler state. */
+	clearAllScriptCompilerState?(): void;
+	/** Set the active callback target for transient script compilation. */
+	setActiveScriptCallback?(processorId: string, callbackId: string): void;
+	/** Append a raw body line to the active callback buffer. */
+	appendScriptCallbackLine?(processorId: string, line: string): boolean;
+	/** Return the active callback target for a processor, if any. */
+	getActiveScriptCallback?(processorId: string): string | null;
+	/** Return collected callback source by callback id. */
+	getCollectedScriptCallbacks?(processorId: string): Record<string, string>;
 }
 
 export type CommandHandler = (

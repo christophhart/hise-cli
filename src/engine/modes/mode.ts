@@ -57,6 +57,18 @@ export interface SessionContext {
 	invalidateAllTrees?(): void;
 	/** Reset the undo mode's local plan tracking state (HISE discards groups on reset). */
 	resetPlanState?(): void;
+	/** Clear transient script compiler state for a processor. */
+	clearScriptCompilerState?(processorId: string): void;
+	/** Clear all transient script compiler state. */
+	clearAllScriptCompilerState?(): void;
+	/** Set the active callback target for transient script compilation. */
+	setActiveScriptCallback?(processorId: string, callbackId: string): void;
+	/** Append a raw body line to the active callback buffer. */
+	appendScriptCallbackLine?(processorId: string, line: string): boolean;
+	/** Return the active callback target for a processor, if any. */
+	getActiveScriptCallback?(processorId: string): string | null;
+	/** Return collected callback source by callback id. */
+	getCollectedScriptCallbacks?(processorId: string): Record<string, string>;
 }
 
 export interface Mode {
@@ -94,4 +106,6 @@ export interface Mode {
 
 	/** Called when the mode is entered (pushed onto stack). Async to allow data fetching. */
 	onEnter?(session: SessionContext): Promise<void>;
+	/** Called when the mode is exited (popped from stack). */
+	onExit?(session: SessionContext): void;
 }

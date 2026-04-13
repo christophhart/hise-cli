@@ -385,7 +385,7 @@ pipeline functions like `propagateChainColors()` in builder.ts.
 | `/builder`                 | Enter builder mode (module tree)                  |
 | `/script [processor]`      | Enter script mode (defaults to Interface)         |
 | `/workspace <module>`      | Switch HISE workspace + enter contextual mode     |
-| `/compile`                 | Enter compile mode                                |
+| `/export`                  | Enter export mode                                 |
 | `/project`                 | Enter project mode                                |
 | `/inspect`                 | Enter inspect mode                                |
 
@@ -419,13 +419,12 @@ HISE, never recorded in plan mode.
 | `/builder`           | Enter builder mode                                  |
 | `/script [proc]`     | Enter script mode                                   |
 | `/workspace <mod>`   | Switch HISE workspace + enter mode                  |
-| `/compile`           | Enter compile mode                                  |
+| `/export`            | Enter export mode                                   |
 | `/project`           | Enter project mode                                  |
 | `/inspect`           | Enter inspect mode                                  |
 | `/wizard [id]`       | Open wizard (or list available wizards)              |
 | `/clear`             | Clear output                                        |
 | `/history`           | Show command history                                |
-| `/export [path]`     | Export plan as HiseScript (in plan submode)          |
 
 ### Input Routing
 
@@ -757,7 +756,7 @@ info | samples | scripts | images | networks | presets
 settings [<key>] [<value>]
 ```
 
-### Compile Mode
+### Export Mode
 
 ```
 vst3|au|standalone|aax [debug|release] | dsp-dll | all [debug|release]

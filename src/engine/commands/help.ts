@@ -69,6 +69,7 @@ Enter a mode to start working, or use /wizard for guided workflows.
 - **/ui** — UI component editor (add, remove, set properties, reparent)
 - **/script** — HiseScript REPL (evaluate expressions live)
 - **/inspect** — Runtime monitor (version, project info)
+- **/export** — Build targets and export settings
 - **/undo** — Undo history and plan groups
 - **/wizard** — Guided workflows (setup, export, project creation)
 - **/setup** — Install and build HISE from source (wizard alias)
@@ -82,6 +83,8 @@ Dot-context: \`/builder.Master add LFO\` sets the context path first.
 - **/parse** \`<file.hsc>\` — Validate a script without executing (dry run)
 - **/wait** \`<duration>\` — Pause execution (e.g., \`/wait 500ms\`, \`/wait 0.5s\`)
 - **/expect** \`<cmd> is <value>\` — Assert a command result (float tolerance: 0.01)
+- **/callback** \`<name>\` — In script mode, collect raw callback body lines for compilation
+- **/compile** — In script mode, compile collected callbacks with \`/api/set_script\`
   - \`/expect getValue() is 0.5 within 0.001\` — custom tolerance
   - \`/expect isDefined(Knob1) is 1 or abort\` — abort script on failure`,
 
@@ -109,7 +112,14 @@ Content.getComponent("Knob1").getValue()
 - \`Synth.\` — sound generator control (note on/off, modulators)
 - \`Console.\` — debug output
 - \`Content.\` — UI component access
-- \`Math.\`, \`Array.\`, \`String.\` — utility classes`,
+- \`Math.\`, \`Array.\`, \`String.\` — utility classes
+
+## Callback Compiler
+
+- \`/callback onInit\` — start collecting raw \`onInit\` body lines
+- \`/callback onNoteOn\` — start collecting a callback body, then wrap it on compile
+- \`/compile\` — send collected callbacks to \`/api/set_script\` with \`compile: true\`
+- entering or exiting script mode clears all pending callback buffers`,
 
 	builder: `# Builder Mode
 
@@ -192,7 +202,7 @@ Project settings and configuration.
 
 *(Not yet implemented — Phase 6)*`,
 
-	compile: `# Compile Mode
+	compile: `# Export Mode
 
 Build targets and export settings.
 

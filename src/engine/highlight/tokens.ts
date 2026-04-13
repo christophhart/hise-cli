@@ -27,6 +27,7 @@ export type TokenType =
 	| "sampler"
 	| "inspect"
 	| "project"
+	| "export"
 	| "compile"
 	| "undo"
 	| "ui"
@@ -54,6 +55,7 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 	sampler: MODE_ACCENTS.sampler,
 	inspect: MODE_ACCENTS.inspect,
 	project: MODE_ACCENTS.project,
+	export: MODE_ACCENTS.compile,
 	compile: MODE_ACCENTS.compile,
 	undo: MODE_ACCENTS.undo,
 	ui: MODE_ACCENTS.ui,

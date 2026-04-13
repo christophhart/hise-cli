@@ -370,6 +370,9 @@ SCRIPT SOURCES
 TOOL COMMANDS (available in scripts and TUI)
   /wait <duration>           Pause (e.g., /wait 500ms, /wait 0.5s)
   /expect <cmd> is <value>   Assert a command's result
+  /callback <name>           In /script, collect raw callback body lines
+  /compile                   In /script, compile collected callbacks
+  /export                    Enter export mode (build targets)
     Float tolerance: default 0.01, customize with "within <tol>"
     Abort on failure: append "or abort"
 
@@ -391,6 +394,13 @@ EXAMPLE SCRIPT (test.hsc)
   # Test script evaluation
   /script
   /expect Engine.getSampleRate() is 44100 within 1
+
+  # Compile callbacks
+  /callback onInit
+  Content.makeFrontInterface(600, 600);
+  /callback onNoteOn
+  Console.print(Message.getNoteNumber());
+  /compile
 
 OUTPUT FORMAT (JSON)
   { "ok": true|false, "value": {

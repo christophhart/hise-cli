@@ -229,8 +229,8 @@ describe("Session completion", () => {
 		const engine = new CompletionEngine();
 		const session = new Session(null, engine);
 		const result = session.complete("/", 1);
-		// Should have all 20 built-in commands (including /quit, /connect, /density, /expand, /collapse, /compact, /undo, /wizard, /ui)
 		expect(result.items.length).toBe(20);
+		expect(result.items.some((item) => item.label === "/callback")).toBe(true);
 	});
 
 	it("returns empty for plain input in root mode (no mode complete)", () => {
@@ -315,6 +315,40 @@ describe("Session mode instance cache", () => {
 		session.pushMode("builder");
 		const result = session.popMode(false);
 		expect(result.type).toBe("text");
+	});
+
+	it("calls onExit when a mode is popped", () => {
+		const session = new Session(null);
+		let exited = 0;
+		session.registerMode("script", () => ({
+			id: "script",
+			name: "Script",
+			accent: "#fff",
+			prompt: "> ",
+			async parse() { return { type: "empty" }; },
+			onExit() {
+				exited++;
+			},
+		}));
+
+		session.pushMode("script");
+		session.popMode();
+
+		expect(exited).toBe(1);
+	});
+
+	it("tracks transient script compiler buffers by processor", () => {
+		const session = createSession();
+		session.setActiveScriptCallback("Interface", "onInit");
+		session.appendScriptCallbackLine("Interface", "Content.makeFrontInterface(600, 600);");
+
+		expect(session.getActiveScriptCallback("Interface")).toBe("onInit");
+		expect(session.getCollectedScriptCallbacks("Interface")).toEqual({
+			onInit: "Content.makeFrontInterface(600, 600);",
+		});
+
+		session.clearScriptCompilerState("Interface");
+		expect(session.getCollectedScriptCallbacks("Interface")).toEqual({});
 	});
 
 	it("mode state persists across push/pop cycles", async () => {
@@ -434,5 +468,30 @@ describe("Session argument completion from root", () => {
 		
 		const result = session.complete("/nonexistent args", 17);
 		expect(result.items).toHaveLength(0);
+	});
+
+	it("delegates /callback argument completion to script mode", () => {
+		const engine = new CompletionEngine();
+		const session = new Session(null, engine);
+		session.registerMode("script", () => ({
+			id: "script",
+			name: "Script",
+			accent: "",
+			prompt: "> ",
+			async parse() { return { type: "empty" }; },
+			complete(input: string): CompletionResult {
+				if (input === "/callback onN") {
+					return { items: [{ label: "onNoteOn" }], from: 10, to: 13, label: "Callbacks" };
+				}
+				return { items: [], from: 0, to: input.length };
+			},
+		}));
+		session.pushMode("script");
+
+		const result = session.complete("/callback onN", 13);
+
+		expect(result.items).toEqual([{ label: "onNoteOn" }]);
+		expect(result.from).toBe(10);
+		expect(result.to).toBe(13);
 	});
 });

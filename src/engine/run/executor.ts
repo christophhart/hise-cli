@@ -322,9 +322,13 @@ export function extractResultValue(result: CommandResult): string {
 
 /** Filters applied to log output lines. Add new filters here. */
 const LOG_LINE_FILTERS: Array<(line: string) => boolean> = [
+	// Suppress mode navigation noise in batch logs
+	(l) => !l.trim().match(/^(Entered |Exited |Already in )/),
 	// Strip REPL callstack noise
 	(l) => !l.trim().startsWith("eval()"),
 	(l) => !l.trim().match(/^at\s/),
+	// Suppress callback capture status noise in batch logs
+	(l) => !l.trim().startsWith("Collecting raw body for "),
 ];
 
 /** Filter noise from a multi-line string. */

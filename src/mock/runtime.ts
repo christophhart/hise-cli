@@ -26,6 +26,13 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 	let inGroup = false;
 	let groupName = "";
 	const pendingDiff: BuilderDiffEntry[] = [];
+	const scriptCallbacks = new Map<string, Record<string, string>>([
+		["Interface", {
+			onInit: "",
+			onNoteOn: "",
+			onNoteOff: "",
+		}],
+	]);
 
 	connection.setProbeResult(true);
 	connection.onGet("/api/status", () => ({
@@ -36,6 +43,33 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 		errors: [],
 	}));
 	connection.onPost("/api/repl", (body) => createMockReplResponse(body));
+	connection.onPost("/api/set_script", (body) => {
+		const moduleId = String((body as { moduleId?: string } | undefined)?.moduleId ?? "Interface");
+		const callbacks = ((body as { callbacks?: Record<string, string> } | undefined)?.callbacks ?? {});
+		const current = scriptCallbacks.get(moduleId) ?? {};
+		for (const [callbackId, source] of Object.entries(callbacks)) {
+			current[callbackId] = source;
+		}
+		scriptCallbacks.set(moduleId, current);
+		return {
+			success: true,
+			moduleId,
+			updatedCallbacks: Object.keys(callbacks),
+			result: "Compiled OK",
+			forceSynchronousExecution: false,
+			externalFiles: [],
+			logs: [],
+			errors: [],
+		};
+	});
+	connection.onPost("/api/recompile", () => ({
+		success: true,
+		result: "Recompiled OK",
+		forceSynchronousExecution: false,
+		externalFiles: [],
+		logs: [],
+		errors: [],
+	}));
 
 	// Builder tree - return a raw-like tree object in the envelope.
 	// The actual raw->TreeNode normalization happens in the consumer.

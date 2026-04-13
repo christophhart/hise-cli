@@ -3,15 +3,24 @@ import { CommandRegistry, type CommandSession } from "./registry.js";
 import { registerBuiltinCommands } from "./slash.js";
 import type { CommandResult } from "../result.js";
 import { textResult } from "../result.js";
+import { MockHiseConnection } from "../hise.js";
+import { ScriptMode } from "../modes/script.js";
 
 function createMockSession(): CommandSession & { modes: string[]; quitRequested: boolean } {
 	const modes: string[] = [];
 	let quitRequested = false;
+	let connection: MockHiseConnection | null = null;
 	const modeCache = new Map<string, import("../modes/mode.js").Mode>();
+	const compilerState = new Map<string, { activeCallback: string | null; callbacks: Map<string, string[]> }>();
 	
 	return {
 		modes,
-		connection: null,
+		get connection() {
+			return connection;
+		},
+		set connection(value: MockHiseConnection | null) {
+			connection = value;
+		},
 		get quitRequested() { return quitRequested; },
 		get modeStackDepth() {
 			return modes.length;
@@ -67,6 +76,39 @@ function createMockSession(): CommandSession & { modes: string[]; quitRequested:
 			return result;
 		},
 		resolveScriptPath(fp: string) { return fp; },
+		clearScriptCompilerState(processorId: string) {
+			compilerState.set(processorId, { activeCallback: null, callbacks: new Map() });
+		},
+		clearAllScriptCompilerState() {
+			compilerState.clear();
+		},
+		setActiveScriptCallback(processorId: string, callbackId: string) {
+			let state = compilerState.get(processorId);
+			if (!state) {
+				state = { activeCallback: null, callbacks: new Map() };
+				compilerState.set(processorId, state);
+			}
+			state.activeCallback = callbackId;
+			state.callbacks.set(callbackId, []);
+		},
+		appendScriptCallbackLine(processorId: string, line: string) {
+			const state = compilerState.get(processorId);
+			if (!state?.activeCallback) return false;
+			const lines = state.callbacks.get(state.activeCallback) ?? [];
+			lines.push(line);
+			state.callbacks.set(state.activeCallback, lines);
+			return true;
+		},
+		getActiveScriptCallback(processorId: string) {
+			return compilerState.get(processorId)?.activeCallback ?? null;
+		},
+		getCollectedScriptCallbacks(processorId: string) {
+			const state = compilerState.get(processorId);
+			if (!state) return {};
+			return Object.fromEntries(
+				[...state.callbacks.entries()].map(([callbackId, lines]) => [callbackId, lines.join("\n")]),
+			);
+		},
 		wizardRegistry: null,
 		handlerRegistry: null,
 	};
@@ -93,6 +135,7 @@ describe("built-in slash commands", () => {
 		expect(names).toContain("sampler");
 		expect(names).toContain("inspect");
 		expect(names).toContain("project");
+		expect(names).toContain("export");
 		expect(names).toContain("compile");
 	});
 
@@ -162,8 +205,76 @@ describe("built-in slash commands", () => {
 	it("/script.MyProcessor enters script mode with context", async () => {
 		const registry = createRegistry();
 		const session = createMockSession();
+		session.getOrCreateMode = (modeId: string) => {
+			let mode = (session as any).__modeCache?.get(modeId);
+			if (!mode) {
+				mode = modeId === "script"
+					? new ScriptMode()
+					: {
+						id: modeId as import("../modes/mode.js").ModeId,
+						name: modeId,
+						accent: "#ffffff",
+						prompt: "> ",
+						async parse() {
+							return textResult(`Parsed in ${modeId}`);
+						},
+					};
+				(session as any).__modeCache ??= new Map();
+				(session as any).__modeCache.set(modeId, mode);
+			}
+			return mode;
+		};
 		await registry.dispatch("/script.MyProcessor", session);
 		expect(session.modes).toContain("script");
+		expect((session.getOrCreateMode("script") as ScriptMode).processorId).toBe("MyProcessor");
+	});
+
+	it("/callback activates callback collection in script mode", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		(session as any).connection = new MockHiseConnection();
+		session.modes.push("script");
+		session.getOrCreateMode = () => new ScriptMode();
+
+		const result = await registry.dispatch("/callback onInit", session);
+
+		expect(result.type).toBe("text");
+		expect(session.getActiveScriptCallback!("Interface")).toBe("onInit");
+	});
+
+	it("/compile sends collected callbacks via set_script in script mode", async () => {
+		const registry = createRegistry();
+		const session = createMockSession();
+		const connection = new MockHiseConnection()
+			.onPost("/api/set_script", () => ({
+				success: true,
+				result: "Compiled OK",
+				updatedCallbacks: ["onInit", "onNoteOn"],
+				logs: [],
+				errors: [],
+			}));
+		(session as any).connection = connection;
+		session.modes.push("script");
+		const scriptMode = new ScriptMode();
+		session.getOrCreateMode = () => scriptMode;
+		session.setActiveScriptCallback!("Interface", "onInit");
+		session.appendScriptCallbackLine!("Interface", "Content.makeFrontInterface(600, 600);");
+		session.setActiveScriptCallback!("Interface", "onNoteOn");
+		session.appendScriptCallbackLine!("Interface", "Console.print(Message.getNoteNumber());");
+
+		const result = await registry.dispatch("/compile", session);
+
+		expect(result.type).toBe("text");
+		expect(connection.calls[0]).toMatchObject({ method: "POST", endpoint: "/api/set_script" });
+		expect(connection.calls[0]?.body).toEqual({
+			moduleId: "Interface",
+			compile: true,
+			callbacks: {
+				onInit: "Content.makeFrontInterface(600, 600);",
+				onNoteOn: "function onNoteOn()\n{\n\tConsole.print(Message.getNoteNumber());\n}",
+			},
+		});
+		expect(session.getCollectedScriptCallbacks!("Interface")).toEqual({});
 	});
 
 	it("/inspect pushes inspect mode", async () => {

@@ -25,7 +25,7 @@ describe("tokenizeSlash", () => {
 	});
 
 	it("classifies all mode IDs correctly", () => {
-		const modes = ["builder", "script", "dsp", "sampler", "inspect", "project", "compile", "undo", "ui"];
+		const modes = ["builder", "script", "dsp", "sampler", "inspect", "project", "export", "undo", "ui"];
 		for (const mode of modes) {
 			const spans = tokenizeSlash(`/${mode}`);
 			expect(spans[0]!.token).toBe(mode);
@@ -98,6 +98,26 @@ describe("tokenizeSlash", () => {
 			{ text: "/builder", token: "builder", bold: true },
 			{ text: " ", token: "plain" },
 			{ text: "SineGenerator.pitch", token: "identifier" },
+		]);
+	});
+
+	it("highlights callback names as keywords after /callback", () => {
+		const spans = tokenizeSlash("/callback onNoteOn");
+		expect(spans).toEqual([
+			{ text: "/callback", token: "command", bold: true },
+			{ text: " ", token: "plain" },
+			{ text: "onNoteOn", token: "keyword" },
+		]);
+	});
+
+	it("highlights dotted callback targets with keyword callback suffix", () => {
+		const spans = tokenizeSlash("/callback MidiProcessor.onNoteOff");
+		expect(spans).toEqual([
+			{ text: "/callback", token: "command", bold: true },
+			{ text: " ", token: "plain" },
+			{ text: "MidiProcessor", token: "identifier" },
+			{ text: ".", token: "punctuation" },
+			{ text: "onNoteOff", token: "keyword" },
 		]);
 	});
 

@@ -3,7 +3,7 @@
 import type { HiseResponse } from "../hise.js";
 import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
 import type { CommandResult } from "../result.js";
-import { codeResult, errorResult, markdownResult, textResult } from "../result.js";
+import { emptyResult, errorResult, markdownResult, textResult } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenize } from "../highlight/hisescript.js";
 import { tokenizeSlash } from "../highlight/slash.js";
@@ -11,22 +11,47 @@ import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 import type { CompletionEngine } from "../completion/engine.js";
 
+const MIDI_PROCESSOR_CALLBACKS = [
+	"onNoteOn",
+	"onNoteOff",
+	"onController",
+	"onTimer",
+	"onControl",
+] as const;
+
 export class ScriptMode implements Mode {
 	readonly id: Mode["id"] = "script";
 	readonly name = "Script";
 	readonly accent = MODE_ACCENTS.script;
-	readonly prompt: string;
 	readonly treeLabel = "Variable Tree";
-	readonly processorId: string;
+	private processorIdValue: string;
 	private readonly completionEngine: CompletionEngine | null;
 
 	constructor(processorId = "Interface", completionEngine?: CompletionEngine) {
-		this.processorId = processorId;
+		this.processorIdValue = processorId;
 		this.completionEngine = completionEngine ?? null;
-		this.prompt =
-			processorId === "Interface"
-				? "[script] > "
-				: `[script:${processorId}] > `;
+	}
+
+	get processorId(): string {
+		return this.processorIdValue;
+	}
+
+	get prompt(): string {
+		return this.processorId === "Interface"
+			? "[script] > "
+			: `[script:${this.processorId}] > `;
+	}
+
+	setContext(path: string): void {
+		this.processorIdValue = path || "Interface";
+	}
+
+	async onEnter(session: SessionContext): Promise<void> {
+		session.clearAllScriptCompilerState?.();
+	}
+
+	onExit(session: SessionContext): void {
+		session.clearAllScriptCompilerState?.();
 	}
 
 	async parse(
@@ -37,6 +62,20 @@ export class ScriptMode implements Mode {
 			return errorResult(
 				"No HISE connection. Connect to HISE before using script mode.",
 			);
+		}
+
+		const activeCallback = session.getActiveScriptCallback?.(this.processorId) ?? null;
+		if (activeCallback) {
+			if (/^function\s+[A-Za-z_]\w*\s*\(/.test(input.trim())) {
+				return errorResult(
+					`/callback ${activeCallback} expects raw callback body only. Do not paste a function wrapper.`,
+				);
+			}
+			const appended = session.appendScriptCallbackLine?.(this.processorId, input) ?? false;
+			if (!appended) {
+				return errorResult(`No active callback buffer for ${this.processorId}.`);
+			}
+			return emptyResult();
 		}
 
 		const response = await session.connection.post("/api/repl", {
@@ -55,6 +94,11 @@ export class ScriptMode implements Mode {
 	}
 
 	complete(input: string, _cursor: number): CompletionResult {
+		const callbackCompletion = this.completeCallbackTarget(input);
+		if (callbackCompletion) {
+			return callbackCompletion;
+		}
+
 		if (!this.completionEngine) {
 			return { items: [], from: 0, to: input.length };
 		}
@@ -76,6 +120,37 @@ export class ScriptMode implements Mode {
 			label: result.label,
 		};
 	}
+
+	private completeCallbackTarget(input: string): CompletionResult | null {
+		const match = input.match(/^\/callback(?:\s+([A-Za-z0-9_.]*))?$/);
+		if (!match) {
+			return null;
+		}
+
+		const availableCallbacks = getAvailableCallbacksForProcessor(this.processorId);
+		const target = match[1] ?? "";
+		const dotIndex = target.lastIndexOf(".");
+		const callbackPrefix = dotIndex === -1 ? target : target.slice(dotIndex + 1);
+		const callbackFrom = input.length - callbackPrefix.length;
+
+		const items = availableCallbacks
+			.filter((callbackId) => callbackId.toLowerCase().includes(callbackPrefix.toLowerCase()))
+			.map((callbackId) => ({
+				label: callbackId,
+				detail: "MIDI callback",
+			}));
+
+		return {
+			items,
+			from: callbackFrom,
+			to: input.length,
+			label: "Callbacks",
+		};
+	}
+}
+
+export function getAvailableCallbacksForProcessor(processorId: string): readonly string[] {
+	return processorId === "Interface" ? [] : MIDI_PROCESSOR_CALLBACKS;
 }
 
 // ── Token extraction for completion ─────────────────────────────────

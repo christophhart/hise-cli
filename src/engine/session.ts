@@ -25,6 +25,11 @@ import type { WizardHandlerRegistry } from "./wizard/handler-registry.js";
 
 export type ModeFactory = (context: string | undefined) => Mode;
 
+interface ScriptCompilerState {
+	activeCallback: string | null;
+	callbacks: Map<string, string[]>;
+}
+
 // ── Session class ───────────────────────────────────────────────────
 
 export class Session implements SessionContext, CommandSession {
@@ -82,6 +87,7 @@ export class Session implements SessionContext, CommandSession {
 
 	private readonly modeFactories = new Map<string, ModeFactory>();
 	private readonly modeCache = new Map<string, Mode>();
+	private readonly scriptCompilerStates = new Map<string, ScriptCompilerState>();
 
 	// Signal for TUI to handle quit
 	private quitRequested = false;
@@ -190,6 +196,7 @@ export class Session implements SessionContext, CommandSession {
 			return textResult("Goodbye.");
 		}
 		const popped = this.modeStack.pop()!;
+		popped.onExit?.(this);
 		if (silent) {
 			return { type: "empty" };
 		}
@@ -210,6 +217,7 @@ export class Session implements SessionContext, CommandSession {
 		const activeMode = this.currentMode(); // save reference before push
 		const mode = this.getOrCreateMode(modeId);
 		this.modeStack.push(mode);
+		await mode.onEnter?.(this);
 		const result = await mode.parse(input, this);
 		this.popMode(true); // Silent pop
 
@@ -229,6 +237,55 @@ export class Session implements SessionContext, CommandSession {
 		}
 
 		return result;
+	}
+
+	clearScriptCompilerState(processorId: string): void {
+		this.scriptCompilerStates.set(processorId, {
+			activeCallback: null,
+			callbacks: new Map(),
+		});
+	}
+
+	clearAllScriptCompilerState(): void {
+		this.scriptCompilerStates.clear();
+	}
+
+	setActiveScriptCallback(processorId: string, callbackId: string): void {
+		let state = this.scriptCompilerStates.get(processorId);
+		if (!state) {
+			state = { activeCallback: null, callbacks: new Map() };
+			this.scriptCompilerStates.set(processorId, state);
+		}
+		state.activeCallback = callbackId;
+		state.callbacks.set(callbackId, []);
+	}
+
+	appendScriptCallbackLine(processorId: string, line: string): boolean {
+		const state = this.scriptCompilerStates.get(processorId);
+		if (!state?.activeCallback) {
+			return false;
+		}
+		const lines = state.callbacks.get(state.activeCallback) ?? [];
+		lines.push(line);
+		state.callbacks.set(state.activeCallback, lines);
+		return true;
+	}
+
+	getActiveScriptCallback(processorId: string): string | null {
+		return this.scriptCompilerStates.get(processorId)?.activeCallback ?? null;
+	}
+
+	getCollectedScriptCallbacks(processorId: string): Record<string, string> {
+		const state = this.scriptCompilerStates.get(processorId);
+		if (!state) {
+			return {};
+		}
+		return Object.fromEntries(
+			[...state.callbacks.entries()].map(([callbackId, lines]) => [
+				callbackId,
+				lines.join("\n"),
+			]),
+		);
 	}
 
 	// ── Completion ─────────────────────────────────────────────────
@@ -280,6 +337,13 @@ export class Session implements SessionContext, CommandSession {
 							to: result.to + spaceIndex + 1,
 							label: result.label,
 						};
+					}
+				}
+
+				if (baseModeId === "callback" && this.currentModeId === "script") {
+					const mode = this.currentMode();
+					if (mode.complete) {
+						return mode.complete(input, cursor);
 					}
 				}
 
