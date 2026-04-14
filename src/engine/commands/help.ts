@@ -71,6 +71,7 @@ Enter a mode to start working, or use /wizard for guided workflows.
 - **/inspect** — Runtime monitor (version, project info)
 - **/export** — Build targets and export settings
 - **/undo** — Undo history and plan groups
+- **/hise** — Runtime control (launch, shutdown, screenshot, profile)
 - **/wizard** — Guided workflows (setup, export, project creation)
 - **/setup** — Install and build HISE from source (wizard alias)
 
@@ -273,4 +274,30 @@ Compose and execute timed MIDI sequences via HISE's inject_midi endpoint.
 - Notes: \`C3\` (=60), \`C#4\`, \`Db3\`, or raw MIDI numbers
 - Velocity: 0-127 (auto-normalized to 0.0-1.0)
 - Signals: sine, saw, sweep, dirac, noise, silence`,
+
+	hise: `# HISE Control Mode
+
+Runtime control — launch, shut down, screenshot, and profile HISE.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| \`launch [debug]\` | Start HISE and wait for connection (10s timeout) |
+| \`shutdown\` | Gracefully quit HISE |
+| \`screenshot [of <id>] [at <scale>] [to <path>]\` | Capture interface screenshot |
+| \`profile [thread audio\\|ui\\|scripting] [for <N>ms]\` | Record and display performance profile |
+
+## Screenshot Examples
+
+- \`screenshot\` — full interface to \`screenshot.png\` in project root
+- \`screenshot of Knob1\` — single component
+- \`screenshot at 50%\` — half scale (also accepts \`at 0.5\`)
+- \`screenshot of Panel to images/ui.png\` — component to specific path
+
+## Profile Examples
+
+- \`profile\` — all threads, 1000ms
+- \`profile thread audio for 2000ms\` — audio thread only, 2 seconds
+- \`profile thread scripting\` — scripting thread, default duration`,
 };

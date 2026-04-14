@@ -28,6 +28,7 @@ import { createDefaultMockRuntime } from "./mock/runtime.js";
 import { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { createNodePhaseExecutor } from "./tui/nodePhaseExecutor.js";
 import { registerSetupHandlers, registerCompileHandlers } from "./tui/wizard-handlers/index.js";
+import { createNodeHiseLauncher } from "./tui/nodeHiseLauncher.js";
 
 // ── Wizard handler setup ────────────────────────────────────────────
 
@@ -35,6 +36,8 @@ const phaseExecutor = createNodePhaseExecutor();
 const handlerRegistry = new WizardHandlerRegistry();
 registerSetupHandlers(handlerRegistry, phaseExecutor);
 registerCompileHandlers(handlerRegistry, phaseExecutor);
+
+const hiseLauncher = createNodeHiseLauncher();
 
 // ── Alt-screen helpers ──────────────────────────────────────────────
 
@@ -72,6 +75,7 @@ async function launchTui(
 			dataLoader,
 			animate: options?.animate,
 			handlerRegistry,
+			launcher: hiseLauncher,
 		}),
 		{
 			exitOnCtrlC: false,
@@ -137,7 +141,7 @@ async function main(): Promise<void> {
 
 	const bootstrap = createSession({ connection: null });
 	const cliCommands = listCliCommands(bootstrap.session.allCommands());
-	const cliResult = await executeCliCommand(process.argv, cliCommands, dataLoader, { handlerRegistry });
+	const cliResult = await executeCliCommand(process.argv, cliCommands, dataLoader, { handlerRegistry, launcher: hiseLauncher });
 
 	if (cliResult.kind === "help") {
 		console.log(renderCliHelp(cliCommands, cliResult.scope));

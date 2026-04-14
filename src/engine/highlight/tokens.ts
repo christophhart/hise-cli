@@ -31,7 +31,8 @@ export type TokenType =
 	| "compile"
 	| "undo"
 	| "ui"
-	| "sequence";
+	| "sequence"
+	| "hise";
 
 export const TOKEN_COLORS: Record<TokenType, string> = {
 	// Language tokens
@@ -60,6 +61,7 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 	undo: MODE_ACCENTS.undo,
 	ui: MODE_ACCENTS.ui,
 	sequence: MODE_ACCENTS.sequence,
+	hise: MODE_ACCENTS.hise,
 } as const;
 
 export interface TokenSpan {

@@ -100,22 +100,24 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		flagToEntry.set(`-${command.name}`, command);
 		flagToEntry.set(`--${command.name}`, command);
 	}
-	const commandFlags = args.filter((arg) => {
-		if (RESERVED_FLAGS.has(arg)) return false;
-		if (arg.startsWith("--target:")) return false;
-		return flagToEntry.has(arg);
-	});
+	// Find the first arg that matches a registered command flag.
+	// Everything after it is treated as tail args (not as command flags),
+	// so `-script --compile` doesn't clash with the /compile command.
+	let commandFlag: string | undefined;
+	let entry: CommandEntry | undefined;
+	for (const arg of args) {
+		if (RESERVED_FLAGS.has(arg)) continue;
+		if (arg.startsWith("--target:")) continue;
+		if (flagToEntry.has(arg)) {
+			commandFlag = arg;
+			entry = flagToEntry.get(arg)!;
+			break;
+		}
+	}
 
-	if (commandFlags.length === 0) {
+	if (!commandFlag || !entry) {
 		return { kind: "tui", args };
 	}
-
-	if (commandFlags.length > 1) {
-		return { kind: "error", message: `Multiple command flags provided: ${commandFlags.join(", ")}` };
-	}
-
-	const commandFlag = commandFlags[0]!;
-	const entry = flagToEntry.get(commandFlag)!;
 
 	const useMock = args.includes("--mock");
 	const targetArg = args.find((arg) => arg.startsWith("--target:"));
@@ -126,8 +128,15 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	}
 
 	const tailParts = args.filter((arg) => arg !== commandFlag && arg !== targetArg && arg !== "--mock");
-	// Re-quote args that contain spaces (shell strips the user's quotes)
-	const tail = tailParts.map((p) => p.includes(" ") ? `"${p}"` : p).join(" ").trim();
+	// Re-quote args that contain spaces (shell strips the user's quotes).
+	// Normalize --subcommand to /subcommand for mode one-shots
+	// (e.g. hise-cli -script --compile → /script /compile).
+	const tail = tailParts.map((p) => {
+		if (p.startsWith("--") && !p.includes("=") && entry.kind === "mode") {
+			return "/" + p.slice(2);
+		}
+		return p.includes(" ") ? `"${p}"` : p;
+	}).join(" ").trim();
 
 	if (entry.kind === "mode" && tail === "") {
 		return { kind: "error", message: `${commandFlag} requires a one-shot command or expression` };

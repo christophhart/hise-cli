@@ -17,7 +17,7 @@ const MIDI_CALLBACKS = new Set([
 // Mode IDs that get their own token type (= accent color)
 const MODE_IDS = new Set<TokenType>([
 	"builder", "script", "dsp", "sampler",
-	"inspect", "project", "export", "undo", "ui", "sequence",
+	"inspect", "project", "export", "undo", "ui", "sequence", "hise",
 ]);
 
 // Argument token rules (applied after the slash command)

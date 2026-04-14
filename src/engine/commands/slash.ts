@@ -445,7 +445,11 @@ async function handleCompileCallbacks(
 
 	const collected = session.getCollectedScriptCallbacks?.(scriptMode.processorId) ?? {};
 	if (Object.keys(collected).length === 0) {
-		return errorResult(`No callbacks collected for ${scriptMode.processorId}.`);
+		// No callbacks collected — just recompile the existing script
+		const recompileResp = await session.connection.post("/api/recompile", {
+			moduleId: scriptMode.processorId,
+		});
+		return formatCompileResponse(recompileResp, scriptMode.processorId);
 	}
 
 	const callbacks = Object.fromEntries(
@@ -703,6 +707,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
+		name: "hise",
+		description: "Enter HISE control mode (launch, screenshot, profile)",
+		handler: createModeHandler("hise"),
+		kind: "mode",
+	});
+
+	registry.register({
 		name: "connect",
 		description: "Check HISE connection status",
 		handler: handleConnect,
@@ -855,6 +866,30 @@ function formatSetScriptResponse(
 		: "";
 	const logs = body.logs && body.logs.length > 0 ? `\n${body.logs.join("\n")}` : "";
 	return textResult(`${String(body.result ?? "Compiled OK")} for ${processorId}${updated}.${logs}`.trim());
+}
+
+/** Format a /api/recompile response with full error context (callstack + logs). */
+function formatCompileResponse(
+	response: import("../hise.js").HiseResponse,
+	processorId: string,
+): CommandResult {
+	if (isErrorResponse(response)) return errorResult(response.message);
+	if (!isEnvelopeResponse(response)) return errorResult("Unexpected response from HISE");
+
+	if (response.errors.length > 0) {
+		const errorMessages = response.errors.map((e) => e.callstack.length > 0
+			? `${e.errorMessage}\n${e.callstack.join("\n")}`
+			: e.errorMessage).join("\n");
+		const logs = response.logs.length > 0 ? `\n${response.logs.join("\n")}` : "";
+		return errorResult(errorMessages + logs);
+	}
+
+	if (!response.success) {
+		return errorResult(String(response.result ?? "Recompile failed"));
+	}
+
+	const logs = response.logs.length > 0 ? `\n${response.logs.join("\n")}` : "";
+	return textResult(`Recompiled ${processorId}.${logs}`.trim());
 }
 
 /**

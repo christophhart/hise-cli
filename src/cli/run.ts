@@ -54,6 +54,7 @@ function wireScriptFileOps(session: import("../engine/session.js").Session): voi
 export interface CliCommandOptions {
 	connectionOverride?: HiseConnection;
 	handlerRegistry?: WizardHandlerRegistry;
+	launcher?: import("../engine/modes/hise.js").HiseLauncher;
 }
 
 export async function executeCliCommand(
@@ -83,6 +84,7 @@ export async function executeCliCommand(
 		getModuleList: () => datasets.moduleList,
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
+		launcher: opts.launcher,
 	});
 	// Wire up script file I/O for /run, /parse, and /edit commands
 	session.loadScriptFile = async (filePath: string) => {

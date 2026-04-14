@@ -191,6 +191,7 @@ export interface AppProps {
 	height?: number; // override stdout.rows (for screencast runner)
 	animate?: boolean; // disable logo animation (--no-animation)
 	handlerRegistry?: import("../engine/wizard/handler-registry.js").WizardHandlerRegistry;
+	launcher?: import("../engine/modes/hise.js").HiseLauncher;
 }
 
 // ── App component ───────────────────────────────────────────────────
@@ -203,7 +204,7 @@ export function App(props: AppProps) {
 	);
 }
 
-function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, animate, handlerRegistry }: AppProps) {
+function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, animate, handlerRegistry, launcher }: AppProps) {
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
@@ -237,6 +238,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			getModuleList: () => moduleListRef.current,
 			getComponentProperties: () => componentPropsRef.current,
 			handlerRegistry,
+			launcher,
 		}).session;
 	}
 	const session = sessionRef.current;

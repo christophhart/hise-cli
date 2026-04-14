@@ -218,7 +218,11 @@ export class Session implements SessionContext, CommandSession {
 		const mode = this.getOrCreateMode(modeId);
 		this.modeStack.push(mode);
 		await mode.onEnter?.(this);
-		const result = await mode.parse(input, this);
+		// Slash commands inside one-shot dispatch through the registry
+		// (e.g. /script /compile → registry handles /compile while in script mode)
+		const result = input.startsWith("/")
+			? await this.registry.dispatch(input, this)
+			: await mode.parse(input, this);
 		this.popMode(true); // Silent pop
 
 		// After undo one-shot, invalidate all cached mode trees and eagerly

@@ -17,6 +17,7 @@ export const MODE_ACCENTS = {
 	wizard: "#e8a060",
 	ui: "#66d9ef",
 	sequence: "#56b6c2",
+	hise: "#90FFB1",
 } as const;
 
 export type ModeId =
@@ -31,7 +32,8 @@ export type ModeId =
 	| "undo"
 	| "wizard"
 	| "ui"
-	| "sequence";
+	| "sequence"
+	| "hise";
 
 export interface CompletionItem {
 	label: string;
@@ -51,6 +53,10 @@ export interface CompletionResult {
 // The full Session class implements this. Avoids circular imports.
 export interface SessionContext {
 	readonly connection: import("../hise.js").HiseConnection | null;
+	/** HISE project name (set on initial connection or after /hise launch). */
+	projectName?: string | null;
+	/** HISE project folder (set on initial connection or after /hise launch). */
+	projectFolder?: string | null;
 	/** Exit the current mode (pops the mode stack). At root, signals quit. */
 	popMode(): import("../result.js").CommandResult;
 	/** Invalidate all cached mode trees — call after undo/redo operations. */

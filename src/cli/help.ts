@@ -36,6 +36,7 @@ MODES
   -script "<expression>"   HiseScript REPL          (--help for syntax)
   -inspect "<command>"     Runtime monitor           (--help for syntax)
   -undo "<command>"        Undo history & plan groups (--help for syntax)
+  -hise "<command>"        Runtime control            (--help for syntax)
 
   wizard <subcommand>      Guided workflows          (--help for syntax)
 
@@ -481,6 +482,39 @@ EXAMPLES
   hise-cli diagnose /path/to/Scripts/ext.js
   hise-cli diagnose /path/to/Scripts/ext.js --format=pretty --errors-only
   hise-cli diagnose --help`,
+
+	hise: `hise-cli -hise — HISE runtime control
+
+SYNTAX
+  hise-cli -hise "<command>"
+
+COMMANDS
+  launch [debug]                                  Start HISE and wait for connection
+  shutdown                                        Gracefully quit HISE
+  screenshot [of <id>] [at <scale>] [to <path>]  Capture interface screenshot
+  profile [thread audio|ui|scripting] [for <N>ms] Record performance profile
+
+LAUNCH
+  Finds HISE (or "HISE Debug") on PATH, spawns it, and polls /api/status
+  until the server responds (10s timeout). Case-insensitive "debug" flag.
+
+SCREENSHOT
+  Captures the full interface or a specific component. Output path is
+  resolved relative to the HISE project folder. Defaults to screenshot.png
+  in the project root. Scale accepts both percentage (50%) and decimal (0.5).
+
+PROFILE
+  Records a performance profile for the given duration (default 1000ms),
+  then displays a summary table sorted by peak duration. Thread names
+  are case-insensitive: audio, ui, scripting (or script).
+
+EXAMPLES
+  hise-cli -hise "launch"
+  hise-cli -hise "launch debug"
+  hise-cli -hise "screenshot"
+  hise-cli -hise "screenshot of Knob1 at 50% to images/knob.png"
+  hise-cli -hise "profile thread audio for 2000ms"
+  hise-cli -hise "shutdown"`,
 
 	sequence: `hise-cli -sequence — timed MIDI sequence composer
 
