@@ -12,7 +12,7 @@ import { parseBuilderInput } from "../modes/builder.js";
 /** Set of mode IDs that can be entered via slash command. */
 const MODE_IDS = new Set<string>([
 	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "export", "undo", "ui", "sequence",
+	"project", "export", "undo", "ui", "sequence", "hise",
 ]);
 
 /** Slash commands that are valid tool commands (no mode needed). */

@@ -104,6 +104,7 @@ function parseProfileClauses(args: string): ProfileOptions | string {
 // ── Subcommand definitions ─────────────────────────────────────────
 
 const HISE_COMMANDS = new Map<string, string>([
+	["status", "Show connection status and project info"],
 	["launch", "Launch HISE and wait for connection"],
 	["shutdown", "Gracefully quit HISE"],
 	["screenshot", "Capture interface screenshot"],
@@ -152,6 +153,16 @@ export class HiseMode implements Mode {
 		// Keyword completions per subcommand
 		const tail = parts.slice(1).join(" ");
 		const tailFrom = leadingSpaces + parts[0].length + 1;
+
+		if (cmd === "status") {
+			const fields = [
+				{ label: "project", detail: "Project name" },
+				{ label: "folder", detail: "Project folder path" },
+				{ label: "online", detail: "Connection status (true/false)" },
+			];
+			const items = fields.filter((f) => f.label.startsWith(tail.toLowerCase()));
+			return { items, from: tailFrom, to: input.length };
+		}
 
 		if (cmd === "launch") {
 			const items = ["debug"]
@@ -208,6 +219,8 @@ export class HiseMode implements Mode {
 		}
 
 		switch (command) {
+			case "status":
+				return this.handleStatus(args, session);
 			case "launch":
 				return this.handleLaunch(args, session);
 			case "shutdown":
@@ -219,6 +232,45 @@ export class HiseMode implements Mode {
 			default:
 				return errorResult(`Unhandled command: ${command}`);
 		}
+	}
+
+	// ── status ────────────────────────────────────────────────────
+
+	private async handleStatus(args: string, session: SessionContext): Promise<CommandResult> {
+		const field = args.trim().toLowerCase();
+
+		// Always fetch fresh status from HISE
+		let online = false;
+		let name = "unknown";
+		let folder = "unknown";
+
+		if (session.connection) {
+			try {
+				const resp = await session.connection.get("/api/status");
+				if (isSuccessResponse(resp)) {
+					online = true;
+					const project = extractProjectFromStatus(resp);
+					if (project) {
+						name = project.name;
+						folder = project.folder;
+						session.projectName = name;
+						session.projectFolder = folder;
+					}
+				}
+			} catch {
+				online = false;
+			}
+		}
+
+		if (field === "project") return textResult(name);
+		if (field === "folder") return textResult(folder);
+		if (field === "online") return textResult(String(online));
+
+		if (!online) {
+			return textResult("HISE offline.");
+		}
+
+		return textResult(`HISE online. Project: "${name}" at ${folder}`);
 	}
 
 	// ── launch ────────────────────────────────────────────────────
@@ -411,6 +463,7 @@ ${rows.join("\n")}
 
 ### Syntax
 
+- \`status [project|folder|online]\` — show connection status and project info
 - \`launch [debug]\` — start HISE (or HISE Debug) and wait for connection
 - \`shutdown\` — gracefully quit HISE
 - \`screenshot [of <id>] [at <scale>] [to <path>]\` — capture interface

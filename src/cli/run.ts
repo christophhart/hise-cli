@@ -158,6 +158,7 @@ async function executeRunCommand(
 		connection,
 		getModuleList: () => datasets.moduleList,
 		getComponentProperties: () => datasets.componentProperties,
+		launcher: opts.launcher,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
@@ -243,6 +244,7 @@ async function runWatchMode(
 		connection,
 		getModuleList: () => datasets.moduleList,
 		getComponentProperties: () => datasets.componentProperties,
+		launcher: opts.launcher,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);

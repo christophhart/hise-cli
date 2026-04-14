@@ -19,7 +19,7 @@ export interface ModeMapEntry {
 
 const MODE_IDS = new Set<string>([
 	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "export", "undo", "ui", "sequence",
+	"project", "export", "undo", "ui", "sequence", "hise",
 ]);
 
 /**

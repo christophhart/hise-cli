@@ -364,6 +364,8 @@ async function handleExpect(
 	const mode = session.getOrCreateMode(session.currentModeId);
 	const sessionContext = {
 		connection: session.connection,
+		projectName: session.projectName,
+		projectFolder: session.projectFolder,
 		popMode: () => session.popMode(true),
 		invalidateAllTrees: () => {},
 	};

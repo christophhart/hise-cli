@@ -8,6 +8,8 @@ function createMockSession(): CommandSession {
 	
 	return {
 		connection: null,
+		projectName: null,
+		projectFolder: null,
 		get modeStackDepth() {
 			return modes.length;
 		},

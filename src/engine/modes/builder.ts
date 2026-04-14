@@ -181,7 +181,10 @@ class BuilderParser extends CstParser {
 		]);
 		this.OPTION(() => {
 			this.CONSUME(As);
-			this.CONSUME(QuotedString, { LABEL: "alias" });
+			this.OR3([
+				{ ALT: () => this.CONSUME(QuotedString, { LABEL: "alias" }) },
+				{ ALT: () => this.AT_LEAST_ONE2(() => this.CONSUME4(Identifier, { LABEL: "aliasWords" })) },
+			]);
 		});
 		this.OPTION2(() => {
 			this.CONSUME(To);
@@ -540,7 +543,9 @@ function extractAddCommand(
 	}
 	const alias = node.children.alias
 		? stripQuotes((node.children.alias[0] as IToken).image)
-		: undefined;
+		: node.children.aliasWords
+			? (node.children.aliasWords as IToken[]).map((t) => t.image).join(" ")
+			: undefined;
 	const parent = node.children.parent
 		? extractTargetRef(node.children.parent[0])
 		: undefined;
