@@ -12,7 +12,7 @@ describe("createDefaultMockRuntime", () => {
 			throw new Error("Expected success response");
 		}
 
-		expect(normalizeStatusPayload(response.value)).toEqual(runtime.status);
+		expect(normalizeStatusPayload(response)).toEqual(runtime.status);
 	});
 
 	it("provides a contract-valid repl response", async () => {

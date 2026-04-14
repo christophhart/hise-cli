@@ -382,7 +382,7 @@ export class HiseMode implements Mode {
 		if (opts.id) params.set("id", opts.id);
 		if (opts.scale !== undefined) params.set("scale", String(opts.scale));
 
-		const response = await session.connection.get(`/api/screenshot?${params.toString()}`);
+		const response = await session.connection.get(`/api/testing/screenshot?${params.toString()}`);
 		if (isErrorResponse(response)) {
 			return errorResult(response.message);
 		}
@@ -393,9 +393,9 @@ export class HiseMode implements Mode {
 			return errorResult(msg);
 		}
 
-		const result = response.result as Record<string, unknown> | null;
-		const width = result?.width ?? "?";
-		const height = result?.height ?? "?";
+		const data = response as unknown as Record<string, unknown>;
+		const width = data.width ?? "?";
+		const height = data.height ?? "?";
 		const componentInfo = opts.id ? ` of ${opts.id}` : "";
 		return textResult(`Screenshot${componentInfo} saved to ${outputPath} (${width}x${height})`);
 	}
@@ -419,7 +419,7 @@ export class HiseMode implements Mode {
 		};
 		if (parsed.threadFilter) recordBody.threadFilter = parsed.threadFilter;
 
-		const recordResp = await session.connection.post("/api/profile", recordBody);
+		const recordResp = await session.connection.post("/api/testing/profile", recordBody);
 		if (isErrorResponse(recordResp)) {
 			return errorResult(recordResp.message);
 		}
@@ -432,7 +432,7 @@ export class HiseMode implements Mode {
 		await delay(parsed.durationMs + 200);
 
 		// Fetch results
-		const getResp = await session.connection.post("/api/profile", {
+		const getResp = await session.connection.post("/api/testing/profile", {
 			mode: "get",
 			summary: true,
 		});
@@ -446,7 +446,7 @@ export class HiseMode implements Mode {
 			return errorResult(msg);
 		}
 
-		return formatProfileResult(getResp.result, parsed);
+		return formatProfileResult(getResp.result ?? null, parsed);
 	}
 
 	// ── help ──────────────────────────────────────────────────────
@@ -474,11 +474,9 @@ ${rows.join("\n")}
 // ── Helpers ────────────────────────────────────────────────────────
 
 function extractProjectFromStatus(
-	response: { result: string | object | null },
+	response: Record<string, unknown>,
 ): { name: string; folder: string } | null {
-	const result = response.result as Record<string, unknown> | null;
-	if (!result) return null;
-	const project = result.project as Record<string, unknown> | undefined;
+	const project = response.project as Record<string, unknown> | undefined;
 	if (!project) return null;
 	const name = typeof project.name === "string" ? project.name : null;
 	const folder = typeof project.projectFolder === "string" ? project.projectFolder : null;

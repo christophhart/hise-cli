@@ -111,12 +111,20 @@ function tokenizeLine(line: string): string[] {
 		if (inQuote) {
 			if (ch === quoteChar) {
 				inQuote = false;
+				if (current) {
+					// Closing quote mid-token — preserve as literal
+					current += ch;
+				}
 			} else {
 				current += ch;
 			}
 		} else if (ch === '"' || ch === "'") {
 			inQuote = true;
 			quoteChar = ch;
+			if (current) {
+				// Opening quote mid-token — preserve as literal
+				current += ch;
+			}
 		} else if (ch === " " || ch === "\t") {
 			if (current) {
 				tokens.push(current);

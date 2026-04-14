@@ -179,7 +179,7 @@ export class UndoMode implements Mode {
 			return errorResult(msg);
 		}
 		await this.refreshHistory(conn);
-		const diff = normalizeUndoDiffResponse(response.result);
+		const diff = normalizeUndoDiffResponse(response);
 		const summary = diff?.diff.length
 			? diff.diff.map((d) => `${d.action} ${d.target}`).join(", ")
 			: "Undone";
@@ -196,7 +196,7 @@ export class UndoMode implements Mode {
 			return errorResult(msg);
 		}
 		await this.refreshHistory(conn);
-		const diff = normalizeUndoDiffResponse(response.result);
+		const diff = normalizeUndoDiffResponse(response);
 		const summary = diff?.diff.length
 			? diff.diff.map((d) => `${d.action} ${d.target}`).join(", ")
 			: "Redone";
@@ -243,7 +243,7 @@ export class UndoMode implements Mode {
 		this.planName = "";
 		this.planDiff = null;
 		await this.refreshHistory(conn);
-		const diff = normalizeUndoDiffResponse(response.result);
+		const diff = normalizeUndoDiffResponse(response);
 		const count = diff?.diff.length ?? 0;
 		return textResult(`Applied "${appliedName}" (${count} change${count !== 1 ? "s" : ""}).`);
 	}
@@ -269,7 +269,7 @@ export class UndoMode implements Mode {
 		if (!isEnvelopeResponse(response) || !response.success) {
 			return errorResult("Failed to fetch diff.");
 		}
-		const diff = normalizeUndoDiffResponse(response.result);
+		const diff = normalizeUndoDiffResponse(response);
 		if (!diff || diff.diff.length === 0) {
 			return textResult("No changes.");
 		}
@@ -307,10 +307,10 @@ export class UndoMode implements Mode {
 		if (this.inPlan) return; // already tracking locally (TUI session)
 		const resp = await conn.get("/api/undo/diff?scope=group");
 		if (!isEnvelopeResponse(resp) || !resp.success) return;
-		const result = resp.result as Record<string, unknown> | null;
-		if (typeof result?.groupName === "string" && result.groupName !== "root") {
+		const groupName = resp.groupName as string | undefined;
+		if (typeof groupName === "string" && groupName !== "root") {
 			this.inPlan = true;
-			this.planName = result.groupName;
+			this.planName = groupName;
 		}
 	}
 
@@ -342,14 +342,14 @@ export class UndoMode implements Mode {
 	): Promise<void> {
 		const response = await conn.get("/api/undo/history");
 		if (isEnvelopeResponse(response) && response.success) {
-			this.historyData = normalizeUndoHistoryResponse(response.result);
+			this.historyData = normalizeUndoHistoryResponse(response);
 		}
 
 		// Also refresh plan diff if in a plan
 		if (this.inPlan) {
 			const diffResp = await conn.get("/api/undo/diff?scope=group&flatten=true");
 			if (isEnvelopeResponse(diffResp) && diffResp.success) {
-				const diff = normalizeUndoDiffResponse(diffResp.result);
+				const diff = normalizeUndoDiffResponse(diffResp);
 				this.planDiff = diff?.diff ?? [];
 			}
 		}

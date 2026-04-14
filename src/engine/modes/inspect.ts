@@ -90,7 +90,12 @@ ${rows.join("\n")}`);
 	}
 }
 
-export function extractStatusPayload(response: { value?: unknown; result: string | object | null }): StatusPayload {
+export function extractStatusPayload(response: Record<string, unknown>): StatusPayload {
+	// New API: server, project, scriptProcessors are top-level fields
+	if (response.server && response.project) {
+		return normalizeStatusPayload(response);
+	}
+	// Legacy: payload inside value or result
 	if (response.value && typeof response.value === "object") {
 		return normalizeStatusPayload(response.value);
 	}

@@ -37,8 +37,9 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 	connection.setProbeResult(true);
 	connection.onGet("/api/status", () => ({
 		success: true,
-		result: JSON.stringify(status),
-		value: status,
+		server: status.server,
+		project: status.project,
+		scriptProcessors: status.scriptProcessors,
 		logs: [],
 		errors: [],
 	}));
@@ -94,7 +95,9 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 
 		return {
 			success: true,
-			result: applyResult,
+			scope: applyResult.scope,
+			groupName: applyResult.groupName,
+			diff: applyResult.diff,
 			logs: [],
 			errors: [],
 		};
@@ -146,28 +149,24 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 
 	connection.onGet("/api/undo/diff", () => ({
 		success: true,
-		result: {
-			scope: "group",
-			groupName: inGroup ? groupName : "root",
-			diff: [...pendingDiff],
-		},
+		scope: "group",
+		groupName: inGroup ? groupName : "root",
+		diff: [...pendingDiff],
 		logs: [],
 		errors: [],
 	}));
 
 	connection.onGet("/api/undo/history", () => ({
 		success: true,
-		result: {
-			scope: "group",
-			groupName: inGroup ? groupName : "root",
-			cursor: historyCursor,
-			history: historyEntries.map((e, i) => ({
-				index: i,
-				type: "group",
-				name: e.name,
-				count: e.count,
-			})),
-		},
+		scope: "group",
+		groupName: inGroup ? groupName : "root",
+		cursor: historyCursor,
+		history: historyEntries.map((e, i) => ({
+			index: i,
+			type: "group",
+			name: e.name,
+			count: e.count,
+		})),
 		logs: [],
 		errors: [],
 	}));
@@ -201,11 +200,9 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 
 		return {
 			success: true,
-			result: {
-				scope: inGroup ? "group" : "root",
-				groupName: inGroup ? groupName : "root",
-				diff: [...uiDiff],
-			},
+			scope: inGroup ? "group" : "root",
+			groupName: inGroup ? groupName : "root",
+			diff: [...uiDiff],
 			logs: diff.map(d => {
 				const verb = d.action === "+" ? "Add" : d.action === "-" ? "Remove" : "Set properties on";
 				return `${verb} ${d.target}`;
@@ -229,7 +226,9 @@ function envelopeOk(result: string): HiseResponse {
 function envelopeDiff(groupName: string, diff: BuilderDiffEntry[]): HiseResponse {
 	return {
 		success: true,
-		result: { scope: "group", groupName, diff },
+		scope: "group",
+		groupName,
+		diff,
 		logs: [],
 		errors: [],
 	};

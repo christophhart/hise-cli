@@ -923,8 +923,8 @@ export class UiMode implements Mode {
 		let inPlan = false;
 		const diffResp = await connection.get("/api/undo/diff?scope=group");
 		if (isEnvelopeResponse(diffResp) && diffResp.success) {
-			const result = diffResp.result as Record<string, unknown> | null;
-			inPlan = typeof result?.groupName === "string" && result.groupName !== "root";
+			const groupName = diffResp.groupName as string | undefined;
+			inPlan = typeof groupName === "string" && groupName !== "root";
 		}
 
 		const base = `/api/ui/tree?moduleId=${encodeURIComponent(this.moduleId)}`;

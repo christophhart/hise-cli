@@ -1497,8 +1497,8 @@ export class BuilderMode implements Mode {
 		let inPlan = false;
 		const diffResp = await connection.get("/api/undo/diff?scope=group");
 		if (isEnvelopeResponse(diffResp) && diffResp.success) {
-			const result = diffResp.result as Record<string, unknown> | null;
-			inPlan = typeof result?.groupName === "string" && result.groupName !== "root";
+			const groupName = diffResp.groupName as string | undefined;
+			inPlan = typeof groupName === "string" && groupName !== "root";
 		}
 
 		const endpoint = inPlan ? "/api/builder/tree?group=current" : "/api/builder/tree";
@@ -1757,8 +1757,8 @@ export class BuilderMode implements Mode {
 			return errorResult(msg);
 		}
 
-		// Parse the diff result
-		const applyResult = normalizeBuilderApplyResult(response.result);
+		// Parse the diff result — new API has scope/groupName/diff at top level
+		const applyResult = normalizeBuilderApplyResult(response);
 
 		// Re-fetch the tree to get the updated state
 		await this.fetchTree(connection);

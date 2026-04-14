@@ -94,18 +94,16 @@ describe("SequenceMode", () => {
 			const mode = new SequenceMode();
 			const mock = new MockHiseConnection();
 
-			mock.onPost("/api/inject_midi", () => ({
+			mock.onPost("/api/testing/sequence", () => ({
 				success: true,
-				result: {
-					isPlaying: false,
-					durationMs: 1000,
-					eventsInSequence: 2,
-					playedEvents: 2,
-					progress: 1.0,
-					replResults: [
-						{ id: "voice_test", expression: "Synth.getNumPressedKeys()", moduleId: "Interface", timestamp: 500, success: true, value: 1 },
-					],
-				},
+				isPlaying: false,
+				durationMs: 1000,
+				eventsInSequence: 2,
+				playedEvents: 2,
+				progress: 1.0,
+				replResults: [
+					{ id: "voice_test", expression: "Synth.getNumPressedKeys()", moduleId: "Interface", timestamp: 500, success: true, value: 1 },
+				],
 				logs: [],
 				errors: [],
 			}));
@@ -122,7 +120,7 @@ describe("SequenceMode", () => {
 			expect((playResult as { content: string }).content).toContain("completed");
 
 			// Verify POST body
-			const postCall = mock.calls.find(c => c.method === "POST" && c.endpoint === "/api/inject_midi");
+			const postCall = mock.calls.find(c => c.method === "POST" && c.endpoint === "/api/testing/sequence");
 			expect(postCall).toBeDefined();
 			const body = postCall!.body as { messages: unknown[]; blocking: boolean };
 			expect(body.blocking).toBe(true);
@@ -160,9 +158,10 @@ describe("SequenceMode", () => {
 			const mode = new SequenceMode();
 			const mock = new MockHiseConnection();
 
-			mock.onPost("/api/inject_midi", () => ({
+			mock.onPost("/api/testing/sequence", () => ({
 				success: true,
-				result: { isPlaying: false, durationMs: 500 },
+				isPlaying: false,
+				durationMs: 500,
 				logs: [],
 				errors: [],
 			}));
@@ -189,7 +188,7 @@ describe("SequenceMode", () => {
 			const mode = new SequenceMode();
 			const mock = new MockHiseConnection();
 
-			mock.onPost("/api/inject_midi", () => ({ success: true, result: {}, logs: [], errors: [] }));
+			mock.onPost("/api/testing/sequence", () => ({ success: true, logs: [], errors: [] }));
 
 			const result = await mode.parse("stop", makeSession(mock));
 			expect(result.type).toBe("text");

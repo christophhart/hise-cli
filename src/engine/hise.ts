@@ -4,11 +4,12 @@
 
 export interface HiseEnvelopeResponse {
 	success: boolean;
-	result: string | object | null;
+	result?: string | object | null;
 	value?: unknown;
 	moduleId?: string;
 	logs: string[];
 	errors: Array<{ errorMessage: string; callstack: string[] }>;
+	[key: string]: unknown;
 }
 
 export type HiseSuccessResponse = HiseEnvelopeResponse & { success: true };
@@ -37,9 +38,8 @@ export function isEnvelopeResponse(
 ): response is HiseEnvelopeResponse {
 	return "success" in response
 		&& typeof response.success === "boolean"
-		&& ("result" in response)
-		&& Array.isArray(response.logs)
-		&& Array.isArray(response.errors);
+		&& Array.isArray((response as HiseEnvelopeResponse).logs)
+		&& Array.isArray((response as HiseEnvelopeResponse).errors);
 }
 
 // ── HiseConnection interface ────────────────────────────────────────

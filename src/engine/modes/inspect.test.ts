@@ -14,8 +14,9 @@ function createMockSession(overrides: Partial<ReturnType<typeof createDefaultMoc
 	const mock = new MockHiseConnection();
 	mock.onGet("/api/status", () => ({
 		success: true as const,
-		result: JSON.stringify(status),
-		value: status,
+		server: status.server,
+		project: status.project,
+		scriptProcessors: status.scriptProcessors,
 		logs: [],
 		errors: [],
 	}));

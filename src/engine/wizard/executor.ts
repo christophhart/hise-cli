@@ -188,9 +188,12 @@ export class WizardExecutor {
 			}
 
 			if (isEnvelopeResponse(response) && response.success) {
-				// Async job — switch to polling
-				if (isAsyncJobResult(response.result)) {
-					return this.pollJobStatus(response.result.jobId, task, onProgress, signal);
+				// Async job — jobId at top level in new API, or inside result (legacy)
+				const jobId = typeof response.jobId === "string" ? response.jobId
+					: isAsyncJobResult(response.result) ? response.result.jobId
+					: null;
+				if (jobId) {
+					return this.pollJobStatus(jobId, task, onProgress, signal);
 				}
 
 				// Prepare-only — forward build paths as inter-task data
@@ -265,32 +268,33 @@ export class WizardExecutor {
 					return { success: false, message: "Unexpected status response format" };
 				}
 
-				const status = response.result as {
-					finished?: boolean;
-					progress?: number;
-					message?: string;
-				} | null;
+				// New API: finished/progress are top-level fields
+				const finished = response.finished as boolean | undefined;
+				const progress = response.progress as number | undefined;
+				const message = response.message as string | undefined
+					// Legacy: fields inside result
+					?? (response.result as Record<string, unknown> | null)?.message as string | undefined;
 
-				if (status) {
+				if (progress !== undefined || message) {
 					onProgress({
 						phase: task.id,
-						percent: status.progress !== undefined ? Math.round(status.progress * 100) : undefined,
-						message: status.message,
+						percent: progress !== undefined ? Math.round(progress * 100) : undefined,
+						message,
 					});
 				}
 
-				if (status?.finished) {
+				if (finished ?? (response.result as Record<string, unknown> | null)?.finished) {
 					if (response.success) {
 						return {
 							success: true,
-							message: status.message ?? `${task.id} completed.`,
+							message: message ?? `${task.id} completed.`,
 							logs: response.logs.length > 0 ? response.logs : undefined,
 						};
 					}
 					const errorMsg =
 						response.errors.length > 0
 							? response.errors.map((e) => e.errorMessage).join("\n")
-							: status.message ?? "Job failed";
+							: message ?? "Job failed";
 					return {
 						success: false,
 						message: errorMsg,

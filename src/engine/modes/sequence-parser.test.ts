@@ -246,6 +246,17 @@ describe("parseEventLine", () => {
 			}
 		});
 
+		it("preserves quotes in expressions", () => {
+			const result = parseEventLine('0ms eval Content.getComponent("Page1Btn").getValue() as BTN_VAL');
+			expect(result).toEqual({
+				type: "repl",
+				timestamp: 0,
+				expression: 'Content.getComponent("Page1Btn").getValue()',
+				moduleId: "Interface",
+				id: "BTN_VAL",
+			});
+		});
+
 		it("rejects missing 'as'", () => {
 			expect(typeof parseEventLine("0ms eval something")).toBe("string");
 		});

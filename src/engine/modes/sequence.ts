@@ -170,7 +170,7 @@ ${rows.join("\n")}`);
 		}
 
 		const payload = buildInjectPayload(def, { blocking: true });
-		const response = await session.connection.post("/api/inject_midi", payload);
+		const response = await session.connection.post("/api/testing/sequence", payload);
 
 		if (isErrorResponse(response)) {
 			return errorResult(response.message);
@@ -202,7 +202,7 @@ ${rows.join("\n")}`);
 		}
 
 		const payload = buildInjectPayload(def, { recordOutput: recordPath });
-		const response = await session.connection.post("/api/inject_midi", payload);
+		const response = await session.connection.post("/api/testing/sequence", payload);
 
 		if (isErrorResponse(response)) {
 			return errorResult(response.message);
@@ -215,7 +215,7 @@ ${rows.join("\n")}`);
 	}
 
 	private processPlayResponse(
-		response: { result: string | object | null; value?: unknown },
+		response: { result?: string | object | null; value?: unknown; [key: string]: unknown },
 		name: string,
 		recordPath?: string,
 	): CommandResult {
@@ -254,7 +254,7 @@ ${rows.join("\n")}`);
 			{ name: "", events: [{ type: "allNotesOff", timestamp: 0 }] },
 			{ blocking: true },
 		);
-		const response = await session.connection.post("/api/inject_midi", payload);
+		const response = await session.connection.post("/api/testing/sequence", payload);
 
 		if (isErrorResponse(response)) {
 			return errorResult(response.message);
@@ -298,9 +298,13 @@ ${rows.join("\n")}
 }
 
 function extractResponseData(
-	response: { result: string | object | null; value?: unknown },
+	response: { result?: string | object | null; value?: unknown; [key: string]: unknown },
 ): InjectMidiResponse | null {
 	try {
+		// New API: sequence fields are top-level
+		if ("eventsInSequence" in response || "durationMs" in response || "replResults" in response) {
+			return response as unknown as InjectMidiResponse;
+		}
 		if (response.value && typeof response.value === "object") {
 			return response.value as InjectMidiResponse;
 		}

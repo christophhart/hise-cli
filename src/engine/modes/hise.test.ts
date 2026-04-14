@@ -24,11 +24,9 @@ function mockSession(mock: MockHiseConnection, opts?: { projectFolder?: string |
 
 const STATUS_RESPONSE = {
 	success: true as const,
-	result: {
-		project: { name: "TestProject", projectFolder: "D:/Projects/Test", scriptsFolder: "D:/Projects/Test/Scripts" },
-		server: { version: "1.0.0", compileTimeout: 10 },
-		scriptProcessors: [],
-	},
+	project: { name: "TestProject", projectFolder: "D:/Projects/Test", scriptsFolder: "D:/Projects/Test/Scripts" },
+	server: { version: "1.0.0", compileTimeout: 10 },
+	scriptProcessors: [],
 	logs: [] as string[],
 	errors: [] as Array<{ errorMessage: string; callstack: string[] }>,
 };
@@ -261,9 +259,9 @@ describe("HiseMode screenshot", () => {
 	it("defaults to screenshot.png in project root", async () => {
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onGet("/api/screenshot", () => ({
+		mock.onGet("/api/testing/screenshot", () => ({
 			success: true as const,
-			result: { width: 600, height: 400, scale: 1.0, filePath: "D:/Projects/Test/screenshot.png" },
+			width: 600, height: 400, scale: 1.0, filePath: "D:/Projects/Test/screenshot.png",
 			logs: [],
 			errors: [],
 		}));
@@ -275,7 +273,7 @@ describe("HiseMode screenshot", () => {
 			expect(result.content).toContain("600x400");
 		}
 		// Check query params include outputPath
-		const call = mock.calls.find((c) => c.endpoint.includes("/api/screenshot"));
+		const call = mock.calls.find((c) => c.endpoint.includes("/api/testing/screenshot"));
 		expect(call?.endpoint).toContain("outputPath=");
 		expect(call?.endpoint).toContain("screenshot.png");
 	});
@@ -283,9 +281,9 @@ describe("HiseMode screenshot", () => {
 	it("parses 'of' clause", async () => {
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onGet("/api/screenshot", () => ({
+		mock.onGet("/api/testing/screenshot", () => ({
 			success: true as const,
-			result: { width: 128, height: 48 },
+			width: 128, height: 48,
 			logs: [],
 			errors: [],
 		}));
@@ -295,67 +293,67 @@ describe("HiseMode screenshot", () => {
 		if (result.type === "text") {
 			expect(result.content).toContain("of Knob1");
 		}
-		const call = mock.calls.find((c) => c.endpoint.includes("/api/screenshot"));
+		const call = mock.calls.find((c) => c.endpoint.includes("/api/testing/screenshot"));
 		expect(call?.endpoint).toContain("id=Knob1");
 	});
 
 	it("parses 'at 50%' as scale 0.5", async () => {
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onGet("/api/screenshot", () => ({
+		mock.onGet("/api/testing/screenshot", () => ({
 			success: true as const,
-			result: { width: 300, height: 200, scale: 0.5 },
+			width: 300, height: 200, scale: 0.5,
 			logs: [],
 			errors: [],
 		}));
 
 		await mode.parse("screenshot at 50%", screenshotSession(mock));
-		const call = mock.calls.find((c) => c.endpoint.includes("/api/screenshot"));
+		const call = mock.calls.find((c) => c.endpoint.includes("/api/testing/screenshot"));
 		expect(call?.endpoint).toContain("scale=0.5");
 	});
 
 	it("parses 'at 0.5' as scale 0.5", async () => {
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onGet("/api/screenshot", () => ({
+		mock.onGet("/api/testing/screenshot", () => ({
 			success: true as const,
-			result: { width: 300, height: 200 },
+			width: 300, height: 200,
 			logs: [],
 			errors: [],
 		}));
 
 		await mode.parse("screenshot at 0.5", screenshotSession(mock));
-		const call = mock.calls.find((c) => c.endpoint.includes("/api/screenshot"));
+		const call = mock.calls.find((c) => c.endpoint.includes("/api/testing/screenshot"));
 		expect(call?.endpoint).toContain("scale=0.5");
 	});
 
 	it("parses 'to' clause with relative path", async () => {
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onGet("/api/screenshot", () => ({
+		mock.onGet("/api/testing/screenshot", () => ({
 			success: true as const,
-			result: { width: 600, height: 400 },
+			width: 600, height: 400,
 			logs: [],
 			errors: [],
 		}));
 
 		await mode.parse("screenshot to images/test.png", screenshotSession(mock));
-		const call = mock.calls.find((c) => c.endpoint.includes("/api/screenshot"));
+		const call = mock.calls.find((c) => c.endpoint.includes("/api/testing/screenshot"));
 		expect(call?.endpoint).toContain("D%3A%2FProjects%2FTest%2Fimages%2Ftest.png");
 	});
 
 	it("parses all clauses in any order", async () => {
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onGet("/api/screenshot", () => ({
+		mock.onGet("/api/testing/screenshot", () => ({
 			success: true as const,
-			result: { width: 128, height: 48 },
+			width: 128, height: 48,
 			logs: [],
 			errors: [],
 		}));
 
 		await mode.parse("screenshot to output.png of Panel at 50%", screenshotSession(mock));
-		const call = mock.calls.find((c) => c.endpoint.includes("/api/screenshot"));
+		const call = mock.calls.find((c) => c.endpoint.includes("/api/testing/screenshot"));
 		expect(call?.endpoint).toContain("id=Panel");
 		expect(call?.endpoint).toContain("scale=0.5");
 		expect(call?.endpoint).toContain("output.png");
@@ -379,7 +377,7 @@ describe("HiseMode profile", () => {
 		vi.useFakeTimers();
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onPost("/api/profile", () => ({
+		mock.onPost("/api/testing/profile", () => ({
 			success: true as const,
 			result: {
 				results: [
@@ -401,7 +399,7 @@ describe("HiseMode profile", () => {
 			expect(result.content).toContain("1000ms");
 		}
 		// Should have made 2 POST calls
-		const profileCalls = mock.calls.filter((c) => c.endpoint === "/api/profile");
+		const profileCalls = mock.calls.filter((c) => c.endpoint === "/api/testing/profile");
 		expect(profileCalls.length).toBe(2);
 		expect((profileCalls[0].body as Record<string, unknown>).mode).toBe("record");
 		expect((profileCalls[1].body as Record<string, unknown>).mode).toBe("get");
@@ -411,7 +409,7 @@ describe("HiseMode profile", () => {
 		vi.useFakeTimers();
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onPost("/api/profile", () => ({
+		mock.onPost("/api/testing/profile", () => ({
 			success: true as const,
 			result: { results: [] },
 			logs: [],
@@ -424,7 +422,7 @@ describe("HiseMode profile", () => {
 		vi.useRealTimers();
 
 		const recordCall = mock.calls.find(
-			(c) => c.endpoint === "/api/profile" && (c.body as Record<string, unknown>).mode === "record",
+			(c) => c.endpoint === "/api/testing/profile" && (c.body as Record<string, unknown>).mode === "record",
 		);
 		expect((recordCall?.body as Record<string, unknown>).threadFilter).toEqual(["Audio Thread"]);
 	});
@@ -433,7 +431,7 @@ describe("HiseMode profile", () => {
 		vi.useFakeTimers();
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onPost("/api/profile", () => ({
+		mock.onPost("/api/testing/profile", () => ({
 			success: true as const,
 			result: { results: [] },
 			logs: [],
@@ -446,7 +444,7 @@ describe("HiseMode profile", () => {
 		vi.useRealTimers();
 
 		const recordCall = mock.calls.find(
-			(c) => c.endpoint === "/api/profile" && (c.body as Record<string, unknown>).mode === "record",
+			(c) => c.endpoint === "/api/testing/profile" && (c.body as Record<string, unknown>).mode === "record",
 		);
 		expect((recordCall?.body as Record<string, unknown>).threadFilter).toEqual(["Scripting Thread"]);
 	});
@@ -455,7 +453,7 @@ describe("HiseMode profile", () => {
 		vi.useFakeTimers();
 		const mode = new HiseMode(null);
 		const mock = new MockHiseConnection();
-		mock.onPost("/api/profile", () => ({
+		mock.onPost("/api/testing/profile", () => ({
 			success: true as const,
 			result: { results: [] },
 			logs: [],
@@ -468,7 +466,7 @@ describe("HiseMode profile", () => {
 		vi.useRealTimers();
 
 		const recordCall = mock.calls.find(
-			(c) => c.endpoint === "/api/profile" && (c.body as Record<string, unknown>).mode === "record",
+			(c) => c.endpoint === "/api/testing/profile" && (c.body as Record<string, unknown>).mode === "record",
 		);
 		expect((recordCall?.body as Record<string, unknown>).durationMs).toBe(2000);
 	});
