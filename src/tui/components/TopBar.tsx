@@ -16,6 +16,8 @@ export interface TopBarProps {
 	projectName?: string;
 	/** Folder path for display (project folder or CWD). */
 	projectPath?: string;
+	/** Key press label to show in a badge (e.g. "Tab", "Ctrl+B"). */
+	keyLabel?: string;
 }
 
 export const TopBar = React.memo(function TopBar({
@@ -26,6 +28,7 @@ export const TopBar = React.memo(function TopBar({
 	treeLabel,
 	projectName,
 	projectPath,
+	keyLabel,
 }: TopBarProps) {
 	const { scheme, brand, statusColor, layout } = useTheme();
 
@@ -55,9 +58,26 @@ export const TopBar = React.memo(function TopBar({
 	const fillWidth = Math.max(0, columns - leftWidth - projectWidth - rightWidth);
 
 	const bg = scheme.backgrounds.darker;
-	const barPadRow = layout.barVerticalPad > 0
-		? <Text backgroundColor={bg}>{" ".repeat(columns)}</Text>
-		: null;
+
+	// ── Second row: centered key badge or empty padding ──
+	let barPadRow: React.ReactNode = null;
+	if (layout.barVerticalPad > 0) {
+		if (keyLabel) {
+			const badgeText = ` ${keyLabel} `;
+			const badgeWidth = badgeText.length;
+			const leftPad = Math.max(0, Math.floor((columns - badgeWidth) / 2));
+			const rightPad = Math.max(0, columns - leftPad - badgeWidth);
+			barPadRow = (
+				<Text backgroundColor={bg}>
+					{" ".repeat(leftPad)}
+					<Text color={scheme.backgrounds.darker} backgroundColor={modeAccent} bold>{badgeText}</Text>
+					{" ".repeat(rightPad)}
+				</Text>
+			);
+		} else {
+			barPadRow = <Text backgroundColor={bg}>{" ".repeat(columns)}</Text>;
+		}
+	}
 
 	return (
 		<Box flexDirection="column">

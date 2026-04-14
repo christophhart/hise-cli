@@ -269,12 +269,17 @@ export async function runTape(
 		?? path.resolve(import.meta.dirname, "../../../dist/index.js");
 	const extraArgs = config?.extraArgs ?? [];
 
+	// Always enable --show-keys for screencasts so key presses are visible.
+	// HideKeys tape directive can suppress it mid-recording if needed.
+	const hasHideKeys = commands.some((cmd) => cmd.type === "HideKeys");
+	const showKeysArgs = hasHideKeys ? [] : ["--show-keys"];
+
 	// Spawn the app in a pty with --mock and --no-animation.
 	// Animation is disabled by default for screencasts to reduce
 	// output size (idle redraws). Use process.execPath for the
 	// absolute node binary path — node-pty's posix_spawn doesn't
 	// search PATH.
-	const proc = pty.spawn(process.execPath, [entryPoint, "--mock", "--no-animation", ...extraArgs], {
+	const proc = pty.spawn(process.execPath, [entryPoint, "--mock", "--no-animation", ...showKeysArgs, ...extraArgs], {
 		name: "xterm-256color",
 		cols: width,
 		rows: height,
@@ -514,6 +519,16 @@ export async function runTape(
 
 				case "Show": {
 					hidden = false;
+					break;
+				}
+
+				case "ShowKeys": {
+					// Ignored in pty runner — ShowKeys is handled at the in-process
+					// screencast level via AppProps.showKeys, not in the pty runner.
+					break;
+				}
+
+				case "HideKeys": {
 					break;
 				}
 			}

@@ -80,6 +80,10 @@ function parseLine(line: string, _lineNum: number): LineResult {
 			return { command: { type: "Hide" } };
 		case "Show":
 			return { command: { type: "Show" } };
+		case "ShowKeys":
+			return { command: { type: "ShowKeys" } };
+		case "HideKeys":
+			return { command: { type: "HideKeys" } };
 		// Key names
 		case "Enter":
 		case "Backspace":

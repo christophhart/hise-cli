@@ -18,7 +18,9 @@ export type TapeCommand =
 	| SnapshotCommand
 	| AnnotationCommand
 	| HideCommand
-	| ShowCommand;
+	| ShowCommand
+	| ShowKeysCommand
+	| HideKeysCommand;
 
 export interface OutputCommand {
 	type: "Output";
@@ -120,4 +122,12 @@ export interface HideCommand {
 
 export interface ShowCommand {
 	type: "Show";
+}
+
+export interface ShowKeysCommand {
+	type: "ShowKeys";
+}
+
+export interface HideKeysCommand {
+	type: "HideKeys";
 }

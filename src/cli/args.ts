@@ -14,7 +14,7 @@ export type CliParseResult =
 		useMock: boolean;
 	};
 
-const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch"]);
+const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch", "--show-keys"]);
 
 /**
  * Reverse MSYS/git-bash path mangling on inline script content.

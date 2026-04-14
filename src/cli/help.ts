@@ -15,7 +15,7 @@ const GLOBAL_HELP = `hise-cli — automation frontend for HISE audio plugin fram
 
 USAGE
   hise-cli                                  Open the interactive TUI
-  hise-cli repl [--mock] [--no-animation]   Open TUI with options
+  hise-cli repl [--mock] [--show-keys] [--no-animation]   Open TUI with options
   hise-cli -<mode> "<command>"              One-shot mode command (JSON output)
   hise-cli --run <file.hsc> [--mock] [--dry-run]  Run a .hsc script file
   hise-cli --run --inline "<script>"             Run an inline script
@@ -43,6 +43,7 @@ MODES
 OPTIONS
   --help             Show this help (or mode help with -<mode> --help)
   --mock             Use mock HISE connection (for testing without HISE)
+  --show-keys        Show key press badge in the top bar (for screencasts)
   --target:<path>    Set context path for mode commands
 
 HISE CONNECTION

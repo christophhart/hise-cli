@@ -65,7 +65,7 @@ const dataLoader = createBundledDataLoader();
 
 async function launchTui(
 	connection: import("./engine/hise.js").HiseConnection,
-	options?: { animate?: boolean },
+	options?: { animate?: boolean; showKeys?: boolean },
 ): Promise<void> {
 	const restoreAltScreen = setupAltScreen();
 
@@ -76,6 +76,7 @@ async function launchTui(
 			animate: options?.animate,
 			handlerRegistry,
 			launcher: hiseLauncher,
+			showKeys: options?.showKeys,
 		}),
 		{
 			exitOnCtrlC: false,
@@ -91,17 +92,18 @@ async function launchTui(
 
 async function launchRepl(args: string[]): Promise<void> {
 	const noAnimation = args.includes("--no-animation");
+	const showKeys = args.includes("--show-keys");
 
 	if (args.includes("--mock")) {
 		const mockRuntime = createDefaultMockRuntime();
-		await launchTui(mockRuntime.connection, { animate: !noAnimation });
+		await launchTui(mockRuntime.connection, { animate: !noAnimation, showKeys });
 		return;
 	}
 
 	// Launch immediately — the TUI's 5s polling detects HISE when it comes online.
 	// Use /connect to manually check connection status.
 	const connection = new HttpHiseConnection();
-	await launchTui(connection, { animate: !noAnimation });
+	await launchTui(connection, { animate: !noAnimation, showKeys });
 }
 
 // ── Main ────────────────────────────────────────────────────────────
