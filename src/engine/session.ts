@@ -46,6 +46,12 @@ export class Session implements SessionContext, CommandSession {
 	saveScriptFile?: (filePath: string, content: string) => Promise<void>;
 	globScriptFiles?: (pattern: string) => Promise<string[]>;
 
+	// ── File I/O hooks for /analyse mode ────────────────────────────
+	readBinaryFile?: (path: string) => Promise<Uint8Array>;
+	writeTextFile?: (path: string, content: string) => Promise<void>;
+	listDirectory?: (dir: string) => Promise<Array<{ name: string; isDir: boolean }>>;
+	resolveHiseProjectFolder?: () => Promise<string | null>;
+
 	/** Stack of script files currently executing (recursion guard). */
 	readonly scriptStack: string[] = [];
 
@@ -74,8 +80,11 @@ export class Session implements SessionContext, CommandSession {
 	 * is connected, or are returned unchanged (for node:path.resolve
 	 * to handle against CWD in the I/O layer).
 	 */
-	resolveScriptPath(filePath: string): string {
-		// Absolute: Unix /path or Windows D:\path / D:/path
+	/** Resolve a file path against the project folder.
+	 *  Absolute paths pass through unchanged. Relative paths are prefixed
+	 *  with projectFolder when available, or returned unchanged for the
+	 *  I/O layer to resolve against CWD. */
+	resolvePath(filePath: string): string {
 		if (filePath.startsWith("/") || /^[a-zA-Z]:[/\\]/.test(filePath)) {
 			return filePath;
 		}
@@ -83,6 +92,11 @@ export class Session implements SessionContext, CommandSession {
 			return this.projectFolder + "/" + filePath;
 		}
 		return filePath;
+	}
+
+	/** @deprecated Use resolvePath() instead. */
+	resolveScriptPath(filePath: string): string {
+		return this.resolvePath(filePath);
 	}
 
 	private readonly modeFactories = new Map<string, ModeFactory>();

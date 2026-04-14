@@ -6,7 +6,7 @@
 // avoiding React reconciliation and Yoga layout on scroll.
 
 import type { ColorScheme } from "../theme.js";
-import { brand, hasTrueColor } from "../theme.js";
+import { brand, darkenHex, hasTrueColor } from "../theme.js";
 import type { TokenSpan } from "../../engine/highlight/tokens.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import type { CommandResult } from "../../engine/result.js";
@@ -276,6 +276,48 @@ export function renderError(
 	return { lines, height: lines.length };
 }
 
+// ── Preformatted renderer (analyse mode output) ────────────────────
+
+/** Visible width of a string, ignoring ANSI escape codes. */
+function visibleLength(s: string): number {
+	return s.replace(/\x1b\[[0-9;]*m/g, "").length;
+}
+
+/** Render pre-formatted content (braille waveforms, spectrograms) with a darker background
+ *  and an accent-colored left border (matching the echo box style). */
+function renderPreformatted(
+	content: string,
+	scheme: ColorScheme,
+	width: number,
+	accent?: string,
+): PrerenderedBlock {
+	const bg = bgHex(darkenHex(scheme.backgrounds.standard, 0.85));
+	const border = "\u258E "; // ▎ + space (same as echo box)
+	const borderFg = accent ? fgHex(accent) : "";
+	const fgReset = "\x1b[39m"; // reset foreground only, preserve background
+	const borderStr = borderFg + border + fgReset;
+	const borderWidth = 2; // ▎ + space
+	const indent = " "; // 1 char after border
+	const contentWidth = width - borderWidth - 1;
+
+	const rawLines = content.split("\n");
+	const lines: string[] = [];
+
+	// Top padding line
+	lines.push(bg + borderStr + " ".repeat(Math.max(0, width - borderWidth)) + RESET);
+
+	for (const raw of rawLines) {
+		const vis = visibleLength(raw);
+		const pad = Math.max(0, contentWidth - vis);
+		lines.push(bg + borderStr + indent + raw + " ".repeat(pad) + RESET);
+	}
+
+	// Bottom padding line
+	lines.push(bg + borderStr + " ".repeat(Math.max(0, width - borderWidth)) + RESET);
+
+	return { lines, height: lines.length };
+}
+
 // ── Result renderer ─────────────────────────────────────────────────
 
 /** Render a CommandResult to pre-rendered ANSI lines. */
@@ -300,6 +342,9 @@ export function renderResult(
 		case "code":
 			source = codeToMarkdown(result.content, result.language);
 			break;
+
+		case "preformatted":
+			return renderPreformatted(result.content, scheme, width, result.accent);
 
 		case "table":
 			source = tableToMarkdown(result.headers, result.rows);

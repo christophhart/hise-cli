@@ -13,6 +13,7 @@
 // - Navigation commands (ls, pwd, reset)
 
 import type { ParsedScript, ScriptLine } from "./types.js";
+import { SLASH_MODE_IDS } from "../modes/mode.js";
 
 /** Commands that force a segment boundary (can't be batched). */
 const BOUNDARY_PREFIXES = ["cd ", "cd\t", "ls", "pwd", "reset"];
@@ -93,10 +94,7 @@ function isBatchable(content: string): boolean {
 	return true;
 }
 
-const MODE_IDS = new Set([
-	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "export", "undo", "ui",
-]);
+const MODE_IDS = SLASH_MODE_IDS;
 
 function isModeCommand(cmd: { name: string; args: string }): boolean {
 	return MODE_IDS.has(cmd.name);

@@ -65,7 +65,7 @@ export interface RunResult {
 	error?: { line: number; message: string };
 }
 
-/** Parsed /expect command. */
+/** Parsed /expect command (value comparison). */
 export interface ParsedExpect {
 	/** The command to execute in the current mode */
 	command: string;
@@ -75,6 +75,18 @@ export interface ParsedExpect {
 	tolerance: number;
 	/** If true, abort the script on failure */
 	abortOnFail: boolean;
+	kind?: "value";
+}
+
+/** Parsed /expect command (file match comparison). */
+export interface ParsedExpectMatch {
+	/** The command to execute in the current mode */
+	command: string;
+	/** Path to the reference file to compare against */
+	referenceFile: string;
+	/** If true, abort the script on failure */
+	abortOnFail: boolean;
+	kind: "match";
 }
 
 /** Parsed /wait command. */

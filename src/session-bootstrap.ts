@@ -9,11 +9,12 @@ import { UndoMode } from "./engine/modes/undo.js";
 import { UiMode, type ComponentPropertyMap } from "./engine/modes/ui.js";
 import { SequenceMode } from "./engine/modes/sequence.js";
 import { HiseMode, type HiseLauncher } from "./engine/modes/hise.js";
+import { AnalyseMode } from "./engine/modes/analyse.js";
 import { WizardRegistry } from "./engine/wizard/registry.js";
 import type { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { registerWizardAliases } from "./engine/commands/slash.js";
 
-export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo", "ui", "sequence", "hise"] as const;
+export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo", "ui", "sequence", "hise", "analyse"] as const;
 
 export interface CreateSessionOptions {
 	connection: HiseConnection | null;
@@ -47,6 +48,7 @@ export function createSession({
 	);
 	session.registerMode("sequence", () => new SequenceMode(completionEngine));
 	session.registerMode("hise", () => new HiseMode(launcher ?? null, completionEngine));
+	session.registerMode("analyse", () => new AnalyseMode(completionEngine));
 	return { session, completionEngine };
 }
 

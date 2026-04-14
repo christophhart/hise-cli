@@ -373,7 +373,7 @@ export class HiseMode implements Mode {
 
 		// Resolve output path relative to project folder
 		const outputPath = opts.outputPath
-			? resolvePath(projectFolder, opts.outputPath)
+			? (session.resolvePath?.(opts.outputPath) ?? projectFolder + "/" + opts.outputPath)
 			: projectFolder + "/screenshot.png";
 
 		// Build query string
@@ -482,15 +482,6 @@ function extractProjectFromStatus(
 	const folder = typeof project.projectFolder === "string" ? project.projectFolder : null;
 	if (name && folder) return { name, folder };
 	return null;
-}
-
-/** Resolve a path relative to a base folder. Absolute paths pass through. */
-function resolvePath(base: string, path: string): string {
-	// Absolute: Unix /path or Windows D:\path / D:/path
-	if (path.startsWith("/") || /^[a-zA-Z]:[/\\]/.test(path)) {
-		return path;
-	}
-	return base + "/" + path;
 }
 
 interface ProfileSummaryEntry {

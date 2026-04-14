@@ -55,22 +55,24 @@ export function parseScript(source: string): ParsedScript {
 
 // ── /expect parsing ─────────────────────────────────────────────────
 
-import type { ParsedExpect } from "./types.js";
+import type { ParsedExpect, ParsedExpectMatch } from "./types.js";
 
 /**
  * Parse the arguments of an /expect command.
  *
- * Syntax: `/expect <command> is <value> [within <tolerance>] [or abort]`
+ * Syntax:
+ *   `/expect <command> is <value> [within <tolerance>] [or abort]`
+ *   `/expect <command> matches <file> [or abort]`
  *
  * Parsing is right-to-left to avoid ambiguity:
  * 1. Strip trailing "or abort" → sets abortOnFail
- * 2. Find last " within " → extract tolerance (default 0.01)
- * 3. Find last " is " → split into command and expected value
+ * 2. Try "matches" keyword → file comparison mode
+ * 3. Check for "within <tolerance>" → extract tolerance (default 0.01)
+ * 4. Find last " is " → split into command and expected value
  */
-export function parseExpect(args: string): ParsedExpect | string {
+export function parseExpect(args: string): ParsedExpect | ParsedExpectMatch | string {
 	let remaining = args.trim();
 	let abortOnFail = false;
-	let tolerance = 0.01;
 
 	// 1. Check for trailing "or abort"
 	if (remaining.endsWith(" or abort")) {
@@ -78,7 +80,18 @@ export function parseExpect(args: string): ParsedExpect | string {
 		remaining = remaining.slice(0, -" or abort".length);
 	}
 
-	// 2. Check for "within <tolerance>"
+	// 2. Check for "matches" keyword (file comparison)
+	const matchesIdx = remaining.lastIndexOf(" matches ");
+	if (matchesIdx !== -1) {
+		const command = remaining.slice(0, matchesIdx).trim();
+		const referenceFile = remaining.slice(matchesIdx + " matches ".length).trim();
+		if (!command) return `Missing command before "matches"`;
+		if (!referenceFile) return `Missing reference file after "matches"`;
+		return { command, referenceFile, abortOnFail, kind: "match" };
+	}
+
+	// 3. Check for "within <tolerance>"
+	let tolerance = 0.01;
 	const withinIdx = remaining.lastIndexOf(" within ");
 	if (withinIdx !== -1) {
 		const tolStr = remaining.slice(withinIdx + " within ".length).trim();
@@ -90,10 +103,10 @@ export function parseExpect(args: string): ParsedExpect | string {
 		remaining = remaining.slice(0, withinIdx);
 	}
 
-	// 3. Find last " is " to split command from expected value
+	// 4. Find last " is " to split command from expected value
 	const isIdx = remaining.lastIndexOf(" is ");
 	if (isIdx === -1) {
-		return `Missing "is" keyword. Syntax: /expect <command> is <value>`;
+		return `Missing "is" or "matches" keyword. Syntax: /expect <command> is <value> | /expect <command> matches <file>`;
 	}
 
 	const command = remaining.slice(0, isIdx).trim();

@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { watch } from "node:fs";
 
-/** Fetch project info from HISE so resolveScriptPath uses the project folder. */
+/** Fetch project info from HISE so resolvePath uses the project folder. */
 async function fetchProjectInfo(
 	session: import("../engine/session.js").Session,
 	connection: import("../engine/hise.js").HiseConnection,
@@ -29,20 +29,20 @@ async function fetchProjectInfo(
 	} catch { /* no connection — resolve against CWD */ }
 }
 
-/** Wire file I/O onto a session. Uses session.resolveScriptPath() for path resolution. */
+/** Wire file I/O onto a session. Uses session.resolvePath() for path resolution. */
 function wireScriptFileOps(session: import("../engine/session.js").Session): void {
 	const origLoad = session.loadScriptFile;
 	if (origLoad) {
-		session.loadScriptFile = async (fp: string) => origLoad(resolve(session.resolveScriptPath(fp)));
+		session.loadScriptFile = async (fp: string) => origLoad(resolve(session.resolvePath(fp)));
 	}
 	session.saveScriptFile = async (fp: string, content: string) => {
 		const { writeFile } = await import("node:fs/promises");
-		await writeFile(resolve(session.resolveScriptPath(fp)), content, "utf-8");
+		await writeFile(resolve(session.resolvePath(fp)), content, "utf-8");
 	};
 	session.globScriptFiles = async (pattern: string) => {
 		const { readdir } = await import("node:fs/promises");
 		const { dirname, basename } = await import("node:path");
-		const resolved = resolve(session.resolveScriptPath(pattern));
+		const resolved = resolve(session.resolvePath(pattern));
 		const dir = dirname(resolved);
 		const glob = basename(resolved);
 		const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
@@ -170,7 +170,7 @@ async function executeRunCommand(
 	let source: string;
 	try {
 		if (parsed.source.type === "file") {
-			source = await readFile(resolve(session.resolveScriptPath(parsed.source.path)), "utf-8");
+			source = await readFile(resolve(session.resolvePath(parsed.source.path)), "utf-8");
 		} else {
 			source = await readRunSource(parsed.source);
 		}

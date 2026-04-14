@@ -245,31 +245,76 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const session = sessionRef.current;
 
 	// Wire up script file I/O for /run, /parse, and /edit commands.
-	// Path resolution (project Scripts folder vs CWD) is handled by session.resolveScriptPath().
+	// Path resolution (project Scripts folder vs CWD) is handled by session.resolvePath().
 	if (!session.loadScriptFile) {
 		session.loadScriptFile = async (filePath: string) => {
 			const { readFile } = await import("node:fs/promises");
 			const { resolve } = await import("node:path");
-			return readFile(resolve(session.resolveScriptPath(filePath)), "utf-8");
+			return readFile(resolve(session.resolvePath(filePath)), "utf-8");
 		};
 	}
 	if (!session.saveScriptFile) {
 		session.saveScriptFile = async (filePath: string, content: string) => {
 			const { writeFile } = await import("node:fs/promises");
 			const { resolve } = await import("node:path");
-			await writeFile(resolve(session.resolveScriptPath(filePath)), content, "utf-8");
+			await writeFile(resolve(session.resolvePath(filePath)), content, "utf-8");
 		};
 	}
 	if (!session.globScriptFiles) {
 		session.globScriptFiles = async (pattern: string) => {
 			const { readdir } = await import("node:fs/promises");
 			const { resolve, dirname, basename, relative } = await import("node:path");
-			const resolved = resolve(session.resolveScriptPath(pattern));
+			const resolved = resolve(session.resolvePath(pattern));
 			const dir = dirname(resolved);
 			const glob = basename(resolved);
 			const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
 			const entries = await readdir(dir, { recursive: true });
 			return entries.filter(f => re.test(basename(f))).sort().map(f => resolve(dir, f));
+		};
+	}
+
+	if (!session.readBinaryFile) {
+		session.readBinaryFile = async (path: string) => {
+			const { readFile } = await import("node:fs/promises");
+			const { resolve } = await import("node:path");
+			return new Uint8Array(await readFile(resolve(session.resolvePath(path))));
+		};
+	}
+	if (!session.writeTextFile) {
+		session.writeTextFile = async (path: string, content: string) => {
+			const { writeFile } = await import("node:fs/promises");
+			const { resolve } = await import("node:path");
+			await writeFile(resolve(session.resolvePath(path)), content, "utf-8");
+		};
+	}
+	if (!session.listDirectory) {
+		session.listDirectory = async (dir: string) => {
+			const { readdir } = await import("node:fs/promises");
+			const { resolve } = await import("node:path");
+			const entries = await readdir(resolve(session.resolvePath(dir)), { withFileTypes: true });
+			return entries
+				.map(e => ({ name: e.name, isDir: e.isDirectory() }))
+				.sort((a, b) => {
+					if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+					return a.name.localeCompare(b.name);
+				});
+		};
+	}
+
+	if (!session.resolveHiseProjectFolder) {
+		session.resolveHiseProjectFolder = async () => {
+			const { readFile } = await import("node:fs/promises");
+			const { join } = await import("node:path");
+			const { homedir } = await import("node:os");
+			const appData = process.env.APPDATA ?? join(homedir(), "AppData", "Roaming");
+			const xmlPath = join(appData, "HISE", "projects.xml");
+			try {
+				const xml = await readFile(xmlPath, "utf-8");
+				const match = xml.match(/current="([^"]+)"/);
+				return match?.[1] ?? null;
+			} catch {
+				return null;
+			}
 		};
 	}
 
@@ -1222,6 +1267,17 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 								}
 							}
 						} catch { /* ignore — project info is optional */ }
+					}
+					// Fallback: resolve from projects.xml if HISE not connected
+					if (!alive && !session.projectFolder && session.resolveHiseProjectFolder) {
+						try {
+							const folder = await session.resolveHiseProjectFolder();
+							if (folder && !cancelled) {
+								session.projectFolder = folder;
+								setProjectPath(folder);
+								void session.refreshScriptFileCache();
+							}
+						} catch { /* ignore */ }
 					}
 				}
 			} catch {

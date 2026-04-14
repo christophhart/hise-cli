@@ -368,8 +368,37 @@ async function handleExpect(
 		projectFolder: session.projectFolder,
 		popMode: () => session.popMode(true),
 		invalidateAllTrees: () => {},
+		resolvePath: (fp: string) => session.resolvePath(fp),
+		readBinaryFile: session.readBinaryFile,
+		writeTextFile: session.writeTextFile,
+		listDirectory: session.listDirectory,
 	};
 	const result = await mode.parse(parsed.command, sessionContext);
+
+	// Handle "matches" comparison (file-based)
+	if ("kind" in parsed && parsed.kind === "match") {
+		if (!session.loadScriptFile) {
+			return errorResult("File reading not available for /expect matches.");
+		}
+		const actual = extractResultValue(result);
+		let expected: string;
+		try {
+			expected = await session.loadScriptFile(parsed.referenceFile);
+			// Trim trailing newline from file for comparison
+			expected = expected.replace(/\n$/, "");
+		} catch (err) {
+			return errorResult(`Cannot read reference file "${parsed.referenceFile}": ${String(err)}`);
+		}
+		if (actual === expected) {
+			return textResult(`\u2713 ${parsed.command} matches ${parsed.referenceFile}`);
+		}
+		return errorResult(
+			`\u2717 Output does not match ${parsed.referenceFile}`,
+			`Expected:\n${expected}\n\nActual:\n${actual}`,
+		);
+	}
+
+	// Standard "is" comparison
 	const actual = extractResultValue(result);
 	const passed = compareValues(actual, parsed.expected, parsed.tolerance);
 
@@ -554,7 +583,7 @@ async function runOrParse(
 	}
 
 	// Recursion guard: check if this file is already on the script stack
-	const resolvedPath = session.resolveScriptPath(filePath);
+	const resolvedPath = session.resolvePath(filePath);
 	if (session.scriptStack.includes(resolvedPath)) {
 		const chain = [...session.scriptStack, resolvedPath].map(p => p.split(/[\\/]/).pop()).join(" → ");
 		return errorResult(`Recursive script call detected: ${chain}`);
@@ -712,6 +741,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "hise",
 		description: "Enter HISE control mode (launch, screenshot, profile)",
 		handler: createModeHandler("hise"),
+		kind: "mode",
+	});
+
+	registry.register({
+		name: "analyse",
+		description: "Enter audio analysis mode (waveform, spectrogram)",
+		handler: createModeHandler("analyse"),
 		kind: "mode",
 	});
 

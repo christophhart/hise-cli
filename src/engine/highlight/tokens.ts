@@ -32,7 +32,8 @@ export type TokenType =
 	| "undo"
 	| "ui"
 	| "sequence"
-	| "hise";
+	| "hise"
+	| "analyse";
 
 export const TOKEN_COLORS: Record<TokenType, string> = {
 	// Language tokens
@@ -62,6 +63,7 @@ export const TOKEN_COLORS: Record<TokenType, string> = {
 	ui: MODE_ACCENTS.ui,
 	sequence: MODE_ACCENTS.sequence,
 	hise: MODE_ACCENTS.hise,
+	analyse: MODE_ACCENTS.analyse,
 } as const;
 
 export interface TokenSpan {

@@ -24,7 +24,9 @@ export interface CommandSession {
 	readonly wizardRegistry: import("../wizard/registry.js").WizardRegistry | null;
 	/** Internal wizard handler registry (task + init functions) */
 	readonly handlerRegistry: import("../wizard/handler-registry.js").WizardHandlerRegistry | null;
-	/** Resolve a script path relative to project Scripts folder or CWD. */
+	/** Resolve a file path against the project folder. */
+	resolvePath(filePath: string): string;
+	/** @deprecated Use resolvePath() instead. */
 	resolveScriptPath(filePath: string): string;
 	/** Load a .hsc script file by path. Set by TUI/CLI layer. */
 	loadScriptFile?(filePath: string): Promise<string>;
@@ -32,6 +34,14 @@ export interface CommandSession {
 	saveScriptFile?(filePath: string, content: string): Promise<void>;
 	/** Expand a glob pattern to matching file paths. Set by TUI/CLI layer. */
 	globScriptFiles?(pattern: string): Promise<string[]>;
+	/** Read a binary file. Set by TUI/CLI layer (for /analyse mode). */
+	readBinaryFile?(path: string): Promise<Uint8Array>;
+	/** Write a text file. Set by TUI/CLI layer (for /analyse mode). */
+	writeTextFile?(path: string, content: string): Promise<void>;
+	/** List directory entries. Set by TUI/CLI layer (for /analyse mode). */
+	listDirectory?(dir: string): Promise<Array<{ name: string; isDir: boolean }>>;
+	/** Resolve HISE project folder from projects.xml. */
+	resolveHiseProjectFolder?(): Promise<string | null>;
 	/** Clear transient script compiler state for a processor. */
 	clearScriptCompilerState?(processorId: string): void;
 	/** Clear all transient script compiler state. */

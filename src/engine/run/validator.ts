@@ -4,16 +4,13 @@
 // in context. Collects all errors rather than failing on the first one.
 
 import type { ModeId } from "../modes/mode.js";
+import { SLASH_MODE_IDS } from "../modes/mode.js";
 import type { Session } from "../session.js";
 import type { ParsedScript, ParseError, ValidationResult } from "./types.js";
 import { parseExpect, parseWait } from "./parser.js";
 import { parseBuilderInput } from "../modes/builder.js";
 
-/** Set of mode IDs that can be entered via slash command. */
-const MODE_IDS = new Set<string>([
-	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "export", "undo", "ui", "sequence", "hise",
-]);
+const MODE_IDS = SLASH_MODE_IDS;
 
 /** Slash commands that are valid tool commands (no mode needed). */
 const TOOL_COMMANDS = new Set<string>([

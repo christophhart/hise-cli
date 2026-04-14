@@ -5,6 +5,7 @@
 // Arguments after the command are tokenized as identifiers/strings/numbers.
 
 import type { TokenSpan, TokenType } from "./tokens.js";
+import { SLASH_MODE_IDS } from "../modes/mode.js";
 
 const MIDI_CALLBACKS = new Set([
 	"onNoteOn",
@@ -14,11 +15,7 @@ const MIDI_CALLBACKS = new Set([
 	"onControl",
 ]);
 
-// Mode IDs that get their own token type (= accent color)
-const MODE_IDS = new Set<TokenType>([
-	"builder", "script", "dsp", "sampler",
-	"inspect", "project", "export", "undo", "ui", "sequence", "hise",
-]);
+const MODE_IDS = SLASH_MODE_IDS as Set<string> & Set<TokenType>;
 
 // Argument token rules (applied after the slash command)
 const ARG_RULES: Array<{ pattern: RegExp; token: TokenType }> = [

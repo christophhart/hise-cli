@@ -49,6 +49,7 @@ export type CommandResult =
 	| { type: "markdown"; content: string; accent?: string }
 	| { type: "wizard"; definition: WizardDefinition; prefill: WizardAnswers; autoRun: boolean; accent?: string }
 	| { type: "run-report"; source: string; runResult: RunResult; accent?: string }
+	| { type: "preformatted"; content: string; accent?: string }
 	| { type: "empty"; accent?: string };
 
 // ── Result factory helpers ──────────────────────────────────────────
@@ -96,6 +97,10 @@ export function wizardResult(
 
 export function runReportResult(source: string, runResult: RunResult): CommandResult {
 	return { type: "run-report", source, runResult };
+}
+
+export function preformattedResult(content: string, accent?: string): CommandResult {
+	return { type: "preformatted", content, accent };
 }
 
 export function emptyResult(): CommandResult {

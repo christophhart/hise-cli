@@ -77,6 +77,7 @@ function createMockSession(): CommandSession & { modes: string[]; quitRequested:
 			modes.pop();
 			return result;
 		},
+		resolvePath(fp: string) { return fp; },
 		resolveScriptPath(fp: string) { return fp; },
 		clearScriptCompilerState(processorId: string) {
 			compilerState.set(processorId, { activeCallback: null, callbacks: new Map() });

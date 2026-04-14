@@ -75,8 +75,14 @@ export async function executeScript(
 						break;
 					}
 
+					// "matches" comparison not supported in batch executor
+					if ("kind" in parsed && parsed.kind === "match") {
+						abortError = { line: line.lineNumber, message: "/expect matches is only supported in interactive mode" };
+						break;
+					}
+
 					const expectResult = await executeExpect(
-						parsed,
+						parsed as import("./types.js").ParsedExpect,
 						line,
 						session,
 					);
@@ -306,6 +312,8 @@ export function extractResultValue(result: CommandResult): string {
 		}
 		case "code":
 			return result.content.trim();
+		case "preformatted":
+			return result.content.trim();
 		case "empty":
 			return "";
 		default:
@@ -371,6 +379,8 @@ export function formatResultForLog(result: CommandResult): string | null {
 		}
 		case "code":
 			return filterLogNoise(result.content) || null;
+		case "preformatted":
+			return result.content;
 		case "table": {
 			// Summarize table as compact rows
 			if (result.rows.length === 0) return null;

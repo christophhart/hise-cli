@@ -1,7 +1,7 @@
 // ── Mode map — per-line mode tracking for multiline editors ─────────
 
 import type { ModeId } from "../modes/mode.js";
-import { MODE_ACCENTS } from "../modes/mode.js";
+import { MODE_ACCENTS, SLASH_MODE_IDS } from "../modes/mode.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 
 export interface ModeMapEntry {
@@ -17,10 +17,7 @@ export interface ModeMapEntry {
 	accent: string;
 }
 
-const MODE_IDS = new Set<string>([
-	"builder", "script", "dsp", "sampler", "inspect",
-	"project", "export", "undo", "ui", "sequence", "hise",
-]);
+const MODE_IDS = SLASH_MODE_IDS;
 
 /**
  * Build a mode map from raw lines. Each entry describes which mode

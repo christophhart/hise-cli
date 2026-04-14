@@ -18,7 +18,16 @@ export const MODE_ACCENTS = {
 	ui: "#66d9ef",
 	sequence: "#56b6c2",
 	hise: "#90FFB1",
+	analyse: "#e6a040",
 } as const;
+
+/** Mode names that can be entered via slash commands (e.g. /builder, /script).
+ *  Includes "export" as an alias for "compile". Single source of truth —
+ *  used by validator, mode-map, optimizer, and slash highlighter. */
+export const SLASH_MODE_IDS = new Set<string>([
+	"builder", "script", "dsp", "sampler", "inspect",
+	"project", "export", "undo", "ui", "sequence", "hise", "analyse",
+]);
 
 export type ModeId =
 	| "root"
@@ -33,7 +42,8 @@ export type ModeId =
 	| "wizard"
 	| "ui"
 	| "sequence"
-	| "hise";
+	| "hise"
+	| "analyse";
 
 export interface CompletionItem {
 	label: string;
@@ -75,6 +85,15 @@ export interface SessionContext {
 	getActiveScriptCallback?(processorId: string): string | null;
 	/** Return collected callback source by callback id. */
 	getCollectedScriptCallbacks?(processorId: string): Record<string, string>;
+
+	/** Resolve a file path against the project folder. Absolute paths pass through. */
+	resolvePath?(filePath: string): string;
+	// ── File I/O hooks for /analyse mode ────────────────────────────
+	readBinaryFile?(path: string): Promise<Uint8Array>;
+	writeTextFile?(path: string, content: string): Promise<void>;
+	listDirectory?(dir: string): Promise<Array<{ name: string; isDir: boolean }>>;
+	/** Resolve HISE project folder from projects.xml (works without HISE running). */
+	resolveHiseProjectFolder?(): Promise<string | null>;
 }
 
 export interface Mode {
