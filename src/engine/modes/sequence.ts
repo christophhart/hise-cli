@@ -188,7 +188,8 @@ ${rows.join("\n")}`);
 		if (asIdx === -1) return errorResult('Usage: record "<name>" as <path>');
 
 		const namePart = args.slice(0, asIdx).trim();
-		const recordPath = args.slice(asIdx + 4).trim();
+		const rawPath = args.slice(asIdx + 4).trim();
+		const recordPath = session.resolvePath?.(rawPath) ?? rawPath;
 
 		const name = extractName(namePart);
 		if (!name) return errorResult('Usage: record "<name>" as <path>');

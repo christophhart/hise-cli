@@ -1,6 +1,7 @@
 import { OBSERVER_ROUTE, type ObserverEvent } from "../observer/protocol.js";
+import { DEFAULT_OBSERVER_PORT } from "../engine/constants.js";
 
-const DEFAULT_URL = `http://127.0.0.1:1902${OBSERVER_ROUTE}`;
+const DEFAULT_URL = `http://127.0.0.1:${DEFAULT_OBSERVER_PORT}${OBSERVER_ROUTE}`;
 
 export type { ObserverEvent };
 

@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { OBSERVER_ROUTE, type ObserverEvent } from "../observer/protocol.js";
+import { DEFAULT_OBSERVER_PORT } from "../engine/constants.js";
 
-export const OBSERVER_PORT = 1902;
+export const OBSERVER_PORT = DEFAULT_OBSERVER_PORT;
 
 export type { ObserverEvent };
 

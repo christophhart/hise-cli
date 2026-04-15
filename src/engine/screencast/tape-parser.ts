@@ -4,6 +4,7 @@ import type {
 	SetKey,
 	TapeCommand,
 } from "./types.js";
+import { unescapeQuotes } from "../string-utils.js";
 
 const SET_KEYS = new Set<string>([
 	"Shell", "FontSize", "Width", "Height", "TypingSpeed", "Theme",
@@ -166,7 +167,7 @@ function parseType(line: string): LineResult {
 		/^Type\s+"((?:[^"\\]|\\.)*)"\s*(?:(\d+(?:\.\d+)?)(ms|s))?$/,
 	);
 	if (match) {
-		const text = match[1].replace(/\\"/g, '"').replace(/\\n/g, "\n");
+		const text = unescapeQuotes(match[1]).replace(/\\n/g, "\n");
 		const speed = match[2] ? parseFloat(match[2]) : undefined;
 		return { command: { type: "Type", text, speed } };
 	}
@@ -201,7 +202,7 @@ function parseWait(line: string): LineResult {
 	if (!match) {
 		return { error: "Wait requires a quoted pattern" };
 	}
-	const pattern = match[1].replace(/\\"/g, '"');
+	const pattern = unescapeQuotes(match[1]);
 	const timeout = match[2]
 		? parseFloat(match[2]) * (match[3] === "s" ? 1000 : 1)
 		: undefined;
@@ -216,7 +217,7 @@ function parseExpect(line: string): LineResult {
 	if (!match) {
 		return { error: "Expect requires a quoted pattern" };
 	}
-	const pattern = match[1].replace(/\\"/g, '"');
+	const pattern = unescapeQuotes(match[1]);
 	const region = match[2] as
 		| "output"
 		| "topbar"
@@ -232,7 +233,7 @@ function parseExpectMode(line: string): LineResult {
 	if (!match) {
 		return { error: "ExpectMode requires a quoted mode name" };
 	}
-	const mode = match[1].replace(/\\"/g, '"');
+	const mode = unescapeQuotes(match[1]);
 	return { command: { type: "ExpectMode", mode } };
 }
 
@@ -241,7 +242,7 @@ function parseExpectPrompt(line: string): LineResult {
 	if (!match) {
 		return { error: "ExpectPrompt requires a quoted prompt string" };
 	}
-	const prompt = match[1].replace(/\\"/g, '"');
+	const prompt = unescapeQuotes(match[1]);
 	return { command: { type: "ExpectPrompt", prompt } };
 }
 
@@ -260,7 +261,7 @@ function parseAnnotation(line: string): LineResult {
 	if (!match) {
 		return { error: "Annotation requires quoted text" };
 	}
-	const text = match[1].replace(/\\"/g, '"');
+	const text = unescapeQuotes(match[1]);
 	const duration = match[2]
 		? parseFloat(match[2]) * (match[3] === "s" ? 1000 : 1)
 		: undefined;

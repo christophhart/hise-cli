@@ -2,6 +2,8 @@
 
 // Response types matching the HISE REST API (verified against RestHelpers.cpp)
 
+import { DEFAULT_HISE_PORT } from "./constants.js";
+
 export interface HiseEnvelopeResponse {
 	success: boolean;
 	result?: string | object | null;
@@ -57,7 +59,7 @@ export class HttpHiseConnection implements HiseConnection {
 	private readonly baseUrl: string;
 	private abortController: AbortController | null = null;
 
-	constructor(host = "127.0.0.1", port = 1900) {
+	constructor(host = "127.0.0.1", port = DEFAULT_HISE_PORT) {
 		this.baseUrl = `http://${host}:${port}`;
 	}
 
