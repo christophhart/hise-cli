@@ -1,6 +1,6 @@
 // ── Builder Chevrotain CST parser + command types ────────────────────
 
-import { CstParser, type IToken } from "chevrotain";
+import { CstParser, type CstNode, type IToken } from "chevrotain";
 import {
 	Add,
 	As,
@@ -276,26 +276,29 @@ const parser = new BuilderParser();
 
 // ── CST extractors ────────────────────────────────────────────────
 
+/** Narrow a CstElement to CstNode (sub-rules always produce CstNode, not IToken). */
+const asNode = (el: import("chevrotain").CstElement) => el as CstNode;
+
 function extractCommand(
-	cst: any,
+	cst: CstNode,
 ): { command: BuilderCommand } | { error: string } {
 	const c = cst.children;
-	if (c.addCommand) return extractAddCommand(c.addCommand[0]);
-	if (c.cloneCommand) return extractCloneCommand(c.cloneCommand[0]);
-	if (c.removeCommand) return extractTargetCommand(c.removeCommand[0], "remove");
-	if (c.moveCommand) return extractMoveCommand(c.moveCommand[0]);
-	if (c.renameCommand) return extractRenameCommand(c.renameCommand[0]);
-	if (c.setCommand) return extractSetCommand(c.setCommand[0]);
-	if (c.getCommand) return extractGetCommand(c.getCommand[0]);
-	if (c.loadCommand) return extractLoadCommand(c.loadCommand[0]);
-	if (c.bypassCommand) return extractTargetCommand(c.bypassCommand[0], "bypass");
-	if (c.enableCommand) return extractTargetCommand(c.enableCommand[0], "enable");
-	if (c.showCommand) return extractShowCommand(c.showCommand[0]);
+	if (c.addCommand) return extractAddCommand(c.addCommand[0] as CstNode);
+	if (c.cloneCommand) return extractCloneCommand(c.cloneCommand[0] as CstNode);
+	if (c.removeCommand) return extractTargetCommand(c.removeCommand[0] as CstNode, "remove");
+	if (c.moveCommand) return extractMoveCommand(c.moveCommand[0] as CstNode);
+	if (c.renameCommand) return extractRenameCommand(c.renameCommand[0] as CstNode);
+	if (c.setCommand) return extractSetCommand(c.setCommand[0] as CstNode);
+	if (c.getCommand) return extractGetCommand(c.getCommand[0] as CstNode);
+	if (c.loadCommand) return extractLoadCommand(c.loadCommand[0] as CstNode);
+	if (c.bypassCommand) return extractTargetCommand(c.bypassCommand[0] as CstNode, "bypass");
+	if (c.enableCommand) return extractTargetCommand(c.enableCommand[0] as CstNode, "enable");
+	if (c.showCommand) return extractShowCommand(c.showCommand[0] as CstNode);
 	return { error: "Unknown command structure" };
 }
 
 /** Extract a multi-word target from a targetRef subrule CST node. */
-function extractTargetRef(node: any): string {
+function extractTargetRef(node: CstNode): string {
 	if (node.children.quoted) {
 		return stripQuotes((node.children.quoted[0] as IToken).image);
 	}
@@ -305,7 +308,7 @@ function extractTargetRef(node: any): string {
 }
 
 function extractAddCommand(
-	node: any,
+	node: CstNode,
 ): { command: AddCommand } | { error: string } {
 	let moduleType: string;
 	if (node.children.quotedType) {
@@ -320,7 +323,7 @@ function extractAddCommand(
 			? (node.children.aliasWords as IToken[]).map((t) => t.image).join(" ")
 			: undefined;
 	const parent = node.children.parent
-		? extractTargetRef(node.children.parent[0])
+		? extractTargetRef(asNode(node.children.parent[0]))
 		: undefined;
 	const chain = node.children.chain
 		? (node.children.chain[0] as IToken).image
@@ -332,9 +335,9 @@ function extractAddCommand(
 }
 
 function extractCloneCommand(
-	node: any,
+	node: CstNode,
 ): { command: CloneCommand } | { error: string } {
-	const source = extractTargetRef(node.children.source[0]);
+	const source = extractTargetRef(asNode(node.children.source[0]));
 	const countToken = node.children.count
 		? (node.children.count[0] as IToken).image
 		: undefined;
@@ -344,18 +347,18 @@ function extractCloneCommand(
 
 /** Generic extractor for commands with just a target (remove, bypass, enable). */
 function extractTargetCommand(
-	node: any,
+	node: CstNode,
 	type: "remove" | "bypass" | "enable",
 ): { command: RemoveCommand | BypassCommand | EnableCommand } | { error: string } {
-	const target = extractTargetRef(node.children.target[0]);
+	const target = extractTargetRef(asNode(node.children.target[0]));
 	return { command: { type, target } };
 }
 
 function extractMoveCommand(
-	node: any,
+	node: CstNode,
 ): { command: MoveCommand } | { error: string } {
-	const target = extractTargetRef(node.children.target[0]);
-	const parent = extractTargetRef(node.children.parent[0]);
+	const target = extractTargetRef(asNode(node.children.target[0]));
+	const parent = extractTargetRef(asNode(node.children.parent[0]));
 	const chain = node.children.chain
 		? (node.children.chain[0] as IToken).image
 		: undefined;
@@ -363,15 +366,15 @@ function extractMoveCommand(
 }
 
 function extractRenameCommand(
-	node: any,
+	node: CstNode,
 ): { command: RenameCommand } | { error: string } {
-	const target = extractTargetRef(node.children.target[0]);
+	const target = extractTargetRef(asNode(node.children.target[0]));
 	const name = stripQuotes((node.children.name[0] as IToken).image);
 	return { command: { type: "rename", target, name } };
 }
 
 function extractSetCommand(
-	node: any,
+	node: CstNode,
 ): { command: SetCommand } | { error: string } {
 	// Target: quoted or multi-word identifiers before the dot
 	let target: string;
@@ -399,7 +402,7 @@ function extractSetCommand(
 }
 
 function extractGetCommand(
-	node: any,
+	node: CstNode,
 ): { command: GetCommand } | { error: string } {
 	let target: string;
 	if (node.children.quotedTarget) {
@@ -413,15 +416,15 @@ function extractGetCommand(
 }
 
 function extractLoadCommand(
-	node: any,
+	node: CstNode,
 ): { command: LoadCommand } | { error: string } {
 	const source = stripQuotes((node.children.source[0] as IToken).image);
-	const target = extractTargetRef(node.children.target[0]);
+	const target = extractTargetRef(asNode(node.children.target[0]));
 	return { command: { type: "load", source, target } };
 }
 
 function extractShowCommand(
-	node: any,
+	node: CstNode,
 ): { command: ShowCommand } | { error: string } {
 	if (node.children.tree) {
 		return { command: { type: "show", what: "tree" } };
@@ -433,7 +436,7 @@ function extractShowCommand(
 		return { command: { type: "show", what: "types", filter } };
 	}
 	if (node.children.target) {
-		const target = extractTargetRef(node.children.target[0]);
+		const target = extractTargetRef(asNode(node.children.target[0]));
 		return { command: { type: "show", what: "target", target } };
 	}
 	return { error: "Invalid show command" };

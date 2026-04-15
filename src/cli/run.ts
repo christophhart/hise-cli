@@ -29,27 +29,7 @@ async function fetchProjectInfo(
 	} catch { /* no connection — resolve against CWD */ }
 }
 
-/** Wire file I/O onto a session. Uses session.resolvePath() for path resolution. */
-function wireScriptFileOps(session: import("../engine/session.js").Session): void {
-	const origLoad = session.loadScriptFile;
-	if (origLoad) {
-		session.loadScriptFile = async (fp: string) => origLoad(resolve(session.resolvePath(fp)));
-	}
-	session.saveScriptFile = async (fp: string, content: string) => {
-		const { writeFile } = await import("node:fs/promises");
-		await writeFile(resolve(session.resolvePath(fp)), content, "utf-8");
-	};
-	session.globScriptFiles = async (pattern: string) => {
-		const { readdir } = await import("node:fs/promises");
-		const { dirname, basename } = await import("node:path");
-		const resolved = resolve(session.resolvePath(pattern));
-		const dir = dirname(resolved);
-		const glob = basename(resolved);
-		const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-		const entries = await readdir(dir, { recursive: true });
-		return entries.filter(f => re.test(basename(f))).sort().map(f => resolve(dir, f));
-	};
-}
+import { wireScriptFileOps } from "../node-io.js";
 
 export interface CliCommandOptions {
 	connectionOverride?: HiseConnection;

@@ -251,6 +251,8 @@ export async function dryRunScript(
 	} finally {
 		// Always discard the undo group and restore mode stack
 		restoreModeStack(session, savedStack);
+		// Best-effort undo group cleanup — connection may already be gone
+		// after a failed execution. Swallowing is intentional.
 		await conn.post("/api/undo/pop_group", { cancel: true }).catch(() => {});
 	}
 
