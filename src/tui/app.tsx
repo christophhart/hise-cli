@@ -58,6 +58,10 @@ import { renderWizardBlock, createInitialFormState, type WizardFormState } from 
 import { handleWizardKey } from "./components/wizard-keys.js";
 import { listPathCompletions } from "./wizard-files.js";
 import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
+import { useOutputScroll } from "./hooks/useOutputScroll.js";
+import { useWizardState } from "./hooks/useWizardState.js";
+import { useSidebarState } from "./hooks/useSidebarState.js";
+import { useKeyLabel, type InkKey } from "./hooks/useKeyLabel.js";
 
 // ── Layout constants (non-scaling) ──────────────────────────────────
 
@@ -392,60 +396,33 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		handle.setCursorAt(charPos, true);
 	}, [multilineMode, inputXToCharOffset, inputXYToCharOffset]));
 
-	// Tree sidebar
-	const treeSidebarRef = useRef<TreeSidebarHandle>(null);
-	const [sidebarVisible, setSidebarVisible] = useState(false);
-	const sidebarVisibleBeforeEditorRef = useRef(false);
-	const [sidebarFocused, setSidebarFocused] = useState(false);
+	// Tree sidebar — state managed by custom hook
+	const sidebar = useSidebarState(multilineMode, session, session.currentMode().id);
+	const {
+		treeSidebarRef, sidebarVisible, setSidebarVisible, sidebarVisibleRef,
+		sidebarFocused, setSidebarFocused, setSidebarFocusedRef: sidebarFocusSetterRef,
+		sidebarStateRef, handleSidebarStateChange,
+		searchFocused, setSearchFocused, searchText, setSearchText,
+	} = sidebar;
 	setSidebarFocusedRef.current = setSidebarFocused;
-	// Persistent sidebar state survives close/reopen
-	const sidebarStateRef = useRef<TreeSidebarState | undefined>(undefined);
-	const handleSidebarStateChange = useCallback((state: TreeSidebarState) => {
-		sidebarStateRef.current = state;
-	}, []);
 
-	// Auto-show sidebar as file browser when entering editor mode
-	useEffect(() => {
-		if (multilineMode && session.scriptFileCache.length > 0) {
-			sidebarVisibleBeforeEditorRef.current = sidebarVisible;
-			if (!sidebarVisible) setSidebarVisible(true);
-		} else if (!multilineMode && sidebarVisibleBeforeEditorRef.current !== sidebarVisible) {
-			setSidebarVisible(sidebarVisibleBeforeEditorRef.current);
-		}
-	}, [multilineMode]);
+	// Wizard state — managed by custom hook
+	const wizard = useWizardState();
+	const {
+		wizardForm, setWizardForm, wizardFormRef,
+		wizardProgress, setWizardProgress,
+		abortRef, escTimestampRef, lastPhaseRef,
+	} = wizard;
 
-	// Tree sidebar search
-	const [searchFocused, setSearchFocused] = useState(false);
-	const [searchText, setSearchText] = useState("");
-
-	// State
-	const [outputBlocks, setOutputBlocks] = useState<PrerenderedBlock[]>([]);
+	// Connection / command state
 	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("error");
 	const [disabled, setDisabled] = useState(false);
 	// Synchronous disabled check — avoids the React render-cycle gap
 	// where keystrokes can arrive between setDisabled(true) and the
 	// next render, causing them to be dropped by the useInput handler.
 	const disabledRef = useRef(false);
-	const [scrollOffset, setScrollOffset] = useState(0);
 
-	// Wizard state — form rendered as output block, keys handled by pure function
-	const [wizardForm, setWizardForm] = useState<WizardFormState | null>(null);
-	const wizardFormRef = useRef<WizardFormState | null>(null);
-
-	// Wizard execution progress — shown in StatusBar during execution
-	const [wizardProgress, setWizardProgress] = useState<{ percent: number; message: string } | null>(null);
-	const abortRef = useRef<AbortController | null>(null);
-	const escTimestampRef = useRef(0);
-	const lastPhaseRef = useRef("");
-	wizardFormRef.current = wizardForm;
-
-	// Refs tracking latest state values (for snapshot capture in async callbacks)
-	const outputBlocksRef = useRef(outputBlocks);
-	outputBlocksRef.current = outputBlocks;
-	const scrollOffsetRef = useRef(scrollOffset);
-	scrollOffsetRef.current = scrollOffset;
-	const sidebarVisibleRef = useRef(sidebarVisible);
-	sidebarVisibleRef.current = sidebarVisible;
+	// Completion popup state
 	const [completionState, setCompletionState] = useState<{
 		result: CompletionResult;
 		selectedIndex: number;
@@ -453,6 +430,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		ghostText?: string;
 		forValue?: string;
 	} | null>(null);
+
 	const outputRef = useRef<DOMElement>(null);
 
 	// Shim yogaNode on ink-compat host nodes so @ink-tools/ink-mouse can
@@ -465,12 +443,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		if (node) shimYogaNodes(node);
 	});
 
-	// Track whether user has scrolled away from bottom
-	const userScrolledRef = useRef(false);
-
-	// Derived line buffer (recomputed only when blocks change, not on scroll)
-	const allLines = useMemo(() => flattenBlocks(outputBlocks), [outputBlocks]);
-	const totalLines = useMemo(() => totalLineCount(outputBlocks), [outputBlocks]);
+	// ── Layout calculations ────────────────────────────────────────────
 
 	// Sidebar width: responsive, driven by layout scale
 	const sidebarW = sidebarVisible ? calcSidebarWidth(layout, columns) : 0;
@@ -498,120 +471,18 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		mainAreaHeight - inputOverhead,
 	);
 
-	// ── Scroll helpers ──────────────────────────────────────────────
+	// ── Output blocks + scroll — managed by custom hook ────────────────
 
-	// Max scroll offset = total lines minus viewport height (clamped to 0)
-	const totalLinesRef = useRef(totalLines);
-	totalLinesRef.current = totalLines;
+	const outputScroll = useOutputScroll(outputHeight, sidebarVisible, contentColumns, layout);
+	const {
+		outputBlocks, setOutputBlocks, outputBlocksRef,
+		scrollOffset, setScrollOffset, scrollOffsetRef,
+		allLines, totalLines, userScrolledRef,
+		maxScrollOffset, scrollBy, scrollToBottom, scrollToTop,
+		addBlocks,
+	} = outputScroll;
 
-	const maxScrollOffset = useCallback(
-		() => Math.max(0, totalLinesRef.current - outputHeight),
-		[outputHeight],
-	);
-
-	const scrollBy = useCallback(
-		(delta: number) => {
-			setScrollOffset((prev) => {
-				const max = maxScrollOffset();
-				const next = Math.max(0, Math.min(max, prev + delta));
-				userScrolledRef.current = next < max;
-				return next;
-			});
-		},
-		[maxScrollOffset],
-	);
-
-	const scrollToBottom = useCallback(() => {
-		const max = maxScrollOffset();
-		setScrollOffset(max);
-		userScrolledRef.current = false;
-	}, [maxScrollOffset]);
-
-	const scrollToTop = useCallback(() => {
-		setScrollOffset(0);
-		userScrolledRef.current = outputBlocks.length > 0;
-	}, [outputBlocks.length]);
-
-	// ── Show-keys badge state ─────────────────────────────────────────
-
-	const [keyLabel, setKeyLabel] = useState("");
-	const keyLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const lastKeyRef = useRef<string>("");
-	const keyCountRef = useRef(0);
-
-	/** Format a keystroke into a display label, or "" to suppress. */
-	const formatKeyLabel = useCallback((input: string, key: { ctrl: boolean; meta: boolean; shift: boolean; escape: boolean; tab: boolean; return: boolean; upArrow: boolean; downArrow: boolean; leftArrow: boolean; rightArrow: boolean; pageUp: boolean; pageDown: boolean; home: boolean; end: boolean; delete: boolean; backspace: boolean }) => {
-		// Modifier prefix (Shift shown only for non-obvious combos)
-		const shift = key.shift ? "Shift+" : "";
-
-		// Navigation / special keys
-		if (key.escape) return "Escape";
-		if (key.tab) return shift ? "Shift+Tab" : "Tab";
-		if (key.return) return shift ? "Shift+Enter" : "Enter";
-		if (key.upArrow) return `${shift}\u2191`;
-		if (key.downArrow) return `${shift}\u2193`;
-		if (key.leftArrow) return `${shift}\u2190`;
-		if (key.rightArrow) return `${shift}\u2192`;
-		if (key.pageUp) return "PgUp";
-		if (key.pageDown) return "PgDn";
-		if (key.home) return `${shift}Home`;
-		if (key.end) return `${shift}End`;
-		if (key.delete || key.backspace) return "Delete";
-
-		// Modifier combos (Ctrl, Alt/Meta)
-		if (key.ctrl && input) return `Ctrl+${input.toUpperCase()}`;
-		if (key.meta && input) return `Alt+${input.toUpperCase()}`;
-
-		// Space bar (without modifiers it's obvious during typing, but
-		// show it when used as a toggle in sidebar/wizard context)
-		if (input === " " && !key.ctrl && !key.meta) return "Space";
-
-		// Suppress plain printable characters — they're obvious on screen
-		return "";
-	}, []);
-
-	const pushKeyLabel = useCallback((input: string, key: Parameters<typeof formatKeyLabel>[1]) => {
-		if (!showKeys) return;
-		// Check for F5/F7 from raw stdin refs
-		let label = "";
-		if (f5PressedRef.current) label = "F5";
-		else if (f7PressedRef.current) label = "F7";
-		else label = formatKeyLabel(input, key);
-		if (!label) return;
-
-		// Accumulate repeated presses of the same key
-		if (label === lastKeyRef.current) {
-			keyCountRef.current++;
-		} else {
-			lastKeyRef.current = label;
-			keyCountRef.current = 1;
-		}
-		const display = keyCountRef.current > 1
-			? `Key: ${label} x${keyCountRef.current}`
-			: `Key: ${label}`;
-		setKeyLabel(display);
-
-		if (keyLabelTimerRef.current) clearTimeout(keyLabelTimerRef.current);
-		keyLabelTimerRef.current = setTimeout(() => {
-			setKeyLabel("");
-			lastKeyRef.current = "";
-			keyCountRef.current = 0;
-		}, 1500);
-	}, [showKeys, formatKeyLabel]);
-
-	// Clean up timer on unmount
-	useEffect(() => {
-		return () => { if (keyLabelTimerRef.current) clearTimeout(keyLabelTimerRef.current); };
-	}, []);
-
-	// ── Central key dispatcher — single useInput, priority chain ────
-	//
-	// Every keystroke goes through one handler chain. Each handler can
-	// consume the event (return true) or pass it to the next handler
-	// (return false). This guarantees exactly one action per keystroke.
-	//
-	// Priority: Global hotkeys > CompletionPopup >
-	//           TreeSidebar (focused) > Input > App (scroll)
+	// ── Raw stdin listener + key badge ─────────────────────────────────
 
 	// Raw stdin listener for Delete key (Ink can't distinguish Delete from Backspace).
 	// Delete sends \x1b[3~ which Ink maps to key.delete same as Backspace (\x7f).
@@ -637,6 +508,18 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		process.stdin.on("data", onData);
 		return () => { process.stdin.off("data", onData); };
 	}, []);
+
+	// Show-keys badge — managed by custom hook
+	const { keyLabel, pushKeyLabel } = useKeyLabel(showKeys ?? false, f5PressedRef, f7PressedRef);
+
+	// ── Central key dispatcher — single useInput, priority chain ────
+	//
+	// Every keystroke goes through one handler chain. Each handler can
+	// consume the event (return true) or pass it to the next handler
+	// (return false). This guarantees exactly one action per keystroke.
+	//
+	// Priority: Global hotkeys > CompletionPopup >
+	//           TreeSidebar (focused) > Input > App (scroll)
 
 	// Regex to detect mouse escape sequence remnants. Ink's useInput strips
 	// the leading \x1b from unrecognized CSI sequences, so mouse events
@@ -1282,16 +1165,6 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// ── Input handler ───────────────────────────────────────────────
 
-	const addBlocks = useCallback((newBlocks: PrerenderedBlock[]) => {
-		setOutputBlocks((prev) => {
-			const combined = [...prev, ...newBlocks];
-			if (combined.length > MAX_HISTORY_BLOCKS) {
-				combined.splice(0, combined.length - MAX_HISTORY_BLOCKS);
-			}
-			return combined;
-		});
-	}, []);
-
 	const renderContextRef = useRef({
 		scheme,
 		columns: contentColumns,
@@ -1762,42 +1635,6 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const modeAccent = currentMode.accent || scheme.foreground.default;
 	const contextLabel = currentMode.contextLabel ?? "";
 	const treeLabel = sidebarVisible ? currentMode.treeLabel : undefined;
-
-	// Truncate output lines when sidebar visibility toggles (blocks are
-	// width-baked at creation time, so old blocks may be too wide/narrow)
-	const sidebarMountedRef = useRef(true);
-	useEffect(() => {
-		if (sidebarMountedRef.current) {
-			sidebarMountedRef.current = false;
-			return;
-		}
-		const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
-		setOutputBlocks((prev) =>
-			prev.map((block) => ({
-				lines: block.lines.map((l) => truncateAnsi(l, innerW)),
-				height: block.height,
-			})),
-		);
-	}, [sidebarVisible]);
-
-	// Auto-scroll to bottom when new content arrives.
-	// Uses useEffect so totalLines is already committed (replaces stale setTimeout).
-	useEffect(() => {
-		if (!userScrolledRef.current) {
-			setScrollOffset(maxScrollOffset());
-		}
-	}, [totalLines, maxScrollOffset]);
-
-	// Clear search when mode changes (tree changes)
-	const currentModeId = currentMode.id;
-	const prevModeIdRef = useRef(currentModeId);
-	useEffect(() => {
-		if (prevModeIdRef.current !== currentModeId) {
-			prevModeIdRef.current = currentModeId;
-			setSearchText("");
-			setSearchFocused(false);
-		}
-	}, [currentModeId]);
 
 	// Syntax highlighting tokenizer from current mode (bound to avoid context loss)
 	const modeTokenizer = currentMode.tokenizeInput
