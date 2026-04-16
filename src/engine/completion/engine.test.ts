@@ -646,6 +646,15 @@ describe("CompletionEngine", () => {
 			const result = engine.completeScriptnode("unknown.");
 			expect(result.items).toHaveLength(0);
 		});
+
+		it("strips insertText after the dot so the factory prefix is not duplicated", () => {
+			// Without this guard, selecting "bang" after typing "control." would
+			// replace the suffix with "control.bang" and yield "control.control.bang".
+			const result = engine.completeScriptnode("control.");
+			expect(result.from).toBe("control.".length);
+			expect(result.items[0]?.insertText).toBeUndefined();
+			expect(result.items[0]?.label).toBe("bang");
+		});
 	});
 
 	// ── Inspect completion ──────────────────────────────────────

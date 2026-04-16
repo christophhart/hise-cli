@@ -228,3 +228,156 @@ export const UI_VERB_KEYWORDS: ReadonlySet<string> = new _Set([
 ]);
 
 export const uiLexer = new Lexer(UI_TOKENS);
+
+// ── DSP keywords ────────────────────────────────────────────────────
+
+export const From = createToken({
+	name: "From",
+	pattern: /from/i,
+	longer_alt: Identifier,
+});
+
+export const Of = createToken({
+	name: "Of",
+	pattern: /of/i,
+	longer_alt: Identifier,
+});
+
+export const Use = createToken({
+	name: "Use",
+	pattern: /use/i,
+	longer_alt: Identifier,
+});
+
+export const Init = createToken({
+	name: "Init",
+	pattern: /init/i,
+	longer_alt: Identifier,
+});
+
+export const Save = createToken({
+	name: "Save",
+	pattern: /save/i,
+	longer_alt: Identifier,
+});
+
+export const Reset = createToken({
+	name: "Reset",
+	pattern: /reset/i,
+	longer_alt: Identifier,
+});
+
+export const Connections = createToken({
+	name: "Connections",
+	pattern: /connections/i,
+	longer_alt: Identifier,
+});
+
+export const Connect = createToken({
+	name: "Connect",
+	pattern: /connect/i,
+	longer_alt: Connections,
+});
+
+export const Disconnect = createToken({
+	name: "Disconnect",
+	pattern: /disconnect/i,
+	longer_alt: Identifier,
+});
+
+export const CreateParameter = createToken({
+	name: "CreateParameter",
+	pattern: /create_parameter/i,
+	longer_alt: Identifier,
+});
+
+export const Networks = createToken({
+	name: "Networks",
+	pattern: /networks/i,
+	longer_alt: Identifier,
+});
+
+export const Modules = createToken({
+	name: "Modules",
+	pattern: /modules/i,
+	longer_alt: Identifier,
+});
+
+export const Source = createToken({
+	name: "Source",
+	pattern: /source/i,
+	longer_alt: Identifier,
+});
+
+export const Parent = createToken({
+	name: "Parent",
+	pattern: /parent/i,
+	longer_alt: Identifier,
+});
+
+export const Default = createToken({
+	name: "Default",
+	pattern: /default/i,
+	longer_alt: Identifier,
+});
+
+export const Step = createToken({
+	name: "Step",
+	pattern: /step/i,
+	longer_alt: Identifier,
+});
+
+export const Embedded = createToken({
+	name: "Embedded",
+	pattern: /embedded/i,
+	longer_alt: Identifier,
+});
+
+// DSP token order — keywords before Identifier. CreateParameter must
+// come before Connect to avoid prefix conflicts (neither has a shared
+// prefix but we keep the multi-char keywords early).
+export const DSP_TOKENS = [
+	WhiteSpace,
+	QuotedString,
+	NumberLiteral,
+	CreateParameter,
+	Disconnect,
+	Connections,
+	Connect,
+	Networks,
+	Modules,
+	Add,
+	Remove,
+	Move,
+	Bypass,
+	Enable,
+	Show,
+	Set,
+	Get,
+	Use,
+	Init,
+	Save,
+	Reset,
+	Source,
+	Parent,
+	Default,
+	Step,
+	Embedded,
+	From,
+	Of,
+	Into,
+	To,
+	As,
+	At,
+	Tree,
+	Comma,
+	Dot,
+	Identifier,
+];
+
+export const DSP_VERB_KEYWORDS: ReadonlySet<string> = new _Set([
+	"add", "remove", "move", "set", "get",
+	"bypass", "enable", "connect", "disconnect",
+]);
+
+export const dspLexer = new Lexer(DSP_TOKENS);

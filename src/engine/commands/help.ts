@@ -187,9 +187,65 @@ Start a plan with \`plan "My Changes"\`, execute builder commands, then
 
 	dsp: `# DSP Mode
 
-Scriptnode DSP graph editor.
+Scriptnode graph editor. Create, connect, and configure nodes inside a
+\`DspNetwork\`. The mode's context is a **moduleId** — the script processor
+hosting the network. Each host can have at most one active network.
 
-*(Not yet implemented — Phase 6)*`,
+## Entering
+
+- \`/dsp\` — enter with no host selected (use \`use <moduleId>\` to pick one)
+- \`/dsp.<moduleId>\` — enter with a host pre-selected
+  (e.g. \`/dsp."Script FX1"\`)
+
+## Network lifecycle
+
+| Command | Description |
+|---------|-------------|
+| \`show networks\` | List \`.xml\` files in the project's \`DspNetworks/\` |
+| \`show modules\` | List \`DspNetwork\`-capable script processors |
+| \`use <moduleId>\` | Switch the host context |
+| \`init <name> [embedded]\` | Load/create a network on the current host |
+| \`save\` | Save the loaded network to its \`.xml\` file |
+| \`reset\` | Empty the loaded network (no nodes, no connections) |
+
+## Graph editing
+
+| Command | Description |
+|---------|-------------|
+| \`add <factory.node> [as <id>] [to <parent>]\` | Add a node (defaults to CWD) |
+| \`remove <nodeId>\` | Remove a node |
+| \`move <nodeId> to <parent> [at <index>]\` | Move a node |
+| \`connect <src>[.<output>] to <target>.<param>\` | Connect modulation |
+| \`disconnect <src> from <target>.<param>\` | Disconnect modulation |
+| \`set <node>.<param> [to] <value>\` | Set a parameter |
+| \`bypass <nodeId>\` / \`enable <nodeId>\` | Toggle bypass |
+| \`create_parameter <container>.<name> [min max] [default N] [step N]\` | Dynamic parameter |
+
+## Local queries
+
+\`get\` commands resolve from the cached tree without an API round-trip —
+they power \`/expect\` assertion checks:
+
+| Command | Returns |
+|---------|---------|
+| \`get <nodeId>\` | Factory path of the node |
+| \`get <node>.<param>\` | Current parameter value |
+| \`get source of <node>.<param>\` | Connected source id, or \`(not connected)\` |
+| \`get parent of <node>.<param>\` | Id of the parent container |
+
+## Navigation
+
+Use \`cd <container>\` to step into a container, \`cd ..\` / \`cd /\` to step
+out. \`ls\` lists the children at the current path. \`add\` defaults its
+parent to the current path so repeat-adds work without \`to ...\`.
+
+## Grammar notes
+
+- Factory paths use \`factory.node\` dot notation (\`core.oscillator\`,
+  \`filters.svf\`).
+- \`sourceOutput\` can be defaulted (\`connect lfo1 to F.Freq\`) or explicit
+  (\`connect env1.Value to F.Cutoff\`).
+- Comma chaining with verb inheritance: \`set A.Freq 440, B.Freq 880\`.`,
 
 	sampler: `# Sampler Mode
 

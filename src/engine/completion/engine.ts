@@ -353,7 +353,15 @@ export class CompletionEngine {
 			const nodePrefix = input.slice(dotIndex + 1);
 			const nodes = this.datasets.scriptnodeByFactory.get(factory);
 			if (nodes) {
-				const items = fuzzyFilter(nodePrefix, nodes);
+				// After the dot: replacement range starts at dotIndex+1, so
+				// the inserted text is only the nodeId suffix. The cached
+				// items carry the full "factory.node" as insertText (for
+				// cross-factory search); strip it here so we don't duplicate
+				// the factory prefix.
+				const items = fuzzyFilter(nodePrefix, nodes).map((it) => ({
+					label: it.label,
+					detail: it.detail,
+				}));
 				return { items, from: dotIndex + 1, to: input.length };
 			}
 			return { items: [], from: dotIndex + 1, to: input.length };

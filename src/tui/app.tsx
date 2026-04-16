@@ -233,6 +233,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	// Loaded datasets — stored in refs so lazy mode factories always
 	// get the latest data (even for modes created after initial load).
 	const moduleListRef = useRef<import("../engine/data.js").ModuleList | undefined>(undefined);
+	const scriptnodeListRef = useRef<import("../engine/data.js").ScriptnodeList | undefined>(undefined);
 	const componentPropsRef = useRef<import("../engine/modes/ui.js").ComponentPropertyMap | undefined>(undefined);
 
 	// Session — created once, stored in ref
@@ -242,6 +243,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			connection,
 			completionEngine,
 			getModuleList: () => moduleListRef.current,
+			getScriptnodeList: () => scriptnodeListRef.current,
 			getComponentProperties: () => componentPropsRef.current,
 			handlerRegistry,
 			launcher,
@@ -1143,6 +1145,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				if (!cancelled) {
 					// Store for future mode instances via lazy factories
 					moduleListRef.current = datasets.moduleList;
+					scriptnodeListRef.current = datasets.scriptnodeList;
 					componentPropsRef.current = datasets.componentProperties;
 					// Update existing builder mode instances with module data
 					if (datasets.moduleList) {

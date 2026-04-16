@@ -1,8 +1,9 @@
-import type { DataLoader, ModuleList } from "./engine/data.js";
+import type { DataLoader, ModuleList, ScriptnodeList } from "./engine/data.js";
 import type { HiseConnection } from "./engine/hise.js";
 import { CompletionEngine } from "./engine/completion/engine.js";
 import { Session } from "./engine/session.js";
 import { BuilderMode } from "./engine/modes/builder.js";
+import { DspMode } from "./engine/modes/dsp.js";
 import { InspectMode } from "./engine/modes/inspect.js";
 import { ScriptMode } from "./engine/modes/script.js";
 import { UndoMode } from "./engine/modes/undo.js";
@@ -14,12 +15,13 @@ import { WizardRegistry } from "./engine/wizard/registry.js";
 import type { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { registerWizardAliases } from "./engine/commands/slash.js";
 
-export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "undo", "ui", "sequence", "hise", "analyse"] as const;
+export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "dsp", "undo", "ui", "sequence", "hise", "analyse"] as const;
 
 export interface CreateSessionOptions {
 	connection: HiseConnection | null;
 	completionEngine?: CompletionEngine;
 	getModuleList?: () => ModuleList | undefined;
+	getScriptnodeList?: () => ScriptnodeList | undefined;
 	getComponentProperties?: () => ComponentPropertyMap | undefined;
 	handlerRegistry?: WizardHandlerRegistry;
 	launcher?: HiseLauncher;
@@ -29,6 +31,7 @@ export function createSession({
 	connection,
 	completionEngine = new CompletionEngine(),
 	getModuleList,
+	getScriptnodeList,
 	getComponentProperties,
 	handlerRegistry,
 	launcher,
@@ -40,6 +43,10 @@ export function createSession({
 	session.registerMode(
 		"builder",
 		(ctx) => new BuilderMode(getModuleList?.(), completionEngine, ctx),
+	);
+	session.registerMode(
+		"dsp",
+		(ctx) => new DspMode(getScriptnodeList?.(), completionEngine, ctx),
 	);
 	session.registerMode("undo", () => new UndoMode(completionEngine));
 	session.registerMode(
@@ -54,6 +61,7 @@ export function createSession({
 
 export interface SessionDatasets {
 	moduleList?: ModuleList;
+	scriptnodeList?: ScriptnodeList;
 	componentProperties?: ComponentPropertyMap;
 }
 
@@ -86,6 +94,12 @@ export async function loadSessionDatasets(
 		result.moduleList = await dataLoader.loadModuleList();
 	} catch {
 		// moduleList not available
+	}
+
+	try {
+		result.scriptnodeList = await dataLoader.loadScriptnodeList();
+	} catch {
+		// scriptnodeList not available
 	}
 
 	try {

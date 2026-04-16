@@ -1,180 +1,143 @@
 # /dsp mode — Phase 6.5
 
 Scriptnode graph editing mode: creating, connecting, and parameterizing nodes
-within a DspNetwork. Uses the same `GET /tree` + `POST /apply` pattern as
-builder and UI modes. Local validation from `data/scriptnodeList.json`.
+within a DspNetwork. Mirrors builder/ui with `GET /tree` + `POST /apply`.
+Local validation from `data/scriptnodeList.json`.
 
 Tracks [#6](https://github.com/christoph-hart/hise-cli/issues/6).
+
+Source of truth for field names: `openapi.json` (the HISE REST API dump).
+
+## Resolved design decisions
+
+1. **Module-scoped context** — every DSP call carries a `moduleId` (the
+   script processor hosting the DspNetwork). Mode state tracks one
+   moduleId at a time; each host has at most one active network.
+2. **No range edits via `set`** — the roadmap's
+   `set <node>.<param>.<rangeProp>` syntax is dropped. Range metadata is
+   configured only at `create_parameter` time.
+3. **Optional `sourceOutput` in `connect`** — default form
+   `connect lfo1 to Filter1.Frequency`; explicit form
+   `connect env1.Value to Filter1.Cutoff`.
+4. **`init` returns the initial tree** — client consumes the returned
+   tree directly; no follow-up `GET /tree` needed immediately after.
+5. **`add` defaults to CWD** — when `to <parent>` is omitted, the node
+   is added to the currently `cd`'d container.
+6. **`reset` = openapi `clear`** — CLI surfaces `reset` (matching
+   `/builder reset`); the wire op stays `{op: "clear"}`.
 
 ## Command set
 
 ```
-show networks                                     # list available DspNetworks
-init <name> [--embedded]                          # create/load a DspNetwork
-show tree                                         # current network hierarchy
-add <factory.node> [as "<id>"] [to <parent>]      # add node to container
-remove <id>                                       # remove node
-move <id> to <parent> [at <index>]                # move node to container
-connect <source> to <target>.<param>              # connect modulation source
-disconnect <source> from <target>.<param>         # disconnect modulation
-set <node>.<param> [to] <value>                   # set parameter or property
-set <node>.<param>.<rangeProp> [to] <value>       # set range property (min, max, etc.)
-bypass <id>                                       # bypass node
-enable <id>                                       # enable node
-create_parameter <container>.<name> [min max]     # create dynamic parameter
-clear                                             # clear all nodes
-help                                              # command list
+show networks | modules | tree | connections
+use <moduleId>
+init <name> [embedded]
+save
+reset
+add <factory.node> [as <id>] [to <parent>]
+remove <id>
+move <id> to <parent> [at <index>]
+connect <source>[.<output>] to <target>.<param>
+disconnect <source> from <target>.<param>
+set <node>.<param> [to] <value>
+get <id>                       -> factoryPath
+get <node>.<param>             -> current value
+get source of <node>.<param>   -> connected source
+get parent of <node>.<param>   -> parent container id
+bypass <id> | enable <id>
+create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>]
+cd / ls / pwd
+help
 ```
 
 ### Grammar notes
 
-- Shares token types with builder (quoted strings, dot-paths, identifiers, numbers)
-- Factory paths use `factory.node` dot notation (e.g., `core.oscillator`, `filters.svf`)
-- `set` is unified for parameters and properties — HISE resolves which one
-- Range properties use dot-chained syntax: `set Filter1.Frequency.middlePosition 1000`
-- Canonical range IDs: `min`, `max`, `stepSize`, `middlePosition`, `defaultValue`
-  (domain-native `MinValue`/`MaxValue`/`SkewFactor` also accepted via
-  `RangeHelpers::getIdSetForJSON()` auto-detection)
-- `connect ... to <target>.Bypass` routes to `Node.connectToBypass()` (synthetic parameter)
-- Comma chaining with verb inheritance (same as builder)
+- Shares tokens with builder (`QuotedString`, `Identifier`, `NumberLiteral`,
+  `Comma`, `Dot`, `To`, `As`).
+- New tokens in `tokens.ts`: `From`, `Of`, `Use`, `Init`, `Save`, `Reset`,
+  `Connect`, `Disconnect`, `Connections`, `Networks`, `Modules`,
+  `Source`, `Parent`, `Default`, `Step`, `Embedded`, `CreateParameter`.
+- Factory paths use `factory.node` dot notation (`core.oscillator`,
+  `filters.svf`).
+- Comma chaining with verb inheritance — only for verbs in
+  `DSP_VERB_KEYWORDS` (add, remove, move, set, get, bypass, enable,
+  connect, disconnect). Non-chainable commands (show/use/init/save/reset
+  /create_parameter) always need their keyword explicit.
+- `/dsp."Script FX1"` enters mode with that moduleId pre-selected
+  (multi-word quoting + dot-notation context).
 
-## C++ endpoints (REST_API_ENHANCEMENT.md § DSP)
+## C++ endpoints (authoritative — openapi.json)
 
-| Endpoint                | Method | CLI command          | Status |
-|-------------------------|--------|----------------------|--------|
-| `GET /api/dsp/list`     | GET    | `show networks`      | TODO   |
-| `POST /api/dsp/init`    | POST   | `init <name>`        | TODO   |
-| `GET /api/dsp/tree`     | GET    | tree sidebar / `show tree` | TODO |
-| `POST /api/dsp/apply`   | POST   | all mutation commands | TODO   |
+| Endpoint | Method | Envelope |
+|----------|--------|----------|
+| `/api/dsp/list` | GET | `{networks: string[]}` (top-level, not `result`) |
+| `/api/dsp/init?moduleId=X` | POST | `{result: <tree>, filePath, embedded}` |
+| `/api/dsp/tree?moduleId=X&verbose?&group?` | GET | `{result: <tree>}` |
+| `/api/dsp/apply` | POST | `{scope, groupName, diff}` (shared envelope) |
+| `/api/dsp/save?moduleId=X` | POST | `{filePath}` |
 
-Undo/redo reuses the cross-domain `/api/undo/*` endpoints.
+Undo/redo reuses the cross-domain `/api/undo/*` system. The diff domain
+on DSP operations is `"dsp"`.
 
-### Apply operations
+### Apply op field names (openapi-authoritative)
 
-| Op                | Builder syntax                              |
-|-------------------|---------------------------------------------|
-| `add`             | `add core.oscillator as "Osc1" to Main`     |
-| `remove`          | `remove Osc1`                               |
-| `move`            | `move Osc1 to SubChain at 0`                |
-| `connect`         | `connect lfo1 to Filter1.Frequency`         |
-| `disconnect`      | `disconnect lfo1 from Filter1.Frequency`    |
-| `set`             | `set Osc1.Frequency 440`                    |
-| `bypass`          | `bypass Osc1`                               |
-| `create_parameter`| `create_parameter Main.Cutoff 20 20000`     |
-| `clear`           | `clear`                                     |
+| Op | Fields |
+|----|--------|
+| `add` | `factoryPath`, `parent`, optional `nodeId`, `index` |
+| `remove` | `nodeId` |
+| `move` | `nodeId`, `parent`, optional `index` |
+| `connect` | `source`, `target`, `parameter`, optional `sourceOutput` (string or int) |
+| `disconnect` | `source`, `target`, `parameter` |
+| `set` | `nodeId`, `parameterId`, `value` |
+| `bypass` | `nodeId`, `bypassed` |
+| `create_parameter` | `nodeId`, `parameterId`, optional `min`, `max`, `defaultValue`, `stepSize`, `middlePosition`, `skewFactor` |
+| `clear` | (empties the loaded network's nodes; CLI surface is `reset`) |
 
-### Key C++ ↔ REST mapping
+## Tree node shape
 
-| REST op            | HiseScript API call                              |
-|--------------------|--------------------------------------------------|
-| `add`              | `DspNetwork.createAndAdd(path, id, parent)`      |
-| `remove`           | `DspNetwork.deleteIfUnused(id)`                  |
-| `move`             | `Node.setParent(parentNode, indexInParent)`       |
-| `connect`          | `Node.connectTo(parameterTarget, sourceInfo)`     |
-| `connect` (Bypass) | `Node.connectToBypass(sourceInfo)`                |
-| `disconnect`       | `Connection.disconnect()`                         |
-| `set`              | `Node.set(id, value)` — unified param + property |
-| `bypass`           | `Node.setBypassed(bool)`                          |
-| `create_parameter` | `Node.getOrCreateParameter(id)` + range setup    |
-| `clear`            | `DspNetwork.clear(true, true)`                    |
-| `init`             | `DspNetwork::Holder::getOrCreate(name)`           |
-| `list`             | scan `DspNetworks/*.xml`                          |
+```
+{ nodeId, factoryPath, bypassed,
+  parameters: [{parameterId, value, min?, max?, stepSize?,
+                middlePosition?, defaultValue?}],
+  connections?: [{source, sourceOutput, target, parameter}],  // containers only
+  children: [...] }
+```
 
-## Implementation (MODE_DEVELOPMENT.md order)
+Connections live on the owning container — the `get source of ...`
+resolver scans ancestors from innermost outward.
 
-### 1. Contract — `src/mock/contracts/dsp.ts`
+## Implementation status
 
-Raw types and normalizers for all response shapes:
+- [x] `src/mock/contracts/dsp.ts` — raw types + normalizers
+- [x] `src/mock/dspMock.ts` — mock network state + op application
+- [x] `src/mock/runtime.ts` — DSP handlers wired into default mock profile
+- [x] `src/engine/modes/dsp-parser.ts` — Chevrotain grammar + comma chaining
+- [x] `src/engine/modes/dsp-ops.ts` — command → openapi op translation
+- [x] `src/engine/modes/dsp-validate.ts` — factory/param/range checks
+- [x] `src/engine/modes/dsp.ts` — DspMode class (parse/dispatch/fetch)
+- [x] `src/engine/highlight/dsp.ts` — mode tokenizer
+- [x] `src/engine/modes/dsp.test.ts` — parser + ops + validation + contract tests
+- [x] `src/engine/modes/dsp.integration.test.ts` — end-to-end against mock
+- [x] `src/live-contract/dsp.live.test.ts` — shape + round-trip against live HISE
+- [x] `src/session-bootstrap.ts` — mode registration + scriptnodeList injection
+- [x] `src/engine/commands/help.ts` — `MODE_HELP.dsp`
+- [x] `src/cli/help.ts` — `SCOPED_HELP.dsp`
+- [x] `npm run test:live-contract:dsp` script
 
-- `RawDspNode` — `{id, path, bypassed, parameters[], connections[], children[]}`
-- `RawDspParameter` — `{id, value}` (verbose adds `min, max, stepSize, middlePosition, defaultValue`)
-- `RawDspConnection` — `{source, sourceOutput, parameter}`
-- `normalizeDspList()` — `string[]`
-- `normalizeDspTree()` — recursive `TreeNode` mapping (nodes, containers, connections)
-- `normalizeDspApply()` — diff actions `[{type: +/-/*, id, path?, parent?, message?}]`
-- `normalizeDspInit()` — same shape as tree (initial empty network)
+## Testing
 
-### 2. Mock runtime — extend `src/mock/runtime.ts`
+- `npm test` runs the full unit + contract suite (1078 tests).
+- `npm run test:live-contract:dsp` runs the live parity suite against a
+  running HISE on :1900. Requires a DspNetwork-capable script processor
+  present.
 
-Mock handlers for all 4 endpoints:
-- `GET /api/dsp/list` — returns hardcoded network names
-- `POST /api/dsp/init` — creates empty network in mock state
-- `GET /api/dsp/tree` — returns mock network hierarchy
-- `POST /api/dsp/apply` — processes ops, updates mock tree, returns diff
+## Rules of thumb
 
-Mock tree: small representative network (chain → oscillator + filter + LFO,
-one connection, one dynamic parameter on root container).
-
-### 3. Parser — `src/engine/modes/dsp-parser.ts`
-
-Chevrotain grammar for DSP commands. Shares tokens with builder
-(`QuotedString`, `DotPath`, `Identifier`, `NumberLiteral`, `Comma`).
-
-New tokens: `From` (for disconnect syntax).
-
-Command rules:
-- `add <DotPath> [As QuotedString] [To Identifier]`
-- `remove <Identifier>`
-- `move <Identifier> To <Identifier> [At NumberLiteral]`
-- `connect <Identifier> To <Identifier>.<Identifier>`
-- `disconnect <Identifier> From <Identifier>.<Identifier>`
-- `set <Identifier>.<DotPath> [To] <value>`
-- `bypass <Identifier>` / `enable <Identifier>`
-- `create_parameter <Identifier>.<Identifier> [NumberLiteral NumberLiteral]`
-- `clear`
-- `show tree` / `show networks`
-- `init <Identifier> [--embedded]`
-
-### 4. Engine mode — `src/engine/modes/dsp.ts`
-
-`DspMode implements Mode`:
-- `id: "dsp"`, `accent: MODE_ACCENTS.dsp`, `prompt: "[dsp] > "`
-- `treeLabel: "Network"` — tree from `GET /api/dsp/tree`
-- `contextLabel` shows current network name (set via `init` or mode entry arg)
-- Navigation: `cd` into containers, `ls` lists children, `pwd` shows path
-- Local validation: factory paths against `scriptnodeList.json`, parameter
-  names against node definitions
-- `complete()`: factory paths after `add`, node IDs after `remove`/`bypass`/`set`,
-  parameter names after `set <node>.`, range properties after `set <node>.<param>.`
-
-### 5. Registration wiring
-
-- `src/session-bootstrap.ts` — add to `SUPPORTED_MODE_IDS`, register factory
-- `src/engine/commands/slash.ts` — `handleModes()` table + register command
-- `src/engine/commands/help.ts` — `MODE_HELP.dsp`
-- `src/cli/help.ts` — `SCOPED_HELP.dsp`
-- `src/engine/completion/engine.ts` — `completeDsp()` method
-- `src/engine/highlight/dsp.ts` — tokenizer (factory paths, node IDs, keywords)
-
-### 6. Tests — `src/engine/modes/dsp.test.ts`
-
-- Parser: all command shapes, comma chaining, dot-path parameter access
-- Command → ops translation (parser output → apply operations array)
-- Local validation: valid/invalid factory paths, parameter names, range properties
-- Contract validation of mock payloads
-- Tree building from dsp/tree response
-- Completion: factory paths, node IDs, parameters, range properties
-- Range ID normalization (canonical ↔ domain-native)
-
-### 7. Live parity — `src/live-contract/dsp.live.test.ts`
-
-- Shape parity for each endpoint against contracts
-- Round-trip: `init` → `add` nodes → `tree` matches expected shape
-- `set` parity for parameters vs properties
-- `connect` / `disconnect` round-trip
-- `create_parameter` with range properties
-
-## Definition of done
-
-- [ ] All 4 C++ endpoints implemented and returning contract-valid responses
-- [ ] Mock contract tests pass (`npm test`)
-- [ ] Parser tests pass — all command shapes
-- [ ] Engine mode tests pass (`npm test`)
-- [ ] Live parity tests pass (`npm run test:live-contract`)
-- [ ] `/dsp` works in `--mock` mode (all commands)
-- [ ] `/dsp` works against live HISE
-- [ ] Tree sidebar renders scriptnode network hierarchy
-- [ ] Tab completion: factory paths, node IDs, parameters, range properties
-- [ ] Syntax highlighting for DSP commands
-- [ ] TUI and CLI both route through same engine path
-- [ ] Help text updated (TUI `/help` + CLI `--help`)
+- Factory paths and parameter names are pre-validated locally against
+  `scriptnodeList.json` before any API call. Server still has final say.
+- Range metadata is configurable only at `create_parameter` time. Re-run
+  `create_parameter` on an existing parameter ID to overwrite.
+- Live HISE does not expose module-type metadata in `/api/status`, so
+  `show modules` currently lists all script processors rather than
+  filtering for DspNetwork-capable ones. This can be tightened once the
+  server exposes the filter.

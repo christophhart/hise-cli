@@ -54,9 +54,17 @@ describe("generateHelp", () => {
 	});
 
 	it("generates help for stub modes", () => {
+		const help = generateHelp("sampler", mockCommands);
+		expect(help.content).toContain("Sampler Mode");
+		expect(help.content).toContain("Phase 6");
+	});
+
+	it("generates dsp mode help", () => {
 		const help = generateHelp("dsp", mockCommands);
 		expect(help.content).toContain("DSP Mode");
-		expect(help.content).toContain("Phase 6");
+		expect(help.content).toContain("moduleId");
+		expect(help.content).toContain("init");
+		expect(help.content).toContain("create_parameter");
 	});
 
 	it("generates undo mode help", () => {

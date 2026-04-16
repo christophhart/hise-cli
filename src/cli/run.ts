@@ -62,6 +62,7 @@ export async function executeCliCommand(
 	const { session, completionEngine } = createSession({
 		connection,
 		getModuleList: () => datasets.moduleList,
+		getScriptnodeList: () => datasets.scriptnodeList,
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
@@ -137,6 +138,7 @@ async function executeRunCommand(
 	const { session, completionEngine } = createSession({
 		connection,
 		getModuleList: () => datasets.moduleList,
+		getScriptnodeList: () => datasets.scriptnodeList,
 		getComponentProperties: () => datasets.componentProperties,
 		launcher: opts.launcher,
 	});
@@ -223,6 +225,7 @@ async function runWatchMode(
 	const { session, completionEngine } = createSession({
 		connection,
 		getModuleList: () => datasets.moduleList,
+		getScriptnodeList: () => datasets.scriptnodeList,
 		getComponentProperties: () => datasets.componentProperties,
 		launcher: opts.launcher,
 	});

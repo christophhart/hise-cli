@@ -9,6 +9,7 @@ import {
 import { normalizeReplResponse } from "./contracts/repl.js";
 import type { BuilderDiffEntry, BuilderApplyResult } from "./contracts/builder.js";
 import type { DiffEntry } from "./contracts/builder.js";
+import { installDspMock } from "./dspMock.js";
 
 export interface MockRuntimeProfile {
 	kind: "mock";
@@ -209,6 +210,15 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 			}),
 			errors: [],
 		};
+	});
+
+	// ── DSP endpoints ───────────────────────────────────────────────
+	installDspMock(connection, {
+		inGroup: () => inGroup,
+		groupName: () => groupName,
+		pushDiff: (entries) => {
+			pendingDiff.push(...entries);
+		},
 	});
 
 	return {

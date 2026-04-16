@@ -32,6 +32,7 @@ OUTPUT FORMAT
 
 MODES
   -builder "<command>"     Module tree editor       (--help for syntax)
+  -dsp "<command>"         Scriptnode graph editor  (--help for syntax)
   -ui "<command>"          UI component editor      (--help for syntax)
   -script "<expression>"   HiseScript REPL          (--help for syntax)
   -inspect "<command>"     Runtime monitor           (--help for syntax)
@@ -224,6 +225,67 @@ EXAMPLES
   hise-cli -builder "show Master Chain"
   hise-cli -builder --target:Master "add LFO to gain, set LFO.Frequency to 4.0"
   hise-cli -builder "reset"`,
+
+	dsp: `hise-cli -dsp — scriptnode graph editor
+
+SYNTAX
+  hise-cli -dsp "<command>"
+  hise-cli -dsp --target:<moduleId> "<command>"
+
+MODULE CONTEXT
+  Every DSP command is scoped to a "moduleId" — the script processor that
+  hosts the DspNetwork. Each host carries at most one active network.
+
+  Pass the host via --target:, or prefix commands with "use <moduleId>"
+  in a multi-statement run.
+
+NETWORK LIFECYCLE
+  show networks                  List .xml files under DspNetworks/
+  show modules                   List DspNetwork-capable script processors
+  use <moduleId>                 Switch the host context
+  init <name> [embedded]         Load or create a network on the host
+  save                           Persist the loaded network to its .xml
+  reset                          Empty the loaded network
+
+GRAPH EDITING
+  add <factory.node> [as <id>] [to <parent>]
+    Add a node. Factory paths use dot notation (core.oscillator,
+    filters.svf, control.pma). Without "to", adds to the current cd path.
+  remove <nodeId>
+  move <nodeId> to <parent> [at <index>]
+  connect <src>[.<output>] to <target>.<param>
+    <output> defaults to the first modulation output when omitted.
+  disconnect <src> from <target>.<param>
+  set <node>.<param> [to] <value>
+    Sets a parameter. Range is pre-validated against scriptnodeList.json.
+  bypass <nodeId> | enable <nodeId>
+  create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>]
+    Creates a dynamic parameter on a container node. Range edits after
+    creation are not yet supported server-side.
+
+LOCAL QUERIES (no API round-trip)
+  get <nodeId>                   -> factory path
+  get <node>.<param>             -> current parameter value
+  get source of <node>.<param>   -> connected source id (or "(not connected)")
+  get parent of <node>.<param>   -> parent container id
+
+NAVIGATION
+  cd <container>                 Step into a container
+  cd .. / cd /                   Step out / jump to root
+  ls                             List children at the current path
+  pwd                            Print the current path
+
+COMMA CHAINING
+  set A.Freq 440, B.Freq 880     Verb inheritance across comma segments
+
+EXAMPLES
+  hise-cli -dsp --target:"Script FX1" "show tree"
+  hise-cli -dsp --target:"Script FX1" "init MyDSP"
+  hise-cli -dsp --target:"Script FX1" "add core.oscillator as Osc1, set Osc1.Frequency 440"
+  hise-cli -dsp --target:"Script FX1" "add filters.svf as F1"
+  hise-cli -dsp --target:"Script FX1" "add control.pma as LFO1, connect LFO1 to F1.Frequency"
+  hise-cli -dsp --target:"Script FX1" "get source of F1.Frequency"
+  hise-cli -dsp --target:"Script FX1" "save"`,
 
 	script: `hise-cli -script — HiseScript REPL
 
