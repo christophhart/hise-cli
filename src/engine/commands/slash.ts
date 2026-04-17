@@ -299,7 +299,7 @@ async function handleWizardWithDef(
 			return errorResult("No HISE connection — cannot execute HTTP wizard tasks.");
 		}
 
-		const result = await executor.execute(mergedDef, answers);
+		const result = await executor.execute(mergedDef, answers, session.onWizardProgress);
 		if (result.success) {
 			return textResult(result.message);
 		}

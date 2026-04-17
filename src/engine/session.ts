@@ -51,6 +51,7 @@ export class Session implements SessionContext, CommandSession {
 	writeTextFile?: (path: string, content: string) => Promise<void>;
 	listDirectory?: (dir: string) => Promise<Array<{ name: string; isDir: boolean }>>;
 	resolveHiseProjectFolder?: () => Promise<string | null>;
+	onWizardProgress?: (progress: import("./wizard/types.js").WizardProgress) => void;
 
 	/** Stack of script files currently executing (recursion guard). */
 	readonly scriptStack: string[] = [];

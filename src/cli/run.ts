@@ -75,6 +75,12 @@ export async function executeCliCommand(
 		return readFile(resolved, "utf-8");
 	};
 	wireScriptFileOps(session);
+	// Stream wizard progress / logs to stderr so stdout stays clean for JSON.
+	session.onWizardProgress = (progress) => {
+		if (progress.message && !progress.message.startsWith("__heading__")) {
+			process.stderr.write(`${progress.message}\n`);
+		}
+	};
 	await fetchProjectInfo(session, connection);
 	await session.refreshScriptFileCache();
 
@@ -144,6 +150,12 @@ async function executeRunCommand(
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
+	// Stream wizard progress / logs to stderr so stdout stays clean for JSON.
+	session.onWizardProgress = (progress) => {
+		if (progress.message && !progress.message.startsWith("__heading__")) {
+			process.stderr.write(`${progress.message}\n`);
+		}
+	};
 	await fetchProjectInfo(session, connection);
 	await session.refreshScriptFileCache();
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
@@ -231,6 +243,12 @@ async function runWatchMode(
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
+	// Stream wizard progress / logs to stderr so stdout stays clean for JSON.
+	session.onWizardProgress = (progress) => {
+		if (progress.message && !progress.message.startsWith("__heading__")) {
+			process.stderr.write(`${progress.message}\n`);
+		}
+	};
 	await fetchProjectInfo(session, connection);
 	await session.refreshScriptFileCache();
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);

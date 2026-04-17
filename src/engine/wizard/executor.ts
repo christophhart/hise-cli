@@ -22,14 +22,6 @@ interface AsyncJobResult {
 	readonly async: true;
 }
 
-interface PrepareResult {
-	readonly buildScript: string;
-	readonly buildDirectory: string;
-	readonly projectFile?: string;
-	readonly configuration?: string;
-	readonly [key: string]: unknown;
-}
-
 function isAsyncJobResult(r: unknown): r is AsyncJobResult {
 	return (
 		typeof r === "object" &&
@@ -40,13 +32,8 @@ function isAsyncJobResult(r: unknown): r is AsyncJobResult {
 	);
 }
 
-function isPrepareResult(r: unknown): r is PrepareResult {
-	return (
-		typeof r === "object" &&
-		r !== null &&
-		typeof (r as Record<string, unknown>).buildScript === "string" &&
-		typeof (r as Record<string, unknown>).buildDirectory === "string"
-	);
+function isPrepareResult(r: unknown): r is Record<string, unknown> {
+	return typeof r === "object" && r !== null && !Array.isArray(r);
 }
 
 function delay(ms: number): Promise<void> {
@@ -188,15 +175,20 @@ export class WizardExecutor {
 			}
 
 			if (isEnvelopeResponse(response) && response.success) {
-				// Async job — jobId at top level in new API, or inside result (legacy)
-				const jobId = typeof response.jobId === "string" ? response.jobId
+				// Async job id — top-level in new API (string or number), or legacy inside result
+				const rawJobId = response.jobId !== undefined ? response.jobId
 					: isAsyncJobResult(response.result) ? response.result.jobId
 					: null;
-				if (jobId) {
+				const jobId = rawJobId !== null && rawJobId !== undefined ? String(rawJobId) : null;
+
+				// Poll while server reports the job is still running. If the
+				// job already finished synchronously the initial response
+				// carries the final result + logs — fall through.
+				if (jobId !== null && response.finished !== true) {
 					return this.pollJobStatus(jobId, task, onProgress, signal);
 				}
 
-				// Prepare-only — forward build paths as inter-task data
+				// Prepare-only — forward result fields as inter-task data
 				if (isPrepareResult(response.result)) {
 					const data: Record<string, string> = {};
 					for (const [k, v] of Object.entries(response.result)) {
@@ -249,6 +241,7 @@ export class WizardExecutor {
 		}
 
 		const endpoint = `/api/wizard/status?jobId=${encodeURIComponent(jobId)}`;
+		let seenLogs = 0;
 
 		for (;;) {
 			await delay(500);
@@ -275,6 +268,16 @@ export class WizardExecutor {
 					// Legacy: fields inside result
 					?? (response.result as Record<string, unknown> | null)?.message as string | undefined;
 
+				// Stream newly-appended log lines so the TUI can render them
+				// one-by-one in its dim output channel.
+				const logs = Array.isArray(response.logs) ? response.logs : [];
+				if (logs.length > seenLogs) {
+					for (let i = seenLogs; i < logs.length; i++) {
+						onProgress({ phase: task.id, message: logs[i] });
+					}
+					seenLogs = logs.length;
+				}
+
 				if (progress !== undefined || message) {
 					onProgress({
 						phase: task.id,
@@ -284,11 +287,18 @@ export class WizardExecutor {
 				}
 
 				if (finished ?? (response.result as Record<string, unknown> | null)?.finished) {
+					const data: Record<string, string> = {};
+					if (isPrepareResult(response.result)) {
+						for (const [k, v] of Object.entries(response.result)) {
+							if (typeof v === "string") data[k] = v;
+						}
+					}
 					if (response.success) {
 						return {
 							success: true,
 							message: message ?? `${task.id} completed.`,
-							logs: response.logs.length > 0 ? response.logs : undefined,
+							logs: logs.length > 0 ? logs : undefined,
+							data: Object.keys(data).length > 0 ? data : undefined,
 						};
 					}
 					const errorMsg =
@@ -298,7 +308,7 @@ export class WizardExecutor {
 					return {
 						success: false,
 						message: errorMsg,
-						logs: response.logs.length > 0 ? response.logs : undefined,
+						logs: logs.length > 0 ? logs : undefined,
 					};
 				}
 			} catch (err) {

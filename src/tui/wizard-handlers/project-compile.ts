@@ -102,6 +102,53 @@ export async function runWindowsJuceCompile(
 	return { success: result.exitCode === 0, exitCode: result.exitCode, stderr: result.stderr };
 }
 
+export interface JuceCompileSpec {
+	/** Project Binaries folder — root of the JUCE build output. */
+	readonly binaryFolder: string;
+	/** HISE install path — used to resolve Projucer binary on Windows. */
+	readonly hisePath: string;
+	/** .jucer file path — passed to Projucer --resave. */
+	readonly jucerFile: string;
+	/** Project name — baked into the Windows .sln filename. */
+	readonly projectName: string;
+	/** MSBuild /p:Configuration value. Default "Release". */
+	readonly configuration?: string;
+	/** MSBuild /p:Platform value. Default "x64". */
+	readonly msbuildPlatform?: string;
+}
+
+/**
+ * Dispatches a JUCE-generated project build to the platform-specific compile
+ * primitive. Callers supply the four fields HISE's wizard prepare step returns
+ * (binaryFolder, hisePath, jucerFile, projectName); everything else is derived.
+ */
+export async function runJuceCompile(
+	executor: PhaseExecutor,
+	spec: JuceCompileSpec,
+	emit: CompileEmit,
+): Promise<CompileOutcome> {
+	if (process.platform === "win32") {
+		const slnFile = `${spec.binaryFolder}\\Builds\\VisualStudio2026\\${spec.projectName}.sln`;
+		const projucerPath = `${spec.hisePath}\\JUCE\\Projucer\\Projucer.exe`;
+		return runWindowsJuceCompile(executor, {
+			jucerFile: spec.jucerFile,
+			projucerPath,
+			slnFile,
+			configuration: spec.configuration ?? "Release",
+			msbuildPlatform: spec.msbuildPlatform ?? "x64",
+			hiseInstallPath: spec.hisePath,
+		}, emit);
+	}
+
+	const buildScript = process.platform === "darwin"
+		? `${spec.binaryFolder}/batchCompileOSX`
+		: `${spec.binaryFolder}/batchCompileLinux`;
+	return runUnixJuceCompile(executor, {
+		buildScript,
+		buildDirectory: spec.binaryFolder,
+	}, emit);
+}
+
 /** Compile a JUCE-generated build via its Unix shell script. */
 export async function runUnixJuceCompile(
 	executor: PhaseExecutor,

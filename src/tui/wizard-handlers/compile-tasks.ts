@@ -6,7 +6,7 @@
 import type { InternalTaskHandler } from "../../engine/wizard/handler-registry.js";
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type { WizardExecResult } from "../../engine/wizard/types.js";
-import { runUnixJuceCompile } from "./project-compile.js";
+import { runJuceCompile, runUnixJuceCompile } from "./project-compile.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -32,19 +32,26 @@ function fail(message: string, logs?: string[]): WizardExecResult {
 
 export function createCompileProjectHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (_answers, onProgress, signal, context) => {
-		if (!context?.buildScript || !context?.buildDirectory) {
+		const binaryFolder = context?.binaryFolder;
+		const hisePath = context?.hisePath;
+		const jucerFile = context?.jucerFile;
+		const projectName = context?.projectName;
+		if (!binaryFolder || !hisePath || !jucerFile || !projectName) {
 			return fail("Missing build paths from prepare step — cannot compile.");
 		}
 
 		const executor = withSignal(_executor, signal);
-		const { buildScript, buildDirectory, configuration } = context;
+		const configuration = context?.configuration ?? "Release";
 
-		onProgress({ phase: "compile", percent: 0, message: `Compiling (${configuration ?? "Release"})...` });
+		onProgress({ phase: "compile", percent: 0, message: `Compiling (${configuration})...` });
 
-		// TODO: wire the Windows branch to runWindowsJuceCompile once HISE's
-		// prepare step returns sln/jucer paths. For now the compile wizard
-		// still only covers the Unix flow (same as before extraction).
-		const result = await runUnixJuceCompile(executor, { buildScript, buildDirectory }, (message, transient) => {
+		const result = await runJuceCompile(executor, {
+			binaryFolder,
+			hisePath,
+			jucerFile,
+			projectName,
+			configuration,
+		}, (message, transient) => {
 			onProgress({ phase: "compile", message, transient });
 		});
 

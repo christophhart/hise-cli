@@ -54,6 +54,8 @@ export interface CommandSession {
 	getActiveScriptCallback?(processorId: string): string | null;
 	/** Return collected callback source by callback id. */
 	getCollectedScriptCallbacks?(processorId: string): Record<string, string>;
+	/** Progress callback for wizard `--run` streaming. Set by CLI layer. */
+	onWizardProgress?(progress: import("../wizard/types.js").WizardProgress): void;
 }
 
 export type CommandHandler = (
