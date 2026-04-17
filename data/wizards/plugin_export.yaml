@@ -21,7 +21,7 @@ tabs:
         type: choice
         label: Export Target
         help: Plugin or standalone application
-        defaultValue: "0"
+        defaultValue: Plugin
         items:
           - Plugin
           - Standalone App
@@ -77,7 +77,7 @@ postActions:
     label: Show plugin folder
     help: Open the plugin install folder
 globalDefaults:
-  ExportType: "0"
+  ExportType: Plugin
   projectType: Instrument
   pluginType: VST
   showCompiledFile: "true"
