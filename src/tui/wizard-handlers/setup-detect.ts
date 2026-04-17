@@ -33,6 +33,11 @@ export function createSetupDetectHandler(executor: PhaseExecutor): InternalInitH
 
 		// Compiler detection
 		defaults.compilerVersion = await detectCompiler(executor, platform);
+		defaults.hasVs =
+			platform === "Windows" && defaults.compilerVersion !== "Not detected" ? "1" : "0";
+
+		// Intel IPP detection (Windows only)
+		defaults.hasIpp = await detectIpp(executor, platform) ? "1" : "0";
 
 		// Faust detection
 		defaults.hasFaust = await detectFaust(executor, platform) ? "1" : "0";
@@ -82,6 +87,16 @@ async function detectCompiler(
 		}
 	}
 	return "Not detected";
+}
+
+async function detectIpp(executor: PhaseExecutor, platform: string): Promise<boolean> {
+	if (platform !== "Windows") return false;
+	const result = await executor.spawn(
+		"cmd",
+		["/c", "if exist \"C:\\Program Files (x86)\\Intel\\oneAPI\\ipp\\latest\" echo found"],
+		{},
+	);
+	return result.stdout.includes("found");
 }
 
 async function detectFaust(executor: PhaseExecutor, platform: string): Promise<boolean> {

@@ -53,6 +53,11 @@ tabs:
         label: Include Faust
         help: Install Faust and build HISE with Faust support
         defaultValue: "0"
+      - id: includeIpp
+        type: toggle
+        label: Include Intel IPP
+        help: Install Intel IPP for accelerated DSP (Windows only, ~800 MB)
+        defaultValue: "0"
       - id: targetCommit
         type: text
         label: Target Commit
@@ -69,6 +74,14 @@ tabs:
         type: text
         label: Compiler
         help: Detected compiler name and version
+      - id: hasVs
+        type: toggle
+        label: Visual Studio Installed
+        help: Detected automatically — skips VS installation if found (Windows)
+      - id: hasIpp
+        type: toggle
+        label: Intel IPP Installed
+        help: Detected automatically — skips IPP installation if found (Windows)
       - id: hasFaust
         type: toggle
         label: Faust Installed
@@ -96,6 +109,14 @@ tasks:
     function: setupExtractSdks
     type: internal
     label: Extract SDKs
+  - id: vsInstall
+    function: setupVsInstall
+    type: internal
+    label: Install Visual Studio
+  - id: ippInstall
+    function: setupIppInstall
+    type: internal
+    label: Install Intel IPP
   - id: compile
     function: setupCompile
     type: internal

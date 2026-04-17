@@ -30,6 +30,23 @@ function fail(message: string, logs?: string[]): WizardExecResult {
 	return { success: false, message, logs };
 }
 
+/** Detect noise lines from curl / winget that would otherwise flood the log
+ *  4x/sec during multi-minute downloads. Keeps anything with real text,
+ *  drops progress bars, spinner chars, and pure size/percentage tickers. */
+function isProgressNoise(line: string): boolean {
+	const t = line.trim();
+	if (t === "") return true;
+	// winget spinner: single /|\- char
+	if (/^[/|\\\-]$/.test(t)) return true;
+	// Progress bar: block shading + digits + percent + vertical bars only
+	if (/^[█▒░▓│─\s\d%.]+$/.test(t)) return true;
+	// curl's progress table rows: only digits, dashes, colons, slashes, %, k/M/G/B
+	if (/^[\s\d:.\-%/kMGBbtoalD]+$/.test(t) && !/[a-z]{3,}/i.test(t)) return true;
+	// Pure size readouts like "2.00 MB / 2.83 MB"
+	if (/^[\s\d.]+(MB|KB|GB|B)\s*\/\s*[\d.]+\s*(MB|KB|GB|B)\s*$/i.test(t)) return true;
+	return false;
+}
+
 // ── 1. Git install ───────────────────────────────────────────────────
 
 export function createSetupGitInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
@@ -233,6 +250,100 @@ export function filterXcodeLine(line: string): string | null {
 	return null;
 }
 
+// ── 5b. Visual Studio 2026 check (Windows only) ──────────────────────
+//
+// We intentionally do not script the VS install. The bootstrapper URL
+// for VS 2026 isn't discoverable from a static page, the winget catalog
+// behaviour around "already installed" is unreliable, the download is
+// 8+ GB, and elevation requirements vary. A clear set of manual steps
+// is more honest than a fragile auto-install.
+
+export function createSetupVsInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, _signal) => {
+		const platform = answers.platform ?? "Linux";
+
+		if (platform !== "Windows") {
+			onProgress({ phase: "vs-install", percent: 100, message: "Skipping (not Windows)." });
+			return ok("✓ Visual Studio installation not needed on this platform.");
+		}
+		if (answers.hasVs === "1") {
+			onProgress({ phase: "vs-install", percent: 100, message: "Visual Studio already installed, skipping." });
+			return ok("✓ Visual Studio already installed.");
+		}
+
+		onProgress({ phase: "vs-install", message: "" });
+		onProgress({ phase: "vs-install", message: "Visual Studio 2026 Community is required to compile HISE on Windows." });
+		onProgress({ phase: "vs-install", message: "" });
+		onProgress({ phase: "vs-install", message: "  1. Download from: https://visualstudio.microsoft.com/vs/community/" });
+		onProgress({ phase: "vs-install", message: "  2. In the installer, select the workload:" });
+		onProgress({ phase: "vs-install", message: "       • Desktop development with C++" });
+		onProgress({ phase: "vs-install", message: "  3. Confirm these components are checked under that workload:" });
+		onProgress({ phase: "vs-install", message: "       • MSVC v144 — VS 2026 C++ x64/x86 build tools (latest)" });
+		onProgress({ phase: "vs-install", message: "       • Windows 11 SDK (latest)" });
+		onProgress({ phase: "vs-install", message: "  4. After installation finishes, re-run /setup." });
+		onProgress({ phase: "vs-install", message: "" });
+		return fail("Visual Studio 2026 Community not installed — see instructions above.");
+	};
+}
+
+// ── 5c. Intel IPP install (Windows only) ─────────────────────────────
+
+const IPP_INSTALLER_URL =
+	"https://registrationcenter-download.intel.com/akdlm/IRC_NAS/9c651894-4548-491c-b69f-49e84b530c1d/intel-ipp-2022.3.1.10_offline.exe";
+
+/** Escape a string for a single-quoted PowerShell literal. */
+function psQuote(s: string): string {
+	return `'${s.replace(/'/g, "''")}'`;
+}
+
+export function createSetupIppInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
+		const platform = answers.platform ?? "Linux";
+
+		if (platform !== "Windows" || answers.includeIpp !== "1") {
+			onProgress({ phase: "ipp-install", percent: 100, message: "Skipping Intel IPP." });
+			return ok("✓ Intel IPP installation skipped.");
+		}
+		if (answers.hasIpp === "1") {
+			onProgress({ phase: "ipp-install", percent: 100, message: "Intel IPP already installed, skipping." });
+			return ok("✓ Intel IPP already installed.");
+		}
+
+		onProgress({ phase: "ipp-install", percent: 0, message: "Downloading Intel IPP (~800 MB)..." });
+
+		const tmpDir = process.env.TEMP ?? process.env.TMP ?? "C:\\Windows\\Temp";
+		const installer = `${tmpDir}\\intel-ipp-installer.exe`;
+		const download = await executor.spawn(
+			"curl",
+			["-L", "-o", installer, IPP_INSTALLER_URL],
+			{ onLog: (line) => {
+				if (!isProgressNoise(line)) onProgress({ phase: "ipp-install", message: line });
+			} },
+		);
+		if (download.exitCode !== 0) return fail(`Intel IPP download failed: ${download.stderr}`);
+
+		onProgress({ phase: "ipp-install", percent: 50, message: "Installing Intel IPP (approve the UAC prompt)..." });
+
+		// The IPP installer has requireAdministrator in its manifest —
+		// Start-Process -Verb RunAs triggers UAC so it can elevate.
+		const installerArgs = ["-s", "-a", "--silent", "--eula", "accept"];
+		const psArgList = installerArgs.map(psQuote).join(",");
+		const psCmd = `$p = Start-Process -FilePath ${psQuote(installer)} -ArgumentList @(${psArgList}) -Verb RunAs -Wait -PassThru; exit $p.ExitCode`;
+		const install = await executor.spawn("powershell", [
+			"-NoProfile",
+			"-ExecutionPolicy", "Bypass",
+			"-Command", psCmd,
+		], {
+			onLog: (line) => onProgress({ phase: "ipp-install", message: line }),
+		});
+		if (install.exitCode !== 0) return fail(`Intel IPP installation failed: ${install.stderr || install.stdout}`);
+
+		onProgress({ phase: "ipp-install", percent: 100 });
+		return ok("✓ Intel IPP installed.");
+	};
+}
+
 // ── 6. Compile ───────────────────────────────────────────────────────
 
 export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTaskHandler {
@@ -249,13 +360,16 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 		onProgress({ phase: "compile", percent: 0, message: "Running Projucer resave..." });
 
 		// Projucer resave
-		const jucerFile = `${installPath}/projects/standalone/HISE Standalone.jucer`;
+		let jucerFile: string;
 		let projucerPath: string;
 		if (platform === "macOS") {
+			jucerFile = `${installPath}/projects/standalone/HISE Standalone.jucer`;
 			projucerPath = `${installPath}/JUCE/Projucer/Projucer.app/Contents/MacOS/Projucer`;
 		} else if (platform === "Linux") {
+			jucerFile = `${installPath}/projects/standalone/HISE Standalone.jucer`;
 			projucerPath = `${installPath}/JUCE/Projucer/Projucer`;
 		} else {
+			jucerFile = `${installPath}\\projects\\standalone\\HISE Standalone.jucer`;
 			projucerPath = `${installPath}\\JUCE\\Projucer\\Projucer.exe`;
 		}
 
@@ -288,8 +402,20 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 			});
 			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
 		} else {
-			// Windows — MSBuild
-			return fail("Windows compilation not yet implemented. Use Visual Studio to build manually.");
+			// Windows — MSBuild against VS 2026 Community
+			const msbuild = "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MsBuild.exe";
+			const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\HISE Standalone.sln`;
+			const config = includeFaust ? "Release with Faust" : "Release";
+			const result = await executor.spawn(msbuild, [
+				sln,
+				`/p:Configuration=${config}`,
+				"/p:Platform=x64",
+				"/verbosity:minimal",
+			], {
+				env: { PreferredToolArchitecture: "x64" },
+				onLog: (line) => onProgress({ phase: "compile", message: line }),
+			});
+			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
 		}
 
 		onProgress({ phase: "compile", percent: 100, message: "Compilation complete." });
@@ -339,7 +465,7 @@ function hiseBinPath(installPath: string, platform: string): string {
 	} else if (platform === "Linux") {
 		return `${installPath}/projects/standalone/Builds/LinuxMakefile/build/HISE Standalone`;
 	}
-	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2022\\x64\\Release\\App\\HISE.exe`;
+	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\Release\\App\\HISE.exe`;
 }
 
 // ── 8. Verify ────────────────────────────────────────────────────────

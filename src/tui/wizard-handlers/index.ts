@@ -9,6 +9,8 @@ import {
 	createSetupBuildDepsHandler,
 	createSetupFaustInstallHandler,
 	createSetupExtractSdksHandler,
+	createSetupVsInstallHandler,
+	createSetupIppInstallHandler,
 	createSetupCompileHandler,
 	createSetupAddPathHandler,
 	createSetupVerifyHandler,
@@ -27,12 +29,14 @@ export function registerSetupHandlers(
 	// Init handler — environment detection
 	registry.registerInit("setupDetectEnvironment", createSetupDetectHandler(executor));
 
-	// Task handlers — 9 phases
+	// Task handlers
 	registry.registerTask("setupGitInstall", createSetupGitInstallHandler(executor));
 	registry.registerTask("setupCloneRepo", createSetupCloneRepoHandler(executor));
 	registry.registerTask("setupBuildDeps", createSetupBuildDepsHandler(executor));
 	registry.registerTask("setupFaustInstall", createSetupFaustInstallHandler(executor));
 	registry.registerTask("setupExtractSdks", createSetupExtractSdksHandler(executor));
+	registry.registerTask("setupVsInstall", createSetupVsInstallHandler(executor));
+	registry.registerTask("setupIppInstall", createSetupIppInstallHandler(executor));
 	registry.registerTask("setupCompile", createSetupCompileHandler(executor));
 	registry.registerTask("setupAddPath", createSetupAddPathHandler(executor));
 	registry.registerTask("setupVerify", createSetupVerifyHandler(executor));
