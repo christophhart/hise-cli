@@ -28,10 +28,13 @@ const buildTargets = requestedTarget ? [requestedTarget] : targets;
 
 for (const target of buildTargets) {
 	const ext = target.includes("windows") ? ".exe" : "";
-	const outName = `dist/hise-cli-${target}${ext}`;
+	const outName = requestedTarget
+		? `dist/hise-cli${ext}`
+		: `dist/hise-cli-${target}${ext}`;
 
 	const cmd = [
 		"bun", "build", "--compile",
+		"--minify",
 		"--target", target,
 		"--define", `__APP_VERSION__='"${pkg.version}"'`,
 		"--outfile", outName,
