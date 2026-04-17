@@ -232,6 +232,10 @@ export function handleWizardKey(
 
 		if (!field) return { action: "update", state: s };
 
+		// Disabled fields are read-only: swallow Enter/Space silently
+		// so the user can still navigate past them with arrow keys.
+		if (field.disabled) return { action: "update", state: s };
+
 		// Toggle
 		if (field.type === "toggle") {
 			const val = s.answers[field.id] ?? "";

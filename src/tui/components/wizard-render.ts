@@ -174,9 +174,11 @@ export function renderWizardBlock(
 		const needsValue = field.required && (!value || value.trim().length === 0);
 		const indicator = focused ? c.signal("\u25B8 ") : needsValue ? c.accent("* ") : "  ";
 		const labelPad = " ".repeat(maxLabelLen - field.label.length);
-		const labelText = focused
-			? (isEditing ? c.accentBold(field.label) : c.signalBold(field.label))
-			: c.default(field.label);
+		const labelText = field.disabled
+			? c.muted(field.label)
+			: focused
+				? (isEditing ? c.accentBold(field.label) : c.signalBold(field.label))
+				: c.default(field.label);
 		const prefix = `${pad}${indicator}${labelText}${labelPad}${c.muted(" : ")}`;
 
 		if (isEditing && (field.type === "choice" || field.type === "multiselect")) {
@@ -287,7 +289,7 @@ function renderValue(
 	c: Colors,
 	scheme: ColorScheme,
 ): string {
-	const color = editing ? c.accent : focused ? c.signal : c.default;
+	const color = field.disabled ? c.muted : editing ? c.accent : focused ? c.signal : c.default;
 
 	if (field.type === "toggle") {
 		const checked = value === "true" || value === "1";

@@ -69,26 +69,35 @@ tabs:
       - id: hasGit
         type: toggle
         label: Git Installed
+        disabled: true
         help: Detected automatically — skips git installation if found
       - id: compilerVersion
         type: text
         label: Compiler
+        disabled: true
         help: Detected compiler name and version
       - id: hasVs
         type: toggle
         label: Visual Studio Installed
+        disabled: true
         help: Detected automatically — skips VS installation if found (Windows)
       - id: hasIpp
         type: toggle
         label: Intel IPP Installed
+        disabled: true
         help: Detected automatically — skips IPP installation if found (Windows)
       - id: hasFaust
         type: toggle
         label: Faust Installed
+        disabled: true
         help: Detected automatically — skips Faust installation if found
 
 submitLabel: Starts the HISE build pipeline (may take 30+ minutes)
 tasks:
+  - id: vsInstall
+    function: setupVsInstall
+    type: internal
+    label: Check Visual Studio
   - id: gitInstall
     function: setupGitInstall
     type: internal
@@ -109,10 +118,6 @@ tasks:
     function: setupExtractSdks
     type: internal
     label: Extract SDKs
-  - id: vsInstall
-    function: setupVsInstall
-    type: internal
-    label: Install Visual Studio
   - id: ippInstall
     function: setupIppInstall
     type: internal

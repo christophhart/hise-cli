@@ -16,6 +16,9 @@ export interface WizardField {
 	readonly label: string;
 	/** Whether the field must have a value before submission. */
 	readonly required: boolean;
+	/** Read-only: value is displayed but cannot be edited by the user.
+	 *  Used for detected/computed state that should not be overridden. */
+	readonly disabled?: boolean;
 	/** Markdown help text shown in the help area when focused. */
 	readonly help?: string;
 	/** Default value (from GlobalState or InitValue). */
@@ -155,4 +158,12 @@ export function mergeInitDefaults(
 ): WizardDefinition {
 	if (Object.keys(initDefaults).length === 0) return def;
 	return { ...def, globalDefaults: { ...def.globalDefaults, ...initDefaults } };
+}
+
+/** True if a toggle-style answer is enabled. Accepts both `"true"`/`"false"`
+ *  (emitted by the form when the user flips a toggle) and `"1"`/`"0"`
+ *  (often emitted by init/detection handlers probing the environment).
+ *  Use this instead of raw `answer === "true"` in wizard handlers. */
+export function isOn(value: string | undefined): boolean {
+	return value === "true" || value === "1";
 }

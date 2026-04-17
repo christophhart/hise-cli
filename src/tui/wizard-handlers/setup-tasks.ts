@@ -6,6 +6,7 @@
 import type { InternalTaskHandler } from "../../engine/wizard/handler-registry.js";
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type { WizardExecResult } from "../../engine/wizard/types.js";
+import { isOn } from "../../engine/wizard/types.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -52,7 +53,7 @@ function isProgressNoise(line: string): boolean {
 export function createSetupGitInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
-		if (answers.hasGit === "1") {
+		if (isOn(answers.hasGit)) {
 			onProgress({ phase: "git-install", percent: 100, message: "Git already installed, skipping." });
 			return ok("✓ Git already installed.");
 		}
@@ -169,11 +170,11 @@ export function createSetupBuildDepsHandler(_executor: PhaseExecutor): InternalT
 export function createSetupFaustInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
-		if (answers.includeFaust !== "1") {
+		if (!isOn(answers.includeFaust)) {
 			onProgress({ phase: "faust-install", percent: 100, message: "Faust not requested, skipping." });
 			return ok("✓ Faust installation skipped.");
 		}
-		if (answers.hasFaust === "1") {
+		if (isOn(answers.hasFaust)) {
 			onProgress({ phase: "faust-install", percent: 100, message: "Faust already installed, skipping." });
 			return ok("✓ Faust already installed.");
 		}
@@ -266,7 +267,7 @@ export function createSetupVsInstallHandler(_executor: PhaseExecutor): InternalT
 			onProgress({ phase: "vs-install", percent: 100, message: "Skipping (not Windows)." });
 			return ok("✓ Visual Studio installation not needed on this platform.");
 		}
-		if (answers.hasVs === "1") {
+		if (isOn(answers.hasVs)) {
 			onProgress({ phase: "vs-install", percent: 100, message: "Visual Studio already installed, skipping." });
 			return ok("✓ Visual Studio already installed.");
 		}
@@ -301,11 +302,11 @@ export function createSetupIppInstallHandler(_executor: PhaseExecutor): Internal
 		const executor = withSignal(_executor, signal);
 		const platform = answers.platform ?? "Linux";
 
-		if (platform !== "Windows" || answers.includeIpp !== "1") {
+		if (platform !== "Windows" || !isOn(answers.includeIpp)) {
 			onProgress({ phase: "ipp-install", percent: 100, message: "Skipping Intel IPP." });
 			return ok("✓ Intel IPP installation skipped.");
 		}
-		if (answers.hasIpp === "1") {
+		if (isOn(answers.hasIpp)) {
 			onProgress({ phase: "ipp-install", percent: 100, message: "Intel IPP already installed, skipping." });
 			return ok("✓ Intel IPP already installed.");
 		}
@@ -351,7 +352,7 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
-		const includeFaust = answers.includeFaust === "1";
+		const includeFaust = isOn(answers.includeFaust);
 
 		const buildConfig = platform === "Linux"
 			? (includeFaust ? "ReleaseWithFaust" : "Release")

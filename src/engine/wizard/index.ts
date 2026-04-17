@@ -14,7 +14,7 @@ export type {
 	WizardProgress,
 	WizardExecResult,
 } from "./types.js";
-export { mergeInitDefaults } from "./types.js";
+export { mergeInitDefaults, isOn } from "./types.js";
 
 export { parseWizardJson } from "./parser.js";
 export { wizardToYaml, yamlToWizard } from "./yaml.js";
