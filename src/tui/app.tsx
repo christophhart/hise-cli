@@ -1551,8 +1551,28 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 		const accent = fgHex(scheme.foreground.default);
 		const bold = "\x1b[1m";
 
-		const appendLine = (line: string) => {
+		// Tracks whether the most recently appended output line was emitted
+		// as transient (from a CR-terminated spinner frame or cursor-redraw
+		// sequence). When the next line is also transient, we replace the
+		// previous one in place instead of appending — so installer spinners
+		// render as a single updating line rather than 4x/sec spam.
+		let lastWasTransient = false;
+		let lastTransientHeight = 0;
+
+		const appendLine = (line: string, transient = false) => {
 			const wrapped = wrapAnsi(line, innerW);
+			if (transient && lastWasTransient) {
+				// Replace the previous transient line(s) in place.
+				setOutputBlocks((prev) => {
+					const last = prev[prev.length - 1];
+					if (!last) return [...prev, { lines: wrapped, height: wrapped.length }];
+					const kept = last.lines.slice(0, Math.max(0, last.lines.length - lastTransientHeight));
+					const nextLines = [...kept, ...wrapped];
+					return [...prev.slice(0, -1), { ...last, lines: nextLines, height: nextLines.length }];
+				});
+				lastTransientHeight = wrapped.length;
+				return;
+			}
 			setOutputBlocks((prev) => {
 				const last = prev[prev.length - 1];
 				if (last) {
@@ -1561,6 +1581,8 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				}
 				return [...prev, { lines: wrapped, height: wrapped.length }];
 			});
+			lastWasTransient = transient;
+			lastTransientHeight = transient ? wrapped.length : 0;
 		};
 
 		try {
@@ -1568,12 +1590,21 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				connection: session.connection,
 				handlerRegistry: session.handlerRegistry,
 			});
+			let lastProgressPhase = "";
 			const result = await executor.execute(def, answers, (progress) => {
 				// Update StatusBar progress
 				setWizardProgress({
 					percent: progress.percent ?? 0,
 					message: progress.phase === "Starting" ? def.header : progress.phase,
 				});
+
+				// Phase change clears transient state so a new phase's first
+				// transient line appends instead of overwriting prior content.
+				if (progress.phase !== lastProgressPhase) {
+					lastWasTransient = false;
+					lastTransientHeight = 0;
+					lastProgressPhase = progress.phase;
+				}
 
 				// Check for heading marker from executor
 				if (progress.message?.startsWith("__heading__")) {
@@ -1599,7 +1630,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				} else {
 					line = `${dim}${msg}${RESET}`;
 				}
-				appendLine(line);
+				appendLine(line, progress.transient ?? false);
 			}, controller.signal);
 
 			if (result.success) {

@@ -7,6 +7,7 @@ import type { InternalTaskHandler } from "../../engine/wizard/handler-registry.j
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type { WizardExecResult } from "../../engine/wizard/types.js";
 import { isOn } from "../../engine/wizard/types.js";
+import { runWindowsJuceCompile, runUnixJuceCompile } from "./project-compile.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -29,6 +30,14 @@ function ok(message: string, logs?: string[]): WizardExecResult {
 
 function fail(message: string, logs?: string[]): WizardExecResult {
 	return { success: false, message, logs };
+}
+
+/** True when the current process has administrator rights on Windows.
+ *  `net session` is the cheapest documented way to probe: it succeeds
+ *  only in an elevated token, fails with exitCode 2 otherwise. */
+async function requireWindowsElevation(executor: PhaseExecutor): Promise<boolean> {
+	const r = await executor.spawn("net", ["session"], {});
+	return r.exitCode === 0;
 }
 
 /** Detect noise lines from curl / winget that would otherwise flood the log
@@ -67,7 +76,7 @@ export function createSetupGitInstallHandler(_executor: PhaseExecutor): Internal
 
 		if (platform === "Linux") {
 			const result = await executor.spawn("sudo", ["apt-get", "install", "-y", "git"], {
-				onLog: (line) => onProgress({ phase: "git-install", message: line }),
+				onLog: (line, transient) => onProgress({ phase: "git-install", message: line, transient }),
 			});
 			if (result.exitCode !== 0) return fail(`Git installation failed: ${result.stderr}`);
 			return ok("✓ Git installed.");
@@ -75,9 +84,18 @@ export function createSetupGitInstallHandler(_executor: PhaseExecutor): Internal
 
 		// Windows — winget or direct download
 		const winget = await executor.spawn("winget", ["install", "Git.Git", "--accept-package-agreements", "--accept-source-agreements"], {
-			onLog: (line) => onProgress({ phase: "git-install", message: line }),
+			onLog: (line, transient) => onProgress({ phase: "git-install", message: line, transient }),
 		});
-		if (winget.exitCode === 0) return ok("✓ Git installed via winget.");
+		if (winget.exitCode === 0) {
+			// winget updates the system PATH registry, but the current Node
+			// process keeps its launch-time PATH. Prepend the default install
+			// location so later phases (clone, submodule init) can find git.
+			const gitDirs = ["C:\\Program Files\\Git\\cmd", "C:\\Program Files (x86)\\Git\\cmd"];
+			const existing = process.env.PATH ?? "";
+			const missing = gitDirs.filter((d) => !existing.toLowerCase().includes(d.toLowerCase()));
+			if (missing.length > 0) process.env.PATH = `${missing.join(";")};${existing}`;
+			return ok("✓ Git installed via winget.");
+		}
 		return fail("Git installation failed. Please install Git manually from https://git-scm.com");
 	};
 }
@@ -97,14 +115,14 @@ export function createSetupCloneRepoHandler(_executor: PhaseExecutor): InternalT
 		if (gitCheck.exitCode !== 0) {
 			// Fresh clone
 			const clone = await executor.spawn("git", ["clone", "https://github.com/christophhart/HISE.git", installPath], {
-				onLog: (line) => onProgress({ phase: "clone-repo", message: line }),
+				onLog: (line, transient) => onProgress({ phase: "clone-repo", message: line, transient }),
 			});
 			if (clone.exitCode !== 0) return fail(`Git clone failed: ${clone.stderr}`);
 		} else {
 			// Existing repo — fetch
 			onProgress({ phase: "clone-repo", message: "Repository exists, fetching updates..." });
 			await executor.spawn("git", ["-C", installPath, "fetch", "origin"], {
-				onLog: (line) => onProgress({ phase: "clone-repo", message: line }),
+				onLog: (line, transient) => onProgress({ phase: "clone-repo", message: line, transient }),
 			});
 		}
 
@@ -115,7 +133,7 @@ export function createSetupCloneRepoHandler(_executor: PhaseExecutor): InternalT
 		} else {
 			await executor.spawn("git", ["-C", installPath, "checkout", "develop"], {});
 			await executor.spawn("git", ["-C", installPath, "pull", "origin", "develop"], {
-				onLog: (line) => onProgress({ phase: "clone-repo", message: line }),
+				onLog: (line, transient) => onProgress({ phase: "clone-repo", message: line, transient }),
 			});
 		}
 
@@ -123,7 +141,7 @@ export function createSetupCloneRepoHandler(_executor: PhaseExecutor): InternalT
 
 		// Submodules
 		await executor.spawn("git", ["-C", installPath, "submodule", "update", "--init"], {
-			onLog: (line) => onProgress({ phase: "clone-repo", message: line }),
+			onLog: (line, transient) => onProgress({ phase: "clone-repo", message: line, transient }),
 		});
 
 		// JUCE checkout
@@ -157,7 +175,7 @@ export function createSetupBuildDepsHandler(_executor: PhaseExecutor): InternalT
 		];
 
 		const result = await executor.spawn("sudo", ["apt-get", "install", "-y", ...packages], {
-			onLog: (line) => onProgress({ phase: "build-deps", message: line }),
+			onLog: (line, transient) => onProgress({ phase: "build-deps", message: line, transient }),
 		});
 
 		if (result.exitCode !== 0) return fail(`Dependency installation failed: ${result.stderr}`);
@@ -184,7 +202,7 @@ export function createSetupFaustInstallHandler(_executor: PhaseExecutor): Intern
 
 		if (platform === "Linux") {
 			const result = await executor.spawn("sudo", ["apt-get", "install", "-y", "faust", "libfaust-dev"], {
-				onLog: (line) => onProgress({ phase: "faust-install", message: line }),
+				onLog: (line, transient) => onProgress({ phase: "faust-install", message: line, transient }),
 			});
 			if (result.exitCode !== 0) {
 				return fail("Faust installation failed. Install manually from https://faust.grame.fr");
@@ -192,9 +210,50 @@ export function createSetupFaustInstallHandler(_executor: PhaseExecutor): Intern
 			return ok("✓ Faust installed.");
 		}
 
-		// macOS / Windows — guide user to manual install for now
+		if (platform === "Windows") {
+			if (!(await requireWindowsElevation(executor))) {
+				return fail(
+					"Faust install needs admin privileges. " +
+					"Restart the terminal as administrator, then re-run: hise setup.",
+				);
+			}
+
+			const tmpDir = process.env.TEMP ?? "C:\\Windows\\Temp";
+			const installer = `${tmpDir}\\faust-installer.exe`;
+			// Pinned version — bump manually when GRAME publishes a newer one.
+			const FAUST_VERSION = "2.81.2";
+			const url = `https://github.com/grame-cncm/faust/releases/download/${FAUST_VERSION}/Faust-${FAUST_VERSION}-win64.exe`;
+
+			onProgress({ phase: "faust-install", percent: 0, message: `Downloading Faust ${FAUST_VERSION}...` });
+			const dl = await executor.spawn("curl", ["-L", "-o", installer, url], {
+				onLog: (line, transient) => {
+					if (!isProgressNoise(line)) onProgress({ phase: "faust-install", message: line, transient });
+				},
+			});
+			if (dl.exitCode !== 0) return fail(`Faust download failed: ${dl.stderr}`);
+
+			onProgress({ phase: "faust-install", percent: 50, message: "Installing Faust..." });
+			// NSIS installer. /S = silent, /D=<path> = install dir — MUST be
+			// the last arg, unquoted, per NSIS convention.
+			const inst = await executor.spawn(installer, ["/S", "/D=C:\\Program Files\\Faust"], {
+				onLog: (line, transient) => onProgress({ phase: "faust-install", message: line, transient }),
+			});
+			if (inst.exitCode !== 0) return fail(`Faust install failed: ${inst.stderr}`);
+
+			// Inject bin dir into this Node process's PATH so any downstream
+			// phase that calls `faust` resolves it without a terminal restart.
+			const faustBin = "C:\\Program Files\\Faust\\bin";
+			const existing = process.env.PATH ?? "";
+			if (!existing.toLowerCase().includes(faustBin.toLowerCase())) {
+				process.env.PATH = `${existing.replace(/;$/, "")};${faustBin}`;
+			}
+			onProgress({ phase: "faust-install", percent: 100 });
+			return ok("✓ Faust installed.");
+		}
+
+		// macOS — no reliable silent installer; keep manual.
 		return fail(
-			`Automatic Faust installation is not yet supported on ${platform}. ` +
+			`Automatic Faust installation is not supported on ${platform}. ` +
 			"Please install from https://faust.grame.fr/downloads/ and re-run the wizard.",
 		);
 	};
@@ -251,16 +310,65 @@ export function filterXcodeLine(line: string): string | null {
 	return null;
 }
 
-// ── 5b. Visual Studio 2026 check (Windows only) ──────────────────────
+// ── MSBuild / cl.exe output filter ───────────────────────────────────
 //
-// We intentionally do not script the VS install. The bootstrapper URL
-// for VS 2026 isn't discoverable from a static page, the winget catalog
-// behaviour around "already installed" is unreliable, the download is
-// 8+ GB, and elevation requirements vary. A clear set of manual steps
-// is more honest than a fragile auto-install.
+// Collapses the verbose MSBuild diagnostic format:
+//   <abs_path>(line,col): warning C1234: "message" [<project.vcxproj>]
+// into a compact two-line form:
+//   ⚠ warning C1234: "message"
+//      <rel_path> (line,col)
+// Errors get a ✗ prefix. installPath (when provided) is stripped from
+// the absolute path so the rendered location is relative to the HISE
+// repo root. Localised compiler chatter lines like "(Quelldatei ... wird
+// kompiliert)" and the English "(Compiling source file ...)" are dropped.
+// Every other line is returned unchanged so build summary / progress
+// messages still render (dimmed via the default path in app.tsx).
+
+const MSBUILD_DIAG_RE = /^(.+?)\((\d+)(?:,(\d+))?\):\s+(warning|error)\s+([A-Z]+\d+):\s+(.+?)(?:\s*\[[^\]]+\])?\s*$/;
+
+export function filterMsbuildLine(line: string, installPath?: string): string | null {
+	// Drop localised "source file being compiled" follow-ups (German + English).
+	if (/^\s*\(Quelldatei\s/.test(line)) return null;
+	if (/^\s*\(Compiling source file/i.test(line)) return null;
+
+	const m = line.match(MSBUILD_DIAG_RE);
+	if (!m) return line;
+
+	const absPath = m[1]!;
+	const ln = m[2]!;
+	const col = m[3] ?? "";
+	const severity = m[4]!;
+	const code = m[5]!;
+	const msg = m[6]!;
+
+	let rel = absPath;
+	if (installPath) {
+		const prefix = installPath.toLowerCase().replace(/[\\\/]+$/, "");
+		if (absPath.toLowerCase().startsWith(prefix)) {
+			rel = absPath.slice(prefix.length).replace(/^[\\\/]+/, "");
+		}
+	}
+	rel = rel.replace(/\\/g, "/");
+
+	const marker = severity === "error" ? "✗" : "⚠";
+	const loc = col ? `${rel} (${ln},${col})` : `${rel} (${ln})`;
+	return `${marker} ${severity} ${code}: ${msg}\n   ${loc}`;
+}
+
+// ── 5b. Visual Studio Build Tools install (Windows only) ────────────
+//
+// Downloads the official `vs_BuildTools.exe` bootstrapper and runs the
+// unattended install with the minimum component set required to build
+// HISE: MSVC v14x x64/x86 compiler, Windows 11 SDK, and the English
+// language pack so cl.exe emits English diagnostics regardless of the
+// system locale. The bootstrapper is stable across VS major versions
+// via aka.ms/vs/stable/vs_BuildTools.exe.
+
+const VS_BUILD_TOOLS_URL = "https://aka.ms/vs/stable/vs_BuildTools.exe";
 
 export function createSetupVsInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
-	return async (answers, onProgress, _signal) => {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
 		const platform = answers.platform ?? "Linux";
 
 		if (platform !== "Windows") {
@@ -272,18 +380,40 @@ export function createSetupVsInstallHandler(_executor: PhaseExecutor): InternalT
 			return ok("✓ Visual Studio already installed.");
 		}
 
-		onProgress({ phase: "vs-install", message: "" });
-		onProgress({ phase: "vs-install", message: "Visual Studio 2026 Community is required to compile HISE on Windows." });
-		onProgress({ phase: "vs-install", message: "" });
-		onProgress({ phase: "vs-install", message: "  1. Download from: https://visualstudio.microsoft.com/vs/community/" });
-		onProgress({ phase: "vs-install", message: "  2. In the installer, select the workload:" });
-		onProgress({ phase: "vs-install", message: "       • Desktop development with C++" });
-		onProgress({ phase: "vs-install", message: "  3. Confirm these components are checked under that workload:" });
-		onProgress({ phase: "vs-install", message: "       • MSVC v144 — VS 2026 C++ x64/x86 build tools (latest)" });
-		onProgress({ phase: "vs-install", message: "       • Windows 11 SDK (latest)" });
-		onProgress({ phase: "vs-install", message: "  4. After installation finishes, re-run /setup." });
-		onProgress({ phase: "vs-install", message: "" });
-		return fail("Visual Studio 2026 Community not installed — see instructions above.");
+		if (!(await requireWindowsElevation(executor))) {
+			return fail(
+				"Visual Studio Build Tools install needs admin privileges. " +
+				"Close the wizard, restart the terminal as administrator, then re-run: hise setup.",
+			);
+		}
+
+		const tmpDir = process.env.TEMP ?? "C:\\Windows\\Temp";
+		const installer = `${tmpDir}\\vs_BuildTools.exe`;
+
+		onProgress({ phase: "vs-install", percent: 0, message: "Downloading VS Build Tools bootstrapper..." });
+		const download = await executor.spawn("curl", ["-L", "-o", installer, VS_BUILD_TOOLS_URL], {
+			onLog: (line, transient) => {
+				if (!isProgressNoise(line)) onProgress({ phase: "vs-install", message: line, transient });
+			},
+		});
+		if (download.exitCode !== 0) return fail(`VS Build Tools download failed: ${download.stderr}`);
+
+		onProgress({ phase: "vs-install", percent: 40, message: "Installing VS Build Tools (this can take 5–10 minutes)..." });
+		const install = await executor.spawn(installer, [
+			"--passive", "--wait", "--norestart", "--nocache",
+			"--add", "Microsoft.VisualStudio.Workload.VCTools",
+			"--add", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+			"--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100",
+			"--addProductLang", "en-US",
+		], {
+			onLog: (line, transient) => onProgress({ phase: "vs-install", message: line, transient }),
+		});
+		// 3010 = installed OK, reboot requested (suppressed via --norestart).
+		if (install.exitCode !== 0 && install.exitCode !== 3010) {
+			return fail(`VS Build Tools install failed (exit ${install.exitCode}): ${install.stderr || install.stdout}`);
+		}
+		onProgress({ phase: "vs-install", percent: 100 });
+		return ok("✓ Visual Studio Build Tools installed.");
 	};
 }
 
@@ -318,8 +448,8 @@ export function createSetupIppInstallHandler(_executor: PhaseExecutor): Internal
 		const download = await executor.spawn(
 			"curl",
 			["-L", "-o", installer, IPP_INSTALLER_URL],
-			{ onLog: (line) => {
-				if (!isProgressNoise(line)) onProgress({ phase: "ipp-install", message: line });
+			{ onLog: (line, transient) => {
+				if (!isProgressNoise(line)) onProgress({ phase: "ipp-install", message: line, transient });
 			} },
 		);
 		if (download.exitCode !== 0) return fail(`Intel IPP download failed: ${download.stderr}`);
@@ -336,7 +466,7 @@ export function createSetupIppInstallHandler(_executor: PhaseExecutor): Internal
 			"-ExecutionPolicy", "Bypass",
 			"-Command", psCmd,
 		], {
-			onLog: (line) => onProgress({ phase: "ipp-install", message: line }),
+			onLog: (line, transient) => onProgress({ phase: "ipp-install", message: line, transient }),
 		});
 		if (install.exitCode !== 0) return fail(`Intel IPP installation failed: ${install.stderr || install.stdout}`);
 
@@ -375,7 +505,7 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 		}
 
 		const resave = await executor.spawn(projucerPath, ["--resave", jucerFile], {
-			onLog: (line) => onProgress({ phase: "compile", message: line }),
+			onLog: (line, transient) => onProgress({ phase: "compile", message: line, transient }),
 		});
 		if (resave.exitCode !== 0) return fail(`Projucer resave failed: ${resave.stderr}`);
 
@@ -389,9 +519,9 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 				"-configuration", buildConfig,
 				"-jobs", "8",
 			], {
-				onLog: (line) => {
+				onLog: (line, transient) => {
 					const filtered = filterXcodeLine(line);
-					if (filtered) onProgress({ phase: "compile", message: filtered });
+					if (filtered) onProgress({ phase: "compile", message: filtered, transient });
 				},
 			});
 			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
@@ -399,12 +529,14 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 			const makeDir = `${installPath}/projects/standalone/Builds/LinuxMakefile`;
 			const result = await executor.spawn("make", [`CONFIG=${buildConfig}`, "AR=gcc-ar", "-j8"], {
 				cwd: makeDir,
-				onLog: (line) => onProgress({ phase: "compile", message: line }),
+				onLog: (line, transient) => onProgress({ phase: "compile", message: line, transient }),
 			});
 			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
 		} else {
-			// Windows — MSBuild against VS 2026 Community
-			const msbuild = "C:\\Program Files\\Microsoft Visual Studio\\18\\Community\\MSBuild\\Current\\Bin\\MsBuild.exe";
+			const msbuild = await resolveMsbuildPath(executor);
+			if (!msbuild) {
+				return fail("Could not locate a Visual Studio installation with MSBuild. Re-run the setup wizard.");
+			}
 			const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\HISE Standalone.sln`;
 			const config = includeFaust ? "Release with Faust" : "Release";
 			const result = await executor.spawn(msbuild, [
@@ -413,8 +545,18 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 				"/p:Platform=x64",
 				"/verbosity:minimal",
 			], {
-				env: { PreferredToolArchitecture: "x64" },
-				onLog: (line) => onProgress({ phase: "compile", message: line }),
+				// VSLANG=1033 (en-US LCID) forces MSBuild / cl.exe / link.exe
+				// to emit English diagnostics regardless of the OS UI locale,
+				// so filterMsbuildLine's regex only needs to parse one language.
+				env: {
+					PreferredToolArchitecture: "x64",
+					VSLANG: "1033",
+					VSLANGCODE: "en-US",
+				},
+				onLog: (line, transient) => {
+					const filtered = filterMsbuildLine(line, installPath);
+					if (filtered !== null) onProgress({ phase: "compile", message: filtered, transient });
+				},
 			});
 			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
 		}
@@ -431,18 +573,42 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
+		const includeFaust = isOn(answers.includeFaust);
 
 		onProgress({ phase: "add-path", percent: 0, message: "Adding HISE to PATH..." });
+
+		if (platform === "Windows") {
+			// HISE.exe lives in the App\ subfolder of the build-config output
+			// dir. Register that dir on the per-user PATH via PowerShell so no
+			// elevation is needed and the change survives the session.
+			const config = includeFaust ? "Release with Faust" : "Release";
+			const binDir = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App`;
+			const psCmd =
+				`$cur = [Environment]::GetEnvironmentVariable('Path','User'); ` +
+				`if ($cur -notlike '*${binDir.replace(/'/g, "''")}*') { ` +
+				`  [Environment]::SetEnvironmentVariable('Path', ($cur.TrimEnd(';') + ';${binDir.replace(/'/g, "''")}'), 'User') ` +
+				`}`;
+			const result = await executor.spawn("powershell", [
+				"-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd,
+			], {});
+			if (result.exitCode !== 0) return fail(`Failed to update user PATH: ${result.stderr}`);
+			// Also update this Node process's PATH so subsequent phases
+			// (verify, test) can invoke HISE by name without waiting for
+			// a terminal restart. The registry update above covers new
+			// shells; this in-memory update covers the running wizard.
+			const existing = process.env.PATH ?? "";
+			if (!existing.toLowerCase().includes(binDir.toLowerCase())) {
+				process.env.PATH = `${existing.replace(/;$/, "")};${binDir}`;
+			}
+			onProgress({ phase: "add-path", percent: 100 });
+			return ok(`✓ Added ${binDir} to your user PATH.`);
+		}
 
 		let binPath: string;
 		if (platform === "macOS") {
 			binPath = `${installPath}/projects/standalone/Builds/MacOSX/build/Release`;
-		} else if (platform === "Linux") {
-			binPath = `${installPath}/projects/standalone/Builds/LinuxMakefile/build`;
 		} else {
-			// Windows handled via environment variable
-			onProgress({ phase: "add-path", percent: 100, message: "PATH update skipped (manual on Windows)." });
-			return ok("✓ Add the HISE build directory to your PATH manually.");
+			binPath = `${installPath}/projects/standalone/Builds/LinuxMakefile/build`;
 		}
 
 		// Detect shell config
@@ -460,13 +626,38 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 
 // ── HISE binary path helper ───────────────────────────────────────────
 
-function hiseBinPath(installPath: string, platform: string): string {
+function hiseBinPath(installPath: string, platform: string, includeFaust = false): string {
 	if (platform === "macOS") {
 		return `${installPath}/projects/standalone/Builds/MacOSX/build/Release/HISE.app/Contents/MacOS/HISE`;
 	} else if (platform === "Linux") {
 		return `${installPath}/projects/standalone/Builds/LinuxMakefile/build/HISE Standalone`;
 	}
-	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\Release\\App\\HISE.exe`;
+	// MSBuild config name becomes the output subfolder name, so the
+	// Faust-enabled build lives under "Release with Faust\App\HISE.exe".
+	const config = includeFaust ? "Release with Faust" : "Release";
+	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App\\HISE.exe`;
+}
+
+/** Bare binary name used when invoking HISE via PATH lookup. */
+function hiseBinaryName(platform: string): string {
+	if (platform === "Windows") return "HISE.exe";
+	if (platform === "macOS") return "HISE";
+	return "HISE Standalone";
+}
+
+/** Resolve the MSBuild.exe path via vswhere so BuildTools / Community /
+ *  Pro / Enterprise installs all work. Returns null if not found. */
+export async function resolveMsbuildPath(executor: PhaseExecutor): Promise<string | null> {
+	const vswhere = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe";
+	const vs = await executor.spawn(vswhere, [
+		"-latest",
+		"-products", "*",
+		"-requires", "Microsoft.Component.MSBuild",
+		"-property", "installationPath",
+	], {});
+	const vsPath = vs.stdout.trim();
+	if (vs.exitCode !== 0 || !vsPath) return null;
+	return `${vsPath}\\MSBuild\\Current\\Bin\\MSBuild.exe`;
 }
 
 // ── 8. Verify ────────────────────────────────────────────────────────
@@ -476,19 +667,24 @@ export function createSetupVerifyHandler(_executor: PhaseExecutor): InternalTask
 		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
+		const includeFaust = isOn(answers.includeFaust);
 
-		onProgress({ phase: "verify", percent: 0, message: "Verifying HISE binary..." });
+		onProgress({ phase: "verify", percent: 0, message: "Verifying HISE binary on PATH..." });
 
-		const binPath = hiseBinPath(installPath, platform);
-
-		const check = await executor.spawn("ls", ["-la", binPath], {});
-		if (check.exitCode !== 0) {
-			return fail(`HISE binary not found at ${binPath}`);
-		}
-
-		const flags = await executor.spawn(binPath, ["get_build_flags"], {
-			onLog: (line) => onProgress({ phase: "verify", message: line }),
+		// Invoke by bare binary name — this verifies that the add-path phase
+		// actually made HISE resolvable via PATH. If it ENOENTs, PATH is
+		// broken. Hint the user with the expected install location.
+		const binaryName = hiseBinaryName(platform);
+		const flags = await executor.spawn(binaryName, ["get_build_flags"], {
+			onLog: (line, transient) => onProgress({ phase: "verify", message: line, transient }),
 		});
+		if (flags.exitCode !== 0) {
+			const expected = hiseBinPath(installPath, platform, includeFaust);
+			return fail(
+				`HISE not found on PATH (expected '${binaryName}'). ` +
+				`Binary should be at: ${expected}`,
+			);
+		}
 		const logs = flags.stdout.trim() ? [flags.stdout.trim()] : undefined;
 
 		onProgress({ phase: "verify", percent: 100, message: "HISE verified successfully." });
@@ -504,52 +700,54 @@ export function createSetupTestHandler(_executor: PhaseExecutor): InternalTaskHa
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
 		const arch = answers.architecture ?? "x64";
-		const binPath = hiseBinPath(installPath, platform);
+		// Invoke HISE by bare name so it resolves via PATH (set by the
+		// add-path phase) rather than tying the test flow to a file layout.
+		const hise = hiseBinaryName(platform);
 		const demoProject = `${installPath}/extras/demo_project`;
 
 		onProgress({ phase: "test", percent: 0, message: "Setting project folder..." });
 
-		const setFolder = await executor.spawn(binPath, [
+		const setFolder = await executor.spawn(hise, [
 			"set_project_folder", `-p:${demoProject}`,
 		], {
-			onLog: (line) => onProgress({ phase: "test", message: line }),
+			onLog: (line, transient) => onProgress({ phase: "test", message: line, transient }),
 		});
 		if (setFolder.exitCode !== 0) return fail(`set_project_folder failed: ${setFolder.stderr}`);
 
 		onProgress({ phase: "test", percent: 20, message: "Exporting demo project..." });
 
-		const exportCi = await executor.spawn(binPath, [
+		const exportCi = await executor.spawn(hise, [
 			"export_ci", "XmlPresetBackups/Demo.xml",
 			"-t:standalone", `-a:${arch}`, "-nolto",
 		], {
 			cwd: demoProject,
-			onLog: (line) => onProgress({ phase: "test", message: line }),
+			onLog: (line, transient) => onProgress({ phase: "test", message: line, transient }),
 		});
 		if (exportCi.exitCode !== 0) return fail(`export_ci failed: ${exportCi.stderr}`);
 
 		onProgress({ phase: "test", percent: 50, message: "Compiling demo project..." });
 
-		let batchScript: string;
-		if (platform === "macOS") {
-			batchScript = `${demoProject}/Binaries/batchCompileOSX`;
-		} else if (platform === "Linux") {
-			batchScript = `${demoProject}/Binaries/batchCompileLinux`;
-		} else {
-			batchScript = `${demoProject}\\Binaries\\batchCompile.bat`;
-		}
+		const emit = (message: string, transient?: boolean) =>
+			onProgress({ phase: "test", message, transient });
 
-		// Strip the xcbeautify pipe from the batch script so we get raw
-		// xcodebuild output through our own filterXcodeLine instead
-		const scriptContent = await executor.spawn("cat", [batchScript], {});
-		const patchedScript = scriptContent.stdout.replace(/\s*\|\s*"[^"]*xcbeautify"/, "");
-		const compile = await executor.spawn("bash", ["-c", patchedScript], {
-			cwd: `${demoProject}/Binaries`,
-			onLog: (line) => {
-				const filtered = filterXcodeLine(line);
-				if (filtered) onProgress({ phase: "test", message: filtered });
-			},
-		});
-		if (compile.exitCode !== 0) return fail(`Demo project compilation failed: ${compile.stderr}`);
+		const compile = platform === "Windows"
+			? await runWindowsJuceCompile(executor, {
+				jucerFile: `${demoProject}\\Binaries\\AutogeneratedProject.jucer`,
+				projucerPath: `${installPath}\\JUCE\\Projucer\\Projucer.exe`,
+				// Project name is baked into the sln filename — "Demo
+				// Project" for the bundled demo.
+				slnFile: `${demoProject}\\Binaries\\Builds\\VisualStudio2026\\Demo Project.sln`,
+				configuration: "Release",
+				hiseInstallPath: installPath,
+			}, emit)
+			: await runUnixJuceCompile(executor, {
+				buildScript: platform === "macOS"
+					? `${demoProject}/Binaries/batchCompileOSX`
+					: `${demoProject}/Binaries/batchCompileLinux`,
+				buildDirectory: `${demoProject}/Binaries`,
+			}, emit);
+
+		if (!compile.success) return fail(`Demo project compilation failed: ${compile.stderr}`);
 
 		onProgress({ phase: "test", percent: 100 });
 		return ok("✓ Demo project exported and compiled successfully.");

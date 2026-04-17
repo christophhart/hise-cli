@@ -139,6 +139,10 @@ export interface WizardProgress {
 	readonly phase: string;
 	readonly percent?: number;
 	readonly message?: string;
+	// When true, the message is an in-place line update (e.g. from a
+	// spinner using \r). Renderers may replace the previously rendered
+	// transient line instead of appending a new one.
+	readonly transient?: boolean;
 }
 
 /** Result returned after wizard execution completes. */

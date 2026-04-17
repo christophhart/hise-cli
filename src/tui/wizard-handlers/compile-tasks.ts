@@ -4,9 +4,9 @@
 // via the `context` parameter and run the system compiler locally.
 
 import type { InternalTaskHandler } from "../../engine/wizard/handler-registry.js";
-import type { PhaseExecutor, SpawnOptions } from "../../engine/wizard/phase-executor.js";
+import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type { WizardExecResult } from "../../engine/wizard/types.js";
-import { filterXcodeLine } from "./setup-tasks.js";
+import { runUnixJuceCompile } from "./project-compile.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -41,24 +41,14 @@ export function createCompileProjectHandler(_executor: PhaseExecutor): InternalT
 
 		onProgress({ phase: "compile", percent: 0, message: `Compiling (${configuration ?? "Release"})...` });
 
-		// Read the build script content
-		const scriptContent = await executor.spawn("cat", [buildScript], {});
-		if (scriptContent.exitCode !== 0) {
-			return fail(`Cannot read build script: ${buildScript}`);
-		}
-
-		// Strip xcbeautify pipe so we get raw compiler output
-		const patchedScript = scriptContent.stdout.replace(/\s*\|\s*"[^"]*xcbeautify"/, "");
-
-		const result = await executor.spawn("bash", ["-c", patchedScript], {
-			cwd: buildDirectory,
-			onLog: (line) => {
-				const filtered = filterXcodeLine(line);
-				if (filtered) onProgress({ phase: "compile", message: filtered });
-			},
+		// TODO: wire the Windows branch to runWindowsJuceCompile once HISE's
+		// prepare step returns sln/jucer paths. For now the compile wizard
+		// still only covers the Unix flow (same as before extraction).
+		const result = await runUnixJuceCompile(executor, { buildScript, buildDirectory }, (message, transient) => {
+			onProgress({ phase: "compile", message, transient });
 		});
 
-		if (result.exitCode !== 0) {
+		if (!result.success) {
 			return fail(`Compilation failed (exit code ${result.exitCode}).`);
 		}
 
@@ -80,22 +70,11 @@ export function createCompileNetworksHandler(_executor: PhaseExecutor): Internal
 
 		onProgress({ phase: "compile-networks", percent: 0, message: `Compiling DLL (${configuration ?? "Release"})...` });
 
-		const scriptContent = await executor.spawn("cat", [buildScript], {});
-		if (scriptContent.exitCode !== 0) {
-			return fail(`Cannot read build script: ${buildScript}`);
-		}
-
-		const patchedScript = scriptContent.stdout.replace(/\s*\|\s*"[^"]*xcbeautify"/, "");
-
-		const result = await executor.spawn("bash", ["-c", patchedScript], {
-			cwd: buildDirectory,
-			onLog: (line) => {
-				const filtered = filterXcodeLine(line);
-				if (filtered) onProgress({ phase: "compile-networks", message: filtered });
-			},
+		const result = await runUnixJuceCompile(executor, { buildScript, buildDirectory }, (message, transient) => {
+			onProgress({ phase: "compile-networks", message, transient });
 		});
 
-		if (result.exitCode !== 0) {
+		if (!result.success) {
 			return fail(`Network DLL compilation failed (exit code ${result.exitCode}).`);
 		}
 

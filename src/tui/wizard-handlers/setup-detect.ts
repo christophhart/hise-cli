@@ -27,9 +27,10 @@ export function createSetupDetectHandler(executor: PhaseExecutor): InternalInitH
 		// Architecture
 		defaults.architecture = process.arch === "arm64" ? "arm64" : "x64";
 
-		// Git detection
-		const gitResult = await executor.spawn("git", ["--version"], {});
-		defaults.hasGit = gitResult.exitCode === 0 ? "1" : "0";
+		// Git detection — try PATH first, then known install locations
+		// (Windows installer updates PATH only for new shells, so fresh
+		// installs won't resolve via `git` on an already-running process).
+		defaults.hasGit = await detectGit(executor, platform) ? "1" : "0";
 
 		// Compiler detection
 		defaults.compilerVersion = await detectCompiler(executor, platform);
@@ -76,10 +77,17 @@ async function detectCompiler(
 			return (gcc.stdout.split("\n")[0] ?? "").trim();
 		}
 	} else {
-		// Windows — try vswhere
+		// Windows — try vswhere. Use -products * to include Build Tools
+		// (default product list excludes them) and require the MSVC C++
+		// compiler component so "MSBuild-only" installs don't false-positive.
 		const vswhere = await executor.spawn(
 			"C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe",
-			["-latest", "-property", "displayName"],
+			[
+				"-latest",
+				"-products", "*",
+				"-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+				"-property", "displayName",
+			],
 			{},
 		);
 		if (vswhere.exitCode === 0 && vswhere.stdout.trim()) {
@@ -87,6 +95,34 @@ async function detectCompiler(
 		}
 	}
 	return "Not detected";
+}
+
+async function detectGit(executor: PhaseExecutor, platform: string): Promise<boolean> {
+	const onPath = await executor.spawn("git", ["--version"], {});
+	if (onPath.exitCode === 0) return true;
+	if (platform !== "Windows") return false;
+	// Windows fallback: check known install locations (winget/Git for Windows).
+	// If found, inject the dir into process.env.PATH so subsequent spawns
+	// (clone, submodule update) can resolve plain `git` — the terminal that
+	// started the wizard inherited its PATH before git was installed, so a
+	// fresh hise-cli launch from that same terminal won't see the system
+	// PATH update winget wrote to the registry.
+	const candidates = [
+		"C:\\Program Files\\Git\\cmd",
+		"C:\\Program Files (x86)\\Git\\cmd",
+	];
+	for (const dir of candidates) {
+		const exe = `${dir}\\git.exe`;
+		const check = await executor.spawn("cmd", ["/c", `if exist "${exe}" echo found`], {});
+		if (check.stdout.includes("found")) {
+			const existing = process.env.PATH ?? "";
+			if (!existing.toLowerCase().includes(dir.toLowerCase())) {
+				process.env.PATH = `${dir};${existing}`;
+			}
+			return true;
+		}
+	}
+	return false;
 }
 
 async function detectIpp(executor: PhaseExecutor, platform: string): Promise<boolean> {

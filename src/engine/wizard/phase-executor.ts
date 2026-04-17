@@ -14,7 +14,11 @@ export interface SpawnResult {
 export interface SpawnOptions {
 	readonly cwd?: string;
 	readonly env?: Record<string, string>;
-	readonly onLog?: (line: string) => void;
+	// `transient` is true when the line was emitted because of a bare CR (or
+	// a cursor/erase CSI sequence) — i.e. the producing program intended to
+	// redraw the current line in place. Consumers may render transient
+	// lines as a single self-updating slot instead of appending.
+	readonly onLog?: (line: string, transient?: boolean) => void;
 	readonly signal?: AbortSignal;
 }
 
