@@ -16,3 +16,5 @@ prerender-debug.log
 # Only .tape (source) and .cast.gz (compressed) are committed.
 screencasts/*.cast
 screencasts/index.html
+/examples/hise_project/Presets
+/examples/hise_project/expansion_info.xml

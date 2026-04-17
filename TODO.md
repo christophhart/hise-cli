@@ -35,17 +35,20 @@
 
 ## Script compiler
 
-- a /callback command in the /script mode that does not call the methods but collect lines & merges to callbacks then sends it to the /set_script (or whatever) endpoint and
+[X] a /callback command in the /script mode that does not call the methods but collect lines & merges to callbacks then sends it to the /set_script (or whatever) endpoint and
 
-```
-/script
-/callback Interface.onInit <= starts parsing onInit
-Content.makeFrontInterface(600, 600);
-/callback Interface.onNoteOn <= starts parsing onNoteOn
-function onNoteOn()
-{
-    Console.print(Message.getNoteNumber());
-}
-/compile <= collects the callbacks, sends & recompiles
-/exit
-````
+## A HISE control mode
+
+mode colour: SIGNAL_COLOUR
+
+[ ] Checks "where HISE / where HISE Debug.exe", then calls "HISE.exe start_server"
+/hise launch [Debug]
+
+[ ] Closes HISE (api/shutdown)
+/hise shutdown
+
+[ ] Create a screenshot of the interface /api/screenshot
+/hise screenshot Images/test1.png
+
+[ ] Start a profile session /api/profile
+/hise profile 

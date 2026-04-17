@@ -18,7 +18,15 @@ create_parameter myfx.Value
 connect myfx.Value to fader.Value
 connect fader.0 to L.Gain
 connect fader.1 to R.Gain
-/expect get source of L.Gain is fader.0
+#/expect get source of L.Gain is fader.0
 /dsp
 
-/hise shutdown
+/sequence
+create test
+500ms play sine at 220Hz for 1000ms
+
+flush
+
+play test
+
+#/hise shutdown

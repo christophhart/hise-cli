@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<Network ID="TestSave" Version="0.0.0">
+  <Node FactoryPath="container.chain" ID="TestSave" Bypassed="0" Name="TestSave">
+    <Nodes>
+      <Node ID="Osc1" FactoryPath="core.oscillator" Bypassed="0" Name="Osc1">
+        <ComplexData>
+          <DisplayBuffers>
+            <DisplayBuffer Index="-1"/>
+          </DisplayBuffers>
+        </ComplexData>
+        <Parameters>
+          <Parameter MinValue="0.0" MaxValue="4.0" StepSize="1.0" ID="Mode" TextToValueConverter="74.nT6K8CBQMH..BQzCV.YrMPDQ9ZEmbysXXftA0XXY..TWoLfUty9ZSGpczdHv2pBPh2fv51EX.MwyaFHbFJ4osbV+T+EeFtxnFA."
+                     Value="0.0"/>
+          <Parameter MinValue="20.0" MaxValue="20000.0" StepSize="0.1000000014901161"
+                     SkewFactor="0.2299045622348785" ID="Frequency" TextToValueConverter="Frequency"
+                     Value="220.0"/>
+          <Parameter MinValue="1.0" MaxValue="16.0" StepSize="1.0" ID="Freq Ratio"
+                     Value="1.0"/>
+          <Parameter MinValue="0.0" MaxValue="1.0" StepSize="1.0" ID="Gate" TextToValueConverter="53.nT6K8CBKgE..VEFa0U1Pu4lckIGckIG.AHPZzUVayAP.HTvSlYlBO4F.gMFcoYWY.DP.B.."
+                     Value="1.0"/>
+          <Parameter MinValue="0.0" MaxValue="1.0" ID="Phase" TextToValueConverter="NormalizedPercentage"
+                     Value="0.0"/>
+          <Parameter MinValue="0.0" MaxValue="1.0" ID="Gain" Value="1.0"/>
+        </Parameters>
+      </Node>
+    </Nodes>
+    <Parameters/>
+  </Node>
+</Network>
