@@ -45,6 +45,14 @@ export interface WizardField {
 	// ── Text-specific ───────────────────────────────────────────
 	/** Whether the value is parsed as a comma-separated array. */
 	readonly parseArray?: boolean;
+
+	// ── Visibility ──────────────────────────────────────────────
+	/** Conditional visibility: field is hidden unless answers[fieldId] === value.
+	 *  Hidden fields are skipped during rendering, navigation, and validation. */
+	readonly visibleIf?: {
+		readonly fieldId: string;
+		readonly value: string;
+	};
 }
 
 /** A tab grouping fields in the wizard form. */

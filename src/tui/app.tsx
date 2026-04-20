@@ -51,7 +51,7 @@ import {
 import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { startObserverServer, type ObserverEvent } from "./observer.js";
 import { MODE_ACCENTS } from "../engine/modes/mode.js";
-import type { WizardAnswers } from "../engine/wizard/types.js";
+import type { WizardAnswers, WizardDefinition } from "../engine/wizard/types.js";
 import { mergeInitDefaults } from "../engine/wizard/types.js";
 import { WizardExecutor } from "../engine/wizard/executor.js";
 import { renderWizardBlock, createInitialFormState, type WizardFormState } from "./components/wizard-render.js";
@@ -579,7 +579,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					return updated;
 				});
 				setWizardForm(null);
-				void executeWizard(form, result.answers);
+				void executeWizard(form.definition, result.answers);
 				return;
 			}
 			// action === "update" — re-render the form block
@@ -1438,6 +1438,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			addBlocks([echoBlock]);
 
 			if (result.type === "wizard") {
+				// Starting a fresh wizard invalidates any prior pause checkpoint —
+				// the user is explicitly moving on.
+				if (session.pendingWizard) {
+					session.clearPendingWizard();
+				}
 				// Wizard result — run init to fetch defaults, then render form
 				const executor = new WizardExecutor({
 					connection: session.connection,
@@ -1449,6 +1454,14 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				setWizardForm(formState);
 				const block = renderWizardBlock(formState, scheme, innerW);
 				addBlocks([block]);
+			} else if (result.type === "resume-wizard") {
+				// /resume hands us the paused wizard's def + answers + where
+				// to restart. Run through the same streaming executor path as
+				// a fresh submit so progress renders live in the TUI.
+				void executeWizard(result.definition, result.answers, {
+					startIndex: result.startIndex,
+					failedTaskLabel: result.failedTaskLabel,
+				});
 			} else if (result.type === "text" && input.trim().startsWith("/density")) {
 				// Density command - intercept to apply TUI-side state change
 				const arg = input.trim().slice("/density".length).trim().toLowerCase();
@@ -1526,8 +1539,11 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// ── Wizard execution (after submit) ─────────────────────────────
 
-	const executeWizard = useCallback(async (form: WizardFormState, answers: WizardAnswers) => {
-		const def = form.definition;
+	const executeWizard = useCallback(async (
+		def: WizardDefinition,
+		answers: WizardAnswers,
+		opts?: { startIndex?: number; failedTaskLabel?: string },
+	) => {
 		const innerW = contentColumns - 1 - 2 * layout.horizontalPad;
 
 		const hasHttpTasks = def.tasks.some((t) => t.type === "http");
@@ -1631,9 +1647,10 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					line = `${dim}${msg}${RESET}`;
 				}
 				appendLine(line, progress.transient ?? false);
-			}, controller.signal);
+			}, { signal: controller.signal, startIndex: opts?.startIndex });
 
 			if (result.success) {
+				session.clearPendingWizard();
 				const msg = result.message;
 				if (msg.startsWith("✓ ")) {
 					appendLine(" ");
@@ -1647,7 +1664,27 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					if (actionBlock) addBlocks([actionBlock]);
 				}
 			} else {
-				appendLine(`${err}✗ ${result.message}${RESET}`);
+				// Multi-line messages (e.g. CLT install instructions) split
+				// into separate lines so wrapAnsi doesn't treat \n as content.
+				// First line gets the ✗ prefix; subsequent lines preserve
+				// their own indentation.
+				const msgLines = result.message.split("\n");
+				appendLine(`${err}✗ ${msgLines[0] ?? ""}${RESET}`);
+				for (let i = 1; i < msgLines.length; i++) {
+					appendLine(`${err}${msgLines[i]}${RESET}`);
+				}
+				if (typeof result.nextTaskIndex === "number") {
+					const failedTask = def.tasks[result.nextTaskIndex];
+					const label = failedTask?.label ?? failedTask?.id ?? "task";
+					session.setPendingWizard({
+						wizardId: def.id,
+						answers,
+						nextTaskIndex: result.nextTaskIndex,
+						failedTaskLabel: label,
+					});
+					appendLine(" ");
+					appendLine(`${dim}Paused at "${label}". Type /resume to retry this step after fixing the issue.${RESET}`);
+				}
 			}
 		} catch (e) {
 			appendLine(`${err}✗ ${String(e)}${RESET}`);

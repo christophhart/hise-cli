@@ -11,8 +11,6 @@ import { runJuceCompile } from "./project-compile.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-import type { SpawnOptions } from "../../engine/wizard/phase-executor.js";
-
 /** Create a spawn wrapper that injects signal into every call. */
 function withSignal(
 	executor: PhaseExecutor,
@@ -40,6 +38,42 @@ async function requireWindowsElevation(executor: PhaseExecutor): Promise<boolean
 	return r.exitCode === 0;
 }
 
+/** True when macOS `xcode-select -p` resolves — invoking developer-tool
+ *  stubs (git, clang) is safe and won't pop the CLT install dialog. */
+async function hasDevDir(executor: PhaseExecutor): Promise<boolean> {
+	const sel = await executor.spawn("xcode-select", ["-p"], {});
+	return sel.exitCode === 0 && sel.stdout.trim().length > 0;
+}
+
+/** Runtime faust probe — mirrors detectFaust in setup-detect.ts. Kept
+ *  inline rather than imported to avoid the handler depending on the
+ *  init handler's module. */
+async function reprobeFaust(
+	executor: PhaseExecutor,
+	platform: string,
+	installPath: string,
+): Promise<boolean> {
+	if (platform === "Windows") {
+		const global = await executor.spawn(
+			"cmd",
+			["/c", "if exist \"C:\\Program Files\\Faust\\lib\\faust.dll\" echo found"],
+			{},
+		);
+		if (global.stdout.includes("found")) return true;
+		if (!installPath) return false;
+		const local = `${installPath}\\tools\\faust\\lib\\libfaust.dll`;
+		const localCheck = await executor.spawn("cmd", ["/c", `if exist "${local}" echo found`], {});
+		return localCheck.stdout.includes("found");
+	}
+	const onPath = await executor.spawn("faust", ["--version"], {});
+	if (onPath.exitCode === 0) return true;
+	if (!installPath) return false;
+	const ext = platform === "macOS" ? "dylib" : "so";
+	const local = `${installPath}/tools/faust/lib/libfaust.${ext}`;
+	const localCheck = await executor.spawn("test", ["-f", local], {});
+	return localCheck.exitCode === 0;
+}
+
 /** Detect noise lines from curl / winget that would otherwise flood the log
  *  4x/sec during multi-minute downloads. Keeps anything with real text,
  *  drops progress bars, spinner chars, and pure size/percentage tickers. */
@@ -62,16 +96,28 @@ function isProgressNoise(line: string): boolean {
 export function createSetupGitInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
-		if (isOn(answers.hasGit)) {
-			onProgress({ phase: "git-install", percent: 100, message: "Git already installed, skipping." });
-			return ok("✓ Git already installed.");
+		const platform = answers.platform ?? "Linux";
+
+		// Re-probe git — answers.hasGit is a snapshot from wizard init and
+		// can be stale after /resume (e.g. Command Line Tools just landed
+		// and now provide git, or winget installed git in a previous run).
+		// On macOS, skip the probe when no developer dir is set — the
+		// /usr/bin/git stub would pop the CLT install dialog.
+		const canProbeGit = platform !== "macOS" || await hasDevDir(executor);
+		if (canProbeGit) {
+			const probe = await executor.spawn("git", ["--version"], {});
+			if (probe.exitCode === 0) {
+				onProgress({ phase: "git-install", percent: 100, message: "Git detected, skipping install." });
+				return ok("✓ Git detected.");
+			}
 		}
 
-		const platform = answers.platform ?? "Linux";
 		onProgress({ phase: "git-install", percent: 0, message: "Installing git..." });
 
 		if (platform === "macOS") {
-			return fail("Git is not installed. Please run: xcode-select --install");
+			// CLT provides git. If we get here, compilerInstall should have
+			// already installed CLT. Hint the user at the resume flow.
+			return fail("Git not found. Install Command Line Tools (xcode-select --install) then /resume.");
 		}
 
 		if (platform === "Linux") {
@@ -185,6 +231,9 @@ export function createSetupBuildDepsHandler(_executor: PhaseExecutor): InternalT
 
 // ── 4. Faust install ─────────────────────────────────────────────────
 
+/** Pinned Faust release — bump when GRAME publishes a newer one. */
+const FAUST_VERSION = "2.81.2";
+
 export function createSetupFaustInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
@@ -192,12 +241,17 @@ export function createSetupFaustInstallHandler(_executor: PhaseExecutor): Intern
 			onProgress({ phase: "faust-install", percent: 100, message: "Faust not requested, skipping." });
 			return ok("✓ Faust installation skipped.");
 		}
-		if (isOn(answers.hasFaust)) {
-			onProgress({ phase: "faust-install", percent: 100, message: "Faust already installed, skipping." });
-			return ok("✓ Faust already installed.");
-		}
 
 		const platform = answers.platform ?? "Linux";
+		const installPath = answers.installPath ?? "";
+
+		// Re-probe faust so a stale hasFaust=0 (from init) doesn't trigger
+		// a redundant install when the user manually installed between runs.
+		if (await reprobeFaust(executor, platform, installPath)) {
+			onProgress({ phase: "faust-install", percent: 100, message: "Faust detected, skipping install." });
+			return ok("✓ Faust detected.");
+		}
+
 		onProgress({ phase: "faust-install", percent: 0, message: "Installing Faust..." });
 
 		if (platform === "Linux") {
@@ -220,8 +274,6 @@ export function createSetupFaustInstallHandler(_executor: PhaseExecutor): Intern
 
 			const tmpDir = process.env.TEMP ?? "C:\\Windows\\Temp";
 			const installer = `${tmpDir}\\faust-installer.exe`;
-			// Pinned version — bump manually when GRAME publishes a newer one.
-			const FAUST_VERSION = "2.81.2";
 			const url = `https://github.com/grame-cncm/faust/releases/download/${FAUST_VERSION}/Faust-${FAUST_VERSION}-win64.exe`;
 
 			onProgress({ phase: "faust-install", percent: 0, message: `Downloading Faust ${FAUST_VERSION}...` });
@@ -251,10 +303,73 @@ export function createSetupFaustInstallHandler(_executor: PhaseExecutor): Intern
 			return ok("✓ Faust installed.");
 		}
 
-		// macOS — no reliable silent installer; keep manual.
-		return fail(
-			`Automatic Faust installation is not supported on ${platform}. ` +
-			"Please install from https://faust.grame.fr/downloads/ and re-run the wizard.",
+		// macOS — download the architecture-specific DMG, mount it, copy
+		// bin/lib/include/share into tools/faust/, unmount. Preserves the
+		// existing fakelib/ stub. See HISE/tools/faust/Readme.md.
+		const arch = answers.architecture === "x64" ? "x64" : "arm64";
+		const tmpDir = process.env.TMPDIR ?? "/tmp";
+		const dmgPath = `${tmpDir}/Faust-${FAUST_VERSION}-${arch}.dmg`;
+		const url = `https://github.com/grame-cncm/faust/releases/download/${FAUST_VERSION}/Faust-${FAUST_VERSION}-${arch}.dmg`;
+
+		onProgress({ phase: "faust-install", percent: 0, message: `Downloading Faust ${FAUST_VERSION} (${arch})...` });
+		const dl = await executor.spawn("curl", ["-L", "-o", dmgPath, url], {
+			onLog: (line, transient) => {
+				if (!isProgressNoise(line)) onProgress({ phase: "faust-install", message: line, transient });
+			},
+		});
+		if (dl.exitCode !== 0) return fail(`Faust download failed: ${dl.stderr}`);
+
+		onProgress({ phase: "faust-install", percent: 50, message: "Mounting Faust DMG..." });
+		// Force a known mount point (/tmp/hise-faust-mnt). Avoids parsing
+		// hdiutil's tab-delimited stdout, which `-quiet` would suppress.
+		const mountPoint = `${tmpDir}/hise-faust-mnt`;
+		// Pre-cleanup any stale mount from a prior failed run.
+		await executor.spawn("hdiutil", ["detach", "-force", mountPoint], {});
+		const mount = await executor.spawn("hdiutil", [
+			"attach", "-nobrowse", "-readonly", "-mountpoint", mountPoint, dmgPath,
+		], {});
+		if (mount.exitCode !== 0) return fail(`DMG mount failed: ${mount.stderr || mount.stdout}`);
+
+		// DMG layout: /Volumes/Faust-<VERSION>/Faust-<VERSION>/{bin,lib,include,share}
+		// (versioned subfolder alongside INSTALL.html / README.html at root).
+		// Defensive check — if GRAME ever flattens or switches to a .pkg,
+		// fail loudly rather than silently leaving tools/faust incomplete.
+		const srcRoot = `${mountPoint}/Faust-${FAUST_VERSION}`;
+		const check = await executor.spawn("bash", ["-c",
+			`test -d "${srcRoot}/bin" && test -d "${srcRoot}/lib" && test -d "${srcRoot}/include" && test -d "${srcRoot}/share"`,
+		], {});
+		if (check.exitCode !== 0) {
+			await executor.spawn("hdiutil", ["detach", "-force", mountPoint], {});
+			return fail(
+				`Faust DMG doesn't contain the expected Faust-${FAUST_VERSION}/bin,lib,include,share layout. ` +
+				"The release format may have changed; install manually from https://faust.grame.fr/downloads/.",
+			);
+		}
+
+		onProgress({ phase: "faust-install", percent: 75, message: `Copying into ${installPath}/tools/faust/...` });
+		const destDir = `${installPath}/tools/faust`;
+		// `ditto` mirrors src → dst (overwrites cleanly, preserves xattrs);
+		// cp -R would nest dirs when the target already exists.
+		const copy = await executor.spawn("bash", ["-c",
+			`mkdir -p "${destDir}" && ` +
+			`ditto "${srcRoot}/bin" "${destDir}/bin" && ` +
+			`ditto "${srcRoot}/lib" "${destDir}/lib" && ` +
+			`ditto "${srcRoot}/include" "${destDir}/include" && ` +
+			`ditto "${srcRoot}/share" "${destDir}/share"`,
+		], {
+			onLog: (line, transient) => onProgress({ phase: "faust-install", message: line, transient }),
+		});
+
+		// Always detach, regardless of copy outcome.
+		await executor.spawn("hdiutil", ["detach", "-force", mountPoint], {});
+
+		if (copy.exitCode !== 0) return fail(`Faust copy failed: ${copy.stderr}`);
+
+		onProgress({ phase: "faust-install", percent: 100 });
+		return ok(
+			`✓ Faust installed at ${destDir}. ` +
+			`If the build complains about unsigned Faust libs on first run, allow them via ` +
+			`System Settings → Privacy & Security.`,
 		);
 	};
 }
@@ -281,33 +396,6 @@ export function createSetupExtractSdksHandler(_executor: PhaseExecutor): Interna
 		onProgress({ phase: "extract-sdks", percent: 100 });
 		return ok("✓ SDKs extracted.");
 	};
-}
-
-// ── xcodebuild output filter ─────────────────────────────────────────
-
-export function filterXcodeLine(line: string): string | null {
-	const compileMatch = line.match(/^Compile[\w]*\s+.*\/([\w.]+)\s/);
-	if (compileMatch) return `Compiling ${compileMatch[1]}`;
-
-	const ldMatch = line.match(/^Ld\s+.*\/([\w. ]+)\s/);
-	if (ldMatch) return `Linking ${ldMatch[1]}`;
-
-	if (line.startsWith("PhaseScriptExecution")) return line.split(/\s+/)[1] ?? line;
-	if (line.startsWith("ProcessInfoPlistFile")) return "Processing Info.plist";
-	if (/^=== BUILD TARGET/.test(line)) return line;
-
-	// Errors — broad matching to avoid filtering out important messages
-	if (/error:/i.test(line)) return `✗ ${line}`;
-	if (/\bfailed\b/i.test(line)) return `✗ ${line}`;
-	if (/\bundefined symbols?\b/i.test(line)) return `✗ ${line}`;
-	if (/\blinker command failed\b/i.test(line)) return `✗ ${line}`;
-
-	if (/warning:/i.test(line)) return `⚠ ${line}`;
-
-	if (line.startsWith("** BUILD SUCCEEDED **")) return `✓ ${line}`;
-	if (line.startsWith("** BUILD FAILED **")) return `✗ ${line}`;
-
-	return null;
 }
 
 // ── MSBuild / cl.exe output filter ───────────────────────────────────
@@ -355,29 +443,85 @@ export function filterMsbuildLine(line: string, installPath?: string): string | 
 	return `${marker} ${severity} ${code}: ${msg}\n   ${loc}`;
 }
 
-// ── 5b. Visual Studio Build Tools install (Windows only) ────────────
+// ── 5b. Compiler toolkit install (platform-dispatching) ──────────────
 //
-// Downloads the official `vs_BuildTools.exe` bootstrapper and runs the
-// unattended install with the minimum component set required to build
-// HISE: MSVC v14x x64/x86 compiler, Windows 11 SDK, and the English
-// language pack so cl.exe emits English diagnostics regardless of the
-// system locale. The bootstrapper is stable across VS major versions
-// via aka.ms/vs/stable/vs_BuildTools.exe.
+// Windows: downloads the `vs_BuildTools.exe` bootstrapper and runs an
+// unattended install with the minimum component set HISE needs (MSVC
+// v14x x64/x86, Windows 11 SDK, en-US language pack for English
+// diagnostics).
+// macOS:   probes `clang --version` (CLT-provided). If missing, spawns
+// `xcode-select --install` which pops a system install dialog, then
+// fails the phase with a `/resume` hint — the existing pause/resume
+// infra handles the wait rather than polling here.
+// Linux:   no-op. Toolchain is installed by the buildDeps task.
 
 const VS_BUILD_TOOLS_URL = "https://aka.ms/vs/stable/vs_BuildTools.exe";
 
-export function createSetupVsInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
+export function createSetupCompilerInstallHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
 		const platform = answers.platform ?? "Linux";
 
-		if (platform !== "Windows") {
-			onProgress({ phase: "vs-install", percent: 100, message: "Skipping (not Windows)." });
-			return ok("✓ Visual Studio installation not needed on this platform.");
+		if (platform === "macOS") {
+			onProgress({ phase: "compiler-install", percent: 0, message: "Checking Command Line Tools..." });
+
+			// Gate probe — xcode-select -p doesn't pop the CLT install
+			// dialog. Only invoke `clang` once we know the dev dir is set.
+			const sel = await executor.spawn("xcode-select", ["-p"], {});
+			const devDir = sel.exitCode === 0 ? sel.stdout.trim() : "";
+			if (devDir) {
+				const clangCheck = await executor.spawn("test", ["-x", `${devDir}/usr/bin/clang`], {});
+				if (clangCheck.exitCode === 0) {
+					onProgress({ phase: "compiler-install", percent: 100 });
+					return ok("✓ Command Line Tools detected.");
+				}
+			}
+
+			onProgress({ phase: "compiler-install", message: "Launching Command Line Tools installer..." });
+			const trigger = await executor.spawn("xcode-select", ["--install"], {});
+			// Exit codes: 0 = dialog shown, 1 = already installed/triggered.
+			// Either way the user needs to drive the install to completion.
+
+			// Bring the CLT installer window to the front — it opens behind
+			// the terminal by default. Fire-and-forget; ignore failures.
+			await executor.spawn("osascript", [
+				"-e",
+				'tell application "System Events" to set frontmost of every process whose name contains "Install Command Line Developer Tools" to true',
+			], {});
+
+			const lines = [
+				"Command Line Tools installer launched. A system dialog should appear now.",
+				"",
+				"  1. Click 'Install' in the dialog.",
+				"  2. Wait for the download to complete (~5–10 min).",
+				"  3. Type /resume to continue the wizard.",
+			];
+			if (trigger.exitCode !== 0 && !trigger.stderr.includes("already installed")) {
+				lines.push("", `(xcode-select exit ${trigger.exitCode}: ${trigger.stderr.trim() || "no detail"})`);
+			}
+			return fail(lines.join("\n"));
 		}
-		if (isOn(answers.hasVs)) {
-			onProgress({ phase: "vs-install", percent: 100, message: "Visual Studio already installed, skipping." });
-			return ok("✓ Visual Studio already installed.");
+
+		if (platform === "Linux") {
+			onProgress({ phase: "compiler-install", percent: 100, message: "Skipping (handled by buildDeps)." });
+			return ok("✓ Compiler toolkit installed by buildDeps phase.");
+		}
+
+		// Windows — re-probe via vswhere (answers.hasVs is the stale init
+		// snapshot; would be wrong on /resume after a manual VS install).
+		const vsProbe = await executor.spawn(
+			"C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe",
+			[
+				"-latest",
+				"-products", "*",
+				"-requires", "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+				"-property", "displayName",
+			],
+			{},
+		);
+		if (vsProbe.exitCode === 0 && vsProbe.stdout.trim()) {
+			onProgress({ phase: "compiler-install", percent: 100, message: "Visual Studio detected, skipping install." });
+			return ok("✓ Visual Studio detected.");
 		}
 
 		if (!(await requireWindowsElevation(executor))) {
@@ -390,15 +534,15 @@ export function createSetupVsInstallHandler(_executor: PhaseExecutor): InternalT
 		const tmpDir = process.env.TEMP ?? "C:\\Windows\\Temp";
 		const installer = `${tmpDir}\\vs_BuildTools.exe`;
 
-		onProgress({ phase: "vs-install", percent: 0, message: "Downloading VS Build Tools bootstrapper..." });
+		onProgress({ phase: "compiler-install", percent: 0, message: "Downloading VS Build Tools bootstrapper..." });
 		const download = await executor.spawn("curl", ["-L", "-o", installer, VS_BUILD_TOOLS_URL], {
 			onLog: (line, transient) => {
-				if (!isProgressNoise(line)) onProgress({ phase: "vs-install", message: line, transient });
+				if (!isProgressNoise(line)) onProgress({ phase: "compiler-install", message: line, transient });
 			},
 		});
 		if (download.exitCode !== 0) return fail(`VS Build Tools download failed: ${download.stderr}`);
 
-		onProgress({ phase: "vs-install", percent: 40, message: "Installing VS Build Tools (this can take 5–10 minutes)..." });
+		onProgress({ phase: "compiler-install", percent: 40, message: "Installing VS Build Tools (this can take 5–10 minutes)..." });
 		const install = await executor.spawn(installer, [
 			"--passive", "--wait", "--norestart", "--nocache",
 			"--add", "Microsoft.VisualStudio.Workload.VCTools",
@@ -406,13 +550,13 @@ export function createSetupVsInstallHandler(_executor: PhaseExecutor): InternalT
 			"--add", "Microsoft.VisualStudio.Component.Windows11SDK.26100",
 			"--addProductLang", "en-US",
 		], {
-			onLog: (line, transient) => onProgress({ phase: "vs-install", message: line, transient }),
+			onLog: (line, transient) => onProgress({ phase: "compiler-install", message: line, transient }),
 		});
 		// 3010 = installed OK, reboot requested (suppressed via --norestart).
 		if (install.exitCode !== 0 && install.exitCode !== 3010) {
 			return fail(`VS Build Tools install failed (exit ${install.exitCode}): ${install.stderr || install.stdout}`);
 		}
-		onProgress({ phase: "vs-install", percent: 100 });
+		onProgress({ phase: "compiler-install", percent: 100 });
 		return ok("✓ Visual Studio Build Tools installed.");
 	};
 }
@@ -436,9 +580,17 @@ export function createSetupIppInstallHandler(_executor: PhaseExecutor): Internal
 			onProgress({ phase: "ipp-install", percent: 100, message: "Skipping Intel IPP." });
 			return ok("✓ Intel IPP installation skipped.");
 		}
-		if (isOn(answers.hasIpp)) {
-			onProgress({ phase: "ipp-install", percent: 100, message: "Intel IPP already installed, skipping." });
-			return ok("✓ Intel IPP already installed.");
+
+		// Re-probe; a stale answers.hasIpp=0 (from init) would otherwise
+		// redo an ~800 MB install that was completed between runs.
+		const ippProbe = await executor.spawn(
+			"cmd",
+			["/c", "if exist \"C:\\Program Files (x86)\\Intel\\oneAPI\\ipp\\latest\" echo found"],
+			{},
+		);
+		if (ippProbe.stdout.includes("found")) {
+			onProgress({ phase: "ipp-install", percent: 100, message: "Intel IPP detected, skipping install." });
+			return ok("✓ Intel IPP detected.");
 		}
 
 		onProgress({ phase: "ipp-install", percent: 0, message: "Downloading Intel IPP (~800 MB)..." });
@@ -484,9 +636,11 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 		const platform = answers.platform ?? "Linux";
 		const includeFaust = isOn(answers.includeFaust);
 
-		const buildConfig = platform === "Linux"
-			? (includeFaust ? "ReleaseWithFaust" : "Release")
-			: (includeFaust ? "Release with Faust" : "Release");
+		// Windows MSBuild uses the spaced form; macOS + Linux Makefiles use
+		// the space-free form (config names are strict string compares).
+		const buildConfig = platform === "Windows"
+			? (includeFaust ? "Release with Faust" : "Release")
+			: (includeFaust ? "ReleaseWithFaust" : "Release");
 
 		onProgress({ phase: "compile", percent: 0, message: "Running Projucer resave..." });
 
@@ -512,22 +666,47 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 		onProgress({ phase: "compile", percent: 10, message: `Compiling (${buildConfig})...` });
 
 		// Platform-specific build
+		const jobs = Math.max(1, parseInt(answers.parallelJobs ?? "1", 10) || 1);
 		if (platform === "macOS") {
-			const xcodeproj = `${installPath}/projects/standalone/Builds/MacOSX/HISE Standalone.xcodeproj`;
-			const result = await executor.spawn("xcodebuild", [
-				"-project", xcodeproj,
-				"-configuration", buildConfig,
-				"-jobs", "8",
+			const makeDir = `${installPath}/projects/standalone/Builds/MacOSXMakefile`;
+			// Build a single-slice binary matching the detected architecture
+			// (halves compile time vs the Makefile's default x86_64+arm64
+			// universal binary). Override via the Architecture field.
+			const archFlag = answers.architecture === "x64" ? "x86_64" : "arm64";
+			const result = await executor.spawn("make", [
+				`CONFIG=${buildConfig}`,
+				`-j${jobs}`,
+				`TARGET_ARCH=-arch ${archFlag}`,
 			], {
-				onLog: (line, transient) => {
-					const filtered = filterXcodeLine(line);
-					if (filtered) onProgress({ phase: "compile", message: filtered, transient });
+				cwd: makeDir,
+				env: {
+					// JUCE_JOBS_CAPPED=1 suppresses the Makefile's auto -j so
+					// our explicit -jN (RAM-aware) wins.
+					JUCE_JOBS_CAPPED: "1",
+					// SRCROOT is an Xcode-only variable but Projucer's
+					// Makefile exporter bakes `-rpath $(SRCROOT)/../../../../tools/faust/lib`
+					// into the link. Without this, the linker writes an
+					// absolute rpath starting with `/` and HISE crashes at
+					// launch with "Library not loaded: libfaust.2.dylib".
+					SRCROOT: makeDir,
+					// Strip the source-snippet + caret rendering from clang
+					// diagnostics — keeps warning/error messages one line
+					// each instead of 10+ lines of code context.
+					CFLAGS: "-fno-caret-diagnostics",
+					CXXFLAGS: "-fno-caret-diagnostics",
 				},
+				onLog: (line, transient) => onProgress({ phase: "compile", message: line, transient }),
 			});
 			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
+
+			// Make drops only HISE.app in build/<CONFIG>/. Add a bare `HISE`
+			// symlink alongside so the addPath phase can register this dir
+			// on $PATH and users can still invoke `HISE` from the shell.
+			const outDir = `${makeDir}/build/${buildConfig}`;
+			await executor.spawn("ln", ["-sf", "HISE.app/Contents/MacOS/HISE", `${outDir}/HISE`], {});
 		} else if (platform === "Linux") {
 			const makeDir = `${installPath}/projects/standalone/Builds/LinuxMakefile`;
-			const result = await executor.spawn("make", [`CONFIG=${buildConfig}`, "AR=gcc-ar", "-j8"], {
+			const result = await executor.spawn("make", [`CONFIG=${buildConfig}`, "AR=gcc-ar", `-j${jobs}`], {
 				cwd: makeDir,
 				onLog: (line, transient) => onProgress({ phase: "compile", message: line, transient }),
 			});
@@ -606,7 +785,8 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 
 		let binPath: string;
 		if (platform === "macOS") {
-			binPath = `${installPath}/projects/standalone/Builds/MacOSX/build/Release`;
+			const cfg = includeFaust ? "ReleaseWithFaust" : "Release";
+			binPath = `${installPath}/projects/standalone/Builds/MacOSXMakefile/build/${cfg}`;
 		} else {
 			binPath = `${installPath}/projects/standalone/Builds/LinuxMakefile/build`;
 		}
@@ -619,6 +799,14 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 		const result = await executor.spawn("bash", ["-c", `echo '${exportLine}' >> "${shellConfig}"`], {});
 		if (result.exitCode !== 0) return fail(`Failed to update ${shellConfig}: ${result.stderr}`);
 
+		// Also patch this Node process's PATH so the verify + test phases
+		// can invoke HISE by bare name in the same session — the shell rc
+		// append above only takes effect in new shells.
+		const currentPath = process.env.PATH ?? "";
+		if (!currentPath.split(":").includes(binPath)) {
+			process.env.PATH = currentPath ? `${currentPath}:${binPath}` : binPath;
+		}
+
 		onProgress({ phase: "add-path", percent: 100 });
 		return ok(`✓ Added HISE to PATH in ${shellConfig}. Restart your shell or run: source ${shellConfig}`);
 	};
@@ -628,7 +816,8 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 
 function hiseBinPath(installPath: string, platform: string, includeFaust = false): string {
 	if (platform === "macOS") {
-		return `${installPath}/projects/standalone/Builds/MacOSX/build/Release/HISE.app/Contents/MacOS/HISE`;
+		const cfg = includeFaust ? "ReleaseWithFaust" : "Release";
+		return `${installPath}/projects/standalone/Builds/MacOSXMakefile/build/${cfg}/HISE.app/Contents/MacOS/HISE`;
 	} else if (platform === "Linux") {
 		return `${installPath}/projects/standalone/Builds/LinuxMakefile/build/HISE Standalone`;
 	}
@@ -737,12 +926,16 @@ export function createSetupTestHandler(_executor: PhaseExecutor): InternalTaskHa
 			? `${demoProject}\\Binaries\\AutogeneratedProject.jucer`
 			: `${demoProject}/Binaries/AutogeneratedProject.jucer`;
 
+		const parallelJobs = Math.max(1, parseInt(answers.parallelJobs ?? "1", 10) || 1);
+		const macArchitecture = answers.architecture === "x64" ? "x86_64" : "arm64";
 		const compile = await runJuceCompile(executor, {
 			binaryFolder,
 			hisePath: installPath,
 			jucerFile,
 			projectName: "Demo Project",
 			configuration: "Release",
+			parallelJobs,
+			macArchitecture,
 		}, emit);
 
 		if (!compile.success) return fail(`Demo project compilation failed: ${compile.stderr}`);

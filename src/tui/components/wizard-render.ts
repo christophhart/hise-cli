@@ -9,7 +9,7 @@ import { brand, lightenHex } from "../theme.js";
 import type { PrerenderedBlock } from "./prerender.js";
 import { renderMarkdown } from "./Markdown.js";
 import type { WizardDefinition, WizardField, WizardTab, WizardAnswers } from "../../engine/wizard/types.js";
-import { isTabComplete } from "../../engine/wizard/validator.js";
+import { isTabComplete, getVisibleFields } from "../../engine/wizard/validator.js";
 
 // ── Form state (shared with wizard-keys.ts) ─────────────────────────
 
@@ -112,7 +112,7 @@ export function renderWizardBlock(
 	const tab = def.tabs[state.activeTab];
 	if (!tab) return { lines: [emptyLine()], height: 1 };
 
-	const fields = tab.fields;
+	const fields = getVisibleFields(tab, state.answers);
 	const fieldCount = fields.length;
 	const isOnSubmit = state.active && state.activeField === fieldCount;
 

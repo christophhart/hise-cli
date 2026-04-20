@@ -403,8 +403,127 @@ describe("mode handler one-shot execution", () => {
 	it("/builder without args enters mode (existing behavior)", async () => {
 		const registry = createRegistry();
 		const session = createMockSession();
-		
+
 		await registry.dispatch("/builder", session);
 		expect(session.modes).toContain("builder");
+	});
+
+	describe("/resume", () => {
+		it("errors when no wizard is paused", async () => {
+			const registry = createRegistry();
+			const session = createMockSession();
+			const result = await registry.dispatch("/resume", session);
+			expect(result.type).toBe("error");
+			if (result.type === "error") {
+				expect(result.message).toContain("No paused wizard");
+			}
+		});
+
+		it("resumes from nextTaskIndex and clears pending on success", async () => {
+			const { WizardRegistry } = await import("../wizard/registry.js");
+			const { WizardHandlerRegistry } = await import("../wizard/handler-registry.js");
+
+			const calls: string[] = [];
+			const handlerRegistry = new WizardHandlerRegistry();
+			handlerRegistry.registerTask("one", async () => {
+				calls.push("one");
+				return { success: true, message: "ok" };
+			});
+			handlerRegistry.registerTask("two", async () => {
+				calls.push("two");
+				return { success: true, message: "ok" };
+			});
+
+			const wizardRegistry = WizardRegistry.fromDefinitions([{
+				id: "demo",
+				header: "Demo",
+				tabs: [],
+				tasks: [
+					{ id: "t1", function: "one", type: "internal" },
+					{ id: "t2", function: "two", type: "internal" },
+				],
+				postActions: [],
+				globalDefaults: {},
+			}]);
+
+			const registry = createRegistry();
+			const session = createMockSession() as unknown as CommandSession & { pendingWizard: unknown };
+			(session as any).wizardRegistry = wizardRegistry;
+			(session as any).handlerRegistry = handlerRegistry;
+			(session as any).pendingWizard = {
+				wizardId: "demo",
+				answers: {},
+				nextTaskIndex: 1,
+				failedTaskLabel: "two",
+			};
+			(session as any).setPendingWizard = (p: unknown) => { (session as any).pendingWizard = p; };
+			(session as any).clearPendingWizard = () => { (session as any).pendingWizard = null; };
+			// onWizardProgress set → simulates CLI surface (inline exec path).
+			(session as any).onWizardProgress = () => {};
+
+			const result = await registry.dispatch("/resume", session);
+			expect(result.type).toBe("text");
+			expect(calls).toEqual(["two"]);
+			expect((session as any).pendingWizard).toBeNull();
+		});
+
+		it("re-stashes pending on repeated failure", async () => {
+			const { WizardRegistry } = await import("../wizard/registry.js");
+			const { WizardHandlerRegistry } = await import("../wizard/handler-registry.js");
+
+			const handlerRegistry = new WizardHandlerRegistry();
+			handlerRegistry.registerTask("boom", async () => ({ success: false, message: "still broken" }));
+
+			const wizardRegistry = WizardRegistry.fromDefinitions([{
+				id: "demo",
+				header: "Demo",
+				tabs: [],
+				tasks: [
+					{ id: "t1", function: "boom", type: "internal" },
+					{ id: "t2", function: "boom", type: "internal" },
+				],
+				postActions: [],
+				globalDefaults: {},
+			}]);
+
+			const registry = createRegistry();
+			const session = createMockSession() as unknown as CommandSession;
+			(session as any).wizardRegistry = wizardRegistry;
+			(session as any).handlerRegistry = handlerRegistry;
+			(session as any).pendingWizard = {
+				wizardId: "demo",
+				answers: {},
+				nextTaskIndex: 1,
+				failedTaskLabel: "t2",
+			};
+			(session as any).setPendingWizard = (p: unknown) => { (session as any).pendingWizard = p; };
+			(session as any).clearPendingWizard = () => { (session as any).pendingWizard = null; };
+			(session as any).onWizardProgress = () => {};
+
+			const result = await registry.dispatch("/resume", session);
+			expect(result.type).toBe("error");
+			expect((session as any).pendingWizard).not.toBeNull();
+			expect((session as any).pendingWizard.nextTaskIndex).toBe(1);
+		});
+
+		it("errors and clears when the pending wizard id is unregistered", async () => {
+			const { WizardRegistry } = await import("../wizard/registry.js");
+			const wizardRegistry = new WizardRegistry();
+
+			const registry = createRegistry();
+			const session = createMockSession() as unknown as CommandSession;
+			(session as any).wizardRegistry = wizardRegistry;
+			(session as any).pendingWizard = {
+				wizardId: "ghost",
+				answers: {},
+				nextTaskIndex: 0,
+				failedTaskLabel: "t1",
+			};
+			(session as any).clearPendingWizard = () => { (session as any).pendingWizard = null; };
+
+			const result = await registry.dispatch("/resume", session);
+			expect(result.type).toBe("error");
+			expect((session as any).pendingWizard).toBeNull();
+		});
 	});
 });

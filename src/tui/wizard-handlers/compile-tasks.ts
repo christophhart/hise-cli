@@ -6,7 +6,8 @@
 import type { InternalTaskHandler } from "../../engine/wizard/handler-registry.js";
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type { WizardExecResult } from "../../engine/wizard/types.js";
-import { runJuceCompile, runUnixJuceCompile } from "./project-compile.js";
+import type { CompileEmit } from "./project-compile.js";
+import { runJuceCompile, runLinuxJuceCompile } from "./project-compile.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -42,6 +43,9 @@ export function createCompileProjectHandler(_executor: PhaseExecutor): InternalT
 
 		const executor = withSignal(_executor, signal);
 		const configuration = context?.configuration ?? "Release";
+		const macArchitecture = context?.macArchitecture === "arm64" || context?.macArchitecture === "x86_64"
+			? context.macArchitecture
+			: undefined;
 
 		onProgress({ phase: "compile", percent: 0, message: `Compiling (${configuration})...` });
 
@@ -51,6 +55,7 @@ export function createCompileProjectHandler(_executor: PhaseExecutor): InternalT
 			jucerFile,
 			projectName,
 			configuration,
+			macArchitecture,
 		}, (message, transient) => {
 			onProgress({ phase: "compile", message, transient });
 		});
@@ -77,9 +82,10 @@ export function createCompileNetworksHandler(_executor: PhaseExecutor): Internal
 
 		onProgress({ phase: "compile-networks", percent: 0, message: `Compiling DLL (${configuration ?? "Release"})...` });
 
-		const result = await runUnixJuceCompile(executor, { buildScript, buildDirectory }, (message, transient) => {
+		const emit: CompileEmit = (message, transient) => {
 			onProgress({ phase: "compile-networks", message, transient });
-		});
+		};
+		const result = await runLinuxJuceCompile(executor, { buildScript, buildDirectory }, emit);
 
 		if (!result.success) {
 			return fail(`Network DLL compilation failed (exit code ${result.exitCode}).`);

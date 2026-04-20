@@ -223,6 +223,95 @@ describe("WizardExecutor", () => {
 			const result = await executor.execute(def, {});
 			expect(result.logs).toEqual(["log1", "log2", "log3"]);
 		});
+
+		it("returns nextTaskIndex on failure so /resume can pick up", async () => {
+			const registry = new WizardHandlerRegistry();
+			registry.registerTask("ok", async () => ({ success: true, message: "ok" }));
+			registry.registerTask("boom", async () => ({ success: false, message: "boom" }));
+			const executor = new WizardExecutor({ connection: null, handlerRegistry: registry });
+			const def = minimalDef({
+				tasks: [
+					{ id: "t1", function: "ok", type: "internal" },
+					{ id: "t2", function: "boom", type: "internal" },
+					{ id: "t3", function: "ok", type: "internal" },
+				],
+			});
+			const result = await executor.execute(def, {});
+			expect(result.success).toBe(false);
+			expect(result.nextTaskIndex).toBe(1);
+		});
+
+		it("omits nextTaskIndex when every task succeeds", async () => {
+			const registry = new WizardHandlerRegistry();
+			registry.registerTask("ok", async () => ({ success: true, message: "ok" }));
+			const executor = new WizardExecutor({ connection: null, handlerRegistry: registry });
+			const def = minimalDef({
+				tasks: [{ id: "t1", function: "ok", type: "internal" }],
+			});
+			const result = await executor.execute(def, {});
+			expect(result.success).toBe(true);
+			expect(result.nextTaskIndex).toBeUndefined();
+		});
+
+		it("startIndex skips earlier tasks when resuming", async () => {
+			const registry = new WizardHandlerRegistry();
+			const calls: string[] = [];
+			registry.registerTask("one", async () => {
+				calls.push("one");
+				return { success: true, message: "ok" };
+			});
+			registry.registerTask("two", async () => {
+				calls.push("two");
+				return { success: true, message: "ok" };
+			});
+			registry.registerTask("three", async () => {
+				calls.push("three");
+				return { success: true, message: "ok" };
+			});
+			const executor = new WizardExecutor({ connection: null, handlerRegistry: registry });
+			const def = minimalDef({
+				tasks: [
+					{ id: "t1", function: "one", type: "internal" },
+					{ id: "t2", function: "two", type: "internal" },
+					{ id: "t3", function: "three", type: "internal" },
+				],
+			});
+			const result = await executor.execute(def, {}, undefined, { startIndex: 1 });
+			expect(result.success).toBe(true);
+			expect(calls).toEqual(["two", "three"]);
+		});
+
+		it("startIndex=0 behaves like a normal run", async () => {
+			const registry = new WizardHandlerRegistry();
+			const calls: string[] = [];
+			registry.registerTask("one", async () => {
+				calls.push("one");
+				return { success: true, message: "ok" };
+			});
+			const executor = new WizardExecutor({ connection: null, handlerRegistry: registry });
+			const def = minimalDef({
+				tasks: [{ id: "t1", function: "one", type: "internal" }],
+			});
+			await executor.execute(def, {}, undefined, { startIndex: 0 });
+			expect(calls).toEqual(["one"]);
+		});
+
+		it("emits 'Resuming' starting message when startIndex > 0", async () => {
+			const registry = new WizardHandlerRegistry();
+			registry.registerTask("ok", async () => ({ success: true, message: "ok" }));
+			const executor = new WizardExecutor({ connection: null, handlerRegistry: registry });
+			const def = minimalDef({
+				header: "Demo",
+				tasks: [
+					{ id: "t1", function: "ok", type: "internal" },
+					{ id: "t2", function: "ok", type: "internal" },
+				],
+			});
+			const progress: WizardProgress[] = [];
+			await executor.execute(def, {}, (p) => progress.push(p), { startIndex: 1 });
+			const starting = progress.find((p) => p.phase === "Starting");
+			expect(starting?.message).toContain("Resuming Demo");
+		});
 	});
 
 	describe("async job polling", () => {
@@ -314,7 +403,7 @@ describe("WizardExecutor", () => {
 
 			// Abort after a short delay
 			setTimeout(() => controller.abort(), 600);
-			const result = await executor.execute(def, {}, undefined, controller.signal);
+			const result = await executor.execute(def, {}, undefined, { signal: controller.signal });
 			expect(result.success).toBe(false);
 			expect(result.message).toBe("Cancelled.");
 		});

@@ -31,6 +31,7 @@ tabs:
       - id: platform
         type: choice
         label: Platform
+        disabled: true
         help: Detected automatically from your system
         items:
           - macOS
@@ -58,11 +59,18 @@ tabs:
         label: Include Intel IPP
         help: Install Intel IPP for accelerated DSP (Windows only, ~800 MB)
         defaultValue: "0"
+        visibleIf:
+          fieldId: platform
+          value: Windows
       - id: targetCommit
         type: text
         label: Target Commit
         help: Git SHA to checkout (leave empty for latest develop)
         emptyText: latest develop
+      - id: parallelJobs
+        type: text
+        label: Parallel Jobs
+        help: Override the RAM-aware auto-detected -j value (set lower on constrained machines)
 
   - label: Detected
     fields:
@@ -81,11 +89,17 @@ tabs:
         label: Visual Studio Installed
         disabled: true
         help: Detected automatically — skips VS installation if found (Windows)
+        visibleIf:
+          fieldId: platform
+          value: Windows
       - id: hasIpp
         type: toggle
         label: Intel IPP Installed
         disabled: true
         help: Detected automatically — skips IPP installation if found (Windows)
+        visibleIf:
+          fieldId: platform
+          value: Windows
       - id: hasFaust
         type: toggle
         label: Faust Installed
@@ -94,10 +108,10 @@ tabs:
 
 submitLabel: Starts the HISE build pipeline (may take 30+ minutes)
 tasks:
-  - id: vsInstall
-    function: setupVsInstall
+  - id: compilerInstall
+    function: setupCompilerInstall
     type: internal
-    label: Check Visual Studio
+    label: Install compiler toolkit
   - id: gitInstall
     function: setupGitInstall
     type: internal

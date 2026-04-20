@@ -25,6 +25,7 @@ export function validateAnswers(
 		}
 
 		for (const field of tab.fields) {
+			if (!isFieldVisible(field, answers)) continue;
 			const value = answers[field.id];
 			const fieldErrors = validateField(field, value);
 			errors.push(...fieldErrors);
@@ -91,5 +92,24 @@ export function isTabComplete(
 	tab: { fields: WizardField[] },
 	answers: WizardAnswers,
 ): boolean {
-	return tab.fields.every((f) => isFieldSatisfied(f, answers[f.id]));
+	return tab.fields.every((f) => !isFieldVisible(f, answers) || isFieldSatisfied(f, answers[f.id]));
+}
+
+/**
+ * Evaluate a field's `visibleIf` condition against current answers.
+ * A field with no condition is always visible.
+ */
+export function isFieldVisible(field: WizardField, answers: WizardAnswers): boolean {
+	if (!field.visibleIf) return true;
+	return answers[field.visibleIf.fieldId] === field.visibleIf.value;
+}
+
+/**
+ * Return the subset of tab fields currently visible under the given answers.
+ */
+export function getVisibleFields(
+	tab: { fields: WizardField[] },
+	answers: WizardAnswers,
+): WizardField[] {
+	return tab.fields.filter((f) => isFieldVisible(f, answers));
 }

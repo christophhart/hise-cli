@@ -1,20 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createCompileProjectHandler, createCompileNetworksHandler } from "./compile-tasks.js";
 import type { PhaseExecutor, SpawnResult } from "../../engine/wizard/phase-executor.js";
 import type { WizardProgress } from "../../engine/wizard/types.js";
-
-function mockExecutor(results: Record<string, SpawnResult>): PhaseExecutor {
-	return {
-		spawn: async (cmd, args, _opts) => {
-			const key = `${cmd} ${args.join(" ")}`;
-			// Match by command prefix
-			for (const [pattern, result] of Object.entries(results)) {
-				if (key.startsWith(pattern) || cmd === pattern) return result;
-			}
-			return { exitCode: 0, stdout: "", stderr: "" };
-		},
-	};
-}
 
 const okResult: SpawnResult = { exitCode: 0, stdout: "", stderr: "" };
 const failResult: SpawnResult = { exitCode: 1, stdout: "", stderr: "error" };
@@ -42,7 +29,7 @@ describe("createCompileProjectHandler", () => {
 			const executor: PhaseExecutor = {
 				spawn: async (cmd, args, _opts) => {
 					spawnCalls.push({ cmd, args });
-					if (cmd === "cat") return { exitCode: 0, stdout: "xcodebuild -project Foo.xcodeproj", stderr: "" };
+					if (cmd === "cat") return { exitCode: 0, stdout: "make CONFIG=Release", stderr: "" };
 					return okResult;
 				},
 			};
@@ -72,6 +59,42 @@ describe("createCompileProjectHandler", () => {
 		expect(result.message).toContain("Missing build paths");
 	});
 
+	it("runs make in MacOSXMakefile on darwin", async () => {
+		await withPlatform("darwin", async () => {
+			const spawnCalls: Array<{ cmd: string; args: string[]; cwd?: string; env?: Record<string, string> }> = [];
+			const executor: PhaseExecutor = {
+				spawn: async (cmd, args, opts) => {
+					spawnCalls.push({ cmd, args, cwd: opts.cwd, env: opts.env });
+					return okResult;
+				},
+			};
+			const handler = createCompileProjectHandler(executor);
+			const result = await handler({}, () => {}, undefined, fullContext);
+			expect(result.success).toBe(true);
+			const makeCall = spawnCalls.find((c) => c.cmd === "make");
+			expect(makeCall).toBeDefined();
+			expect(makeCall!.args).toEqual(["CONFIG=Release", "-j1"]);
+			expect(makeCall!.cwd).toBe("/path/to/Binaries/Builds/MacOSXMakefile");
+			expect(makeCall!.env?.JUCE_JOBS_CAPPED).toBe("1");
+		});
+	});
+
+	it("threads macArchitecture into the make invocation when provided", async () => {
+		await withPlatform("darwin", async () => {
+			const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+			const executor: PhaseExecutor = {
+				spawn: async (cmd, args) => {
+					spawnCalls.push({ cmd, args });
+					return okResult;
+				},
+			};
+			const handler = createCompileProjectHandler(executor);
+			await handler({}, () => {}, undefined, { ...fullContext, macArchitecture: "arm64" });
+			const makeCall = spawnCalls.find((c) => c.cmd === "make");
+			expect(makeCall!.args).toContain("TARGET_ARCH=-arch arm64");
+		});
+	});
+
 	it("reports compilation failure", async () => {
 		await withPlatform("linux", async () => {
 			const executor: PhaseExecutor = {
@@ -96,7 +119,7 @@ describe("createCompileNetworksHandler", () => {
 		const executor: PhaseExecutor = {
 			spawn: async (cmd, args) => {
 				spawnCalls.push({ cmd, args });
-				if (cmd === "cat") return { exitCode: 0, stdout: "xcodebuild -project DLL.xcodeproj", stderr: "" };
+				if (cmd === "cat") return { exitCode: 0, stdout: "make CONFIG=Release", stderr: "" };
 				return okResult;
 			},
 		};

@@ -18,9 +18,9 @@ export { mergeInitDefaults, isOn } from "./types.js";
 
 export { parseWizardJson } from "./parser.js";
 export { wizardToYaml, yamlToWizard } from "./yaml.js";
-export { validateAnswers } from "./validator.js";
+export { validateAnswers, isFieldVisible, getVisibleFields, isFieldSatisfied, isTabComplete } from "./validator.js";
 export { WizardExecutor } from "./executor.js";
-export type { WizardExecutorDeps } from "./executor.js";
+export type { WizardExecutorDeps, WizardExecuteOptions, WizardExecFailure } from "./executor.js";
 export { WizardRegistry } from "./registry.js";
 export type { InternalTaskHandler, InternalInitHandler } from "./handler-registry.js";
 export { WizardHandlerRegistry } from "./handler-registry.js";

@@ -9,7 +9,7 @@ import {
 	createSetupBuildDepsHandler,
 	createSetupFaustInstallHandler,
 	createSetupExtractSdksHandler,
-	createSetupVsInstallHandler,
+	createSetupCompilerInstallHandler,
 	createSetupIppInstallHandler,
 	createSetupCompileHandler,
 	createSetupAddPathHandler,
@@ -35,7 +35,7 @@ export function registerSetupHandlers(
 	registry.registerTask("setupBuildDeps", createSetupBuildDepsHandler(executor));
 	registry.registerTask("setupFaustInstall", createSetupFaustInstallHandler(executor));
 	registry.registerTask("setupExtractSdks", createSetupExtractSdksHandler(executor));
-	registry.registerTask("setupVsInstall", createSetupVsInstallHandler(executor));
+	registry.registerTask("setupCompilerInstall", createSetupCompilerInstallHandler(executor));
 	registry.registerTask("setupIppInstall", createSetupIppInstallHandler(executor));
 	registry.registerTask("setupCompile", createSetupCompileHandler(executor));
 	registry.registerTask("setupAddPath", createSetupAddPathHandler(executor));

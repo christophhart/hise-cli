@@ -40,9 +40,6 @@ export function createSetupDetectHandler(executor: PhaseExecutor): InternalInitH
 		// Intel IPP detection (Windows only)
 		defaults.hasIpp = await detectIpp(executor, platform) ? "1" : "0";
 
-		// Faust detection
-		defaults.hasFaust = await detectFaust(executor, platform) ? "1" : "0";
-
 		// Default install path (first existing HISE install or ~/HISE)
 		const candidates =
 			platform === "macOS"
@@ -53,8 +50,52 @@ export function createSetupDetectHandler(executor: PhaseExecutor): InternalInitH
 
 		defaults.installPath = expandHome(candidates[0]!);
 
+		// Faust detection — check PATH and the HISE-local install at
+		// <installPath>/tools/faust/lib/libfaust.<dylib|so|dll>.
+		defaults.hasFaust = await detectFaust(executor, platform, defaults.installPath) ? "1" : "0";
+
+		// Parallel jobs — cores × RAM-aware cap. 2 GB per clang job matches
+		// HISE's peak RSS; prevents OOM thrash on RAM-constrained VMs.
+		defaults.parallelJobs = String(await detectParallelJobs(executor, platform));
+
 		return defaults;
 	};
+}
+
+async function detectParallelJobs(executor: PhaseExecutor, platform: string): Promise<number> {
+	const { cores, ramBytes } = await detectCoresAndRam(executor, platform);
+	const ramGb = ramBytes / (1024 ** 3);
+	const memoryCap = Math.max(1, Math.floor(ramGb / 2));
+	return Math.max(1, Math.min(cores, memoryCap));
+}
+
+async function detectCoresAndRam(
+	executor: PhaseExecutor,
+	platform: string,
+): Promise<{ cores: number; ramBytes: number }> {
+	if (platform === "macOS") {
+		const coresR = await executor.spawn("sysctl", ["-n", "hw.physicalcpu"], {});
+		const memR = await executor.spawn("sysctl", ["-n", "hw.memsize"], {});
+		const cores = parseInt(coresR.stdout.trim(), 10) || 1;
+		const ramBytes = parseInt(memR.stdout.trim(), 10) || 0;
+		return { cores, ramBytes };
+	}
+	if (platform === "Linux") {
+		const coresR = await executor.spawn("nproc", [], {});
+		const memR = await executor.spawn("cat", ["/proc/meminfo"], {});
+		const cores = parseInt(coresR.stdout.trim(), 10) || 1;
+		const match = /MemTotal:\s+(\d+)\s+kB/.exec(memR.stdout);
+		const ramBytes = match ? parseInt(match[1]!, 10) * 1024 : 0;
+		return { cores, ramBytes };
+	}
+	// Windows — wmic output is "Key=Value" per line in /value mode.
+	const coresR = await executor.spawn("wmic", ["cpu", "get", "NumberOfCores", "/value"], {});
+	const memR = await executor.spawn("wmic", ["ComputerSystem", "get", "TotalPhysicalMemory", "/value"], {});
+	const coresMatch = /NumberOfCores=(\d+)/.exec(coresR.stdout);
+	const memMatch = /TotalPhysicalMemory=(\d+)/.exec(memR.stdout);
+	const cores = coresMatch ? parseInt(coresMatch[1]!, 10) : 1;
+	const ramBytes = memMatch ? parseInt(memMatch[1]!, 10) : 0;
+	return { cores, ramBytes };
 }
 
 async function detectCompiler(
@@ -62,11 +103,10 @@ async function detectCompiler(
 	platform: string,
 ): Promise<string> {
 	if (platform === "macOS") {
-		const result = await executor.spawn("xcodebuild", ["-version"], {});
-		if (result.exitCode === 0) {
-			const firstLine = result.stdout.split("\n")[0] ?? "";
-			return firstLine.trim();
-		}
+		// The `/usr/bin/clang` stub pops the CLT install dialog when no
+		// developer dir is set. Check `xcode-select -p` first — it never
+		// triggers the dialog. Only invoke clang when the dir exists.
+		if (!(await hasMacDeveloperDir(executor))) return "Not detected";
 		const clang = await executor.spawn("clang", ["--version"], {});
 		if (clang.exitCode === 0) {
 			return (clang.stdout.split("\n")[0] ?? "").trim();
@@ -97,7 +137,25 @@ async function detectCompiler(
 	return "Not detected";
 }
 
+/** True when macOS `xcode-select -p` resolves — i.e. the `/usr/bin/*`
+ *  developer-tool stubs (git, clang, etc.) will forward to a real binary
+ *  instead of popping the "Install Command Line Developer Tools" dialog. */
+async function hasMacDeveloperDir(executor: PhaseExecutor): Promise<boolean> {
+	const sel = await executor.spawn("xcode-select", ["-p"], {});
+	if (sel.exitCode !== 0) return false;
+	const dir = sel.stdout.trim();
+	if (!dir) return false;
+	const clang = await executor.spawn("test", ["-x", `${dir}/usr/bin/clang`], {});
+	return clang.exitCode === 0;
+}
+
 async function detectGit(executor: PhaseExecutor, platform: string): Promise<boolean> {
+	if (platform === "macOS") {
+		// Don't invoke `git` directly on macOS — the /usr/bin/git stub pops
+		// the CLT install dialog when no developer dir is set. Gate on the
+		// dev-dir probe first; if present, the stub resolves safely.
+		if (!(await hasMacDeveloperDir(executor))) return false;
+	}
 	const onPath = await executor.spawn("git", ["--version"], {});
 	if (onPath.exitCode === 0) return true;
 	if (platform !== "Windows") return false;
@@ -135,13 +193,28 @@ async function detectIpp(executor: PhaseExecutor, platform: string): Promise<boo
 	return result.stdout.includes("found");
 }
 
-async function detectFaust(executor: PhaseExecutor, platform: string): Promise<boolean> {
+async function detectFaust(
+	executor: PhaseExecutor,
+	platform: string,
+	installPath: string,
+): Promise<boolean> {
 	if (platform === "Windows") {
-		// Check known install path
-		const result = await executor.spawn("cmd", ["/c", "if exist \"C:\\Program Files\\Faust\\lib\\faust.dll\" echo found"], {});
-		return result.stdout.includes("found");
+		// Global install
+		const global = await executor.spawn("cmd", ["/c", "if exist \"C:\\Program Files\\Faust\\lib\\faust.dll\" echo found"], {});
+		if (global.stdout.includes("found")) return true;
+		// HISE-local install at <installPath>\tools\faust\lib\libfaust.dll
+		const local = `${installPath}\\tools\\faust\\lib\\libfaust.dll`;
+		const localCheck = await executor.spawn("cmd", ["/c", `if exist "${local}" echo found`], {});
+		return localCheck.stdout.includes("found");
 	}
-	// macOS / Linux — check PATH
-	const result = await executor.spawn("faust", ["--version"], {});
-	return result.exitCode === 0;
+
+	// macOS / Linux — check PATH first
+	const onPath = await executor.spawn("faust", ["--version"], {});
+	if (onPath.exitCode === 0) return true;
+
+	// Fall back to HISE-local install at <installPath>/tools/faust/lib/libfaust.<ext>
+	const ext = platform === "macOS" ? "dylib" : "so";
+	const local = `${installPath}/tools/faust/lib/libfaust.${ext}`;
+	const localCheck = await executor.spawn("test", ["-f", local], {});
+	return localCheck.exitCode === 0;
 }

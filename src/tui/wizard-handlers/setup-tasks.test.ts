@@ -4,7 +4,7 @@ import {
 	createSetupCloneRepoHandler,
 	createSetupBuildDepsHandler,
 	createSetupFaustInstallHandler,
-	createSetupVsInstallHandler,
+	createSetupCompilerInstallHandler,
 	createSetupCompileHandler,
 	filterMsbuildLine,
 } from "./setup-tasks.js";
@@ -14,30 +14,60 @@ import type { WizardProgress } from "../../engine/wizard/types.js";
 function noop(_p: WizardProgress): void {}
 
 describe("setupGitInstall", () => {
-	it("skips when git is already installed", async () => {
+	// macOS probes `git` only after xcode-select -p confirms a dev dir
+	// (otherwise the stub pops the CLT install dialog). Tests must stub both.
+	function stubMacDevDir(executor: MockPhaseExecutor): void {
+		executor.onSpawn("xcode-select", {
+			exitCode: 0,
+			stdout: "/Library/Developer/CommandLineTools\n",
+			stderr: "",
+		});
+	}
+
+	it("detects git at runtime and skips install", async () => {
 		const executor = new MockPhaseExecutor();
+		stubMacDevDir(executor);
+		executor.onSpawn("git", { exitCode: 0, stdout: "git version 2.43.0", stderr: "" });
 		const handler = createSetupGitInstallHandler(executor);
-		const result = await handler({ hasGit: "1", platform: "macOS" }, noop);
+		const result = await handler({ platform: "macOS" }, noop);
 		expect(result.success).toBe(true);
-		expect(result.message).toContain("already installed");
-		expect(executor.calls).toHaveLength(0);
+		expect(result.message).toContain("detected");
+		const gitCall = executor.calls.find((c) => c.command === "git");
+		expect(gitCall).toBeDefined();
 	});
 
-	it("fails on macOS with manual instructions", async () => {
+	it("re-probes on resume so stale hasGit=0 doesn't block a successful install", async () => {
 		const executor = new MockPhaseExecutor();
+		stubMacDevDir(executor);
+		executor.onSpawn("git", { exitCode: 0, stdout: "git version 2.43.0", stderr: "" });
+		const handler = createSetupGitInstallHandler(executor);
+		// hasGit=0 is the stale init-time snapshot; runtime probe still wins.
+		const result = await handler({ hasGit: "0", platform: "macOS" }, noop);
+		expect(result.success).toBe(true);
+	});
+
+	it("skips git probe on macOS when no developer dir is active", async () => {
+		const executor = new MockPhaseExecutor();
+		// xcode-select -p fails → no dev dir. We must NOT invoke `git`
+		// (would pop the CLT dialog). Handler should bail with CLT hint.
+		executor.onSpawn("xcode-select", { exitCode: 1, stdout: "", stderr: "no dir" });
 		const handler = createSetupGitInstallHandler(executor);
 		const result = await handler({ hasGit: "0", platform: "macOS" }, noop);
 		expect(result.success).toBe(false);
-		expect(result.message).toContain("xcode-select");
+		expect(result.message).toContain("Command Line Tools");
+		const gitCall = executor.calls.find((c) => c.command === "git");
+		expect(gitCall).toBeUndefined();
 	});
 
-	it("attempts apt-get on Linux", async () => {
+	it("attempts apt-get on Linux when git missing", async () => {
 		const executor = new MockPhaseExecutor();
+		executor.onSpawn("git", { exitCode: 127, stdout: "", stderr: "not found" });
 		executor.onSpawn("sudo", { exitCode: 0, stdout: "", stderr: "" });
 		const handler = createSetupGitInstallHandler(executor);
 		const result = await handler({ hasGit: "0", platform: "Linux" }, noop);
 		expect(result.success).toBe(true);
-		expect(executor.calls[0]!.command).toBe("sudo");
+		const sudo = executor.calls.find((c) => c.command === "sudo");
+		expect(sudo).toBeDefined();
 	});
 });
 
@@ -81,16 +111,22 @@ describe("setupFaustInstall", () => {
 		expect(result.message).toContain("skipped");
 	});
 
-	it("skips when faust already installed", async () => {
+	it("re-probes and skips when faust already present", async () => {
 		const executor = new MockPhaseExecutor();
+		// Mock faust --version success so the runtime probe short-circuits.
+		executor.onSpawn("faust", { exitCode: 0, stdout: "Faust 2.81.2", stderr: "" });
 		const handler = createSetupFaustInstallHandler(executor);
-		const result = await handler({ includeFaust: "1", hasFaust: "1" }, noop);
+		// hasFaust=0 is a stale init snapshot; runtime probe should override.
+		const result = await handler({ includeFaust: "1", hasFaust: "0", platform: "macOS" }, noop);
 		expect(result.success).toBe(true);
-		expect(result.message).toContain("already installed");
+		expect(result.message).toContain("detected");
 	});
 
 	it("installs on Linux via apt-get", async () => {
 		const executor = new MockPhaseExecutor();
+		// Runtime probe: faust --version exits non-zero so install proceeds.
+		executor.onSpawn("faust", { exitCode: 127, stdout: "", stderr: "not found" });
+		executor.onSpawn("test", { exitCode: 1, stdout: "", stderr: "" });
 		executor.onSpawn("sudo", { exitCode: 0, stdout: "", stderr: "" });
 		const handler = createSetupFaustInstallHandler(executor);
 		const result = await handler({ includeFaust: "1", hasFaust: "0", platform: "Linux" }, noop);
@@ -101,13 +137,15 @@ describe("setupFaustInstall", () => {
 		const executor = new MockPhaseExecutor();
 		// net session exitCode != 0 → not elevated.
 		executor.onSpawn("net", { exitCode: 1, stdout: "", stderr: "Access denied" });
+		// Faust probes use `cmd`; miss both global and install-path checks.
+		executor.onSpawn("cmd", { exitCode: 0, stdout: "", stderr: "" });
 		const handler = createSetupFaustInstallHandler(executor);
 		const result = await handler({ includeFaust: "1", hasFaust: "0", platform: "Windows" }, noop);
 		expect(result.success).toBe(false);
 		expect(result.message).toMatch(/admin/i);
-		// No download or install attempted.
-		const nonNetCalls = executor.calls.filter((c) => c.command !== "net");
-		expect(nonNetCalls).toHaveLength(0);
+		// No installer download was attempted.
+		const curlCalls = executor.calls.filter((c) => c.command === "curl");
+		expect(curlCalls).toHaveLength(0);
 	});
 
 	it("downloads and silently installs on Windows when elevated", async () => {
@@ -128,77 +166,228 @@ describe("setupFaustInstall", () => {
 		expect(installerCall).toBeDefined();
 		expect(installerCall!.args).toEqual(["/S", "/D=C:\\Program Files\\Faust"]);
 	});
+
+	it("installs on macOS via DMG mount and ditto copy", async () => {
+		const executor = new MockPhaseExecutor();
+		// Faust runtime probe fails (not yet installed).
+		executor.onSpawn("faust", { exitCode: 127, stdout: "", stderr: "" });
+		executor.onSpawn("test", { exitCode: 1, stdout: "", stderr: "" });
+		executor.onSpawn("curl", { exitCode: 0, stdout: "", stderr: "" });
+		executor.onSpawn("hdiutil", {
+			exitCode: 0,
+			stdout: "/dev/disk4\tGUID_partition_scheme\n/dev/disk4s1\tApple_HFS\t/Volumes/Faust-2.81.2\n",
+			stderr: "",
+		});
+		// `bash` covers the layout check AND the ditto copy — both succeed.
+		executor.onSpawn("bash", { exitCode: 0, stdout: "", stderr: "" });
+
+		const handler = createSetupFaustInstallHandler(executor);
+		const result = await handler({
+			includeFaust: "1",
+			hasFaust: "0",
+			platform: "macOS",
+			architecture: "arm64",
+			installPath: "/Users/me/HISE",
+		}, noop);
+		expect(result.success).toBe(true);
+		expect(result.message).toContain("/Users/me/HISE/tools/faust");
+
+		const curl = executor.calls.find((c) => c.command === "curl");
+		expect(curl!.args).toContain("https://github.com/grame-cncm/faust/releases/download/2.81.2/Faust-2.81.2-arm64.dmg");
+
+		const attach = executor.calls.find((c) => c.command === "hdiutil" && c.args.includes("attach"));
+		expect(attach).toBeDefined();
+
+		const ditto = executor.calls.find((c) => c.command === "bash" && (c.args[1] ?? "").includes("ditto"));
+		expect(ditto).toBeDefined();
+		expect(ditto!.args[1]).toContain("/Users/me/HISE/tools/faust/lib");
+		expect(ditto!.args[1]).toContain("hise-faust-mnt/Faust-2.81.2/lib");
+
+		const detach = executor.calls.find((c) => c.command === "hdiutil" && c.args.includes("detach"));
+		expect(detach).toBeDefined();
+	});
+
+	it("fails cleanly and unmounts when DMG layout is unexpected on macOS", async () => {
+		const executor = new MockPhaseExecutor();
+		executor.onSpawn("faust", { exitCode: 127, stdout: "", stderr: "" });
+		executor.onSpawn("test", { exitCode: 1, stdout: "", stderr: "" });
+		executor.onSpawn("curl", { exitCode: 0, stdout: "", stderr: "" });
+		executor.onSpawn("hdiutil", {
+			exitCode: 0,
+			stdout: "/dev/disk4s1\tApple_HFS\t/Volumes/Faust-2.81.2\n",
+			stderr: "",
+		});
+		// Layout check (bash test -d chain) fails.
+		executor.onSpawn("bash", { exitCode: 1, stdout: "", stderr: "" });
+
+		const handler = createSetupFaustInstallHandler(executor);
+		const result = await handler({
+			includeFaust: "1",
+			hasFaust: "0",
+			platform: "macOS",
+			architecture: "arm64",
+			installPath: "/Users/me/HISE",
+		}, noop);
+		expect(result.success).toBe(false);
+		expect(result.message).toContain("doesn't contain the expected");
+
+		// Still detached even on layout failure.
+		const detach = executor.calls.find((c) => c.command === "hdiutil" && c.args.includes("detach"));
+		expect(detach).toBeDefined();
+	});
 });
 
-describe("setupVsInstall", () => {
-	it("skips on non-Windows platforms", async () => {
+describe("setupCompilerInstall", () => {
+	it("skips on Linux (handled by buildDeps)", async () => {
 		const executor = new MockPhaseExecutor();
-		const handler = createSetupVsInstallHandler(executor);
+		const handler = createSetupCompilerInstallHandler(executor);
 		const result = await handler({ platform: "Linux" }, noop);
 		expect(result.success).toBe(true);
 		expect(executor.calls).toHaveLength(0);
 	});
 
-	it("skips when VS is already detected", async () => {
-		const executor = new MockPhaseExecutor();
-		const handler = createSetupVsInstallHandler(executor);
-		const result = await handler({ platform: "Windows", hasVs: "1" }, noop);
-		expect(result.success).toBe(true);
-		expect(result.message).toContain("already installed");
+	describe("macOS", () => {
+		it("passes when xcode-select -p points at a dev dir with clang", async () => {
+			const executor = new MockPhaseExecutor();
+			executor.onSpawn("xcode-select", {
+				exitCode: 0,
+				stdout: "/Library/Developer/CommandLineTools\n",
+				stderr: "",
+			});
+			executor.onSpawn("test", { exitCode: 0, stdout: "", stderr: "" });
+			const handler = createSetupCompilerInstallHandler(executor);
+			const result = await handler({ platform: "macOS" }, noop);
+			expect(result.success).toBe(true);
+			expect(result.message).toContain("Command Line Tools detected");
+			// Installer should not have been triggered.
+			const triggered = executor.calls.find(
+				(c) => c.command === "xcode-select" && c.args.includes("--install"),
+			);
+			expect(triggered).toBeUndefined();
+		});
+
+		it("launches CLT installer when developer dir is missing", async () => {
+			const executor = new MockPhaseExecutor();
+			// First xcode-select -p call fails (no dev dir); second call with
+			// --install returns 0. MockPhaseExecutor keys by command name, so
+			// the same stub covers both invocations — return non-zero. Then
+			// override for the --install call via a custom spawn.
+			const baseSpawn = executor.spawn.bind(executor);
+			executor.spawn = async (cmd, args, opts) => {
+				if (cmd === "xcode-select" && args.includes("--install")) {
+					executor.calls.push({ command: cmd, args, env: opts.env });
+					return { exitCode: 0, stdout: "", stderr: "" };
+				}
+				if (cmd === "xcode-select") {
+					executor.calls.push({ command: cmd, args, env: opts.env });
+					return { exitCode: 1, stdout: "", stderr: "no dir" };
+				}
+				return baseSpawn(cmd, args, opts);
+			};
+			const handler = createSetupCompilerInstallHandler(executor);
+			const result = await handler({ platform: "macOS" }, noop);
+			expect(result.success).toBe(false);
+			const triggered = executor.calls.find(
+				(c) => c.command === "xcode-select" && c.args.includes("--install"),
+			);
+			expect(triggered).toBeDefined();
+			expect(result.message).toContain("system dialog");
+			expect(result.message).toContain("/resume");
+		});
+
+		it("still fails cleanly if xcode-select --install reports an unexpected non-zero", async () => {
+			const executor = new MockPhaseExecutor();
+			const baseSpawn = executor.spawn.bind(executor);
+			executor.spawn = async (cmd, args, opts) => {
+				if (cmd === "xcode-select" && args.includes("--install")) {
+					executor.calls.push({ command: cmd, args, env: opts.env });
+					return { exitCode: 2, stdout: "", stderr: "some unexpected error" };
+				}
+				if (cmd === "xcode-select") {
+					executor.calls.push({ command: cmd, args, env: opts.env });
+					return { exitCode: 1, stdout: "", stderr: "no dir" };
+				}
+				return baseSpawn(cmd, args, opts);
+			};
+			const handler = createSetupCompilerInstallHandler(executor);
+			const result = await handler({ platform: "macOS" }, noop);
+			expect(result.success).toBe(false);
+			expect(result.message).toContain("some unexpected error");
+		});
 	});
 
-	it("fails fast when not elevated", async () => {
-		const executor = new MockPhaseExecutor();
-		executor.onSpawn("net", { exitCode: 1, stdout: "", stderr: "Access denied" });
-		const handler = createSetupVsInstallHandler(executor);
-		const result = await handler({ platform: "Windows", hasVs: "0" }, noop);
-		expect(result.success).toBe(false);
-		expect(result.message).toMatch(/admin/i);
-		// No download or install attempted.
-		const nonNetCalls = executor.calls.filter((c) => c.command !== "net");
-		expect(nonNetCalls).toHaveLength(0);
-	});
+	describe("Windows", () => {
+		it("re-probes vswhere and skips when VS is present", async () => {
+			const executor = new MockPhaseExecutor();
+			executor.onSpawn(
+				"C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe",
+				{ exitCode: 0, stdout: "Visual Studio Build Tools 2022\n", stderr: "" },
+			);
+			const handler = createSetupCompilerInstallHandler(executor);
+			// hasVs=0 is a stale init snapshot; the vswhere probe wins.
+			const result = await handler({ platform: "Windows", hasVs: "0" }, noop);
+			expect(result.success).toBe(true);
+			expect(result.message).toContain("detected");
+		});
 
-	it("downloads bootstrapper and runs install with the expected args", async () => {
-		const executor = new MockPhaseExecutor();
-		const handler = createSetupVsInstallHandler(executor);
-		const result = await handler({ platform: "Windows", hasVs: "0" }, noop);
-		expect(result.success).toBe(true);
+		it("fails fast when not elevated", async () => {
+			const executor = new MockPhaseExecutor();
+			// vswhere probe fails → not installed → continue to elevation check.
+			executor.onSpawn(
+				"C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe",
+				{ exitCode: 1, stdout: "", stderr: "not found" },
+			);
+			executor.onSpawn("net", { exitCode: 1, stdout: "", stderr: "Access denied" });
+			const handler = createSetupCompilerInstallHandler(executor);
+			const result = await handler({ platform: "Windows", hasVs: "0" }, noop);
+			expect(result.success).toBe(false);
+			expect(result.message).toMatch(/admin/i);
+			// No download (curl) attempted.
+			const curlCalls = executor.calls.filter((c) => c.command === "curl");
+			expect(curlCalls).toHaveLength(0);
+		});
 
-		const curl = executor.calls.find((c) => c.command === "curl");
-		expect(curl).toBeDefined();
-		expect(curl!.args).toContain("https://aka.ms/vs/stable/vs_BuildTools.exe");
+		it("downloads bootstrapper and runs install with the expected args", async () => {
+			const executor = new MockPhaseExecutor();
+			const handler = createSetupCompilerInstallHandler(executor);
+			const result = await handler({ platform: "Windows", hasVs: "0" }, noop);
+			expect(result.success).toBe(true);
 
-		const installerCall = executor.calls.find((c) => c.command.endsWith("vs_BuildTools.exe"));
-		expect(installerCall).toBeDefined();
-		const args = installerCall!.args;
-		expect(args).toContain("--passive");
-		expect(args).toContain("--wait");
-		expect(args).toContain("--norestart");
-		expect(args).toContain("Microsoft.VisualStudio.Workload.VCTools");
-		expect(args).toContain("Microsoft.VisualStudio.Component.VC.Tools.x86.x64");
-		expect(args).toContain("Microsoft.VisualStudio.Component.Windows11SDK.26100");
-		expect(args).toContain("--addProductLang");
-		expect(args).toContain("en-US");
-	});
+			const curl = executor.calls.find((c) => c.command === "curl");
+			expect(curl).toBeDefined();
+			expect(curl!.args).toContain("https://aka.ms/vs/stable/vs_BuildTools.exe");
 
-	it("treats installer exit code 3010 (reboot-pending) as success", async () => {
-		const executor = new MockPhaseExecutor();
-		// We don't know the exact installer path string to key the mock on,
-		// so we match by filename suffix via a custom sub-class approach:
-		// simpler — override spawn directly.
-		const baseSpawn = executor.spawn.bind(executor);
-		executor.spawn = async (command, args, options) => {
-			if (command.endsWith("vs_BuildTools.exe") && args.includes("--passive")) {
-				// Still record the call.
-				executor.calls.push({ command, args, env: options.env });
-				return { exitCode: 3010, stdout: "", stderr: "" };
-			}
-			return baseSpawn(command, args, options);
-		};
-		const handler = createSetupVsInstallHandler(executor);
-		const result = await handler({ platform: "Windows", hasVs: "0" }, noop);
-		expect(result.success).toBe(true);
+			const installerCall = executor.calls.find((c) => c.command.endsWith("vs_BuildTools.exe"));
+			expect(installerCall).toBeDefined();
+			const args = installerCall!.args;
+			expect(args).toContain("--passive");
+			expect(args).toContain("--wait");
+			expect(args).toContain("--norestart");
+			expect(args).toContain("Microsoft.VisualStudio.Workload.VCTools");
+			expect(args).toContain("Microsoft.VisualStudio.Component.VC.Tools.x86.x64");
+			expect(args).toContain("Microsoft.VisualStudio.Component.Windows11SDK.26100");
+			expect(args).toContain("--addProductLang");
+			expect(args).toContain("en-US");
+		});
+
+		it("treats installer exit code 3010 (reboot-pending) as success", async () => {
+			const executor = new MockPhaseExecutor();
+			// We don't know the exact installer path string to key the mock on,
+			// so we match by filename suffix via a custom sub-class approach:
+			// simpler — override spawn directly.
+			const baseSpawn = executor.spawn.bind(executor);
+			executor.spawn = async (command, args, options) => {
+				if (command.endsWith("vs_BuildTools.exe") && args.includes("--passive")) {
+					// Still record the call.
+					executor.calls.push({ command, args, env: options.env });
+					return { exitCode: 3010, stdout: "", stderr: "" };
+				}
+				return baseSpawn(command, args, options);
+			};
+			const handler = createSetupCompilerInstallHandler(executor);
+			const result = await handler({ platform: "Windows", hasVs: "0" }, noop);
+			expect(result.success).toBe(true);
+		});
 	});
 });
 

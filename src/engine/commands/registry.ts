@@ -56,6 +56,12 @@ export interface CommandSession {
 	getCollectedScriptCallbacks?(processorId: string): Record<string, string>;
 	/** Progress callback for wizard `--run` streaming. Set by CLI layer. */
 	onWizardProgress?(progress: import("../wizard/types.js").WizardProgress): void;
+	/** Snapshot of the most recently paused wizard (null when none). */
+	pendingWizard?: import("../session.js").PendingWizard | null;
+	/** Store/replace the paused-wizard checkpoint. */
+	setPendingWizard?(pending: import("../session.js").PendingWizard | null): void;
+	/** Clear the paused-wizard checkpoint. */
+	clearPendingWizard?(): void;
 }
 
 export type CommandHandler = (

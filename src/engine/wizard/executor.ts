@@ -46,6 +46,20 @@ export interface WizardExecutorDeps {
 	readonly handlerRegistry: WizardHandlerRegistry | null;
 }
 
+/** Per-run options for {@link WizardExecutor.execute}. */
+export interface WizardExecuteOptions {
+	readonly signal?: AbortSignal;
+	/** Skip tasks with index < startIndex. Used by `/resume` to restart
+	 *  from the task that previously failed. Defaults to 0. */
+	readonly startIndex?: number;
+}
+
+/** Extra fields returned when execution halts mid-sequence. */
+export interface WizardExecFailure extends WizardExecResult {
+	/** Index of the task that failed — pass as `startIndex` to resume. */
+	readonly nextTaskIndex?: number;
+}
+
 export class WizardExecutor {
 	constructor(private readonly deps: WizardExecutorDeps) {}
 
@@ -84,15 +98,22 @@ export class WizardExecutor {
 	}
 
 	/**
-	 * Execute all wizard tasks sequentially after validation.
-	 * A failing task halts the sequence.
+	 * Execute wizard tasks sequentially after validation. A failing task
+	 * halts the sequence and returns `nextTaskIndex` so `/resume` can
+	 * restart at the same task after the user fixes the underlying issue.
+	 *
+	 * @param options.startIndex - skip tasks with index < startIndex (resume)
+	 * @param options.signal - abort signal for cancellation
 	 */
 	async execute(
 		def: WizardDefinition,
 		answers: WizardAnswers,
 		onProgress?: (p: WizardProgress) => void,
-		signal?: AbortSignal,
-	): Promise<WizardExecResult> {
+		options?: WizardExecuteOptions,
+	): Promise<WizardExecFailure> {
+		const signal = options?.signal;
+		const startIndex = Math.max(0, options?.startIndex ?? 0);
+
 		const validation = validateAnswers(def, answers);
 		if (!validation.valid) {
 			const messages = validation.errors.map((e) => e.message).join("; ");
@@ -103,13 +124,25 @@ export class WizardExecutor {
 			return { success: true, message: `${def.header} completed.` };
 		}
 
-		onProgress?.({ phase: "Starting", percent: 0, message: `Executing ${def.header}...` });
+		const resuming = startIndex > 0 && startIndex < def.tasks.length;
+		onProgress?.({
+			phase: "Starting",
+			percent: 0,
+			message: resuming
+				? `Resuming ${def.header} at task ${startIndex + 1}/${def.tasks.length}...`
+				: `Executing ${def.header}...`,
+		});
 		const allLogs: string[] = [];
 		let taskData: Record<string, string> = {};
 
-		for (let i = 0; i < def.tasks.length; i++) {
+		for (let i = startIndex; i < def.tasks.length; i++) {
 			if (signal?.aborted) {
-				return { success: false, message: "Cancelled.", logs: allLogs.length > 0 ? allLogs : undefined };
+				return {
+					success: false,
+					message: "Cancelled.",
+					logs: allLogs.length > 0 ? allLogs : undefined,
+					nextTaskIndex: i,
+				};
 			}
 
 			const task = def.tasks[i]!;
@@ -137,7 +170,11 @@ export class WizardExecutor {
 			if (result.logs) allLogs.push(...result.logs);
 			if (result.data) taskData = { ...taskData, ...result.data };
 			if (!result.success) {
-				return { ...result, logs: allLogs.length > 0 ? allLogs : undefined };
+				return {
+					...result,
+					logs: allLogs.length > 0 ? allLogs : undefined,
+					nextTaskIndex: i,
+				};
 			}
 		}
 

@@ -16,6 +16,18 @@ import { registerBuiltinCommands } from "./commands/slash.js";
 import type { CompletionEngine } from "./completion/engine.js";
 import type { WizardRegistry } from "./wizard/registry.js";
 import type { WizardHandlerRegistry } from "./wizard/handler-registry.js";
+import type { WizardAnswers } from "./wizard/types.js";
+
+/** Snapshot of a wizard whose task sequence halted mid-flight, kept on the
+ *  session so the user can run `/resume` after fixing the underlying issue. */
+export interface PendingWizard {
+	readonly wizardId: string;
+	readonly answers: WizardAnswers;
+	/** Index of the task that failed — resume restarts here. */
+	readonly nextTaskIndex: number;
+	/** Human-readable label of the failed task for the resume hint. */
+	readonly failedTaskLabel: string;
+}
 
 // ── Mode factory registry ───────────────────────────────────────────
 
@@ -40,6 +52,7 @@ export class Session implements SessionContext, CommandSession {
 	readonly completionEngine: CompletionEngine | null;
 	wizardRegistry: WizardRegistry | null = null;
 	handlerRegistry: WizardHandlerRegistry | null = null;
+	pendingWizard: PendingWizard | null = null;
 	projectName: string | null = null;
 	projectFolder: string | null = null;
 	loadScriptFile?: (filePath: string) => Promise<string>;
@@ -52,6 +65,14 @@ export class Session implements SessionContext, CommandSession {
 	listDirectory?: (dir: string) => Promise<Array<{ name: string; isDir: boolean }>>;
 	resolveHiseProjectFolder?: () => Promise<string | null>;
 	onWizardProgress?: (progress: import("./wizard/types.js").WizardProgress) => void;
+
+	setPendingWizard(pending: PendingWizard | null): void {
+		this.pendingWizard = pending;
+	}
+
+	clearPendingWizard(): void {
+		this.pendingWizard = null;
+	}
 
 	/** Stack of script files currently executing (recursion guard). */
 	readonly scriptStack: string[] = [];

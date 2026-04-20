@@ -241,6 +241,67 @@ async function handleWizard(
 	return handleWizardWithDef(def, wizardArgs, session);
 }
 
+async function handleResume(
+	_args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	const pending = session.pendingWizard;
+	if (!pending) {
+		return errorResult("No paused wizard to resume.");
+	}
+
+	const registry = session.wizardRegistry;
+	if (!registry) {
+		return errorResult("Wizard registry not loaded.");
+	}
+
+	const def = registry.get(pending.wizardId);
+	if (!def) {
+		session.clearPendingWizard?.();
+		return errorResult(`Paused wizard "${pending.wizardId}" is no longer registered.`);
+	}
+
+	const hasHttpTasks = def.tasks.some((t) => t.type === "http");
+	if (hasHttpTasks && !session.connection) {
+		return errorResult("No HISE connection — cannot execute HTTP wizard tasks.");
+	}
+
+	// TUI path: return a resume-wizard result the frontend picks up and
+	// runs through its streaming executor (same path as a fresh submit).
+	// CLI path (session.onWizardProgress set): execute inline so --run-style
+	// callers see progress streamed via the registered callback.
+	if (!session.onWizardProgress) {
+		const { resumeWizardResult } = await import("../result.js");
+		return resumeWizardResult(def, pending.answers, pending.nextTaskIndex, pending.failedTaskLabel);
+	}
+
+	const { WizardExecutor } = await import("../wizard/executor.js");
+	const executor = new WizardExecutor({
+		connection: session.connection,
+		handlerRegistry: session.handlerRegistry,
+	});
+	const result = await executor.execute(def, pending.answers, session.onWizardProgress, {
+		startIndex: pending.nextTaskIndex,
+	});
+
+	if (result.success) {
+		session.clearPendingWizard?.();
+		return textResult(result.message);
+	}
+
+	// Re-stash with the new failure index so the user can /resume again.
+	if (typeof result.nextTaskIndex === "number") {
+		const failedTask = def.tasks[result.nextTaskIndex];
+		session.setPendingWizard?.({
+			wizardId: pending.wizardId,
+			answers: pending.answers,
+			nextTaskIndex: result.nextTaskIndex,
+			failedTaskLabel: failedTask?.label ?? failedTask?.id ?? pending.failedTaskLabel,
+		});
+	}
+	return errorResult(result.message);
+}
+
 async function handleWizardWithDef(
 	def: import("../wizard/types.js").WizardDefinition,
 	args: string,
@@ -301,7 +362,17 @@ async function handleWizardWithDef(
 
 		const result = await executor.execute(mergedDef, answers, session.onWizardProgress);
 		if (result.success) {
+			session.clearPendingWizard?.();
 			return textResult(result.message);
+		}
+		if (typeof result.nextTaskIndex === "number") {
+			const failedTask = mergedDef.tasks[result.nextTaskIndex];
+			session.setPendingWizard?.({
+				wizardId: mergedDef.id,
+				answers,
+				nextTaskIndex: result.nextTaskIndex,
+				failedTaskLabel: failedTask?.label ?? failedTask?.id ?? "task",
+			});
 		}
 		return errorResult(result.message);
 	}
@@ -763,6 +834,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "wizard",
 		description: "Run a wizard (list, <name>, <name> --schema, <name> --run)",
 		handler: handleWizard,
+		kind: "command",
+	});
+
+	registry.register({
+		name: "resume",
+		description: "Resume the most recently paused wizard from the failed task",
+		handler: handleResume,
 		kind: "command",
 	});
 

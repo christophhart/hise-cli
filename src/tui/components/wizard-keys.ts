@@ -5,7 +5,7 @@
 
 import type { WizardFormState } from "./wizard-render.js";
 import { isTabEnabled, getVisibleTabIndices } from "./wizard-render.js";
-import { isTabComplete } from "../../engine/wizard/validator.js";
+import { isTabComplete, getVisibleFields } from "../../engine/wizard/validator.js";
 import { wordBoundaryLeft, wordBoundaryRight } from "./Input.js";
 
 const ESC_TIMEOUT_MS = 500;
@@ -40,9 +40,10 @@ export function handleWizardKey(
 	const tab = def.tabs[state.activeTab];
 	if (!tab) return null;
 
-	const fieldCount = tab.fields.length;
+	const visibleFields = getVisibleFields(tab, state.answers);
+	const fieldCount = visibleFields.length;
 	const isOnSubmit = state.activeField === fieldCount;
-	const field = tab.fields[state.activeField];
+	const field = visibleFields[state.activeField];
 	const visibleTabs = getVisibleTabIndices(def, state.answers);
 
 	// ── Escape ──────────────────────────────────────────────

@@ -2,12 +2,14 @@
 //
 // Extracts the per-platform compile flow so the setup wizard's demo
 // project test and the stand-alone compile wizard can share one
-// implementation. Each platform has one entry point:
+// implementation. Each platform has one primitive:
 //
 //   • Windows → Projucer resave → vswhere-resolved MSBuild on the .sln
-//   • macOS / Linux → cat the shipped batch script, strip its
-//     xcbeautify pipe, run through bash (keeps raw compiler output
-//     flowing into filterXcodeLine).
+//   • macOS   → make CONFIG=… -jN in Builds/MacOSXMakefile (CLT-only,
+//               no xcodebuild). Assumes HISE's --prepare emits the
+//               MACOSX_MAKE exporter.
+//   • Linux   → cat the shipped batchCompileLinux script, strip its
+//               xcbeautify pipe, run through bash (unchanged).
 //
 // The HISE-generated `batchCompile.bat` on Windows still hardcodes the
 // old VS 2026 Community MSBuild path, so we deliberately do NOT run it.
@@ -15,7 +17,7 @@
 // output directory) and we drive MSBuild directly.
 
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
-import { filterMsbuildLine, filterXcodeLine, resolveMsbuildPath } from "./setup-tasks.js";
+import { filterMsbuildLine, resolveMsbuildPath } from "./setup-tasks.js";
 
 /** Progress callback: a log line plus the transient flag from spawn. */
 export type CompileEmit = (message: string, transient?: boolean) => void;
@@ -40,8 +42,26 @@ export interface WindowsCompileSpec {
 	readonly extraEnv?: Record<string, string>;
 }
 
-export interface UnixCompileSpec {
-	/** batchCompileOSX / batchCompileLinux / generated build script. */
+export interface MacCompileSpec {
+	/** Root of the HISE-generated project's Binaries/ folder. */
+	readonly binaryFolder: string;
+	/** Makefile CONFIG value (e.g. "Release", "Release with Faust"). */
+	readonly configuration: string;
+	/** .jucer file to pass through Projucer --resave before building.
+	 *  Skips the resave step when omitted (e.g. freshly-generated .jucer). */
+	readonly jucerFile?: string;
+	/** Path to the Projucer binary (inside the HISE install). Required when
+	 *  `jucerFile` is provided. */
+	readonly projucerPath?: string;
+	/** RAM-aware parallel job count. Defaults to 1 when omitted. */
+	readonly parallelJobs?: number;
+	/** Single-slice architecture override ("arm64" or "x86_64"). Omit to
+	 *  inherit the Makefile's default universal (x86_64+arm64) build. */
+	readonly architecture?: "arm64" | "x86_64";
+}
+
+export interface LinuxCompileSpec {
+	/** batchCompileLinux script path, emitted by HISE --prepare. */
 	readonly buildScript: string;
 	/** Working directory for the build script. */
 	readonly buildDirectory: string;
@@ -111,10 +131,17 @@ export interface JuceCompileSpec {
 	readonly jucerFile: string;
 	/** Project name — baked into the Windows .sln filename. */
 	readonly projectName: string;
-	/** MSBuild /p:Configuration value. Default "Release". */
+	/** Build configuration name. Default "Release". On macOS / Windows the
+	 *  human-readable form (e.g. "Release with Faust") maps straight onto
+	 *  the Makefile CONFIG or MSBuild /p:Configuration value. */
 	readonly configuration?: string;
 	/** MSBuild /p:Platform value. Default "x64". */
 	readonly msbuildPlatform?: string;
+	/** RAM-aware parallel job count for Makefile builds (macOS/Linux). */
+	readonly parallelJobs?: number;
+	/** Single-slice architecture override for macOS ("arm64" or "x86_64").
+	 *  Omit to inherit the Makefile's universal (x86_64+arm64) build. */
+	readonly macArchitecture?: "arm64" | "x86_64";
 }
 
 /**
@@ -140,19 +167,95 @@ export async function runJuceCompile(
 		}, emit);
 	}
 
-	const buildScript = process.platform === "darwin"
-		? `${spec.binaryFolder}/batchCompileOSX`
-		: `${spec.binaryFolder}/batchCompileLinux`;
-	return runUnixJuceCompile(executor, {
-		buildScript,
+	if (process.platform === "darwin") {
+		return runMacJuceCompile(executor, {
+			binaryFolder: spec.binaryFolder,
+			configuration: spec.configuration ?? "Release",
+			jucerFile: spec.jucerFile,
+			projucerPath: `${spec.hisePath}/JUCE/Projucer/Projucer.app/Contents/MacOS/Projucer`,
+			parallelJobs: spec.parallelJobs,
+			architecture: spec.macArchitecture,
+		}, emit);
+	}
+
+	return runLinuxJuceCompile(executor, {
+		buildScript: `${spec.binaryFolder}/batchCompileLinux`,
 		buildDirectory: spec.binaryFolder,
 	}, emit);
 }
 
-/** Compile a JUCE-generated build via its Unix shell script. */
-export async function runUnixJuceCompile(
+/** Compile a JUCE-generated macOS project via its Makefile exporter. */
+export async function runMacJuceCompile(
 	executor: PhaseExecutor,
-	spec: UnixCompileSpec,
+	spec: MacCompileSpec,
+	emit: CompileEmit,
+): Promise<CompileOutcome> {
+	const makefileDir = `${spec.binaryFolder}/Builds/MacOSXMakefile`;
+
+	// Resave the .jucer through Projucer first. HISE's --prepare writes
+	// the .jucer with <MACOSX_MAKE>, but the Makefile itself is only
+	// emitted when Projucer resaves. Without this step, the Makefile
+	// directory may not exist (ENOENT on cwd) or be stale.
+	if (spec.jucerFile && spec.projucerPath) {
+		const resave = await executor.spawn(spec.projucerPath, ["--resave", spec.jucerFile], {
+			onLog: (line, transient) => emit(line, transient),
+		});
+		if (resave.exitCode !== 0) {
+			return {
+				success: false,
+				exitCode: resave.exitCode,
+				stderr: `Projucer resave failed: ${resave.stderr}`,
+			};
+		}
+	}
+
+	// After resave the Makefile should exist; otherwise the .jucer is
+	// missing the <MACOSX_MAKE> exporter. Surface a clear error instead
+	// of the cryptic `posix_spawn 'make'` ENOENT from a missing cwd.
+	const check = await executor.spawn("test", ["-f", `${makefileDir}/Makefile`], {});
+	if (check.exitCode !== 0) {
+		return {
+			success: false,
+			exitCode: check.exitCode,
+			stderr:
+				`macOS Makefile not found at ${makefileDir}/Makefile. ` +
+				`The project's .jucer needs the <MACOSX_MAKE> exporter — ` +
+				`update your HISE install so project-export templates include it, ` +
+				`then re-export and /resume.`,
+		};
+	}
+
+	const jobs = Math.max(1, spec.parallelJobs ?? 1);
+	const args = [`CONFIG=${spec.configuration}`, `-j${jobs}`];
+	if (spec.architecture) {
+		args.push(`TARGET_ARCH=-arch ${spec.architecture}`);
+	}
+	const result = await executor.spawn("make", args, {
+		cwd: makefileDir,
+		env: {
+			// JUCE_JOBS_CAPPED=1 suppresses the Makefile's auto -j so
+			// our explicit -jN (RAM-aware) wins.
+			JUCE_JOBS_CAPPED: "1",
+			// Projucer's Makefile exporter uses `-rpath $(SRCROOT)/...`
+			// for the Faust dylib path. SRCROOT is Xcode-only; without
+			// this the linker bakes an absolute rpath starting with `/`
+			// and the built binary crashes at launch.
+			SRCROOT: makefileDir,
+			// Strip the source-snippet + caret rendering from clang
+			// diagnostics — keeps warning/error messages one line
+			// each instead of 10+ lines of code context.
+			CFLAGS: "-fno-caret-diagnostics",
+			CXXFLAGS: "-fno-caret-diagnostics",
+		},
+		onLog: (line, transient) => emit(line, transient),
+	});
+	return { success: result.exitCode === 0, exitCode: result.exitCode, stderr: result.stderr };
+}
+
+/** Compile a JUCE-generated Linux project via its batchCompileLinux script. */
+export async function runLinuxJuceCompile(
+	executor: PhaseExecutor,
+	spec: LinuxCompileSpec,
 	emit: CompileEmit,
 ): Promise<CompileOutcome> {
 	const scriptContent = await executor.spawn("cat", [spec.buildScript], {});
@@ -163,15 +266,11 @@ export async function runUnixJuceCompile(
 			stderr: `Cannot read build script: ${spec.buildScript}`,
 		};
 	}
-	// Strip the xcbeautify pipe so raw xcodebuild/make output reaches
-	// filterXcodeLine untouched.
+	// Strip the xcbeautify pipe so raw make output reaches the caller.
 	const patchedScript = scriptContent.stdout.replace(/\s*\|\s*"[^"]*xcbeautify"/, "");
 	const result = await executor.spawn("bash", ["-c", patchedScript], {
 		cwd: spec.buildDirectory,
-		onLog: (line, transient) => {
-			const filtered = filterXcodeLine(line);
-			if (filtered) emit(filtered, transient);
-		},
+		onLog: (line, transient) => emit(line, transient),
 	});
 	return { success: result.exitCode === 0, exitCode: result.exitCode, stderr: result.stderr };
 }

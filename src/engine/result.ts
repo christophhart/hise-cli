@@ -48,6 +48,7 @@ export type CommandResult =
 	| { type: "tree"; root: TreeNode; accent?: string }
 	| { type: "markdown"; content: string; accent?: string }
 	| { type: "wizard"; definition: WizardDefinition; prefill: WizardAnswers; autoRun: boolean; accent?: string }
+	| { type: "resume-wizard"; definition: WizardDefinition; answers: WizardAnswers; startIndex: number; failedTaskLabel: string; accent?: string }
 	| { type: "run-report"; source: string; runResult: RunResult; accent?: string }
 	| { type: "preformatted"; content: string; accent?: string }
 	| { type: "empty"; accent?: string };
@@ -93,6 +94,15 @@ export function wizardResult(
 	autoRun = false,
 ): CommandResult {
 	return { type: "wizard", definition, prefill, autoRun, accent: "#e8a060" };
+}
+
+export function resumeWizardResult(
+	definition: WizardDefinition,
+	answers: WizardAnswers,
+	startIndex: number,
+	failedTaskLabel: string,
+): CommandResult {
+	return { type: "resume-wizard", definition, answers, startIndex, failedTaskLabel, accent: "#e8a060" };
 }
 
 export function runReportResult(source: string, runResult: RunResult): CommandResult {

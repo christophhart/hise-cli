@@ -74,6 +74,7 @@ Enter a mode to start working, or use /wizard for guided workflows.
 - **/hise** — Runtime control (launch, shutdown, screenshot, profile)
 - **/wizard** — Guided workflows (setup, export, project creation)
 - **/setup** — Install and build HISE from source (wizard alias)
+- **/resume** — Resume the most recently paused wizard from the failed task
 
 One-shot syntax: \`/builder add SimpleGain\` executes without entering the mode.
 Dot-context: \`/builder.Master add LFO\` sets the context path first.
