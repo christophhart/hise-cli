@@ -638,9 +638,7 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 
 		// Windows MSBuild uses the spaced form; macOS + Linux Makefiles use
 		// the space-free form (config names are strict string compares).
-		const buildConfig = platform === "Windows"
-			? (includeFaust ? "Release with Faust" : "Release")
-			: (includeFaust ? "ReleaseWithFaust" : "Release");
+		const buildConfig = (includeFaust ? "ReleaseWithFaust" : "Release");
 
 		onProgress({ phase: "compile", percent: 0, message: "Running Projucer resave..." });
 
@@ -717,7 +715,7 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 				return fail("Could not locate a Visual Studio installation with MSBuild. Re-run the setup wizard.");
 			}
 			const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\HISE Standalone.sln`;
-			const config = includeFaust ? "Release with Faust" : "Release";
+			const config = includeFaust ? "ReleaseWithFaust" : "Release";
 			const result = await executor.spawn(msbuild, [
 				sln,
 				`/p:Configuration=${config}`,
@@ -760,7 +758,7 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 			// HISE.exe lives in the App\ subfolder of the build-config output
 			// dir. Register that dir on the per-user PATH via PowerShell so no
 			// elevation is needed and the change survives the session.
-			const config = includeFaust ? "Release with Faust" : "Release";
+			const config = includeFaust ? "ReleaseWithFaust" : "Release";
 			const binDir = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App`;
 			const psCmd =
 				`$cur = [Environment]::GetEnvironmentVariable('Path','User'); ` +
@@ -822,8 +820,8 @@ function hiseBinPath(installPath: string, platform: string, includeFaust = false
 		return `${installPath}/projects/standalone/Builds/LinuxMakefile/build/HISE Standalone`;
 	}
 	// MSBuild config name becomes the output subfolder name, so the
-	// Faust-enabled build lives under "Release with Faust\App\HISE.exe".
-	const config = includeFaust ? "Release with Faust" : "Release";
+	// Faust-enabled build lives under "ReleaseWithFaust\App\HISE.exe".
+	const config = includeFaust ? "ReleaseWithFaust" : "Release";
 	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App\\HISE.exe`;
 }
 
