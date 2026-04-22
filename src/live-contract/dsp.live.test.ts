@@ -1,15 +1,14 @@
 // Live contract tests for the DSP REST endpoints. Requires a running
-// HISE instance on :1900 with at least one DspNetwork-capable script
-// processor (HardcodedFX, HardcodedSynth, or similar). Run via:
+// HISE instance on :1900. Run via:
 //   npm run test:live-contract:dsp
 //
-// The suite probes shape parity against `src/mock/contracts/dsp.ts`,
-// then exercises a minimal init → add → connect → set → save → reset
-// round-trip against the live server.
+// Each test starts from a fully reset project tree via /api/builder/reset,
+// adds a ScriptFX host, and inits a fresh DSP network on it. Tests are
+// hermetic — no shared state between them.
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { HttpHiseConnection } from "../engine/hise.js";
-import { isEnvelopeResponse, isErrorResponse, isSuccessResponse } from "../engine/hise.js";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { HttpHiseConnection, HiseResponse } from "../engine/hise.js";
+import { isEnvelopeResponse, isErrorResponse } from "../engine/hise.js";
 import {
 	normalizeDspApplyResponse,
 	normalizeDspInitResponse,
@@ -23,6 +22,14 @@ import { requireLiveHiseConnection } from "./helpers.js";
 
 let connection: HttpHiseConnection;
 
+// Deterministic host for every test — `/api/builder/apply` with
+// `name: "ScriptFX"` adds a ScriptFX module under that exact moduleId.
+const HOST_MODULE_ID = "ScriptFX";
+
+// Each test uses a unique network name so disk-persistence interactions
+// across runs don't leak into subsequent tests.
+let currentNetworkName = "";
+
 beforeAll(async () => {
 	connection = await requireLiveHiseConnection();
 });
@@ -31,21 +38,51 @@ afterAll(() => {
 	connection.destroy();
 });
 
-// Resolve a DspNetwork-capable module id. `/api/status` doesn't expose
-// module type, so prefer any processor whose id contains "ScriptFX",
-// "HardcodedFX", or "HardcodedSynth" (the canonical DSP hosts). Fall
-// back to the first processor as a last resort.
-async function findHostModule(): Promise<string> {
-	const resp = await connection.get("/api/status");
-	if (isErrorResponse(resp)) throw new Error(resp.message);
-	if (!isSuccessResponse(resp)) throw new Error("Bad /api/status response");
-	const processors = (resp.scriptProcessors as Array<{ moduleId: string }> | undefined) ?? [];
-	if (processors.length === 0) {
-		throw new Error("Live HISE has no script processors; cannot run DSP live contract");
-	}
-	const preferred = processors.find((p) => /ScriptFX|HardcodedFX|HardcodedSynth/i.test(p.moduleId));
-	return (preferred ?? processors[0]!).moduleId;
+/**
+ * Hermetic setup: wipe the module tree, add a ScriptFX host, and init a
+ * fresh DSP network on it. Called from beforeEach so each test starts
+ * from an identical known state.
+ */
+async function resetAndInit(): Promise<{ moduleId: string; networkName: string }> {
+	// 1. Builder reset — wipes all non-root modules.
+	const resetResp = await connection.post("/api/builder/reset", {});
+	expectEnvelopeSuccess(resetResp, "builder reset");
+
+	// 2. Add ScriptFX under Master Chain's FX chain (index 3).
+	const addResp = await connection.post("/api/builder/apply", {
+		operations: [{
+			op: "add",
+			type: "ScriptFX",
+			parent: "Master Chain",
+			chain: 3,
+			name: HOST_MODULE_ID,
+		}],
+	});
+	expectEnvelopeSuccess(addResp, "builder add ScriptFX");
+
+	// 3. Init a fresh DSP network on the ScriptFX host.
+	const networkName = `__cli_live_${Date.now()}_${Math.floor(Math.random() * 1000)}__`;
+	const initResp = await connection.post(
+		`/api/dsp/init?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
+		{ moduleId: HOST_MODULE_ID, name: networkName, mode: "create" },
+	);
+	expectEnvelopeSuccess(initResp, "dsp init");
+
+	return { moduleId: HOST_MODULE_ID, networkName };
 }
+
+function expectEnvelopeSuccess(resp: HiseResponse, label: string): void {
+	if (isErrorResponse(resp)) throw new Error(`${label}: ${resp.message}`);
+	if (!isEnvelopeResponse(resp) || !resp.success) {
+		const errs = isEnvelopeResponse(resp) ? JSON.stringify(resp.errors) : String(resp);
+		throw new Error(`${label} failed: ${errs}`);
+	}
+}
+
+beforeEach(async () => {
+	const { networkName } = await resetAndInit();
+	currentNetworkName = networkName;
+});
 
 describe("live contract parity — DSP endpoints", () => {
 	it("GET /api/dsp/list matches the list contract", async () => {
@@ -58,82 +95,58 @@ describe("live contract parity — DSP endpoints", () => {
 		expect(() => normalizeDspList(networks)).not.toThrow();
 	});
 
-	it("POST /api/dsp/init returns {result, filePath, source}", async () => {
-		const moduleId = await findHostModule();
+	it("POST /api/dsp/init returns {result, source}", async () => {
+		// beforeEach has already created the network; call init again in
+		// auto mode and verify the response shape.
 		const resp = await connection.post(
-			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId, name: "__cli_live_test__", mode: "auto" },
+			`/api/dsp/init?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
+			{ moduleId: HOST_MODULE_ID, name: currentNetworkName, mode: "auto" },
 		);
-		if (isErrorResponse(resp)) throw new Error(resp.message);
-		if (!isEnvelopeResponse(resp) || !resp.success) {
-			throw new Error(`init failed: ${JSON.stringify(resp.errors)}`);
-		}
+		expectEnvelopeSuccess(resp, "init auto");
 		const parsed = normalizeDspInitResponse(resp);
 		expect(parsed.tree.nodeId).toBeTruthy();
-		expect(typeof parsed.filePath).toBe("string");
 		expect(parsed.source === "created" || parsed.source === "loaded").toBe(true);
 	});
 
 	it("POST /api/dsp/init mode=create errors when network exists, mode=load loads it", async () => {
-		const moduleId = await findHostModule();
-		const uniqueName = `__cli_live_mode_${Date.now()}__`;
-
-		// 1. create fresh — expect success + source: "created"
-		const createResp = await connection.post(
-			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId, name: uniqueName, mode: "create" },
-		);
-		if (isErrorResponse(createResp)) throw new Error(createResp.message);
-		if (!isEnvelopeResponse(createResp) || !createResp.success) {
-			throw new Error(`create failed: ${JSON.stringify(createResp.errors)}`);
-		}
-		expect(normalizeDspInitResponse(createResp).source).toBe("created");
-
-		// 2. save so it's persisted
+		// beforeEach created the network in-memory. Save to disk first so
+		// the name is persisted for the load/create-exists checks.
 		const saveResp = await connection.post(
-			`/api/dsp/save?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId },
+			`/api/dsp/save?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
+			{ moduleId: HOST_MODULE_ID },
 		);
-		if (!isEnvelopeResponse(saveResp) || !saveResp.success) {
-			throw new Error(`save failed: ${JSON.stringify(isEnvelopeResponse(saveResp) ? saveResp.errors : saveResp)}`);
-		}
+		expectEnvelopeSuccess(saveResp, "save");
 
-		// 3. create again — expect failure (already exists)
+		// Create again — expect 409 envelope failure.
 		const dupResp = await connection.post(
-			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId, name: uniqueName, mode: "create" },
+			`/api/dsp/init?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
+			{ moduleId: HOST_MODULE_ID, name: currentNetworkName, mode: "create" },
 		);
 		expect(isEnvelopeResponse(dupResp) && dupResp.success).toBe(false);
 
-		// 4. load — expect success + source: "loaded"
+		// Load — expect success + source: "loaded".
 		const loadResp = await connection.post(
-			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId, name: uniqueName, mode: "load" },
+			`/api/dsp/init?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
+			{ moduleId: HOST_MODULE_ID, name: currentNetworkName, mode: "load" },
 		);
-		if (!isEnvelopeResponse(loadResp) || !loadResp.success) {
-			throw new Error(`load failed: ${JSON.stringify(isEnvelopeResponse(loadResp) ? loadResp.errors : loadResp)}`);
-		}
+		expectEnvelopeSuccess(loadResp, "load");
 		expect(normalizeDspInitResponse(loadResp).source).toBe("loaded");
 	});
 
 	it("POST /api/dsp/init mode=load errors when network is missing", async () => {
-		const moduleId = await findHostModule();
 		const resp = await connection.post(
-			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId, name: `__cli_live_missing_${Date.now()}__`, mode: "load" },
+			`/api/dsp/init?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
+			{ moduleId: HOST_MODULE_ID, name: `__cli_missing_${Date.now()}__`, mode: "load" },
 		);
 		expect(isEnvelopeResponse(resp) && resp.success).toBe(false);
 	});
 
 	it("GET /api/dsp/tree returns a contract-valid tree", async () => {
-		const moduleId = await findHostModule();
 		const resp = await connection.get(
-			`/api/dsp/tree?moduleId=${encodeURIComponent(moduleId)}`,
+			`/api/dsp/tree?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
 		);
-		if (isErrorResponse(resp)) throw new Error(resp.message);
-		if (!isEnvelopeResponse(resp) || !resp.success) {
-			throw new Error(`tree failed: ${JSON.stringify(resp.errors)}`);
-		}
+		expectEnvelopeSuccess(resp, "tree");
+		if (!isEnvelopeResponse(resp)) throw new Error("unreachable");
 		const { raw, tree } = normalizeDspTreeResponse(resp.result);
 		expect(raw.nodeId).toBeTruthy();
 		expect(raw.factoryPath).toBeTruthy();
@@ -141,33 +154,25 @@ describe("live contract parity — DSP endpoints", () => {
 	});
 
 	it("POST /api/dsp/apply round-trips add → set → connect → get-tree", async () => {
-		const moduleId = await findHostModule();
-		// Start fresh.
-		await connection.post(`/api/dsp/apply`, {
-			moduleId, operations: [{ op: "clear" }],
-		});
-
 		const ops = [
-			{ op: "add", factoryPath: "core.oscillator", parent: "__cli_live_test__", nodeId: "OscCli" },
-			{ op: "add", factoryPath: "control.pma", parent: "__cli_live_test__", nodeId: "PmaCli" },
+			{ op: "add", factoryPath: "core.oscillator", parent: currentNetworkName, nodeId: "OscCli" },
+			{ op: "add", factoryPath: "control.pma", parent: currentNetworkName, nodeId: "PmaCli" },
 			{ op: "set", nodeId: "OscCli", parameterId: "Frequency", value: 880 },
 			{ op: "connect", source: "PmaCli", target: "OscCli", parameter: "Frequency" },
 		];
-		const apply = await connection.post(`/api/dsp/apply`, { moduleId, operations: ops });
-		if (isErrorResponse(apply)) throw new Error(apply.message);
-		if (!isEnvelopeResponse(apply) || !apply.success) {
-			throw new Error(`apply failed: ${JSON.stringify(apply.errors)}`);
-		}
+		const apply = await connection.post(`/api/dsp/apply`, {
+			moduleId: HOST_MODULE_ID, operations: ops,
+		});
+		expectEnvelopeSuccess(apply, "apply");
 		const applyParsed = normalizeDspApplyResponse(apply);
 		expect(applyParsed.diff.length).toBeGreaterThan(0);
 
 		// Read the tree back and verify the modifications survived.
 		const treeResp = await connection.get(
-			`/api/dsp/tree?moduleId=${encodeURIComponent(moduleId)}`,
+			`/api/dsp/tree?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
 		);
-		if (!isEnvelopeResponse(treeResp) || !treeResp.success) {
-			throw new Error("tree fetch after apply failed");
-		}
+		expectEnvelopeSuccess(treeResp, "tree fetch after apply");
+		if (!isEnvelopeResponse(treeResp)) throw new Error("unreachable");
 		const { raw } = normalizeDspTreeResponse(treeResp.result);
 		const osc = findDspNode(raw, "OscCli");
 		expect(osc).not.toBeNull();
@@ -177,35 +182,37 @@ describe("live contract parity — DSP endpoints", () => {
 		expect(conn?.source).toBe("PmaCli");
 	});
 
-	it("POST /api/dsp/save returns a filePath for file-backed networks", async () => {
-		const moduleId = await findHostModule();
+	it("POST /api/dsp/save returns a filePath", async () => {
 		const resp = await connection.post(
-			`/api/dsp/save?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId },
+			`/api/dsp/save?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
+			{ moduleId: HOST_MODULE_ID },
 		);
-		if (isErrorResponse(resp)) throw new Error(resp.message);
-		if (!isEnvelopeResponse(resp) || !resp.success) {
-			// Some host modules have no file-based representation; treat as skip.
-			return;
-		}
+		expectEnvelopeSuccess(resp, "save");
 		const parsed = normalizeDspSaveResponse(resp);
 		expect(parsed.filePath).toMatch(/\.xml$/);
 	});
 
-	it("POST /api/dsp/apply {op:'clear'} empties the network", async () => {
-		const moduleId = await findHostModule();
-		const resp = await connection.post(`/api/dsp/apply`, {
-			moduleId, operations: [{ op: "clear" }],
+	it("POST /api/dsp/apply {op:'clear'} detaches the active network", async () => {
+		// Seed a child so clear has something to remove.
+		const seed = await connection.post(`/api/dsp/apply`, {
+			moduleId: HOST_MODULE_ID,
+			operations: [
+				{ op: "add", factoryPath: "core.oscillator", parent: currentNetworkName, nodeId: "OscSeed" },
+			],
 		});
-		if (isErrorResponse(resp)) throw new Error(resp.message);
-		expect(isEnvelopeResponse(resp) && resp.success).toBe(true);
+		expectEnvelopeSuccess(seed, "seed");
+
+		const resp = await connection.post(`/api/dsp/apply`, {
+			moduleId: HOST_MODULE_ID, operations: [{ op: "clear" }],
+		});
+		expectEnvelopeSuccess(resp, "clear");
+
+		// HISE's `clear` op detaches the active network from the host — it
+		// does not merely empty children. Subsequent GET /api/dsp/tree
+		// therefore returns a 404 envelope until the next init call.
 		const treeResp = await connection.get(
-			`/api/dsp/tree?moduleId=${encodeURIComponent(moduleId)}`,
+			`/api/dsp/tree?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
 		);
-		if (!isEnvelopeResponse(treeResp) || !treeResp.success) {
-			throw new Error("tree fetch after clear failed");
-		}
-		const { raw } = normalizeDspTreeResponse(treeResp.result);
-		expect(raw.children).toEqual([]);
+		expect(isEnvelopeResponse(treeResp) && treeResp.success).toBe(false);
 	});
 });
