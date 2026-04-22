@@ -103,6 +103,27 @@ describe("dsp parser — graph mutations", () => {
 			expect(cmd.factoryPath.toLowerCase()).toBe(`math.${name}`);
 		}
 	});
+	it("parses node-id positions with keyword-named nodes", () => {
+		// When `add math.add` defaults the instance id to `add`, every
+		// subsequent nodeId position must accept that literal.
+		expect((parseOk("remove add") as { type: string; nodeId: string }).nodeId.toLowerCase()).toBe("add");
+		expect((parseOk("bypass add") as { type: string; nodeId: string }).nodeId.toLowerCase()).toBe("add");
+		expect((parseOk("enable add") as { type: string; nodeId: string }).nodeId.toLowerCase()).toBe("add");
+		const mv = parseOk("move add to Main") as { type: string; nodeId: string; parent: string };
+		expect(mv.nodeId.toLowerCase()).toBe("add");
+		expect(mv.parent).toBe("Main");
+		const setCmd = parseOk("set add.Value 1") as SetCommand;
+		expect(setCmd.nodeId.toLowerCase()).toBe("add");
+		expect(setCmd.parameterId).toBe("Value");
+		expect(setCmd.value).toBe(1);
+		const conn = parseOk("connect add to Osc1.Frequency") as ConnectCommand;
+		expect(conn.source.toLowerCase()).toBe("add");
+		expect(conn.target).toBe("Osc1");
+		const dis = parseOk("disconnect add from Osc1.Frequency") as { type: string; source: string; target: string };
+		expect(dis.source.toLowerCase()).toBe("add");
+		const cp = parseOk("create_parameter add.Amount") as CreateParameterCommand;
+		expect(cp.nodeId.toLowerCase()).toBe("add");
+	});
 	it("parses add with alias and parent", () => {
 		const cmd = parseOk("add core.oscillator as Osc1 to Main") as AddCommand;
 		expect(cmd.factoryPath).toBe("core.oscillator");

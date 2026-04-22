@@ -178,12 +178,14 @@ class DspParser extends CstParser {
 		]);
 	});
 
-	// Node/parameter property name — accepts a plain Identifier OR any
-	// DSP keyword token that happens to match a property name (e.g.
-	// `Connection`, `Show`, `Add`, `Save`). Used in positions after `.`
-	// where the grammar guarantees an identifier is expected, so accepting
-	// keyword images is unambiguous. Fixes the whole class of "property
-	// name collides with verb keyword" parse errors.
+	// Flexible identifier — accepts a plain Identifier OR any DSP keyword
+	// token. Used at grammar positions where only an identifier makes
+	// sense (after a `.`, after a verb keyword, after `to`/`from`/`as`),
+	// so keyword images are unambiguous. Fixes both the
+	// property-name-collides-with-verb class (`set X.Connection`,
+	// `set X.Save`) and the node-id-collides-with-verb class
+	// (`add math.add` → default id `add`, then `remove add`,
+	// `bypass add`, `set add.Value` all need to parse).
 	public propName = this.RULE("propName", () => {
 		this.OR([
 			{ ALT: () => this.CONSUME(Identifier) },
@@ -274,27 +276,27 @@ class DspParser extends CstParser {
 			this.CONSUME(As);
 			this.OR([
 				{ ALT: () => this.CONSUME(QuotedString, { LABEL: "alias" }) },
-				{ ALT: () => this.CONSUME3(Identifier, { LABEL: "aliasId" }) },
+				{ ALT: () => this.SUBRULE2(this.propName, { LABEL: "aliasId" }) },
 			]);
 		});
 		this.OPTION2(() => {
 			this.CONSUME(To);
-			this.CONSUME4(Identifier, { LABEL: "parent" });
+			this.SUBRULE3(this.propName, { LABEL: "parent" });
 		});
 	});
 
 	// remove <nodeId>
 	public removeCommand = this.RULE("removeCommand", () => {
 		this.CONSUME(Remove);
-		this.CONSUME(Identifier, { LABEL: "nodeId" });
+		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 	});
 
 	// move <nodeId> to <parent> [at <index>]
 	public moveCommand = this.RULE("moveCommand", () => {
 		this.CONSUME(Move);
-		this.CONSUME(Identifier, { LABEL: "nodeId" });
+		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 		this.CONSUME(To);
-		this.CONSUME2(Identifier, { LABEL: "parent" });
+		this.SUBRULE2(this.propName, { LABEL: "parent" });
 		this.OPTION(() => {
 			this.CONSUME(At);
 			this.CONSUME(NumberLiteral, { LABEL: "index" });
@@ -308,38 +310,38 @@ class DspParser extends CstParser {
 	// routing target internally (e.g. routing.send → routing.receive).
 	public connectCommand = this.RULE("connectCommand", () => {
 		this.CONSUME(Connect);
-		this.CONSUME(Identifier, { LABEL: "source" });
+		this.SUBRULE(this.propName, { LABEL: "source" });
 		this.OPTION(() => {
 			this.CONSUME(Dot);
 			this.OR([
-				{ ALT: () => this.SUBRULE(this.propName, { LABEL: "sourceOutputId" }) },
+				{ ALT: () => this.SUBRULE2(this.propName, { LABEL: "sourceOutputId" }) },
 				{ ALT: () => this.CONSUME(NumberLiteral, { LABEL: "sourceOutputIndex" }) },
 			]);
 		});
 		this.CONSUME(To);
-		this.CONSUME2(Identifier, { LABEL: "target" });
+		this.SUBRULE3(this.propName, { LABEL: "target" });
 		this.OPTION2(() => {
 			this.CONSUME2(Dot);
-			this.SUBRULE2(this.propName, { LABEL: "parameter" });
+			this.SUBRULE4(this.propName, { LABEL: "parameter" });
 		});
 	});
 
 	// disconnect <source> from <target>.<param>
 	public disconnectCommand = this.RULE("disconnectCommand", () => {
 		this.CONSUME(Disconnect);
-		this.CONSUME(Identifier, { LABEL: "source" });
+		this.SUBRULE(this.propName, { LABEL: "source" });
 		this.CONSUME(From);
-		this.CONSUME2(Identifier, { LABEL: "target" });
+		this.SUBRULE2(this.propName, { LABEL: "target" });
 		this.CONSUME(Dot);
-		this.SUBRULE(this.propName, { LABEL: "parameter" });
+		this.SUBRULE3(this.propName, { LABEL: "parameter" });
 	});
 
 	// set <node>.<param> [to] <value>
 	public setCommand = this.RULE("setCommand", () => {
 		this.CONSUME(Set);
-		this.CONSUME(Identifier, { LABEL: "nodeId" });
+		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 		this.CONSUME(Dot);
-		this.SUBRULE(this.propName, { LABEL: "parameterId" });
+		this.SUBRULE2(this.propName, { LABEL: "parameterId" });
 		this.OPTION(() => {
 			this.CONSUME(To);
 		});
@@ -347,7 +349,7 @@ class DspParser extends CstParser {
 			{ ALT: () => this.CONSUME(HexLiteral, { LABEL: "hexValue" }) },
 			{ ALT: () => this.CONSUME(NumberLiteral, { LABEL: "numValue" }) },
 			{ ALT: () => this.CONSUME(QuotedString, { LABEL: "strValue" }) },
-			{ ALT: () => this.CONSUME2(Identifier, { LABEL: "idValue" }) },
+			{ ALT: () => this.SUBRULE3(this.propName, { LABEL: "idValue" }) },
 		]);
 	});
 
@@ -378,21 +380,21 @@ class DspParser extends CstParser {
 	// bypass <nodeId>
 	public bypassCommand = this.RULE("bypassCommand", () => {
 		this.CONSUME(Bypass);
-		this.CONSUME(Identifier, { LABEL: "nodeId" });
+		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 	});
 
 	// enable <nodeId>
 	public enableCommand = this.RULE("enableCommand", () => {
 		this.CONSUME(Enable);
-		this.CONSUME(Identifier, { LABEL: "nodeId" });
+		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 	});
 
 	// create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>]
 	public createParameterCommand = this.RULE("createParameterCommand", () => {
 		this.CONSUME(CreateParameter);
-		this.CONSUME(Identifier, { LABEL: "nodeId" });
+		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 		this.CONSUME(Dot);
-		this.SUBRULE(this.propName, { LABEL: "parameterId" });
+		this.SUBRULE2(this.propName, { LABEL: "parameterId" });
 		this.OPTION(() => {
 			this.CONSUME(NumberLiteral, { LABEL: "min" });
 			this.CONSUME2(NumberLiteral, { LABEL: "max" });
@@ -512,22 +514,22 @@ function extractAdd(node: CstNode): { command: AddCommand } | { error: string } 
 	if (node.children.alias) {
 		alias = stripQuotes(asToken(node.children.alias[0]).image);
 	} else if (node.children.aliasId) {
-		alias = asToken(node.children.aliasId[0]).image;
+		alias = extractPropName(asNode(node.children.aliasId[0]));
 	}
 	const parent = node.children.parent
-		? asToken(node.children.parent[0]).image
+		? extractPropName(asNode(node.children.parent[0]))
 		: undefined;
 	return { command: { type: "add", factoryPath, alias, parent } };
 }
 
 function extractRemove(node: CstNode): { command: RemoveCommand } {
-	const nodeId = asToken(node.children.nodeId[0]).image;
+	const nodeId = extractPropName(asNode(node.children.nodeId[0]));
 	return { command: { type: "remove", nodeId } };
 }
 
 function extractMove(node: CstNode): { command: MoveCommand } {
-	const nodeId = asToken(node.children.nodeId[0]).image;
-	const parent = asToken(node.children.parent[0]).image;
+	const nodeId = extractPropName(asNode(node.children.nodeId[0]));
+	const parent = extractPropName(asNode(node.children.parent[0]));
 	const index = node.children.index
 		? parseInt(asToken(node.children.index[0]).image, 10)
 		: undefined;
@@ -535,14 +537,14 @@ function extractMove(node: CstNode): { command: MoveCommand } {
 }
 
 function extractConnect(node: CstNode): { command: ConnectCommand } {
-	const source = asToken(node.children.source[0]).image;
+	const source = extractPropName(asNode(node.children.source[0]));
 	let sourceOutput: string | number | undefined;
 	if (node.children.sourceOutputIndex) {
 		sourceOutput = parseInt(asToken(node.children.sourceOutputIndex[0]).image, 10);
 	} else if (node.children.sourceOutputId) {
 		sourceOutput = extractPropName(asNode(node.children.sourceOutputId[0]));
 	}
-	const target = asToken(node.children.target[0]).image;
+	const target = extractPropName(asNode(node.children.target[0]));
 	const parameter = node.children.parameter
 		? extractPropName(asNode(node.children.parameter[0]))
 		: undefined;
@@ -550,14 +552,14 @@ function extractConnect(node: CstNode): { command: ConnectCommand } {
 }
 
 function extractDisconnect(node: CstNode): { command: DisconnectCommand } {
-	const source = asToken(node.children.source[0]).image;
-	const target = asToken(node.children.target[0]).image;
+	const source = extractPropName(asNode(node.children.source[0]));
+	const target = extractPropName(asNode(node.children.target[0]));
 	const parameter = extractPropName(asNode(node.children.parameter[0]));
 	return { command: { type: "disconnect", source, target, parameter } };
 }
 
 function extractSet(node: CstNode): { command: SetCommand } | { error: string } {
-	const nodeId = asToken(node.children.nodeId[0]).image;
+	const nodeId = extractPropName(asNode(node.children.nodeId[0]));
 	const parameterId = extractPropName(asNode(node.children.parameterId[0]));
 	let value: string | number;
 	if (node.children.hexValue) {
@@ -567,7 +569,7 @@ function extractSet(node: CstNode): { command: SetCommand } | { error: string } 
 	} else if (node.children.strValue) {
 		value = stripQuotes(asToken(node.children.strValue[0]).image);
 	} else if (node.children.idValue) {
-		value = asToken(node.children.idValue[0]).image;
+		value = extractPropName(asNode(node.children.idValue[0]));
 	} else {
 		return { error: "set: missing value" };
 	}
@@ -591,17 +593,17 @@ function extractGet(node: CstNode): { command: GetCommand } {
 }
 
 function extractBypass(node: CstNode): { command: BypassCommand } {
-	const nodeId = asToken(node.children.nodeId[0]).image;
+	const nodeId = extractPropName(asNode(node.children.nodeId[0]));
 	return { command: { type: "bypass", nodeId } };
 }
 
 function extractEnable(node: CstNode): { command: EnableCommand } {
-	const nodeId = asToken(node.children.nodeId[0]).image;
+	const nodeId = extractPropName(asNode(node.children.nodeId[0]));
 	return { command: { type: "enable", nodeId } };
 }
 
 function extractCreateParameter(node: CstNode): { command: CreateParameterCommand } {
-	const nodeId = asToken(node.children.nodeId[0]).image;
+	const nodeId = extractPropName(asNode(node.children.nodeId[0]));
 	const parameterId = extractPropName(asNode(node.children.parameterId[0]));
 	const min = node.children.min ? parseFloat(asToken(node.children.min[0]).image) : undefined;
 	const max = node.children.max ? parseFloat(asToken(node.children.max[0]).image) : undefined;
