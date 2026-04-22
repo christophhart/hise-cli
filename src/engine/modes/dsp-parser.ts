@@ -261,11 +261,15 @@ class DspParser extends CstParser {
 	});
 
 	// add <factory.node> [as <alias>] [to <parent>]
+	// The `node` half of the factory path is a subrule because scriptnode
+	// factories ship nodes whose names collide with DSP verbs — e.g.
+	// `math.add`, `math.set` etc. Same positional-disambiguation
+	// argument as propName: after the `.` only an identifier makes sense.
 	public addCommand = this.RULE("addCommand", () => {
 		this.CONSUME(Add);
 		this.CONSUME(Identifier, { LABEL: "factory" });
 		this.CONSUME(Dot);
-		this.CONSUME2(Identifier, { LABEL: "node" });
+		this.SUBRULE(this.propName, { LABEL: "node" });
 		this.OPTION(() => {
 			this.CONSUME(As);
 			this.OR([
@@ -502,7 +506,7 @@ function extractInit(node: CstNode): { command: InitCommand } {
 
 function extractAdd(node: CstNode): { command: AddCommand } | { error: string } {
 	const factory = asToken(node.children.factory[0]).image;
-	const nodeName = asToken(node.children.node[0]).image;
+	const nodeName = extractPropName(asNode(node.children.node[0]));
 	const factoryPath = `${factory}.${nodeName}`;
 	let alias: string | undefined;
 	if (node.children.alias) {

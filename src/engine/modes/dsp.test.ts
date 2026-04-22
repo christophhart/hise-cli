@@ -93,6 +93,16 @@ describe("dsp parser — graph mutations", () => {
 		expect(cmd.alias).toBeUndefined();
 		expect(cmd.parent).toBeUndefined();
 	});
+	it("parses add with a factory node name that matches a verb keyword", () => {
+		// Regression: scriptnode ships nodes whose names collide with DSP
+		// verbs — `math.add`, `math.set`, `core.bypass` etc. The node slot
+		// after `.` in addCommand must accept keyword tokens.
+		const collisions = ["add", "set", "get", "show", "move", "remove", "save", "load", "create", "bypass"];
+		for (const name of collisions) {
+			const cmd = parseOk(`add math.${name}`) as AddCommand;
+			expect(cmd.factoryPath.toLowerCase()).toBe(`math.${name}`);
+		}
+	});
 	it("parses add with alias and parent", () => {
 		const cmd = parseOk("add core.oscillator as Osc1 to Main") as AddCommand;
 		expect(cmd.factoryPath).toBe("core.oscillator");
