@@ -31,8 +31,10 @@ afterAll(() => {
 	connection.destroy();
 });
 
-// Resolve a DspNetwork-capable module id. Prefer HardcodedFX/HardcodedSynth
-// module types. Throws if none found — tests are skipped in that case.
+// Resolve a DspNetwork-capable module id. `/api/status` doesn't expose
+// module type, so prefer any processor whose id contains "ScriptFX",
+// "HardcodedFX", or "HardcodedSynth" (the canonical DSP hosts). Fall
+// back to the first processor as a last resort.
 async function findHostModule(): Promise<string> {
 	const resp = await connection.get("/api/status");
 	if (isErrorResponse(resp)) throw new Error(resp.message);
@@ -41,9 +43,8 @@ async function findHostModule(): Promise<string> {
 	if (processors.length === 0) {
 		throw new Error("Live HISE has no script processors; cannot run DSP live contract");
 	}
-	// Without module-type metadata in /api/status, we fall back to the first
-	// processor and expect the tester to load a host that supports DspNetwork.
-	return processors[0]!.moduleId;
+	const preferred = processors.find((p) => /ScriptFX|HardcodedFX|HardcodedSynth/i.test(p.moduleId));
+	return (preferred ?? processors[0]!).moduleId;
 }
 
 describe("live contract parity — DSP endpoints", () => {
@@ -57,11 +58,11 @@ describe("live contract parity — DSP endpoints", () => {
 		expect(() => normalizeDspList(networks)).not.toThrow();
 	});
 
-	it("POST /api/dsp/init returns {result: <tree>, filePath, embedded}", async () => {
+	it("POST /api/dsp/init returns {result, filePath, source}", async () => {
 		const moduleId = await findHostModule();
 		const resp = await connection.post(
 			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
-			{ moduleId, name: "__cli_live_test__", embedded: false },
+			{ moduleId, name: "__cli_live_test__", mode: "auto" },
 		);
 		if (isErrorResponse(resp)) throw new Error(resp.message);
 		if (!isEnvelopeResponse(resp) || !resp.success) {
@@ -70,7 +71,58 @@ describe("live contract parity — DSP endpoints", () => {
 		const parsed = normalizeDspInitResponse(resp);
 		expect(parsed.tree.nodeId).toBeTruthy();
 		expect(typeof parsed.filePath).toBe("string");
-		expect(typeof parsed.embedded).toBe("boolean");
+		expect(parsed.source === "created" || parsed.source === "loaded").toBe(true);
+	});
+
+	it("POST /api/dsp/init mode=create errors when network exists, mode=load loads it", async () => {
+		const moduleId = await findHostModule();
+		const uniqueName = `__cli_live_mode_${Date.now()}__`;
+
+		// 1. create fresh — expect success + source: "created"
+		const createResp = await connection.post(
+			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
+			{ moduleId, name: uniqueName, mode: "create" },
+		);
+		if (isErrorResponse(createResp)) throw new Error(createResp.message);
+		if (!isEnvelopeResponse(createResp) || !createResp.success) {
+			throw new Error(`create failed: ${JSON.stringify(createResp.errors)}`);
+		}
+		expect(normalizeDspInitResponse(createResp).source).toBe("created");
+
+		// 2. save so it's persisted
+		const saveResp = await connection.post(
+			`/api/dsp/save?moduleId=${encodeURIComponent(moduleId)}`,
+			{ moduleId },
+		);
+		if (!isEnvelopeResponse(saveResp) || !saveResp.success) {
+			throw new Error(`save failed: ${JSON.stringify(isEnvelopeResponse(saveResp) ? saveResp.errors : saveResp)}`);
+		}
+
+		// 3. create again — expect failure (already exists)
+		const dupResp = await connection.post(
+			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
+			{ moduleId, name: uniqueName, mode: "create" },
+		);
+		expect(isEnvelopeResponse(dupResp) && dupResp.success).toBe(false);
+
+		// 4. load — expect success + source: "loaded"
+		const loadResp = await connection.post(
+			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
+			{ moduleId, name: uniqueName, mode: "load" },
+		);
+		if (!isEnvelopeResponse(loadResp) || !loadResp.success) {
+			throw new Error(`load failed: ${JSON.stringify(isEnvelopeResponse(loadResp) ? loadResp.errors : loadResp)}`);
+		}
+		expect(normalizeDspInitResponse(loadResp).source).toBe("loaded");
+	});
+
+	it("POST /api/dsp/init mode=load errors when network is missing", async () => {
+		const moduleId = await findHostModule();
+		const resp = await connection.post(
+			`/api/dsp/init?moduleId=${encodeURIComponent(moduleId)}`,
+			{ moduleId, name: `__cli_live_missing_${Date.now()}__`, mode: "load" },
+		);
+		expect(isEnvelopeResponse(resp) && resp.success).toBe(false);
 	});
 
 	it("GET /api/dsp/tree returns a contract-valid tree", async () => {
@@ -133,7 +185,7 @@ describe("live contract parity — DSP endpoints", () => {
 		);
 		if (isErrorResponse(resp)) throw new Error(resp.message);
 		if (!isEnvelopeResponse(resp) || !resp.success) {
-			// An embedded network would error — that's also valid behaviour; skip.
+			// Some host modules have no file-based representation; treat as skip.
 			return;
 		}
 		const parsed = normalizeDspSaveResponse(resp);

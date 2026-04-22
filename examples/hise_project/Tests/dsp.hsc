@@ -6,7 +6,7 @@ add Script FX
 
 /dsp
 use Script FX
-init myfx embedded
+create myfx
 
 add control.xfader as fader
 add container.multi as channel_splitter

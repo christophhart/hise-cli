@@ -139,7 +139,7 @@ Module tree editor — add, configure, and inspect the HISE module tree.
 | \`bypass <target>\` / \`enable <target>\` | Toggle bypass state |
 | \`load "<source>" into <target>\` | Load data into a module |
 | \`show tree\` | Display the full module tree |
-| \`show types [<filter>]\` | List available module types |
+| \`show types [<filter>]\` | List module types (filter = substring match on id/type/subtype) |
 | \`show <target>\` | Show a module's parameters with live values |
 | \`reset\` | Wipe module tree and clear undo history |
 | \`cd <path>\` / \`ls\` / \`pwd\` | Navigate the module tree |
@@ -204,8 +204,11 @@ hosting the network. Each host can have at most one active network.
 |---------|-------------|
 | \`show networks\` | List \`.xml\` files in the project's \`DspNetworks/\` |
 | \`show modules\` | List \`DspNetwork\`-capable script processors |
+| \`show <nodeId>\` | Header, properties, parameters (with range/default), and modulation edges for one node |
 | \`use <moduleId>\` | Switch the host context |
-| \`init <name> [embedded]\` | Load/create a network on the current host |
+| \`load <name>\` | Load an existing network. Errors if \`<name>.xml\` is missing. |
+| \`create <name>\` | Create a new network. Errors if \`<name>.xml\` already exists. |
+| \`init <name>\` | Load-or-create catch-all. Output says which path was taken. |
 | \`save\` | Save the loaded network to its \`.xml\` file |
 | \`reset\` | Empty the loaded network (no nodes, no connections) |
 
@@ -216,11 +219,20 @@ hosting the network. Each host can have at most one active network.
 | \`add <factory.node> [as <id>] [to <parent>]\` | Add a node (defaults to CWD) |
 | \`remove <nodeId>\` | Remove a node |
 | \`move <nodeId> to <parent> [at <index>]\` | Move a node |
-| \`connect <src>[.<output>] to <target>.<param>\` | Connect modulation |
+| \`connect <src>[.<output>] to <target>[.<param>]\` | Connect modulation (omit \`.param\` for routing shorthand) |
 | \`disconnect <src> from <target>.<param>\` | Disconnect modulation |
 | \`set <node>.<param> [to] <value>\` | Set a parameter |
 | \`bypass <nodeId>\` / \`enable <nodeId>\` | Toggle bypass |
 | \`create_parameter <container>.<name> [min max] [default N] [step N]\` | Dynamic parameter |
+| \`screenshot [at <scale>] [to <path>]\` | Render the DspNetwork graph to a PNG |
+
+## Screenshot
+
+Captures the current host's \`DspNetwork\` graph. \`outputPath\` is resolved
+relative to the project's \`Images/\` folder (or absolute) and must end in
+\`.png\`. Scale accepts percentages (\`50%\`) or decimals (\`0.5\`); only
+\`0.5\`, \`1.0\`, and \`2.0\` are valid. Defaults to \`screenshot.png\` at
+scale \`1.0\`. Requires the HISE IDE UI to be open (returns 503 otherwise).
 
 ## Local queries
 

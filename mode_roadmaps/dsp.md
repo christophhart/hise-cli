@@ -61,8 +61,12 @@ help
   `filters.svf`).
 - Comma chaining with verb inheritance — only for verbs in
   `DSP_VERB_KEYWORDS` (add, remove, move, set, get, bypass, enable,
-  connect, disconnect). Non-chainable commands (show/use/init/save/reset
-  /create_parameter) always need their keyword explicit.
+  connect, disconnect). Non-chainable commands (show/use/load/create/
+  init/save/reset/create_parameter) always need their keyword explicit.
+- Network lifecycle verbs map to HISE's `/api/dsp/init` `mode` enum:
+  `load` → `mode: "load"` (404 if missing), `create` → `mode: "create"`
+  (409 if exists), `init` → `mode: "auto"` (load-or-create). All three
+  parse to the same `InitCommand` with different `mode` values.
 - `/dsp."Script FX1"` enters mode with that moduleId pre-selected
   (multi-word quoting + dot-notation context).
 
@@ -71,7 +75,7 @@ help
 | Endpoint | Method | Envelope |
 |----------|--------|----------|
 | `/api/dsp/list` | GET | `{networks: string[]}` (top-level, not `result`) |
-| `/api/dsp/init?moduleId=X` | POST | `{result: <tree>, filePath, embedded}` |
+| `/api/dsp/init?moduleId=X` | POST | body: `{name, mode?: "load"\|"create"\|"auto"}`; envelope: `{result: <tree>, filePath, source: "created"\|"loaded"}`. 404 on `load` of missing, 409 on `create` of existing. |
 | `/api/dsp/tree?moduleId=X&verbose?&group?` | GET | `{result: <tree>}` |
 | `/api/dsp/apply` | POST | `{scope, groupName, diff}` (shared envelope) |
 | `/api/dsp/save?moduleId=X` | POST | `{filePath}` |

@@ -8,19 +8,20 @@ import {
 	Bypass,
 	Connect,
 	Connections,
+	Create,
 	CreateParameter,
 	Default,
 	Disconnect,
 	DSP_TOKENS,
 	DSP_VERB_KEYWORDS,
 	Dot,
-	Embedded,
 	Enable,
 	From,
 	Get,
 	HexLiteral,
 	Identifier,
 	Init,
+	Load,
 	Modules,
 	Move,
 	Networks,
@@ -44,20 +45,21 @@ import { splitByComma, stripQuotes, findLastUnquotedComma } from "../string-util
 
 // ── Parsed command types ──────────────────────────────────────────
 
-export interface ShowCommand {
-	type: "show";
-	what: "tree" | "networks" | "modules" | "connections";
-}
+export type ShowCommand =
+	| { type: "show"; what: "tree" | "networks" | "modules" | "connections" }
+	| { type: "show"; what: "node"; nodeId: string };
 
 export interface UseCommand {
 	type: "use";
 	moduleId: string;
 }
 
+export type InitMode = "auto" | "load" | "create";
+
 export interface InitCommand {
 	type: "init";
 	name: string;
-	embedded: boolean;
+	mode: InitMode;
 }
 
 export interface SaveCommand {
@@ -93,7 +95,13 @@ export interface ConnectCommand {
 	/** Optional source output — parameter name (string) or slot index (number). */
 	sourceOutput?: string | number;
 	target: string;
-	parameter: string;
+	/**
+	 * Target parameter. Optional: `connect <src> to <target>` (no `.param`)
+	 * is accepted as a shorthand — HISE resolves the default routing target
+	 * server-side (e.g. routing.send → routing.receive via the Connection
+	 * property).
+	 */
+	parameter?: string;
 }
 
 export interface DisconnectCommand {
@@ -169,7 +177,7 @@ class DspParser extends CstParser {
 		]);
 	});
 
-	// show (networks | modules | tree | connections)
+	// show (networks | modules | tree | connections | <nodeId>)
 	public showCommand = this.RULE("showCommand", () => {
 		this.CONSUME(Show);
 		this.OR([
@@ -177,6 +185,7 @@ class DspParser extends CstParser {
 			{ ALT: () => this.CONSUME(Modules, { LABEL: "modules" }) },
 			{ ALT: () => this.CONSUME(Tree, { LABEL: "tree" }) },
 			{ ALT: () => this.CONSUME(Connections, { LABEL: "connections" }) },
+			{ ALT: () => this.CONSUME(Identifier, { LABEL: "nodeId" }) },
 		]);
 	});
 
@@ -186,13 +195,15 @@ class DspParser extends CstParser {
 		this.SUBRULE(this.targetRef, { LABEL: "moduleId" });
 	});
 
-	// init <name> [embedded]
+	// init <name> | load <name> | create <name>
+	// Three verbs collapse into one command with different `mode` values.
 	public initCommand = this.RULE("initCommand", () => {
-		this.CONSUME(Init);
+		this.OR([
+			{ ALT: () => this.CONSUME(Init, { LABEL: "initVerb" }) },
+			{ ALT: () => this.CONSUME(Load, { LABEL: "loadVerb" }) },
+			{ ALT: () => this.CONSUME(Create, { LABEL: "createVerb" }) },
+		]);
 		this.CONSUME(Identifier, { LABEL: "name" });
-		this.OPTION(() => {
-			this.CONSUME(Embedded, { LABEL: "embedded" });
-		});
 	});
 
 	// save
@@ -242,9 +253,11 @@ class DspParser extends CstParser {
 		});
 	});
 
-	// connect <source>[.<output>] to <target>.<param>
+	// connect <source>[.<output>] to <target>[.<param>]
 	// <output> is a parameter name (Identifier) or a numeric slot index
-	// (NumberLiteral, e.g. xfader1.0, xfader1.1).
+	// (NumberLiteral, e.g. xfader1.0, xfader1.1). When `.<param>` is
+	// omitted on the target, HISE routes the command to its default
+	// routing target internally (e.g. routing.send → routing.receive).
 	public connectCommand = this.RULE("connectCommand", () => {
 		this.CONSUME(Connect);
 		this.CONSUME(Identifier, { LABEL: "source" });
@@ -257,8 +270,10 @@ class DspParser extends CstParser {
 		});
 		this.CONSUME(To);
 		this.CONSUME3(Identifier, { LABEL: "target" });
-		this.CONSUME2(Dot);
-		this.CONSUME4(Identifier, { LABEL: "parameter" });
+		this.OPTION2(() => {
+			this.CONSUME2(Dot);
+			this.CONSUME4(Identifier, { LABEL: "parameter" });
+		});
 	});
 
 	// disconnect <source> from <target>.<param>
@@ -407,6 +422,10 @@ function extractShow(node: CstNode): { command: ShowCommand } {
 	if (node.children.networks) return { command: { type: "show", what: "networks" } };
 	if (node.children.modules) return { command: { type: "show", what: "modules" } };
 	if (node.children.connections) return { command: { type: "show", what: "connections" } };
+	if (node.children.nodeId) {
+		const nodeId = asToken(node.children.nodeId[0]).image;
+		return { command: { type: "show", what: "node", nodeId } };
+	}
 	return { command: { type: "show", what: "tree" } };
 }
 
@@ -417,8 +436,12 @@ function extractUse(node: CstNode): { command: UseCommand } {
 
 function extractInit(node: CstNode): { command: InitCommand } {
 	const name = asToken(node.children.name[0]).image;
-	const embedded = !!node.children.embedded;
-	return { command: { type: "init", name, embedded } };
+	const mode: InitMode = node.children.loadVerb
+		? "load"
+		: node.children.createVerb
+			? "create"
+			: "auto";
+	return { command: { type: "init", name, mode } };
 }
 
 function extractAdd(node: CstNode): { command: AddCommand } | { error: string } {
@@ -460,7 +483,9 @@ function extractConnect(node: CstNode): { command: ConnectCommand } {
 		sourceOutput = asToken(node.children.sourceOutputId[0]).image;
 	}
 	const target = asToken(node.children.target[0]).image;
-	const parameter = asToken(node.children.parameter[0]).image;
+	const parameter = node.children.parameter
+		? asToken(node.children.parameter[0]).image
+		: undefined;
 	return { command: { type: "connect", source, sourceOutput, target, parameter } };
 }
 
@@ -563,7 +588,7 @@ export function parseSingleDspCommand(
 // segments in a comma chain.
 const _NativeSet = globalThis.Set;
 const DSP_COMMAND_KEYWORDS: ReadonlySet<string> = new _NativeSet([
-	"show", "use", "init", "save", "reset",
+	"show", "use", "init", "load", "create", "save", "reset",
 	"add", "remove", "move", "connect", "disconnect",
 	"set", "get", "bypass", "enable", "create_parameter",
 ]);

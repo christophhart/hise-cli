@@ -17,7 +17,7 @@ USAGE
   hise-cli                                  Open the interactive TUI
   hise-cli repl [--mock] [--show-keys] [--no-animation]   Open TUI with options
   hise-cli -<mode> "<command>"              One-shot mode command (JSON output)
-  hise-cli --run <file.hsc> [--mock] [--dry-run]  Run a .hsc script file
+  hise-cli --run <file.hsc> [--mock] [--dry-run] [--verbosity=<level>]  Run a .hsc script file
   hise-cli --run --inline "<script>"             Run an inline script
   hise-cli --run - < script.hsc                  Run script from stdin
   hise-cli wizard <subcommand>              Wizard operations (JSON output)
@@ -64,6 +64,19 @@ const SCOPED_HELP: Record<string, string> = {
 SYNTAX
   hise-cli -builder "<command>"
   hise-cli -builder --target:<path> "<command>"
+
+QUICK START
+  hise-cli -builder show tree              inspect current modules
+  hise-cli -builder add SimpleGain         add at root (auto-picked chain)
+  hise-cli -builder add LFO to MyGain      add under an existing module
+  hise-cli -builder show types script      filter types by substring
+
+  Notes:
+    - add <type> works without "to <parent>" — root is the default.
+    - Chain (.fx/.gain/...) is auto-resolved from the module's category;
+      only Modulators require explicit chain (e.g. "to Master.gain").
+    - On Windows Git Bash, both "show tree" (quoted) and show tree
+      (unquoted) work — the CLI strips matching outer quotes defensively.
 
 MODULE TREE CONCEPTS
   HISE organises audio processing as a tree of modules. Every project has
@@ -127,8 +140,11 @@ COMMANDS
     Print the full module tree with types, IDs, and chain structure.
 
   show types [<filter>]
-    List all available module types. Optional filter matches by prefix
-    (e.g. "show types Envelope" shows all envelope types).
+    List all available module types. Optional filter is a case-insensitive
+    substring match against the Module ID, Type, and Subtype columns
+    (e.g. "show types script" returns ScriptFX, ScriptProcessor, etc.).
+    Returns a one-line "(no module types match ...)" message when no row
+    matches, instead of an empty table.
 
   show <target>
     Show a module's parameters with current values and ranges.
@@ -187,7 +203,8 @@ MODULE TYPE IDS
   SoundGenerators: SineSynth, WaveSynth, Noise, StreamingSampler,
     SynthGroup, GlobalModulatorContainer, SilentSynth
   Effects: SimpleGain, SimpleReverb, HardcodedMasterFX, PolyphonicFilter,
-    Convolution, StereoFX, Dynamics, Saturator, Delay, ShapeFX
+    Convolution, StereoFX, Dynamics, Saturator, Delay, ShapeFX,
+    ScriptFX (hosts a DspNetwork — add this before calling -dsp init)
   MidiProcessors: ScriptProcessor, Transposer, Arpeggiator, MidiPlayer
   Modulators: LFO, AHDSR, Velocity, TableEnvelope, Constant, Random,
     SimpleEnvelope, MidiController, KeyNumber
@@ -242,10 +259,20 @@ MODULE CONTEXT
 NETWORK LIFECYCLE
   show networks                  List .xml files under DspNetworks/
   show modules                   List DspNetwork-capable script processors
+  show <nodeId>                  Inspect one node: header, properties,
+                                 parameter values with range/default, and
+                                 incoming/outgoing modulation edges.
   use <moduleId>                 Switch the host context
-  init <name> [embedded]         Load or create a network on the host
+  load <name>                    Load an existing network. Errors if the
+                                 <name>.xml file does not exist.
+  create <name>                  Create a new network. Errors if <name>.xml
+                                 already exists on disk. Prevents silent
+                                 layering onto a stale schema.
+  init <name>                    Load-or-create catch-all. Output states
+                                 "Loaded existing" vs "Created new" so the
+                                 path taken is explicit.
   save                           Persist the loaded network to its .xml
-  reset                          Empty the loaded network
+  reset                          Empty the loaded network in memory
 
 GRAPH EDITING
   add <factory.node> [as <id>] [to <parent>]
@@ -253,8 +280,10 @@ GRAPH EDITING
     filters.svf, control.pma). Without "to", adds to the current cd path.
   remove <nodeId>
   move <nodeId> to <parent> [at <index>]
-  connect <src>[.<output>] to <target>.<param>
+  connect <src>[.<output>] to <target>[.<param>]
     <output> defaults to the first modulation output when omitted.
+    <param> may be omitted for routing shorthand (e.g. "connect SEND to RCV");
+    HISE resolves the default target server-side.
   disconnect <src> from <target>.<param>
   set <node>.<param> [to] <value>
     Sets a parameter. Range is pre-validated against scriptnodeList.json.
@@ -275,16 +304,27 @@ NAVIGATION
   ls                             List children at the current path
   pwd                            Print the current path
 
+SCREENSHOT
+  screenshot [at <scale>] [to <path>]
+    Render the current host's DspNetwork graph to a PNG. Path is resolved
+    relative to the project's Images/ folder (or absolute) and must end in
+    .png. Scale accepts percentage (50%) or decimal (0.5); valid values
+    are 0.5, 1.0, 2.0. Defaults to screenshot.png at scale 1.0. Requires
+    the HISE IDE UI to be open.
+
 COMMA CHAINING
   set A.Freq 440, B.Freq 880     Verb inheritance across comma segments
 
 EXAMPLES
   hise-cli -dsp --target:"Script FX1" "show tree"
-  hise-cli -dsp --target:"Script FX1" "init MyDSP"
+  hise-cli -dsp --target:"Script FX1" "create MyDSP"      # fresh, fail if exists
+  hise-cli -dsp --target:"Script FX1" "load MyDSP"        # open existing
+  hise-cli -dsp --target:"Script FX1" "init MyDSP"        # load-or-create
   hise-cli -dsp --target:"Script FX1" "add core.oscillator as Osc1, set Osc1.Frequency 440"
   hise-cli -dsp --target:"Script FX1" "add filters.svf as F1"
   hise-cli -dsp --target:"Script FX1" "add control.pma as LFO1, connect LFO1 to F1.Frequency"
   hise-cli -dsp --target:"Script FX1" "get source of F1.Frequency"
+  hise-cli -dsp --target:"Script FX1" "screenshot to graph.png"
   hise-cli -dsp --target:"Script FX1" "save"`,
 
 	script: `hise-cli -script — HiseScript REPL
@@ -405,11 +445,19 @@ EXAMPLES
 	run: `hise-cli --run — script runner & test framework
 
 SYNTAX
-  hise-cli --run <file.hsc>              Execute a .hsc script file
-  hise-cli --run --inline "<script>"     Execute an inline script string
-  hise-cli --run - < script.hsc          Execute script from stdin
-  hise-cli --run <file.hsc> --mock       Execute with mock HISE connection
-  hise-cli --run <file.hsc> --dry-run    Validate only (no execution)
+  hise-cli --run <file.hsc>                      Execute a .hsc script file
+  hise-cli --run --inline "<script>"             Execute an inline script string
+  hise-cli --run - < script.hsc                  Execute script from stdin
+  hise-cli --run <file.hsc> --mock               Execute with mock HISE connection
+  hise-cli --run <file.hsc> --dry-run            Validate only (no execution)
+  hise-cli --run <file.hsc> --verbosity=<level>  Control output detail (default: summary)
+
+VERBOSITY LEVELS
+  verbose   Full per-command logs + /expect rows + PASSED N/N footer
+  summary   (default) Only /expect rows + PASSED N/N footer per script
+  quiet     Single ✓/✗ pass-fail line per script (footer only)
+
+  Aliases: --verbose = --verbosity=verbose, --quiet = --verbosity=quiet
 
 SCRIPT SOURCES
   File:   hise-cli --run test.hsc
@@ -484,7 +532,10 @@ SHEBANG (Unix)
   Then: chmod +x test.hsc && ./test.hsc
 
 EXAMPLES
-  hise-cli --run test.hsc
+  hise-cli --run test.hsc                        # summary (default)
+  hise-cli --run test.hsc --verbose              # full per-command logs
+  hise-cli --run test.hsc --quiet                # single pass/fail line
+  hise-cli --run Examples/sn.hsc --verbosity=summary
   hise-cli --run test.hsc --mock
   hise-cli --run test.hsc --dry-run`,
 

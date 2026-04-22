@@ -14,7 +14,6 @@ import type { DiffEntry } from "./contracts/builder.js";
 
 interface DspNetworkState {
 	name: string;
-	embedded: boolean;
 	tree: RawDspNode;
 }
 
@@ -58,10 +57,15 @@ export function installDspMock(
 	// Per-moduleId active network. Starts empty.
 	const networks = new Map<string, DspNetworkState>();
 
+	// Names the mock pretends are already persisted on disk — seeded with
+	// MOCK_DSP_NETWORK_NAMES. `load` must find the name here; `save` adds
+	// a new name; `create` errors if the name is already present.
+	const persistedNetworks = new Set<string>(MOCK_DSP_NETWORK_NAMES);
+
 	// ── GET /api/dsp/list ──────────────────────────────────────
 	connection.onGet("/api/dsp/list", () => ({
 		success: true,
-		networks: [...MOCK_DSP_NETWORK_NAMES],
+		networks: [...persistedNetworks],
 		logs: [],
 		errors: [],
 	}));
@@ -76,19 +80,28 @@ export function installDspMock(
 		if (!name) {
 			return errorEnvelope("init: missing required 'name' field");
 		}
-		const embedded = data.embedded === true;
+		const mode = data.mode === "load" || data.mode === "create" || data.mode === "auto"
+			? data.mode
+			: "auto";
+		const exists = persistedNetworks.has(name);
+		if (mode === "create" && exists) {
+			return errorEnvelope(`Network XML already exists: MOCK_PROJECT/DspNetworks/${name}.xml`);
+		}
+		if (mode === "load" && !exists) {
+			return errorEnvelope(`No network XML found: MOCK_PROJECT/DspNetworks/${name}.xml`);
+		}
+		const source: "created" | "loaded" = exists && mode !== "create" ? "loaded" : "created";
 		const state: DspNetworkState = {
 			name,
-			embedded,
 			tree: emptyTree(name),
 		};
 		networks.set(moduleId, state);
 		return {
 			success: true,
 			result: state.tree,
-			filePath: embedded ? "" : `MOCK_PROJECT/DspNetworks/${name}.xml`,
-			embedded,
-			logs: [`Loaded DspNetwork "${name}" on module "${moduleId}"`],
+			filePath: `MOCK_PROJECT/DspNetworks/${name}.xml`,
+			source,
+			logs: [source === "loaded" ? `Loaded network from XML ${name}.xml` : "Created new network"],
 			errors: [],
 		};
 	});
@@ -148,9 +161,7 @@ export function installDspMock(
 		if (!state) {
 			return errorEnvelope(`save: no active DspNetwork${moduleId ? ` on module "${moduleId}"` : ""}`);
 		}
-		if (state.embedded) {
-			return errorEnvelope(`save: "${state.name}" is embedded and has no file-based representation`);
-		}
+		persistedNetworks.add(state.name);
 		return {
 			success: true,
 			filePath: `MOCK_PROJECT/DspNetworks/${state.name}.xml`,

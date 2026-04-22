@@ -260,6 +260,12 @@ export const Init = createToken({
 	longer_alt: Identifier,
 });
 
+export const Create = createToken({
+	name: "Create",
+	pattern: /create/i,
+	longer_alt: Identifier,
+});
+
 export const Save = createToken({
 	name: "Save",
 	pattern: /save/i,
@@ -281,7 +287,7 @@ export const Connections = createToken({
 export const Connect = createToken({
 	name: "Connect",
 	pattern: /connect/i,
-	longer_alt: Connections,
+	longer_alt: Identifier,
 });
 
 export const Disconnect = createToken({
@@ -332,15 +338,10 @@ export const Step = createToken({
 	longer_alt: Identifier,
 });
 
-export const Embedded = createToken({
-	name: "Embedded",
-	pattern: /embedded/i,
-	longer_alt: Identifier,
-});
-
 // DSP token order — keywords before Identifier. CreateParameter must
-// come before Connect to avoid prefix conflicts (neither has a shared
-// prefix but we keep the multi-char keywords early).
+// come before Create/Connect to avoid prefix conflicts: lexer tries
+// tokens in array order, so the longer multi-char keyword wins on
+// inputs like `create_parameter`.
 export const DSP_TOKENS = [
 	WhiteSpace,
 	QuotedString,
@@ -362,13 +363,14 @@ export const DSP_TOKENS = [
 	Get,
 	Use,
 	Init,
+	Load,
+	Create,
 	Save,
 	Reset,
 	Source,
 	Parent,
 	Default,
 	Step,
-	Embedded,
 	From,
 	Of,
 	Into,

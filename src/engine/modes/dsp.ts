@@ -8,6 +8,7 @@
 import type { CommandResult } from "../result.js";
 import {
 	errorResult,
+	preformattedResult,
 	tableResult,
 	textResult,
 	treeResult,
@@ -33,7 +34,7 @@ import {
 } from "../../mock/contracts/dsp.js";
 import { applyDiffToTree } from "../../mock/contracts/builder.js";
 import type { CompletionEngine } from "../completion/engine.js";
-import type { DspCommand, GetCommand } from "./dsp-parser.js";
+import type { DspCommand, GetCommand, ShowCommand } from "./dsp-parser.js";
 import { parseDspInput, findLastUnquotedComma, parseSingleDspCommand } from "./dsp-parser.js";
 import type { DspOp } from "./dsp-ops.js";
 import {
@@ -78,6 +79,62 @@ export {
 	collectDspNodeIds,
 	nodeParameters,
 } from "./dsp-ops.js";
+
+// ── Screenshot clause parsing ──────────────────────────────────────
+
+interface DspScreenshotOptions {
+	scale?: number;
+	outputPath?: string;
+}
+
+const DSP_SCREENSHOT_VALID_SCALES = [0.5, 1.0, 2.0];
+
+export function parseDspScreenshotClauses(
+	args: string,
+): DspScreenshotOptions | string {
+	const opts: DspScreenshotOptions = {};
+
+	// "at <N>%" or "at <0.N>" / "at <N.N>"
+	const atPercentMatch = args.match(/\bat\s+(\d+)%/i);
+	if (atPercentMatch) {
+		opts.scale = parseInt(atPercentMatch[1], 10) / 100;
+	} else {
+		const atDecimalMatch = args.match(/\bat\s+(0?\.\d+|\d+(?:\.\d+)?)/i);
+		if (atDecimalMatch) opts.scale = parseFloat(atDecimalMatch[1]);
+	}
+
+	if (opts.scale !== undefined && !DSP_SCREENSHOT_VALID_SCALES.includes(opts.scale)) {
+		return `Invalid scale ${opts.scale}. Valid values: 0.5, 1.0, 2.0`;
+	}
+
+	// "to <path>"
+	const toMatch = args.match(/\bto\s+(\S+)/i);
+	if (toMatch) {
+		const raw = toMatch[1];
+		if (!raw.toLowerCase().endsWith(".png")) {
+			return `Output path must end with .png (got "${raw}")`;
+		}
+		opts.outputPath = normalizeDspScreenshotPath(raw);
+	}
+
+	return opts;
+}
+
+/**
+ * Normalize a screenshot output path so it is unambiguously interpreted by
+ * HISE. Leading `/` or `\` on a path without a drive letter is stripped so
+ * the path is treated as relative to the project's Images/ folder (users
+ * often type `/subfolder/foo.png` meaning "under Images" — Windows would
+ * otherwise resolve this to the filesystem root). Absolute paths with a
+ * drive letter (e.g. `D:/…`) pass through unchanged. Backslashes are
+ * converted to forward slashes.
+ */
+function normalizeDspScreenshotPath(raw: string): string {
+	const forward = raw.replace(/\\/g, "/");
+	const hasDriveLetter = /^[A-Za-z]:\//.test(forward);
+	if (hasDriveLetter) return forward;
+	return forward.replace(/^\/+/, "");
+}
 
 // ── Tree decoration ────────────────────────────────────────────────
 
@@ -258,6 +315,10 @@ export class DspMode implements Mode {
 		}
 		if (keyword === "ls" || keyword === "dir") return this.handleLs();
 		if (keyword === "pwd") return this.handlePwd();
+		if (keyword === "screenshot") {
+			const rest = trimmed.slice("screenshot".length).trim();
+			return this.handleScreenshot(rest, session);
+		}
 
 		// Chevrotain-parsed commands (with comma chaining)
 		const result = parseDspInput(input);
@@ -318,13 +379,51 @@ export class DspMode implements Mode {
 		return textResult(`${this.moduleId}${suffix}`);
 	}
 
+	// ── Screenshot ──────────────────────────────────────────────
+
+	private async handleScreenshot(
+		args: string,
+		session: SessionContext,
+	): Promise<CommandResult> {
+		if (!this.moduleId) {
+			return errorResult("screenshot: no module context. Enter via /dsp.<moduleId> or run `use <moduleId>` first.");
+		}
+		if (!session.connection) {
+			return errorResult("screenshot requires a HISE connection");
+		}
+
+		const parsed = parseDspScreenshotClauses(args);
+		if (typeof parsed === "string") return errorResult(parsed);
+
+		const outputPath = parsed.outputPath ?? "screenshot.png";
+
+		const params = new URLSearchParams();
+		params.set("moduleId", this.moduleId);
+		params.set("outputPath", outputPath);
+		if (parsed.scale !== undefined) params.set("scale", String(parsed.scale));
+
+		const response = await session.connection.get(
+			`/api/dsp/screenshot?${params.toString()}`,
+		);
+		if (isErrorResponse(response)) return errorResult(response.message);
+		if (!isEnvelopeResponse(response) || !response.success) {
+			return errorResult(envelopeError(response, "Screenshot failed"));
+		}
+
+		const data = response as unknown as Record<string, unknown>;
+		const width = data.width ?? "?";
+		const height = data.height ?? "?";
+		const filePath = typeof data.filePath === "string" ? data.filePath : outputPath;
+		return textResult(`Screenshot saved to ${filePath} (${width}x${height})`);
+	}
+
 	// ── Dispatch ────────────────────────────────────────────────
 
 	private async dispatch(cmd: DspCommand, session: SessionContext): Promise<CommandResult> {
 		switch (cmd.type) {
-			case "show": return this.handleShow(cmd.what, session);
+			case "show": return this.handleShow(cmd, session);
 			case "use": return this.handleUse(cmd.moduleId, session);
-			case "init": return this.handleInit(cmd.name, cmd.embedded, session);
+			case "init": return this.handleInit(cmd.name, cmd.mode, session);
 			case "save": return this.handleSave(session);
 			case "get": return this.handleGet(cmd);
 			// Mutation commands: validate locally, then apply.
@@ -345,9 +444,13 @@ export class DspMode implements Mode {
 	// ── Show ────────────────────────────────────────────────────
 
 	private async handleShow(
-		what: "tree" | "networks" | "modules" | "connections",
+		cmd: ShowCommand,
 		session: SessionContext,
 	): Promise<CommandResult> {
+		if (cmd.what === "node") {
+			return this.handleShowNode(cmd.nodeId, session);
+		}
+		const what = cmd.what;
 		if (what === "tree") {
 			if (!this.treeRoot) return textResult("(no tree — call `init <name>` first)");
 			return treeResult(this.getTree()!);
@@ -391,6 +494,37 @@ export class DspMode implements Mode {
 		return errorResult(`Unknown show target: ${what}`);
 	}
 
+	private async handleShowNode(
+		nodeId: string,
+		session: SessionContext,
+	): Promise<CommandResult> {
+		if (!this.moduleId) {
+			return errorResult("show: no module context. Enter via /dsp.<moduleId> or run `use <moduleId>` first.");
+		}
+		if (!session.connection) return errorResult("show <node> requires a HISE connection");
+
+		const endpoint = `/api/dsp/tree?moduleId=${encodeURIComponent(this.moduleId)}&verbose=true`;
+		const resp = await session.connection.get(endpoint);
+		if (isErrorResponse(resp)) return errorResult(resp.message);
+		if (!isEnvelopeResponse(resp) || !resp.success) {
+			return errorResult(envelopeError(resp, "show failed"));
+		}
+
+		let verboseRoot: RawDspNode;
+		try {
+			verboseRoot = normalizeDspTreeResponse(resp.result).raw;
+		} catch (e) {
+			return errorResult(String(e));
+		}
+
+		const node = findDspNode(verboseRoot, nodeId);
+		if (!node) return errorResult(`Node "${nodeId}" not found`);
+
+		const parent = findDspParent(verboseRoot, nodeId);
+		const parentId = parent ? parent.nodeId : "(root)";
+		return preformattedResult(renderDspNodeShow(node, parentId, verboseRoot));
+	}
+
 	// ── Use ─────────────────────────────────────────────────────
 
 	private async handleUse(moduleId: string, session: SessionContext): Promise<CommandResult> {
@@ -410,21 +544,22 @@ export class DspMode implements Mode {
 
 	private async handleInit(
 		name: string,
-		embedded: boolean,
+		mode: "auto" | "load" | "create",
 		session: SessionContext,
 	): Promise<CommandResult> {
+		const verb = mode === "auto" ? "init" : mode;
 		if (!this.moduleId) {
-			return errorResult("init: no module context. Enter mode via /dsp.<moduleId> or run `use <moduleId>` first.");
+			return errorResult(`${verb}: no module context. Enter mode via /dsp.<moduleId> or run \`use <moduleId>\` first.`);
 		}
-		if (!session.connection) return errorResult("init requires a HISE connection");
-		const body = { moduleId: this.moduleId, name, embedded };
+		if (!session.connection) return errorResult(`${verb} requires a HISE connection`);
+		const body = { moduleId: this.moduleId, name, mode };
 		const resp = await session.connection.post(
 			`/api/dsp/init?moduleId=${encodeURIComponent(this.moduleId)}`,
 			body,
 		);
 		if (isErrorResponse(resp)) return errorResult(resp.message);
 		if (!isEnvelopeResponse(resp) || !resp.success) {
-			return errorResult(envelopeError(resp, "init failed"));
+			return errorResult(mapInitError(resp, name, mode));
 		}
 		try {
 			const parsed = normalizeDspInitResponse(resp);
@@ -433,8 +568,11 @@ export class DspMode implements Mode {
 			this.treeRoot = tree;
 			this.treeFetched = true;
 			this.currentPath = [];
-			const where = parsed.embedded ? "(embedded)" : parsed.filePath;
-			return textResult(`Loaded "${name}" on ${this.moduleId} ${where}`);
+			const where = parsed.filePath ? ` (${parsed.filePath})` : "";
+			const msg = parsed.source === "loaded"
+				? `Loaded existing "${name}" on ${this.moduleId}${where}`
+				: `Created new "${name}" on ${this.moduleId}${where}`;
+			return textResult(msg);
 		} catch (e) {
 			return errorResult(String(e));
 		}
@@ -564,12 +702,26 @@ export class DspMode implements Mode {
 	// ── Completion ──────────────────────────────────────────────
 
 	complete(input: string, _cursor: number): CompletionResult {
-		if (!this.completionEngine) return { items: [], from: 0, to: input.length };
-
 		const lastComma = findLastUnquotedComma(input);
 		const segStart = lastComma + 1;
 		const segment = input.slice(segStart);
 		const offset = segStart + (segment.length - segment.trimStart().length);
+		{
+			const trimmedSegment = segment.trimStart();
+			const earlyTokens = trimmedSegment.split(/\s+/);
+			if (earlyTokens[0]?.toLowerCase() === "screenshot" && earlyTokens.length >= 2) {
+				const keywords = ["at", "to"];
+				const lastWord = earlyTokens[earlyTokens.length - 1]!.toLowerCase();
+				const wordFrom = input.length - earlyTokens[earlyTokens.length - 1]!.length;
+				const priorJoined = earlyTokens.slice(1, -1).join(" ").toLowerCase();
+				const items = keywords
+					.filter((k) => k.startsWith(lastWord) && !priorJoined.includes(k + " "))
+					.map((k) => ({ label: k }));
+				return { items, from: wordFrom, to: input.length };
+			}
+		}
+
+		if (!this.completionEngine) return { items: [], from: 0, to: input.length };
 		const trimmed = segment.trimStart();
 		const inputLength = input.length;
 		const tokens = trimmed.split(/\s+/);
@@ -581,10 +733,14 @@ export class DspMode implements Mode {
 			return { items, from: offset, to: inputLength, label: "DSP commands" };
 		}
 
-		// show <what>
+		// show <what> — sub-keywords + node IDs from the live tree
 		if (first === "show" && tokens.length === 2) {
-			const items = DSP_SHOW_SUBCOMMANDS.filter((k) => k.label.startsWith(tokens[1]!.toLowerCase()));
-			return { items, from: offset + tokens[0]!.length + 1, to: inputLength };
+			const prefix = tokens[1]!.toLowerCase();
+			const kw = DSP_SHOW_SUBCOMMANDS.filter((k) => k.label.startsWith(prefix));
+			const nodes = collectDspNodeIds(this.rawTree)
+				.filter((n) => n.nodeId.toLowerCase().startsWith(prefix))
+				.map((n) => ({ label: n.nodeId, detail: n.factoryPath }));
+			return { items: [...kw, ...nodes], from: offset + tokens[0]!.length + 1, to: inputLength };
 		}
 
 		// add <factory>[.<node>] — delegate to scriptnode completion
@@ -649,6 +805,24 @@ function envelopeError(response: import("../hise.js").HiseResponse, fallback: st
 	return fallback;
 }
 
+// Map HISE's init failure envelopes to short, actionable CLI messages.
+// HISE returns full absolute paths in errorMessage; we strip that and
+// point the user at the sibling verb.
+function mapInitError(
+	response: import("../hise.js").HiseResponse,
+	name: string,
+	mode: "auto" | "load" | "create",
+): string {
+	const raw = envelopeError(response, "init failed");
+	if (/already exists/i.test(raw)) {
+		return `Network "${name}" already exists. Use \`load ${name}\` to open it, or pick a different name.`;
+	}
+	if (/no network xml found|not found/i.test(raw)) {
+		return `Network "${name}" does not exist. Use \`create ${name}\` to make a new one, or \`show networks\` to list existing.`;
+	}
+	return `${mode === "auto" ? "init" : mode} failed: ${raw}`;
+}
+
 function collectConnections(node: RawDspNode, rows: string[][]): void {
 	if (node.connections) {
 		for (const c of node.connections) {
@@ -658,12 +832,112 @@ function collectConnections(node: RawDspNode, rows: string[][]): void {
 	for (const child of node.children) collectConnections(child, rows);
 }
 
+function collectAllConnections(
+	node: RawDspNode,
+	out: import("../../mock/contracts/dsp.js").RawDspConnection[],
+): void {
+	if (node.connections) out.push(...node.connections);
+	for (const child of node.children) collectAllConnections(child, out);
+}
+
+function pad(s: string, width: number): string {
+	return s.length >= width ? s : s + " ".repeat(width - s.length);
+}
+
+function formatPropertyValue(v: string | number | boolean): string {
+	if (typeof v === "string") return `"${v}"`;
+	if (typeof v === "number") {
+		// Render NodeColour-style values as 0xAARRGGBB hex when non-zero
+		// and Integer, else decimal.
+		if (Number.isInteger(v) && v !== 0 && v > 0xFF) {
+			return `0x${v.toString(16).toUpperCase().padStart(8, "0")}`;
+		}
+		return String(v);
+	}
+	return v ? "true" : "false";
+}
+
+function renderDspNodeShow(
+	node: RawDspNode,
+	parentId: string,
+	root: RawDspNode,
+): string {
+	const lines: string[] = [];
+
+	// Header: factory  nodeId  parent: X  bypassed: yes/no
+	lines.push(
+		`${node.factoryPath}  ${node.nodeId}  parent: ${parentId}  bypassed: ${node.bypassed ? "yes" : "no"}`,
+	);
+
+	// Properties
+	if (node.properties && node.properties.length > 0) {
+		const idWidth = Math.max(...node.properties.map((p) => p.propertyId.length));
+		for (const p of node.properties) {
+			lines.push(`  ${pad(p.propertyId, idWidth)}  ${formatPropertyValue(p.value)}`);
+		}
+	}
+
+	// Parameters
+	if (node.parameters.length > 0) {
+		lines.push("  Parameters");
+		const idWidth = Math.max(...node.parameters.map((p) => p.parameterId.length));
+		const valStrs = node.parameters.map((p) => String(p.value));
+		const valWidth = Math.max(...valStrs.map((s) => s.length));
+		for (let i = 0; i < node.parameters.length; i++) {
+			const p = node.parameters[i]!;
+			const parts = [
+				`    ${pad(p.parameterId, idWidth)}  ${pad(valStrs[i]!, valWidth)}`,
+			];
+			if (p.min !== undefined && p.max !== undefined) {
+				parts.push(`range ${p.min} - ${p.max}`);
+			}
+			if (p.defaultValue !== undefined) {
+				parts.push(`default ${p.defaultValue}`);
+			}
+			lines.push(parts.join("    "));
+		}
+	}
+
+	// Modulation (incoming and outgoing)
+	const allEdges: import("../../mock/contracts/dsp.js").RawDspConnection[] = [];
+	collectAllConnections(root, allEdges);
+	const out = allEdges.filter((c) => c.source === node.nodeId);
+	const incoming = allEdges.filter((c) => c.target === node.nodeId);
+	lines.push("  Modulation");
+	if (out.length === 0) {
+		lines.push("    out -> (none)");
+	} else {
+		for (const c of out) {
+			const srcOut = c.sourceOutput !== undefined && c.sourceOutput !== ""
+				? ` (${c.sourceOutput})`
+				: "";
+			const tgt = c.parameter ? `${c.target}.${c.parameter}` : c.target;
+			lines.push(`    out -> ${tgt}${srcOut}`);
+		}
+	}
+	if (incoming.length === 0) {
+		lines.push("    in  <- (none)");
+	} else {
+		for (const c of incoming) {
+			const srcOut = c.sourceOutput !== undefined && c.sourceOutput !== ""
+				? `.${c.sourceOutput}`
+				: "";
+			const param = c.parameter ? `.${c.parameter}` : "";
+			lines.push(`    in  <- ${c.source}${srcOut}${param ? ` (${param.slice(1)})` : ""}`);
+		}
+	}
+
+	return lines.join("\n");
+}
+
 // ── Completion keyword tables ───────────────────────────────────
 
 const DSP_KEYWORDS = [
-	{ label: "show", detail: "show networks | modules | tree | connections" },
+	{ label: "show", detail: "show networks | modules | tree | connections | <nodeId>" },
 	{ label: "use", detail: "Switch host moduleId" },
-	{ label: "init", detail: "Create or load a DspNetwork" },
+	{ label: "load", detail: "Load an existing DspNetwork (errors if missing)" },
+	{ label: "create", detail: "Create a new DspNetwork (errors if exists)" },
+	{ label: "init", detail: "Load-or-create a DspNetwork" },
 	{ label: "save", detail: "Save the network to its .xml file" },
 	{ label: "reset", detail: "Empty the loaded network" },
 	{ label: "add", detail: "Add a node (factory.nodeId)" },
@@ -676,6 +950,7 @@ const DSP_KEYWORDS = [
 	{ label: "bypass", detail: "Bypass a node" },
 	{ label: "enable", detail: "Enable a bypassed node" },
 	{ label: "create_parameter", detail: "Create a dynamic parameter on a container" },
+	{ label: "screenshot", detail: "Render DspNetwork graph to PNG" },
 	{ label: "cd", detail: "Navigate into a container" },
 	{ label: "ls", detail: "List children at current path" },
 	{ label: "pwd", detail: "Print current path" },
@@ -697,14 +972,17 @@ const DSP_HELP = [
 	"",
 	"Commands:",
 	"  show networks | modules | tree | connections",
+	"  show <nodeId>                 header + properties + parameters + modulation",
 	"  use <moduleId>",
-	"  init <name> [embedded]        create/load the module's network",
+	"  load <name>                   load an existing network (errors if missing)",
+	"  create <name>                 create a new network (errors if exists)",
+	"  init <name>                   load-or-create (catch-all)",
 	"  save                          save the loaded network's .xml file",
 	"  reset                         empty the loaded network",
 	"  add <factory.node> [as <id>] [to <parent>]",
 	"  remove <nodeId>",
 	"  move <nodeId> to <parent> [at <index>]",
-	"  connect <src>[.<out>] to <target>.<param>",
+	"  connect <src>[.<out>] to <target>[.<param>]  (no .<param> -> routing shorthand, HISE resolves)",
 	"  disconnect <src> from <target>.<param>",
 	"  set <node>.<param> [to] <value>",
 	"  get <nodeId>                 -> factory path",
@@ -713,5 +991,6 @@ const DSP_HELP = [
 	"  get parent of <node>.<param> -> parent container id",
 	"  bypass <nodeId> | enable <nodeId>",
 	"  create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>]",
+	"  screenshot [at <scale>] [to <path>]  render DspNetwork graph to PNG",
 	"  cd / ls / pwd                navigate the graph",
 ].join("\n");

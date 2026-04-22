@@ -33,11 +33,18 @@ export interface RawDspConnection {
 	parameter: string;
 }
 
+export interface RawDspProperty {
+	propertyId: string;
+	value: string | number | boolean;
+}
+
 export interface RawDspNode {
 	nodeId: string;
 	factoryPath: string;
 	bypassed: boolean;
 	parameters: RawDspParameter[];
+	/** Node-level properties (Name, NodeColour, Comment, factory-specific). */
+	properties?: RawDspProperty[];
 	/** Present on container nodes. Lists modulation edges scoped to this container. */
 	connections?: RawDspConnection[];
 	children: RawDspNode[];
@@ -53,8 +60,8 @@ export interface DspApplyResult {
 
 export interface DspInitResult {
 	tree: RawDspNode;
-	filePath: string;
-	embedded: boolean;
+	filePath?: string;
+	source: "created" | "loaded";
 }
 
 export interface DspSaveResult {
@@ -86,6 +93,9 @@ export function validateRawDspNode(value: unknown, path = "root"): RawDspNode {
 	}
 
 	const parameters = raw.parameters.map((p, i) => validateRawParameter(p, `${raw.nodeId}.parameters[${i}]`));
+	const properties = raw.properties !== undefined
+		? validateProperties(raw.properties, raw.nodeId as string)
+		: undefined;
 	const connections = raw.connections !== undefined
 		? validateConnections(raw.connections, raw.nodeId as string)
 		: undefined;
@@ -96,9 +106,30 @@ export function validateRawDspNode(value: unknown, path = "root"): RawDspNode {
 		factoryPath: raw.factoryPath,
 		bypassed: raw.bypassed,
 		parameters,
+		properties,
 		connections,
 		children,
 	};
+}
+
+function validateProperties(value: unknown, nodeId: string): RawDspProperty[] {
+	if (!Array.isArray(value)) {
+		throw new Error(`DSP properties on "${nodeId}" must be an array`);
+	}
+	return value.map((p, i) => {
+		if (!p || typeof p !== "object") {
+			throw new Error(`DSP property at "${nodeId}".properties[${i}] must be an object`);
+		}
+		const raw = p as Record<string, unknown>;
+		if (typeof raw.propertyId !== "string") {
+			throw new Error(`DSP property at "${nodeId}".properties[${i}] missing string "propertyId"`);
+		}
+		const v = raw.value;
+		if (typeof v !== "string" && typeof v !== "number" && typeof v !== "boolean") {
+			throw new Error(`DSP property "${raw.propertyId}" on "${nodeId}" "value" must be string, number, or boolean`);
+		}
+		return { propertyId: raw.propertyId, value: v };
+	});
 }
 
 function validateRawParameter(value: unknown, path: string): RawDspParameter {
@@ -217,16 +248,16 @@ export function normalizeDspInitResponse(body: unknown): DspInitResult {
 	if (rawTree === undefined) {
 		throw new Error('DSP init response missing "result" (initial tree)');
 	}
-	if (typeof data.filePath !== "string") {
-		throw new Error('DSP init response missing string "filePath"');
+	if (data.filePath !== undefined && typeof data.filePath !== "string") {
+		throw new Error('DSP init response "filePath" must be a string when present');
 	}
-	if (typeof data.embedded !== "boolean") {
-		throw new Error('DSP init response missing boolean "embedded"');
+	if (data.source !== "created" && data.source !== "loaded") {
+		throw new Error('DSP init response missing "source" ("created" | "loaded")');
 	}
 	return {
 		tree: validateRawDspNode(rawTree),
-		filePath: data.filePath,
-		embedded: data.embedded,
+		filePath: typeof data.filePath === "string" ? data.filePath : undefined,
+		source: data.source,
 	};
 }
 

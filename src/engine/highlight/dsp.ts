@@ -5,12 +5,12 @@ import { tokenizeSlash } from "./slash.js";
 
 const DSP_KEYWORDS = new Set([
 	"show", "networks", "modules", "connections", "tree",
-	"use", "init", "save", "reset",
+	"use", "init", "load", "create", "save", "reset",
 	"add", "remove", "move", "connect", "disconnect",
 	"set", "get", "bypass", "enable",
 	"create_parameter",
 	"source", "parent", "of", "from", "to", "as", "at",
-	"embedded", "default", "step", "into",
+	"default", "step", "into",
 	"cd", "ls", "dir", "pwd", "help",
 ]);
 

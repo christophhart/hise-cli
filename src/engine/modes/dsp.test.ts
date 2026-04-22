@@ -12,6 +12,9 @@ import {
 	type CreateParameterCommand,
 } from "./dsp-parser.js";
 import { commandToDspOps } from "./dsp-ops.js";
+import { DspMode, parseDspScreenshotClauses } from "./dsp.js";
+import { MockHiseConnection } from "../hise.js";
+import type { SessionContext } from "./mode.js";
 import {
 	validateAddCommand,
 	validateSetCommand,
@@ -48,6 +51,9 @@ describe("dsp parser — show / navigation", () => {
 		expect(parseOk("show tree")).toEqual({ type: "show", what: "tree" });
 		expect(parseOk("show connections")).toEqual({ type: "show", what: "connections" });
 	});
+	it("parses show <nodeId>", () => {
+		expect(parseOk("show Osc1")).toEqual({ type: "show", what: "node", nodeId: "Osc1" });
+	});
 });
 
 describe("dsp parser — lifecycle", () => {
@@ -59,13 +65,17 @@ describe("dsp parser — lifecycle", () => {
 		const cmd = parseOk('use "Script FX1"');
 		expect(cmd).toEqual({ type: "use", moduleId: "Script FX1" });
 	});
-	it("parses init <name>", () => {
+	it("parses init <name> as auto mode", () => {
 		const cmd = parseOk("init MyDSP");
-		expect(cmd).toEqual({ type: "init", name: "MyDSP", embedded: false });
+		expect(cmd).toEqual({ type: "init", name: "MyDSP", mode: "auto" });
 	});
-	it("parses init <name> embedded", () => {
-		const cmd = parseOk("init MyDSP embedded");
-		expect(cmd).toEqual({ type: "init", name: "MyDSP", embedded: true });
+	it("parses load <name> as load mode", () => {
+		const cmd = parseOk("load MyDSP");
+		expect(cmd).toEqual({ type: "init", name: "MyDSP", mode: "load" });
+	});
+	it("parses create <name> as create mode", () => {
+		const cmd = parseOk("create MyDSP");
+		expect(cmd).toEqual({ type: "init", name: "MyDSP", mode: "create" });
 	});
 	it("parses save", () => {
 		expect(parseOk("save")).toEqual({ type: "save" });
@@ -125,6 +135,16 @@ describe("dsp parser — graph mutations", () => {
 		const cmd = parseOk("connect xfader1.0 to gain1.Gain") as ConnectCommand;
 		expect(cmd.sourceOutput).toBe(0);
 	});
+	it("parses connect with no target parameter (routing shorthand)", () => {
+		// `connect SEND to RCV` — HISE resolves the default routing target
+		// server-side and maps this to a set on SEND.Connection.
+		const cmd = parseOk("connect SEND to RCV") as ConnectCommand;
+		expect(cmd.type).toBe("connect");
+		expect(cmd.source).toBe("SEND");
+		expect(cmd.target).toBe("RCV");
+		expect(cmd.parameter).toBeUndefined();
+		expect(cmd.sourceOutput).toBeUndefined();
+	});
 	it("parses disconnect", () => {
 		expect(parseOk("disconnect LFO1 from Filter1.Frequency")).toEqual({
 			type: "disconnect", source: "LFO1", target: "Filter1", parameter: "Frequency",
@@ -156,6 +176,21 @@ describe("dsp parser — graph mutations", () => {
 	it("parses set with lowercase hex literal", () => {
 		const cmd = parseOk("set Osc1.NodeColour 0xff00aabb") as SetCommand;
 		expect(cmd.value).toBe(0xFF00AABB);
+	});
+	it("parses set with parameter name that starts with a verb keyword (Connection)", () => {
+		// Regression: lexer used to match `connect` as keyword prefix of `Connection`,
+		// rejecting `set SEND.Connection RCV` as a parse error.
+		const cmd = parseOk("set SEND.Connection RCV") as SetCommand;
+		expect(cmd).toEqual({
+			type: "set", nodeId: "SEND", parameterId: "Connection", value: "RCV",
+		});
+	});
+	it("still tokenises `connect` as the modulation verb", () => {
+		const cmd = parseOk("connect LFO1 to F1.Cutoff") as ConnectCommand;
+		expect(cmd.type).toBe("connect");
+	});
+	it("still tokenises `show connections`", () => {
+		expect(parseOk("show connections")).toEqual({ type: "show", what: "connections" });
 	});
 	it("parses bypass / enable", () => {
 		expect(parseOk("bypass Osc1")).toEqual({ type: "bypass", nodeId: "Osc1" });
@@ -312,6 +347,18 @@ describe("commandToDspOps — field names match openapi", () => {
 			target: "gain1", parameter: "Gain",
 		});
 		expect(typeof (res.ops[0] as unknown as { sourceOutput: unknown }).sourceOutput).toBe("number");
+	});
+
+	it("connect without target parameter omits the parameter field in the op", () => {
+		const res = commandToDspOps(
+			{ type: "connect", source: "SEND", target: "RCV" } as ConnectCommand,
+			emptyTree, [],
+		);
+		if ("error" in res) throw new Error(res.error);
+		const op = res.ops[0] as Record<string, unknown>;
+		expect(op).toEqual({ op: "connect", source: "SEND", target: "RCV" });
+		expect(op).not.toHaveProperty("parameter");
+		expect(op).not.toHaveProperty("sourceOutput");
 	});
 
 	it("reset translates to clear op", () => {
@@ -655,22 +702,43 @@ describe("dsp contract — normalizeDspApplyResponse", () => {
 });
 
 describe("dsp contract — normalizeDspInitResponse", () => {
-	it("parses full init response", () => {
+	it("parses full init response with source=created", () => {
 		const r = normalizeDspInitResponse({
 			result: {
 				nodeId: "MyDSP", factoryPath: "container.chain",
 				bypassed: false, parameters: [], connections: [], children: [],
 			},
 			filePath: "/proj/DspNetworks/MyDSP.xml",
-			embedded: false,
+			source: "created",
 		});
 		expect(r.filePath).toBe("/proj/DspNetworks/MyDSP.xml");
-		expect(r.embedded).toBe(false);
+		expect(r.source).toBe("created");
 		expect(r.tree.nodeId).toBe("MyDSP");
 	});
 
+	it("parses full init response with source=loaded", () => {
+		const r = normalizeDspInitResponse({
+			result: {
+				nodeId: "MyDSP", factoryPath: "container.chain",
+				bypassed: false, parameters: [], connections: [], children: [],
+			},
+			filePath: "/proj/DspNetworks/MyDSP.xml",
+			source: "loaded",
+		});
+		expect(r.source).toBe("loaded");
+	});
+
 	it("throws when result tree is missing", () => {
-		expect(() => normalizeDspInitResponse({ filePath: "", embedded: false })).toThrow();
+		expect(() => normalizeDspInitResponse({ filePath: "", source: "created" })).toThrow();
+	});
+
+	it("throws when source is missing or invalid", () => {
+		const tree = {
+			nodeId: "X", factoryPath: "container.chain",
+			bypassed: false, parameters: [], connections: [], children: [],
+		};
+		expect(() => normalizeDspInitResponse({ result: tree, filePath: "x.xml" })).toThrow();
+		expect(() => normalizeDspInitResponse({ result: tree, filePath: "x.xml", source: "bogus" })).toThrow();
 	});
 });
 
@@ -734,5 +802,356 @@ describe("raw-tree helpers for `get` resolution", () => {
 		const c = findDspConnectionTargeting(tree, "Filter1", "Frequency");
 		expect(c?.source).toBe("LFO1");
 		expect(findDspConnectionTargeting(tree, "Filter1", "Q")).toBeNull();
+	});
+});
+
+// ── Screenshot clause parser ───────────────────────────────────────
+
+describe("parseDspScreenshotClauses", () => {
+	it("returns empty opts for empty input", () => {
+		expect(parseDspScreenshotClauses("")).toEqual({});
+	});
+
+	it("parses 'at 50%' as scale 0.5", () => {
+		expect(parseDspScreenshotClauses("at 50%")).toEqual({ scale: 0.5 });
+	});
+
+	it("parses 'at 0.5' as scale 0.5", () => {
+		expect(parseDspScreenshotClauses("at 0.5")).toEqual({ scale: 0.5 });
+	});
+
+	it("parses 'at 2.0' as scale 2.0", () => {
+		expect(parseDspScreenshotClauses("at 2.0")).toEqual({ scale: 2.0 });
+	});
+
+	it("parses 'to <path>'", () => {
+		expect(parseDspScreenshotClauses("to foo.png")).toEqual({ outputPath: "foo.png" });
+	});
+
+	it("parses combined clauses in any order", () => {
+		expect(parseDspScreenshotClauses("at 2.0 to out.png"))
+			.toEqual({ scale: 2.0, outputPath: "out.png" });
+		expect(parseDspScreenshotClauses("to out.png at 0.5"))
+			.toEqual({ scale: 0.5, outputPath: "out.png" });
+	});
+
+	it("rejects unsupported scale (75%)", () => {
+		const res = parseDspScreenshotClauses("at 75%");
+		expect(typeof res).toBe("string");
+		expect(res as string).toContain("Invalid scale");
+	});
+
+	it("rejects unsupported scale (1.5)", () => {
+		const res = parseDspScreenshotClauses("at 1.5");
+		expect(typeof res).toBe("string");
+		expect(res as string).toContain("Invalid scale");
+	});
+
+	it("rejects non-png output path", () => {
+		const res = parseDspScreenshotClauses("to out.jpg");
+		expect(typeof res).toBe("string");
+		expect(res as string).toContain(".png");
+	});
+
+	it("strips leading slash from relative path", () => {
+		expect(parseDspScreenshotClauses("to /subfolder/screenshot.png"))
+			.toEqual({ outputPath: "subfolder/screenshot.png" });
+	});
+
+	it("strips leading backslash from relative path", () => {
+		expect(parseDspScreenshotClauses("to \\subfolder\\screenshot.png"))
+			.toEqual({ outputPath: "subfolder/screenshot.png" });
+	});
+
+	it("preserves absolute path with drive letter", () => {
+		expect(parseDspScreenshotClauses("to D:/Projects/graph.png"))
+			.toEqual({ outputPath: "D:/Projects/graph.png" });
+	});
+
+	it("normalizes backslashes to forward slashes", () => {
+		expect(parseDspScreenshotClauses("to sub\\dir\\graph.png"))
+			.toEqual({ outputPath: "sub/dir/graph.png" });
+	});
+
+	it("preserves plain relative path with subfolders", () => {
+		expect(parseDspScreenshotClauses("to subfolder/screenshot.png"))
+			.toEqual({ outputPath: "subfolder/screenshot.png" });
+	});
+});
+
+// ── DspMode screenshot command ─────────────────────────────────────
+
+describe("DspMode screenshot", () => {
+	function mockSession(mock: MockHiseConnection | null): SessionContext {
+		return {
+			connection: mock,
+			projectName: null,
+			projectFolder: null,
+			popMode: () => ({ type: "text", content: "Exited DSP mode." }),
+		};
+	}
+
+	function makeMode(withModule: boolean): DspMode {
+		const mode = new DspMode();
+		if (withModule) mode.setContext("Script FX1");
+		return mode;
+	}
+
+	it("errors without module context", async () => {
+		const mode = makeMode(false);
+		const mock = new MockHiseConnection();
+		const result = await mode.parse("screenshot", mockSession(mock));
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("module context");
+		}
+	});
+
+	it("errors without connection", async () => {
+		const mode = makeMode(true);
+		const result = await mode.parse("screenshot", mockSession(null));
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("HISE connection");
+		}
+	});
+
+	it("defaults to screenshot.png and sends moduleId", async () => {
+		const mode = makeMode(true);
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/dsp/screenshot", () => ({
+			success: true as const,
+			moduleId: "Script FX1",
+			width: 800, height: 600, scale: 1.0,
+			filePath: "D:/Projects/Test/Images/screenshot.png",
+			logs: [],
+			errors: [],
+		}));
+
+		const result = await mode.parse("screenshot", mockSession(mock));
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("screenshot.png");
+			expect(result.content).toContain("800x600");
+		}
+		const call = mock.calls.find((c) => c.endpoint.startsWith("/api/dsp/screenshot"));
+		expect(call).toBeDefined();
+		expect(call!.endpoint).toContain("moduleId=Script+FX1");
+		expect(call!.endpoint).toContain("outputPath=screenshot.png");
+		expect(call!.endpoint).not.toContain("scale=");
+	});
+
+	it("sends scale when provided via 'at 50%'", async () => {
+		const mode = makeMode(true);
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/dsp/screenshot", () => ({
+			success: true as const,
+			moduleId: "Script FX1",
+			width: 400, height: 300, scale: 0.5,
+			filePath: "D:/Projects/Test/Images/screenshot.png",
+			logs: [],
+			errors: [],
+		}));
+
+		await mode.parse("screenshot at 50%", mockSession(mock));
+		const call = mock.calls.find((c) => c.endpoint.startsWith("/api/dsp/screenshot"));
+		expect(call!.endpoint).toContain("scale=0.5");
+	});
+
+	it("sends custom output path and scale together", async () => {
+		const mode = makeMode(true);
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/dsp/screenshot", () => ({
+			success: true as const,
+			moduleId: "Script FX1",
+			width: 1600, height: 1200, scale: 2.0,
+			filePath: "D:/Projects/Test/Images/graph.png",
+			logs: [],
+			errors: [],
+		}));
+
+		const result = await mode.parse("screenshot at 2.0 to graph.png", mockSession(mock));
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("graph.png");
+			expect(result.content).toContain("1600x1200");
+		}
+		const call = mock.calls.find((c) => c.endpoint.startsWith("/api/dsp/screenshot"));
+		expect(call!.endpoint).toContain("scale=2");
+		expect(call!.endpoint).toContain("outputPath=graph.png");
+	});
+
+	it("rejects invalid scale before hitting the API", async () => {
+		const mode = makeMode(true);
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/dsp/screenshot", () => ({
+			success: true as const,
+			width: 0, height: 0,
+			logs: [],
+			errors: [],
+		}));
+
+		const result = await mode.parse("screenshot at 75%", mockSession(mock));
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("Invalid scale");
+		}
+		expect(mock.calls.filter((c) => c.endpoint.includes("/api/dsp/screenshot"))).toHaveLength(0);
+	});
+
+	it("surfaces envelope error messages", async () => {
+		const mode = makeMode(true);
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/dsp/screenshot", () => ({
+			success: false as const,
+			logs: [],
+			errors: [{ errorMessage: "Headless mode", callstack: [] }],
+		}));
+
+		const result = await mode.parse("screenshot", mockSession(mock));
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("Headless mode");
+		}
+	});
+
+	it("completes 'at' and 'to' keywords after screenshot", () => {
+		const mode = makeMode(true);
+		const res = mode.complete!("screenshot a", "screenshot a".length);
+		expect(res.items.some((i) => i.label === "at")).toBe(true);
+	});
+});
+
+describe("DspMode show <nodeId>", () => {
+	function mockSession(mock: MockHiseConnection | null): SessionContext {
+		return {
+			connection: mock,
+			projectName: null,
+			projectFolder: null,
+			popMode: () => ({ type: "text", content: "Exited DSP mode." }),
+		};
+	}
+
+	const verboseTree = {
+		nodeId: "sfx",
+		factoryPath: "container.chain",
+		bypassed: false,
+		parameters: [],
+		properties: [
+			{ propertyId: "Bypassed", value: false },
+			{ propertyId: "NodeColour", value: 0 },
+			{ propertyId: "Name", value: "sfx" },
+			{ propertyId: "Comment", value: "" },
+			{ propertyId: "IsVertical", value: true },
+		],
+		connections: [
+			{ source: "xfader", sourceOutput: 1, target: "receive", parameter: "Feedback" },
+			{ source: "peak", sourceOutput: 0, target: "mul", parameter: "Value" },
+		],
+		children: [
+			{
+				nodeId: "xfader",
+				factoryPath: "control.xfader",
+				bypassed: false,
+				parameters: [
+					{
+						parameterId: "Value", value: 0,
+						min: 0, max: 1, stepSize: 0, defaultValue: 0,
+					},
+				],
+				properties: [
+					{ propertyId: "Name", value: "xfader" },
+					{ propertyId: "Comment", value: "crossfader" },
+					{ propertyId: "Mode", value: "Linear" },
+				],
+				children: [],
+			},
+			{
+				nodeId: "mul",
+				factoryPath: "math.mul",
+				bypassed: false,
+				parameters: [
+					{
+						parameterId: "Value", value: 1,
+						min: 0, max: 1, stepSize: 0, defaultValue: 1,
+					},
+				],
+				children: [],
+			},
+		],
+	};
+
+	function makeMock(): MockHiseConnection {
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/undo/diff", () => ({
+			success: true as const, groupName: "root", logs: [], errors: [],
+		}));
+		mock.onGet("/api/dsp/tree", () => ({
+			success: true as const, result: verboseTree, logs: [], errors: [],
+		}));
+		return mock;
+	}
+
+	it("renders header, properties, parameters, modulation for a leaf node", async () => {
+		const mode = new DspMode();
+		mode.setContext("sfx");
+		const mock = makeMock();
+		const result = await mode.parse("show xfader", mockSession(mock));
+		expect(result.type).toBe("preformatted");
+		if (result.type !== "preformatted") return;
+		const content = result.content;
+		expect(content).toContain("control.xfader");
+		expect(content).toContain("xfader");
+		expect(content).toContain("parent: sfx");
+		expect(content).toContain("bypassed: no");
+		expect(content).toContain("Comment");
+		expect(content).toContain('"crossfader"');
+		expect(content).toContain("Mode");
+		expect(content).toContain('"Linear"');
+		expect(content).toContain("Parameters");
+		expect(content).toContain("Value");
+		expect(content).toContain("range 0 - 1");
+		expect(content).toContain("default 0");
+		expect(content).toContain("Modulation");
+		expect(content).toContain("out -> receive.Feedback");
+		expect(content).toContain("in  <- (none)");
+	});
+
+	it("shows incoming edge for target node", async () => {
+		const mode = new DspMode();
+		mode.setContext("sfx");
+		const mock = makeMock();
+		const result = await mode.parse("show mul", mockSession(mock));
+		if (result.type !== "preformatted") throw new Error("expected preformatted");
+		expect(result.content).toContain("in  <- peak");
+		expect(result.content).toContain("out -> (none)");
+	});
+
+	it("errors without a module context", async () => {
+		const mode = new DspMode();
+		const mock = makeMock();
+		const result = await mode.parse("show xfader", mockSession(mock));
+		expect(result.type).toBe("error");
+		if (result.type === "error") expect(result.message).toContain("module context");
+	});
+
+	it("errors when node is not found", async () => {
+		const mode = new DspMode();
+		mode.setContext("sfx");
+		const mock = makeMock();
+		const result = await mode.parse("show bogus", mockSession(mock));
+		expect(result.type).toBe("error");
+		if (result.type === "error") expect(result.message).toContain('"bogus" not found');
+	});
+
+	it("uses verbose=true on the tree fetch", async () => {
+		const mode = new DspMode();
+		mode.setContext("sfx");
+		const mock = makeMock();
+		await mode.parse("show xfader", mockSession(mock));
+		const hit = mock.calls.find((c) =>
+			c.endpoint.startsWith("/api/dsp/tree") && c.endpoint.includes("verbose=true"),
+		);
+		expect(hit).toBeDefined();
 	});
 });
