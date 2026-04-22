@@ -185,6 +185,47 @@ describe("dsp parser — graph mutations", () => {
 			type: "set", nodeId: "SEND", parameterId: "Connection", value: "RCV",
 		});
 	});
+	it("parses set when parameter name exact-matches a verb keyword", () => {
+		// The property slot after `.` accepts any keyword token — grammar is
+		// unambiguous there, so `Show`, `Add`, `Save`, `Load`, `Create` etc.
+		// must parse as parameter names, not as verbs.
+		const collisions = ["Show", "Add", "Save", "Load", "Create", "Set", "Get", "Move", "Remove", "Reset", "Init", "Enable", "Bypass", "Connect", "Disconnect"];
+		for (const name of collisions) {
+			const cmd = parseOk(`set Osc1.${name} 1`) as SetCommand;
+			expect(cmd.parameterId.toLowerCase()).toBe(name.toLowerCase());
+			expect(cmd.value).toBe(1);
+		}
+	});
+	it("parses get <node>.<keyword-property>", () => {
+		const cmd = parseOk("get Osc1.Show");
+		expect(cmd.type).toBe("get");
+		if (cmd.type === "get" && cmd.query === "param") {
+			expect(cmd.parameterId.toLowerCase()).toBe("show");
+		}
+	});
+	it("parses get source of <node>.<keyword-property>", () => {
+		const cmd = parseOk("get source of Osc1.Load");
+		expect(cmd.type).toBe("get");
+		if (cmd.type === "get" && cmd.query === "source") {
+			expect(cmd.parameterId.toLowerCase()).toBe("load");
+		}
+	});
+	it("parses connect with keyword-named target parameter", () => {
+		const cmd = parseOk("connect LFO1 to Filter1.Save") as ConnectCommand;
+		expect(cmd.parameter?.toLowerCase()).toBe("save");
+	});
+	it("parses disconnect with keyword-named target parameter", () => {
+		const res = parseSingleDspCommand("disconnect LFO1 from Filter1.Create");
+		if ("error" in res) throw new Error(res.error);
+		expect(res.command.type).toBe("disconnect");
+		if (res.command.type === "disconnect") {
+			expect(res.command.parameter.toLowerCase()).toBe("create");
+		}
+	});
+	it("parses create_parameter with keyword-named parameter", () => {
+		const cmd = parseOk("create_parameter Main.Save") as CreateParameterCommand;
+		expect(cmd.parameterId.toLowerCase()).toBe("save");
+	});
 	it("still tokenises `connect` as the modulation verb", () => {
 		const cmd = parseOk("connect LFO1 to F1.Cutoff") as ConnectCommand;
 		expect(cmd.type).toBe("connect");

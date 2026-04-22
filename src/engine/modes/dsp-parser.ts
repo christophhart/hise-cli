@@ -21,6 +21,7 @@ import {
 	HexLiteral,
 	Identifier,
 	Init,
+	Into,
 	Load,
 	Modules,
 	Move,
@@ -177,6 +178,49 @@ class DspParser extends CstParser {
 		]);
 	});
 
+	// Node/parameter property name — accepts a plain Identifier OR any
+	// DSP keyword token that happens to match a property name (e.g.
+	// `Connection`, `Show`, `Add`, `Save`). Used in positions after `.`
+	// where the grammar guarantees an identifier is expected, so accepting
+	// keyword images is unambiguous. Fixes the whole class of "property
+	// name collides with verb keyword" parse errors.
+	public propName = this.RULE("propName", () => {
+		this.OR([
+			{ ALT: () => this.CONSUME(Identifier) },
+			{ ALT: () => this.CONSUME(Add) },
+			{ ALT: () => this.CONSUME(Remove) },
+			{ ALT: () => this.CONSUME(Move) },
+			{ ALT: () => this.CONSUME(Bypass) },
+			{ ALT: () => this.CONSUME(Enable) },
+			{ ALT: () => this.CONSUME(Show) },
+			{ ALT: () => this.CONSUME(Set) },
+			{ ALT: () => this.CONSUME(Get) },
+			{ ALT: () => this.CONSUME(Use) },
+			{ ALT: () => this.CONSUME(Init) },
+			{ ALT: () => this.CONSUME(Load) },
+			{ ALT: () => this.CONSUME(Create) },
+			{ ALT: () => this.CONSUME(Save) },
+			{ ALT: () => this.CONSUME(Reset) },
+			{ ALT: () => this.CONSUME(Connect) },
+			{ ALT: () => this.CONSUME(Disconnect) },
+			{ ALT: () => this.CONSUME(Connections) },
+			{ ALT: () => this.CONSUME(CreateParameter) },
+			{ ALT: () => this.CONSUME(Networks) },
+			{ ALT: () => this.CONSUME(Modules) },
+			{ ALT: () => this.CONSUME(Source) },
+			{ ALT: () => this.CONSUME(Parent) },
+			{ ALT: () => this.CONSUME(Default) },
+			{ ALT: () => this.CONSUME(Step) },
+			{ ALT: () => this.CONSUME(From) },
+			{ ALT: () => this.CONSUME(Of) },
+			{ ALT: () => this.CONSUME(Into) },
+			{ ALT: () => this.CONSUME(To) },
+			{ ALT: () => this.CONSUME(As) },
+			{ ALT: () => this.CONSUME(At) },
+			{ ALT: () => this.CONSUME(Tree) },
+		]);
+	});
+
 	// show (networks | modules | tree | connections | <nodeId>)
 	public showCommand = this.RULE("showCommand", () => {
 		this.CONSUME(Show);
@@ -264,15 +308,15 @@ class DspParser extends CstParser {
 		this.OPTION(() => {
 			this.CONSUME(Dot);
 			this.OR([
-				{ ALT: () => this.CONSUME2(Identifier, { LABEL: "sourceOutputId" }) },
+				{ ALT: () => this.SUBRULE(this.propName, { LABEL: "sourceOutputId" }) },
 				{ ALT: () => this.CONSUME(NumberLiteral, { LABEL: "sourceOutputIndex" }) },
 			]);
 		});
 		this.CONSUME(To);
-		this.CONSUME3(Identifier, { LABEL: "target" });
+		this.CONSUME2(Identifier, { LABEL: "target" });
 		this.OPTION2(() => {
 			this.CONSUME2(Dot);
-			this.CONSUME4(Identifier, { LABEL: "parameter" });
+			this.SUBRULE2(this.propName, { LABEL: "parameter" });
 		});
 	});
 
@@ -283,7 +327,7 @@ class DspParser extends CstParser {
 		this.CONSUME(From);
 		this.CONSUME2(Identifier, { LABEL: "target" });
 		this.CONSUME(Dot);
-		this.CONSUME3(Identifier, { LABEL: "parameter" });
+		this.SUBRULE(this.propName, { LABEL: "parameter" });
 	});
 
 	// set <node>.<param> [to] <value>
@@ -291,7 +335,7 @@ class DspParser extends CstParser {
 		this.CONSUME(Set);
 		this.CONSUME(Identifier, { LABEL: "nodeId" });
 		this.CONSUME(Dot);
-		this.CONSUME2(Identifier, { LABEL: "parameterId" });
+		this.SUBRULE(this.propName, { LABEL: "parameterId" });
 		this.OPTION(() => {
 			this.CONSUME(To);
 		});
@@ -299,7 +343,7 @@ class DspParser extends CstParser {
 			{ ALT: () => this.CONSUME(HexLiteral, { LABEL: "hexValue" }) },
 			{ ALT: () => this.CONSUME(NumberLiteral, { LABEL: "numValue" }) },
 			{ ALT: () => this.CONSUME(QuotedString, { LABEL: "strValue" }) },
-			{ ALT: () => this.CONSUME3(Identifier, { LABEL: "idValue" }) },
+			{ ALT: () => this.CONSUME2(Identifier, { LABEL: "idValue" }) },
 		]);
 	});
 
@@ -315,13 +359,13 @@ class DspParser extends CstParser {
 				this.CONSUME(Of);
 				this.CONSUME(Identifier, { LABEL: "nodeId" });
 				this.CONSUME(Dot);
-				this.CONSUME2(Identifier, { LABEL: "parameterId" });
+				this.SUBRULE(this.propName, { LABEL: "parameterId" });
 			}},
 			{ ALT: () => {
-				this.CONSUME3(Identifier, { LABEL: "plainNodeId" });
+				this.CONSUME2(Identifier, { LABEL: "plainNodeId" });
 				this.OPTION(() => {
 					this.CONSUME2(Dot);
-					this.CONSUME4(Identifier, { LABEL: "plainParameterId" });
+					this.SUBRULE2(this.propName, { LABEL: "plainParameterId" });
 				});
 			}},
 		]);
@@ -344,7 +388,7 @@ class DspParser extends CstParser {
 		this.CONSUME(CreateParameter);
 		this.CONSUME(Identifier, { LABEL: "nodeId" });
 		this.CONSUME(Dot);
-		this.CONSUME2(Identifier, { LABEL: "parameterId" });
+		this.SUBRULE(this.propName, { LABEL: "parameterId" });
 		this.OPTION(() => {
 			this.CONSUME(NumberLiteral, { LABEL: "min" });
 			this.CONSUME2(NumberLiteral, { LABEL: "max" });
@@ -390,6 +434,18 @@ const parser = new DspParser();
 
 const asNode = (el: import("chevrotain").CstElement) => el as CstNode;
 const asToken = (el: import("chevrotain").CstElement) => el as IToken;
+
+/** Extract the image of whichever token alternative the propName subrule matched. */
+function extractPropName(node: CstNode): string {
+	for (const children of Object.values(node.children)) {
+		for (const child of children) {
+			if (child && typeof (child as IToken).image === "string") {
+				return (child as IToken).image;
+			}
+		}
+	}
+	return "";
+}
 
 function extractCommand(cst: CstNode): { command: DspCommand } | { error: string } {
 	const c = cst.children;
@@ -480,11 +536,11 @@ function extractConnect(node: CstNode): { command: ConnectCommand } {
 	if (node.children.sourceOutputIndex) {
 		sourceOutput = parseInt(asToken(node.children.sourceOutputIndex[0]).image, 10);
 	} else if (node.children.sourceOutputId) {
-		sourceOutput = asToken(node.children.sourceOutputId[0]).image;
+		sourceOutput = extractPropName(asNode(node.children.sourceOutputId[0]));
 	}
 	const target = asToken(node.children.target[0]).image;
 	const parameter = node.children.parameter
-		? asToken(node.children.parameter[0]).image
+		? extractPropName(asNode(node.children.parameter[0]))
 		: undefined;
 	return { command: { type: "connect", source, sourceOutput, target, parameter } };
 }
@@ -492,13 +548,13 @@ function extractConnect(node: CstNode): { command: ConnectCommand } {
 function extractDisconnect(node: CstNode): { command: DisconnectCommand } {
 	const source = asToken(node.children.source[0]).image;
 	const target = asToken(node.children.target[0]).image;
-	const parameter = asToken(node.children.parameter[0]).image;
+	const parameter = extractPropName(asNode(node.children.parameter[0]));
 	return { command: { type: "disconnect", source, target, parameter } };
 }
 
 function extractSet(node: CstNode): { command: SetCommand } | { error: string } {
 	const nodeId = asToken(node.children.nodeId[0]).image;
-	const parameterId = asToken(node.children.parameterId[0]).image;
+	const parameterId = extractPropName(asNode(node.children.parameterId[0]));
 	let value: string | number;
 	if (node.children.hexValue) {
 		value = parseInt(asToken(node.children.hexValue[0]).image.slice(2), 16);
@@ -519,12 +575,12 @@ function extractGet(node: CstNode): { command: GetCommand } {
 		const kindImage = asToken(node.children.queryKind[0]).image.toLowerCase();
 		const query: "source" | "parent" = kindImage === "parent" ? "parent" : "source";
 		const nodeId = asToken(node.children.nodeId[0]).image;
-		const parameterId = asToken(node.children.parameterId[0]).image;
+		const parameterId = extractPropName(asNode(node.children.parameterId[0]));
 		return { command: { type: "get", query, nodeId, parameterId } };
 	}
 	const nodeId = asToken(node.children.plainNodeId[0]).image;
 	if (node.children.plainParameterId) {
-		const parameterId = asToken(node.children.plainParameterId[0]).image;
+		const parameterId = extractPropName(asNode(node.children.plainParameterId[0]));
 		return { command: { type: "get", query: "param", nodeId, parameterId } };
 	}
 	return { command: { type: "get", query: "factory", nodeId } };
@@ -542,7 +598,7 @@ function extractEnable(node: CstNode): { command: EnableCommand } {
 
 function extractCreateParameter(node: CstNode): { command: CreateParameterCommand } {
 	const nodeId = asToken(node.children.nodeId[0]).image;
-	const parameterId = asToken(node.children.parameterId[0]).image;
+	const parameterId = extractPropName(asNode(node.children.parameterId[0]));
 	const min = node.children.min ? parseFloat(asToken(node.children.min[0]).image) : undefined;
 	const max = node.children.max ? parseFloat(asToken(node.children.max[0]).image) : undefined;
 	const defaultValue = node.children.defaultValue
