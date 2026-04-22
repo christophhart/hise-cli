@@ -11,6 +11,7 @@ import type {
 	SetCommand,
 	CreateParameterCommand,
 } from "./dsp-parser.js";
+import { nodePropertyNames } from "./dsp-properties.js";
 
 export interface ValidationResult {
 	valid: boolean;
@@ -70,8 +71,12 @@ export function validateSetCommand(
 
 	const param = def.parameters.find((p) => p.id === cmd.parameterId);
 	if (!param) {
-		const paramNames = def.parameters.map((p) => p.id);
-		const suggestion = paramNames.length > 0 ? closest(cmd.parameterId, paramNames) : undefined;
+		const propertyNames = nodePropertyNames(def);
+		if (propertyNames.includes(cmd.parameterId)) {
+			return { valid: true, errors: [] };
+		}
+		const allNames = [...def.parameters.map((p) => p.id), ...propertyNames];
+		const suggestion = allNames.length > 0 ? closest(cmd.parameterId, allNames) : undefined;
 		let msg = `Unknown parameter "${cmd.parameterId}" on ${factoryPath}.`;
 		if (suggestion) msg += ` Did you mean "${suggestion}"?`;
 		return { valid: false, errors: [msg] };

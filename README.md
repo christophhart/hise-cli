@@ -96,6 +96,46 @@ fi
 HISE must be running with the project open. Scripts must be included in a
 ScriptProcessor and compiled at least once for diagnostics to work.
 
+## Syntax highlighter export
+
+The tokenizers in `src/engine/highlight/` double as the syntax
+highlighter for the HISE docs website. They are fully self-contained
+(zero imports outside the directory) and are mirrored verbatim into
+`highlight-export/` for consumption by external projects (Nuxt.js
+docs site, etc.).
+
+### Sync command
+
+After any change in `src/engine/highlight/`, regenerate the export:
+
+```bash
+just export-highlight
+# or: npm run export-highlight
+```
+
+Copies all non-test `.ts` files from `src/engine/highlight/` into
+`highlight-export/` (excluding `split.ts`, which is terminal-only).
+No patches — source of truth is the CLI.
+
+### Adding to the highlighter
+
+- **New HiseScript scoped statement** — add to `SCOPED_STATEMENTS` in
+  `src/engine/highlight/hisescript.ts`
+- **New CLI mode** — add id to `SLASH_MODE_IDS` and color to
+  `MODE_ACCENTS` in `src/engine/highlight/constants.ts`; extend
+  `TokenType` union + `TOKEN_COLORS` in `src/engine/highlight/tokens.ts`
+- **New tokenizer file** — add source file, wire into
+  `src/engine/highlight/index.ts` (`HiseLanguage` union + `TOKENIZERS`
+  map)
+- **New keyword in a mode DSL** — add to the matching `_KEYWORDS` set
+  in the tokenizer file (`builder.ts`, `dsp.ts`, `ui.ts`, etc.)
+
+After any of the above, run `just export-highlight` and commit both
+the source change and the regenerated export side-by-side.
+
+See [highlight-export/README.md](highlight-export/README.md) for
+consumer-side integration (Nuxt ProsePre.vue override, fence table).
+
 ## Requirements
 
 - Node.js 18+

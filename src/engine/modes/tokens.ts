@@ -18,6 +18,11 @@ export const QuotedString = createToken({
 	pattern: /"(?:[^"\\]|\\.)*"/,
 });
 
+export const HexLiteral = createToken({
+	name: "HexLiteral",
+	pattern: /0x[0-9a-fA-F]+/,
+});
+
 export const NumberLiteral = createToken({
 	name: "NumberLiteral",
 	pattern: /-?\d+(\.\d+)?/,
@@ -339,6 +344,7 @@ export const Embedded = createToken({
 export const DSP_TOKENS = [
 	WhiteSpace,
 	QuotedString,
+	HexLiteral,
 	NumberLiteral,
 	CreateParameter,
 	Disconnect,

@@ -18,6 +18,7 @@ import {
 	Enable,
 	From,
 	Get,
+	HexLiteral,
 	Identifier,
 	Init,
 	Modules,
@@ -280,6 +281,7 @@ class DspParser extends CstParser {
 			this.CONSUME(To);
 		});
 		this.OR([
+			{ ALT: () => this.CONSUME(HexLiteral, { LABEL: "hexValue" }) },
 			{ ALT: () => this.CONSUME(NumberLiteral, { LABEL: "numValue" }) },
 			{ ALT: () => this.CONSUME(QuotedString, { LABEL: "strValue" }) },
 			{ ALT: () => this.CONSUME3(Identifier, { LABEL: "idValue" }) },
@@ -473,7 +475,9 @@ function extractSet(node: CstNode): { command: SetCommand } | { error: string } 
 	const nodeId = asToken(node.children.nodeId[0]).image;
 	const parameterId = asToken(node.children.parameterId[0]).image;
 	let value: string | number;
-	if (node.children.numValue) {
+	if (node.children.hexValue) {
+		value = parseInt(asToken(node.children.hexValue[0]).image.slice(2), 16);
+	} else if (node.children.numValue) {
 		value = parseFloat(asToken(node.children.numValue[0]).image);
 	} else if (node.children.strValue) {
 		value = stripQuotes(asToken(node.children.strValue[0]).image);

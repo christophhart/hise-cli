@@ -36,7 +36,12 @@ import type { CompletionEngine } from "../completion/engine.js";
 import type { DspCommand, GetCommand } from "./dsp-parser.js";
 import { parseDspInput, findLastUnquotedComma, parseSingleDspCommand } from "./dsp-parser.js";
 import type { DspOp } from "./dsp-ops.js";
-import { commandToDspOps, collectDspNodeIds, nodeParameters } from "./dsp-ops.js";
+import {
+	commandToDspOps,
+	collectDspNodeIds,
+	nodeParameters,
+	nodeParametersAndProperties,
+} from "./dsp-ops.js";
 import {
 	validateAddCommand,
 	validateCreateParameterCommand,
@@ -597,7 +602,10 @@ export class DspMode implements Mode {
 			if (dotIdx !== -1) {
 				const nodeId = tail.slice(0, dotIdx);
 				const paramPrefix = tail.slice(dotIdx + 1);
-				const params = nodeParameters(this.rawTree, nodeId)
+				const names = this.scriptnodeList
+					? nodeParametersAndProperties(this.rawTree, this.scriptnodeList, nodeId)
+					: nodeParameters(this.rawTree, nodeId);
+				const params = names
 					.filter((p) => p.toLowerCase().startsWith(paramPrefix.toLowerCase()))
 					.map((p) => ({ label: p }));
 				return {

@@ -148,6 +148,15 @@ describe("dsp parser — graph mutations", () => {
 		const cmd = parseOk("set Osc1.Mode Sine") as SetCommand;
 		expect(cmd.value).toBe("Sine");
 	});
+	it("parses set with hex literal (0xAARRGGBB)", () => {
+		const cmd = parseOk("set Osc1.NodeColour 0xFF00AABB") as SetCommand;
+		expect(cmd.value).toBe(0xFF00AABB);
+		expect(typeof cmd.value).toBe("number");
+	});
+	it("parses set with lowercase hex literal", () => {
+		const cmd = parseOk("set Osc1.NodeColour 0xff00aabb") as SetCommand;
+		expect(cmd.value).toBe(0xFF00AABB);
+	});
 	it("parses bypass / enable", () => {
 		expect(parseOk("bypass Osc1")).toEqual({ type: "bypass", nodeId: "Osc1" });
 		expect(parseOk("enable Osc1")).toEqual({ type: "enable", nodeId: "Osc1" });
@@ -403,6 +412,21 @@ const scriptnodeFixture: ScriptnodeList = {
 		properties: {},
 		interfaces: [],
 	},
+	"control.cable_expr": {
+		id: "cable_expr",
+		description: "",
+		type: "polyphonic",
+		subtype: "",
+		category: [],
+		hasChildren: false,
+		hasFX: false,
+		metadataType: "static",
+		parameters: [],
+		modulation: [],
+		hasMidi: false,
+		properties: { Code: "input", Debug: false },
+		interfaces: [],
+	},
 };
 
 describe("dsp-validate — add", () => {
@@ -458,6 +482,64 @@ describe("dsp-validate — set", () => {
 			scriptnodeFixture,
 		);
 		expect(v.valid).toBe(true);
+	});
+	it("accepts universal property Comment", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Osc1", parameterId: "Comment", value: "hi" },
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("accepts universal property Folded", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Osc1", parameterId: "Folded", value: "true" },
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("accepts container property IsVertical on container node", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Main", parameterId: "IsVertical", value: "true" },
+			"container.chain",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("rejects container-only property on leaf node", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Osc1", parameterId: "IsVertical", value: "true" },
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+		expect(v.errors[0]).toMatch(/Unknown parameter/);
+	});
+	it("accepts factory-specific property Code", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Expr1", parameterId: "Code", value: "input * 2" },
+			"control.cable_expr",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("accepts factory-specific property Debug", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Expr1", parameterId: "Debug", value: "true" },
+			"control.cable_expr",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("suggests Comment for typo Commnt", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Osc1", parameterId: "Commnt", value: "hi" },
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+		expect(v.errors[0]).toMatch(/Did you mean "Comment"/);
 	});
 });
 

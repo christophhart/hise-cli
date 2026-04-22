@@ -18,6 +18,8 @@ import type {
 } from "./dsp-parser.js";
 import type { RawDspNode } from "../../mock/contracts/dsp.js";
 import { findDspNode } from "../../mock/contracts/dsp.js";
+import type { ScriptnodeList } from "../data.js";
+import { nodePropertyNames } from "./dsp-properties.js";
 
 export interface DspOp {
 	op: string;
@@ -173,4 +175,22 @@ export function nodeParameters(root: RawDspNode | null, nodeId: string): string[
 	const node = findDspNode(root, nodeId);
 	if (!node) return [];
 	return node.parameters.map((p) => p.parameterId);
+}
+
+/**
+ * Return the union of parameter IDs and valid property names for a given
+ * nodeId. Properties come from the scriptnode metadata (universal NodeBase
+ * props + container-only props + factory-specific props from `def.properties`).
+ */
+export function nodeParametersAndProperties(
+	root: RawDspNode | null,
+	list: ScriptnodeList,
+	nodeId: string,
+): string[] {
+	const node = findDspNode(root, nodeId);
+	if (!node) return [];
+	const paramIds = node.parameters.map((p) => p.parameterId);
+	const def = list[node.factoryPath];
+	if (!def) return paramIds;
+	return [...paramIds, ...nodePropertyNames(def)];
 }
