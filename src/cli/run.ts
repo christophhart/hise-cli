@@ -29,7 +29,7 @@ async function fetchProjectInfo(
 	} catch { /* no connection — resolve against CWD */ }
 }
 
-import { wireScriptFileOps } from "../node-io.js";
+import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
 
 export interface CliCommandOptions {
 	connectionOverride?: HiseConnection;
@@ -75,6 +75,7 @@ export async function executeCliCommand(
 		return readFile(resolved, "utf-8");
 	};
 	wireScriptFileOps(session);
+	wireExtendedFileOps(session);
 	// Stream wizard progress / logs to stderr so stdout stays clean for JSON.
 	session.onWizardProgress = (progress) => {
 		if (progress.message && !progress.message.startsWith("__heading__")) {
@@ -150,6 +151,7 @@ async function executeRunCommand(
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
+	wireExtendedFileOps(session);
 	// Stream wizard progress / logs to stderr so stdout stays clean for JSON.
 	session.onWizardProgress = (progress) => {
 		if (progress.message && !progress.message.startsWith("__heading__")) {
@@ -212,7 +214,7 @@ async function executeRunCommand(
 		const { runReportResult } = await import("../engine/result.js");
 		const { serializeCliOutput } = await import("./output.js");
 		const result = await executeScript(script, session);
-		return { kind: "json", payload: serializeCliOutput("run", runReportResult(source, result)) };
+		return { kind: "json", payload: serializeCliOutput("run", runReportResult(source, result, parsed.verbosity)) };
 	} finally {
 		connection.destroy();
 	}
@@ -243,6 +245,7 @@ async function runWatchMode(
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
+	wireExtendedFileOps(session);
 	// Stream wizard progress / logs to stderr so stdout stays clean for JSON.
 	session.onWizardProgress = (progress) => {
 		if (progress.message && !progress.message.startsWith("__heading__")) {
@@ -290,7 +293,7 @@ async function runWatchMode(
 
 		const { executeScript, formatRunReport } = await import("../engine/run/executor.js");
 		const result = await executeScript(script, session);
-		const report = formatRunReport(result);
+		const report = formatRunReport(result, parsed.verbosity);
 
 		if (result.ok) {
 			console.log(`${timestamp()} \u2713 ${report}`);

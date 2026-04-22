@@ -947,9 +947,9 @@ export const Input = React.memo(function Input({
 	// ── Single-line render path (unchanged) ────────────────────────
 	return (
 		<Box flexDirection="column">
-			<Text backgroundColor={scheme.backgrounds.raised}>{" ".repeat(columns)}</Text>
+			<Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">{" ".repeat(columns)}</Text>
 			<Box>
-				<Text backgroundColor={scheme.backgrounds.raised}>
+				<Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">
 					<Text>{pad}</Text>
 					{!isRoot ? (
 						<>
@@ -979,7 +979,7 @@ export const Input = React.memo(function Input({
 					<Text>{pad}</Text>
 				</Text>
 			</Box>
-			<Text backgroundColor={scheme.backgrounds.raised}>{" ".repeat(columns)}</Text>
+			<Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">{" ".repeat(columns)}</Text>
 		</Box>
 	);
 });

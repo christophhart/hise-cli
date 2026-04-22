@@ -434,27 +434,42 @@ function sleep(ms: number): Promise<void> {
 /**
  * Format a RunResult as a human-readable test report string.
  */
-export function formatRunReport(result: RunResult): string {
+export type RunReportVerbosity = "verbose" | "summary" | "quiet";
+
+export const RUN_REPORT_VERBOSITIES: readonly RunReportVerbosity[] = [
+	"verbose",
+	"summary",
+	"quiet",
+] as const;
+
+export function formatRunReport(
+	result: RunResult,
+	verbosity: RunReportVerbosity = "verbose",
+): string {
 	const lines: string[] = [];
 
-	// Per-command results
-	for (const cmd of result.results) {
-		const val = formatResultForLog(cmd.result);
-		if (val) {
-			for (const line of val.split("\n")) {
-				lines.push(line);
+	// Per-command results (verbose only)
+	if (verbosity === "verbose") {
+		for (const cmd of result.results) {
+			const val = formatResultForLog(cmd.result);
+			if (val) {
+				for (const line of val.split("\n")) {
+					lines.push(line);
+				}
 			}
 		}
 	}
 
-	// Expect results
-	for (const expect of result.expects) {
-		const icon = expect.passed ? "\u2713" : "\u2717";
-		const line = ` ${icon} line ${expect.line}: ${expect.command} is ${expect.expected}`;
-		if (!expect.passed) {
-			lines.push(`${line} \u2014 got ${expect.actual}`);
-		} else {
-			lines.push(line);
+	// Expect results (verbose + summary)
+	if (verbosity !== "quiet") {
+		for (const expect of result.expects) {
+			const icon = expect.passed ? "\u2713" : "\u2717";
+			const line = ` ${icon} line ${expect.line}: ${expect.command} is ${expect.expected}`;
+			if (!expect.passed) {
+				lines.push(`${line} \u2014 got ${expect.actual}`);
+			} else {
+				lines.push(line);
+			}
 		}
 	}
 
@@ -472,7 +487,7 @@ export function formatRunReport(result: RunResult): string {
 		parts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
 	}
 	if (parts.length > 0) {
-		lines.push("");
+		if (lines.length > 0) lines.push("");
 		const icon = result.ok ? "\u2713" : "\u2717";
 		lines.push(`${icon} ${parts.join(", ")}`);
 	}

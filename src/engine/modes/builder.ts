@@ -912,8 +912,16 @@ export class BuilderMode implements Mode {
 			if (cmd.filter) {
 				const f = cmd.filter.toLowerCase();
 				modules = modules.filter((m) =>
-					m.type.toLowerCase().includes(f)
+					m.id.toLowerCase().includes(f)
+					|| m.type.toLowerCase().includes(f)
 					|| m.subtype.toLowerCase().includes(f),
+				);
+			}
+			if (modules.length === 0) {
+				return textResult(
+					cmd.filter
+						? `(no module types match "${cmd.filter}" — try "show types" without a filter to list all)`
+						: "(no module types available)",
 				);
 			}
 			return tableResult(

@@ -580,10 +580,15 @@ async function runOrParse(
 	args: string,
 	session: CommandSession,
 	dryRun: boolean,
+	verbosityOverride?: import("../run/executor.js").RunReportVerbosity,
 ): Promise<CommandResult> {
-	const filePath = args.trim();
+	// Parse --verbosity / --quiet / --verbose flags off the args string
+	const { path: filePath, verbosity: parsedVerb, error: flagError } = parseRunFlags(args);
+	if (flagError) return errorResult(flagError);
+	const verbosity = verbosityOverride ?? parsedVerb ?? "verbose";
+
 	if (!filePath) {
-		return errorResult(`Usage: /${dryRun ? "parse" : "run"} <file.hsc>`);
+		return errorResult(`Usage: /${dryRun ? "parse" : "run"} <file.hsc> [--verbosity=verbose|summary|quiet]`);
 	}
 
 	// Glob expansion for wildcards
@@ -600,22 +605,70 @@ async function runOrParse(
 		if (files.length === 0) {
 			return errorResult(`No files matched "${filePath}"`);
 		}
-		const reports: string[] = [];
-		let allPassed = true;
+		// Build a combined RunResult so the executor can flatten per-file
+		// results into the enclosing /run invocation (see executor.ts
+		// nested-run handling).
+		const combined = {
+			ok: true,
+			linesExecuted: 0,
+			expects: [] as Array<import("../run/types.js").ExpectResult>,
+			results: [] as Array<import("../run/types.js").CommandOutput>,
+			error: undefined as { line: number; message: string } | undefined,
+		};
+		const combinedSources: string[] = [];
+		let lineCursor = 0;
 		for (const file of files) {
 			const name = file.split(/[\\/]/).pop() ?? file;
-			const result = await runOrParse(file, session, false);
-			if (result.type === "error") {
-				reports.push(`\u2717 ${name}: ${result.message}`);
-				allPassed = false;
-			} else {
-				reports.push(`\u2713 ${name}`);
+			combinedSources.push(`# ${name}`);
+			const headerLine = ++lineCursor;
+			const result = await runOrParse(file, session, false, verbosity);
+			if (result.type === "run-report") {
+				const inner = result.runResult;
+				combined.ok = combined.ok && inner.ok;
+				combined.linesExecuted += inner.linesExecuted;
+				for (const cmd of inner.results) {
+					combined.results.push({
+						...cmd,
+						line: cmd.line + headerLine,
+						label: cmd.label ?? name,
+					});
+				}
+				for (const exp of inner.expects) {
+					combined.expects.push({ ...exp, line: exp.line + headerLine });
+				}
+				for (const l of result.source.split("\n")) {
+					combinedSources.push(l);
+					lineCursor++;
+				}
+				if (inner.error && !combined.error) {
+					combined.error = {
+						line: inner.error.line + headerLine,
+						message: `${name}: ${inner.error.message}`,
+					};
+				}
+			} else if (result.type === "error") {
+				combined.ok = false;
+				if (!combined.error) {
+					combined.error = { line: headerLine, message: `${name}: ${result.message}` };
+				}
+			} else if (result.type === "text") {
+				combined.results.push({
+					line: headerLine,
+					content: `/run ${name}`,
+					result,
+					label: name,
+				});
 			}
 		}
-		const summary = reports.join("\n");
-		return allPassed ? textResult(summary) : errorResult(summary);
+		const runResult: import("../run/types.js").RunResult = {
+			ok: combined.ok,
+			linesExecuted: combined.linesExecuted,
+			expects: combined.expects,
+			results: combined.results,
+			...(combined.error ? { error: combined.error } : {}),
+		};
+		return runReportResult(combinedSources.join("\n"), runResult, verbosity);
 	}
-
 	if (!session.loadScriptFile) {
 		return errorResult("Script file loading not available in this environment.");
 	}
@@ -665,10 +718,38 @@ async function runOrParse(
 	try {
 		const { executeScript } = await import("../run/executor.js");
 		const result = await executeScript(script, session);
-		return runReportResult(source, result);
+		return runReportResult(source, result, verbosity);
 	} finally {
 		session.scriptStack.pop();
 	}
+}
+
+function parseRunFlags(args: string): {
+	path: string;
+	verbosity: import("../run/executor.js").RunReportVerbosity | null;
+	error?: string;
+} {
+	const tokens = args.trim().split(/\s+/).filter(Boolean);
+	let verbosity: import("../run/executor.js").RunReportVerbosity | null = null;
+	const remaining: string[] = [];
+	for (const tok of tokens) {
+		if (tok === "--quiet") {
+			verbosity = "quiet";
+		} else if (tok === "--verbose") {
+			verbosity = "verbose";
+		} else if (tok.startsWith("--verbosity=")) {
+			const v = tok.slice("--verbosity=".length);
+			if (v !== "verbose" && v !== "summary" && v !== "quiet") {
+				return { path: "", verbosity: null, error: `Invalid --verbosity value "${v}". Use verbose, summary, or quiet.` };
+			}
+			verbosity = v;
+		} else if (tok === "--verbosity") {
+			return { path: "", verbosity: null, error: "--verbosity requires =<level> (verbose|summary|quiet)" };
+		} else {
+			remaining.push(tok);
+		}
+	}
+	return { path: remaining.join(" "), verbosity };
 }
 
 // ── Registration ────────────────────────────────────────────────────

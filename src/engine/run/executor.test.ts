@@ -103,4 +103,56 @@ describe("formatRunReport", () => {
 		const report = formatRunReport(result);
 		expect(report).toContain("5 commands executed");
 	});
+
+	// ── Verbosity levels ──────────────────────────────────────────
+
+	const sampleResult: RunResult = {
+		ok: true,
+		linesExecuted: 4,
+		expects: [
+			{ line: 3, command: "getValue()", expected: "0.5", actual: "0.5", passed: true, tolerance: 0.01 },
+		],
+		results: [
+			{ line: 1, content: "add Synth", result: { type: "text", content: "Add Synth" } },
+			{ line: 2, content: "set foo 1", result: { type: "text", content: "Set foo to 1" } },
+		],
+	};
+
+	it("verbose shows per-command output, expects and footer", () => {
+		const report = formatRunReport(sampleResult, "verbose");
+		expect(report).toContain("Add Synth");
+		expect(report).toContain("Set foo to 1");
+		expect(report).toContain("line 3");
+		expect(report).toContain("PASSED 1/1");
+	});
+
+	it("summary hides per-command output, keeps expects and footer", () => {
+		const report = formatRunReport(sampleResult, "summary");
+		expect(report).not.toContain("Add Synth");
+		expect(report).not.toContain("Set foo to 1");
+		expect(report).toContain("line 3");
+		expect(report).toContain("PASSED 1/1");
+	});
+
+	it("quiet shows only footer", () => {
+		const report = formatRunReport(sampleResult, "quiet");
+		expect(report).not.toContain("Add Synth");
+		expect(report).not.toContain("line 3");
+		expect(report).toContain("4 commands executed");
+		expect(report).toContain("PASSED 1/1");
+	});
+
+	it("quiet still surfaces ABORTED line on error", () => {
+		const result: RunResult = {
+			ok: false,
+			linesExecuted: 2,
+			expects: [],
+			results: [{ line: 1, content: "foo", result: { type: "text", content: "did foo" } }],
+			error: { line: 2, message: "something broke" },
+		};
+		const report = formatRunReport(result, "quiet");
+		expect(report).toContain("ABORTED at line 2");
+		expect(report).toContain("something broke");
+		expect(report).not.toContain("did foo");
+	});
 });

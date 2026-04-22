@@ -51,6 +51,91 @@ describe("parseCliArgs", () => {
 		const result = parseCliArgs(["node", "hise-cli", "--no-animation"], getCliCommands());
 		expect(result).toEqual({ kind: "tui", args: ["--no-animation"] });
 	});
+
+	it("passes multi-word verb args through without re-quoting", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-builder", "show tree"], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe("/builder show tree");
+		}
+	});
+
+	it("strips matching outer double quotes from a tail arg (Git Bash on Windows)", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-builder", '"show tree"'], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe("/builder show tree");
+		}
+	});
+
+	it("strips matching outer single quotes from a tail arg", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-builder", "'show tree'"], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe("/builder show tree");
+		}
+	});
+
+	it("preserves internal quotes inside an arg (e.g. quoted identifiers)", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-builder", 'add "MyGain"'], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe('/builder add "MyGain"');
+		}
+	});
+});
+
+describe("parseCliArgs --run verbosity", () => {
+	it("defaults to summary verbosity", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "foo.hsc"], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") {
+			expect(result.verbosity).toBe("summary");
+			expect(result.source).toEqual({ type: "file", path: "foo.hsc" });
+		}
+	});
+
+	it("--verbose alias sets verbose", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "foo.hsc", "--verbose"], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") expect(result.verbosity).toBe("verbose");
+	});
+
+	it("--quiet alias sets quiet", () => {
+		const result = parseCliArgs(["node", "hise-cli", "--run", "foo.hsc", "--quiet"], getCliCommands());
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") expect(result.verbosity).toBe("quiet");
+	});
+
+	it("--verbosity=<level> wins over alias", () => {
+		const result = parseCliArgs(
+			["node", "hise-cli", "--run", "foo.hsc", "--quiet", "--verbosity=summary"],
+			getCliCommands(),
+		);
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") expect(result.verbosity).toBe("summary");
+	});
+
+	it("rejects unknown --verbosity value", () => {
+		const result = parseCliArgs(
+			["node", "hise-cli", "--run", "foo.hsc", "--verbosity=bogus"],
+			getCliCommands(),
+		);
+		expect(result.kind).toBe("error");
+		if (result.kind === "error") expect(result.message).toContain("Invalid --verbosity");
+	});
+
+	it("strips verbosity flags from positional path", () => {
+		const result = parseCliArgs(
+			["node", "hise-cli", "--run", "--quiet", "foo.hsc"],
+			getCliCommands(),
+		);
+		expect(result.kind).toBe("run");
+		if (result.kind === "run") {
+			expect(result.source).toEqual({ type: "file", path: "foo.hsc" });
+			expect(result.verbosity).toBe("quiet");
+		}
+	});
 });
 
 describe("wizard subcommand", () => {

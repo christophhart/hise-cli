@@ -1,6 +1,6 @@
 import { isEnvelopeResponse, isErrorResponse, type HiseResponse } from "../engine/hise.js";
 import type { CommandResult } from "../engine/result.js";
-import { formatResultForLog } from "../engine/run/executor.js";
+import { formatRunReport } from "../engine/run/executor.js";
 
 export type CliOutputPayload =
 	| { ok: true; logs?: string[]; value?: unknown }
@@ -72,9 +72,9 @@ function serializeRunReport(
 	result: Extract<CommandResult, { type: "run-report" }>,
 ): CliOutputPayload {
 	const r = result.runResult;
+	const verbosity = result.verbosity;
 	const passed = r.expects.filter(e => e.passed).length;
 	const total = r.expects.length;
-	const logs = collectRunLogs(r.results);
 
 	const payload: Record<string, unknown> = {
 		ok: r.ok,
@@ -104,6 +104,12 @@ function serializeRunReport(
 	if (total > 0) parts.push(r.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
 	payload.summary = (r.ok ? "\u2713 " : "\u2717 ") + parts.join(", ");
 
+	// Logs derived from formatRunReport so JSON and human output stay aligned.
+	// quiet -> omit logs entirely.
+	const logs = verbosity === "quiet"
+		? []
+		: logLinesFromReport(formatRunReport(r, verbosity));
+
 	const cliPayload: { ok: boolean; value: Record<string, unknown>; logs?: string[] } = {
 		ok: r.ok,
 		value: payload,
@@ -114,21 +120,13 @@ function serializeRunReport(
 	return cliPayload as CliOutputPayload;
 }
 
-function collectRunLogs(results: Array<{ result: CommandResult }>): string[] {
-	const lines: string[] = [];
-	for (const entry of results) {
-		const formatted = formatResultForLog(entry.result);
-		if (!formatted) {
-			continue;
-		}
-		for (const line of formatted.split("\n")) {
-			const trimmed = line.trim();
-			if (trimmed) {
-				lines.push(trimmed);
-			}
-		}
+function logLinesFromReport(report: string): string[] {
+	const out: string[] = [];
+	for (const line of report.split("\n")) {
+		const trimmed = line.trim();
+		if (trimmed) out.push(trimmed);
 	}
-	return lines;
+	return out;
 }
 
 function stripAccent(result: CommandResult): CommandResult {

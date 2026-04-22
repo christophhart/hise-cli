@@ -32,8 +32,11 @@ export function wireScriptFileOps(session: Session): void {
 		const dir = dirname(resolved);
 		const glob = basename(resolved);
 		const re = new RegExp("^" + glob.replace(/\./g, "\\.").replace(/\*/g, ".*").replace(/\?/g, ".") + "$");
-		const entries = await readdir(dir, { recursive: true });
-		return entries.filter(f => re.test(basename(f))).sort().map(f => resolve(dir, f));
+		const entries = await readdir(dir, { recursive: true, withFileTypes: true });
+		return entries
+			.filter(e => e.isFile() && re.test(e.name))
+			.map(e => resolve(e.parentPath ?? e.path ?? dir, e.name))
+			.sort();
 	};
 }
 

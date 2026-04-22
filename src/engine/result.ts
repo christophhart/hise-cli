@@ -49,7 +49,7 @@ export type CommandResult =
 	| { type: "markdown"; content: string; accent?: string }
 	| { type: "wizard"; definition: WizardDefinition; prefill: WizardAnswers; autoRun: boolean; accent?: string }
 	| { type: "resume-wizard"; definition: WizardDefinition; answers: WizardAnswers; startIndex: number; failedTaskLabel: string; accent?: string }
-	| { type: "run-report"; source: string; runResult: RunResult; accent?: string }
+	| { type: "run-report"; source: string; runResult: RunResult; verbosity: import("./run/executor.js").RunReportVerbosity; accent?: string }
 	| { type: "preformatted"; content: string; accent?: string }
 	| { type: "empty"; accent?: string };
 
@@ -105,8 +105,12 @@ export function resumeWizardResult(
 	return { type: "resume-wizard", definition, answers, startIndex, failedTaskLabel, accent: "#e8a060" };
 }
 
-export function runReportResult(source: string, runResult: RunResult): CommandResult {
-	return { type: "run-report", source, runResult };
+export function runReportResult(
+	source: string,
+	runResult: RunResult,
+	verbosity: import("./run/executor.js").RunReportVerbosity = "verbose",
+): CommandResult {
+	return { type: "run-report", source, runResult, verbosity };
 }
 
 export function preformattedResult(content: string, accent?: string): CommandResult {

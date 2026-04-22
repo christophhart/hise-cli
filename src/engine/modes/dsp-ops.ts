@@ -100,8 +100,8 @@ function translateConnect(cmd: ConnectCommand): { ops: DspOp[] } {
 		op: "connect",
 		source: cmd.source,
 		target: cmd.target,
-		parameter: cmd.parameter,
 	};
+	if (cmd.parameter !== undefined) op.parameter = cmd.parameter;
 	if (cmd.sourceOutput !== undefined) op.sourceOutput = cmd.sourceOutput;
 	return { ops: [op] };
 }

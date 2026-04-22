@@ -5,7 +5,7 @@ export type CliParseResult =
 	| { kind: "help"; scope?: string }
 	| { kind: "error"; message: string }
 	| { kind: "diagnose"; filePath: string }
-	| { kind: "run"; source: { type: "file"; path: string } | { type: "stdin" } | { type: "inline"; content: string }; dryRun: boolean; useMock: boolean; watch: boolean }
+	| { kind: "run"; source: { type: "file"; path: string } | { type: "stdin" } | { type: "inline"; content: string }; dryRun: boolean; useMock: boolean; watch: boolean; verbosity: import("../engine/run/executor.js").RunReportVerbosity }
 	| {
 		kind: "execute";
 		entry: CommandEntry;
@@ -14,7 +14,44 @@ export type CliParseResult =
 		useMock: boolean;
 	};
 
-const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch", "--show-keys"]);
+const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch", "--show-keys", "--quiet", "--verbose"]);
+
+const VALID_VERBOSITIES = new Set(["verbose", "summary", "quiet"]);
+
+function parseVerbosityFlags(
+	rest: string[],
+): { verbosity: import("../engine/run/executor.js").RunReportVerbosity } | { error: string } {
+	let verbosity: import("../engine/run/executor.js").RunReportVerbosity | null = null;
+	let explicit = false;
+	for (const arg of rest) {
+		if (arg === "--quiet") {
+			if (!explicit) verbosity = "quiet";
+		} else if (arg === "--verbose") {
+			if (!explicit) verbosity = "verbose";
+		} else if (arg === "--verbosity" || arg.startsWith("--verbosity=")) {
+			const eq = arg.indexOf("=");
+			const value = eq === -1 ? null : arg.slice(eq + 1);
+			if (!value) {
+				return { error: "--verbosity requires a value: verbose | summary | quiet" };
+			}
+			if (!VALID_VERBOSITIES.has(value)) {
+				return { error: `Invalid --verbosity value "${value}". Use verbose, summary, or quiet.` };
+			}
+			verbosity = value as import("../engine/run/executor.js").RunReportVerbosity;
+			explicit = true;
+		}
+	}
+	return { verbosity: verbosity ?? "summary" };
+}
+
+function stripVerbosityFlags(rest: string[]): string[] {
+	return rest.filter((a) =>
+		a !== "--quiet"
+		&& a !== "--verbose"
+		&& a !== "--verbosity"
+		&& !a.startsWith("--verbosity="),
+	);
+}
 
 /**
  * Reverse MSYS/git-bash path mangling on inline script content.
@@ -22,6 +59,23 @@ const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch"
  * `C:/Program Files/Git/word`. This undoes that for each line.
  * E.g. "C:/Program Files/Git/script" → "/script"
  */
+/**
+ * Strip a single matched pair of outer quotes (" or ') from an arg.
+ * Git Bash on Windows can preserve the user's quotes inside argv, so
+ * `-builder "show tree"` arrives here as the literal string `"show tree"`.
+ * Only strips if the first and last char are the same quote — does not
+ * touch args that contain quotes internally.
+ */
+function stripMatchedOuterQuotes(s: string): string {
+	if (s.length < 2) return s;
+	const first = s[0]!;
+	const last = s[s.length - 1]!;
+	if ((first === '"' || first === "'") && first === last) {
+		return s.slice(1, -1);
+	}
+	return s;
+}
+
 function demangleMsys(content: string): string {
 	// Only applies on Windows with MSYS-style paths
 	return content.replace(
@@ -46,12 +100,19 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 
 	const first = args[0]!;
 
-	// --run <file.hsc | - | --inline "script"> [--mock] [--dry-run]
+	// --run <file.hsc | - | --inline "script"> [--mock] [--dry-run] [--verbosity=<level>]
 	if (first === "--run" || first === "-run" || first === "run") {
 		const rest = args.slice(1);
 		const useMock = rest.includes("--mock");
 		const dryRun = rest.includes("--dry-run");
 		const watch = rest.includes("--watch");
+
+		const verbosityResult = parseVerbosityFlags(rest);
+		if ("error" in verbosityResult) {
+			return { kind: "error", message: verbosityResult.error };
+		}
+		const verbosity = verbosityResult.verbosity;
+
 		const inlineIdx = rest.indexOf("--inline");
 
 		if (inlineIdx !== -1) {
@@ -62,10 +123,10 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 			if (watch) {
 				return { kind: "error", message: "--watch cannot be used with --inline" };
 			}
-			return { kind: "run", source: { type: "inline", content: demangleMsys(content) }, dryRun, useMock, watch: false };
+			return { kind: "run", source: { type: "inline", content: demangleMsys(content) }, dryRun, useMock, watch: false, verbosity };
 		}
 
-		const positional = rest.find((a) => !a.startsWith("--"));
+		const positional = stripVerbosityFlags(rest).find((a) => !a.startsWith("--"));
 		if (!positional) {
 			return { kind: "error", message: "--run requires a file path, -, or --inline <script>" };
 		}
@@ -73,9 +134,9 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 			if (watch) {
 				return { kind: "error", message: "--watch cannot be used with stdin" };
 			}
-			return { kind: "run", source: { type: "stdin" }, dryRun, useMock, watch: false };
+			return { kind: "run", source: { type: "stdin" }, dryRun, useMock, watch: false, verbosity };
 		}
-		return { kind: "run", source: { type: "file", path: positional }, dryRun, useMock, watch };
+		return { kind: "run", source: { type: "file", path: positional }, dryRun, useMock, watch, verbosity };
 	}
 
 	if (first === "repl") {
@@ -128,14 +189,23 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	}
 
 	const tailParts = args.filter((arg) => arg !== commandFlag && arg !== targetArg && arg !== "--mock");
-	// Re-quote args that contain spaces (shell strips the user's quotes).
+	// Do NOT re-add quotes around multi-word args. The mode parsers treat a
+	// quoted string as a distinct QuotedString token, so wrapping the user's
+	// input in quotes turns a valid verb like `show tree` into an unparseable
+	// quoted identifier. Multi-word targets and identifiers are handled by
+	// the parsers' greedy Identifier+ rule instead.
+	//
+	// Also strip matched outer quotes that Git Bash on Windows sometimes
+	// preserves literally in argv (`-builder "show tree"` → `"show tree"`).
+	//
 	// Normalize --subcommand to /subcommand for mode one-shots
 	// (e.g. hise-cli -script --compile → /script /compile).
 	const tail = tailParts.map((p) => {
-		if (p.startsWith("--") && !p.includes("=") && entry.kind === "mode") {
-			return "/" + p.slice(2);
+		const stripped = stripMatchedOuterQuotes(p);
+		if (stripped.startsWith("--") && !stripped.includes("=") && entry.kind === "mode") {
+			return "/" + stripped.slice(2);
 		}
-		return p.includes(" ") ? `"${p}"` : p;
+		return stripped;
 	}).join(" ").trim();
 
 	if (entry.kind === "mode" && tail === "") {

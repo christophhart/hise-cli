@@ -304,6 +304,7 @@ describe("executeCliCommand", () => {
 				"--run",
 				"--inline",
 				"/script\n/callback onInit\nContent.makeFrontInterface(600, 600);\n/callback onNoteOn\nConsole.print(Message.getNoteNumber());\n/compile",
+				"--verbose",
 			],
 			getCliCommands(),
 			createDataLoader(),
