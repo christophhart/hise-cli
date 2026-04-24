@@ -309,6 +309,7 @@ export function createMockStatusPayload(): StatusPayload {
 		server: {
 			version: "4.1.0-mock",
 			compileTimeout: "20.0",
+			buildCommit: "0000000000000000000000000000000000000000",
 		},
 		project: {
 			name: "Mock Project",

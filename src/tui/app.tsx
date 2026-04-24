@@ -53,7 +53,7 @@ import { startObserverServer, type ObserverEvent } from "./observer.js";
 import { MODE_ACCENTS } from "../engine/modes/mode.js";
 import type { WizardAnswers, WizardDefinition } from "../engine/wizard/types.js";
 import { mergeInitDefaults } from "../engine/wizard/types.js";
-import { WizardExecutor } from "../engine/wizard/executor.js";
+import { WizardExecutor, WizardInitAbortError } from "../engine/wizard/executor.js";
 import { renderWizardBlock, createInitialFormState, type WizardFormState } from "./components/wizard-render.js";
 import { handleWizardKey } from "./components/wizard-keys.js";
 import { listPathCompletions } from "./wizard-files.js";
@@ -1443,12 +1443,28 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				if (session.pendingWizard) {
 					session.clearPendingWizard();
 				}
-				// Wizard result — run init to fetch defaults, then render form
+				// Wizard result — run init to fetch defaults, then render form.
+				// Init can abort (WizardInitAbortError) when prerequisites aren't
+				// met; surface the reason and skip rendering the form.
 				const executor = new WizardExecutor({
 					connection: session.connection,
 					handlerRegistry: session.handlerRegistry,
 				});
-				const initDefaults = await executor.initialize(result.definition);
+				let initDefaults: Record<string, string>;
+				try {
+					initDefaults = await executor.initialize(result.definition);
+				} catch (err: unknown) {
+					if (err instanceof WizardInitAbortError) {
+						const errBlock = renderResult(
+							{ type: "error", message: err.message },
+							scheme,
+							innerW,
+						);
+						if (errBlock) addBlocks([errBlock]);
+						return;
+					}
+					throw err;
+				}
 				const mergedDef = mergeInitDefaults(result.definition, initDefaults);
 				const formState = createInitialFormState(mergedDef, result.prefill);
 				setWizardForm(formState);

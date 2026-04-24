@@ -19,6 +19,7 @@ import newProjectYaml from "../../data/wizards/new_project.yaml";
 import pluginExportYaml from "../../data/wizards/plugin_export.yaml";
 import recompileYaml from "../../data/wizards/recompile.yaml";
 import setupYaml from "../../data/wizards/setup.yaml";
+import updateYaml from "../../data/wizards/update.yaml";
 
 import { parse as parseYaml } from "yaml";
 import type {
@@ -37,6 +38,7 @@ const wizardYamls = [
 	pluginExportYaml,
 	recompileYaml,
 	setupYaml,
+	updateYaml,
 ];
 
 export function createBundledDataLoader(): DataLoader {

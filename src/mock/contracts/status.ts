@@ -1,6 +1,7 @@
 export interface StatusServerInfo {
 	version: string;
 	compileTimeout?: string;
+	buildCommit?: string;
 }
 
 export interface StatusProjectInfo {
@@ -48,6 +49,7 @@ function normalizeServerInfo(value: unknown): StatusServerInfo {
 	return {
 		version: asString(data.version, "server.version"),
 		compileTimeout: optionalString(data.compileTimeout, "server.compileTimeout"),
+		buildCommit: optionalString(data.buildCommit, "server.buildCommit"),
 	};
 }
 

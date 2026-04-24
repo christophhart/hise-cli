@@ -27,7 +27,7 @@ import { listCliCommands } from "./cli/commands.js";
 import { createDefaultMockRuntime } from "./mock/runtime.js";
 import { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { createNodePhaseExecutor } from "./tui/nodePhaseExecutor.js";
-import { registerSetupHandlers, registerCompileHandlers } from "./tui/wizard-handlers/index.js";
+import { registerSetupHandlers, registerCompileHandlers, registerUpdateHandlers } from "./tui/wizard-handlers/index.js";
 import { createNodeHiseLauncher } from "./tui/nodeHiseLauncher.js";
 
 // ── Wizard handler setup ────────────────────────────────────────────
@@ -67,6 +67,14 @@ async function launchTui(
 	connection: import("./engine/hise.js").HiseConnection,
 	options?: { animate?: boolean; showKeys?: boolean },
 ): Promise<void> {
+	// Update wizard handlers need a live connection + launcher, so register
+	// them per-session once those are in scope. Re-registering replaces any
+	// previous binding on the shared handler registry.
+	registerUpdateHandlers(handlerRegistry, {
+		executor: phaseExecutor,
+		connection,
+		launcher: hiseLauncher,
+	});
 	const restoreAltScreen = setupAltScreen();
 
 	const instance = render(

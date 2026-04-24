@@ -62,7 +62,7 @@ export function createSetupDetectHandler(executor: PhaseExecutor): InternalInitH
 	};
 }
 
-async function detectParallelJobs(executor: PhaseExecutor, platform: string): Promise<number> {
+export async function detectParallelJobs(executor: PhaseExecutor, platform: string): Promise<number> {
 	const { cores, ramBytes } = await detectCoresAndRam(executor, platform);
 	const ramGb = ramBytes / (1024 ** 3);
 	const memoryCap = Math.max(1, Math.floor(ramGb / 2));
@@ -193,7 +193,7 @@ async function detectIpp(executor: PhaseExecutor, platform: string): Promise<boo
 	return result.stdout.includes("found");
 }
 
-async function detectFaust(
+export async function detectFaust(
 	executor: PhaseExecutor,
 	platform: string,
 	installPath: string,

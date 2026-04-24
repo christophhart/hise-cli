@@ -629,121 +629,363 @@ export function createSetupIppInstallHandler(_executor: PhaseExecutor): Internal
 
 // ── 6. Compile ───────────────────────────────────────────────────────
 
+/** Spec passed to compileHise — shared between setup and update wizards. */
+export interface CompileHiseSpec {
+	readonly installPath: string;
+	readonly platform: string;
+	readonly architecture?: string;
+	readonly includeFaust: boolean;
+	readonly parallelJobs: number;
+	/** Phase tag used in progress events. Defaults to "compile". */
+	readonly phase?: string;
+	/** Clean build outputs before compiling. Used by the update wizard to
+	 *  avoid make's "nothing to be done for all" after a checkout: Projucer
+	 *  may regenerate the Makefile with a slightly renamed CONFIG (e.g. the
+	 *  intermediate dir switches case), orphaning the `.d` dependency files
+	 *  so make fails to detect source changes. */
+	readonly clean?: boolean;
+}
+
+/**
+ * Compile HISE from its standalone JUCE project — Projucer resave followed by
+ * per-platform make / MSBuild. Returns a WizardExecResult so it can be used as
+ * a task body directly. Shared by `setup` (first-time build) and `update`
+ * (rebuild after pulling a new SHA).
+ */
+export async function compileHise(
+	executor: PhaseExecutor,
+	spec: CompileHiseSpec,
+	onProgress: (p: import("../../engine/wizard/types.js").WizardProgress) => void,
+): Promise<WizardExecResult> {
+	const { installPath, platform, architecture, includeFaust, parallelJobs } = spec;
+	const phase = spec.phase ?? "compile";
+
+	// Windows MSBuild uses the spaced form; macOS + Linux Makefiles use
+	// the space-free form (config names are strict string compares).
+	const buildConfig = includeFaust ? "ReleaseWithFaust" : "Release";
+
+	onProgress({ phase, percent: 0, message: "Running Projucer resave..." });
+
+	// Projucer resave
+	let jucerFile: string;
+	let projucerPath: string;
+	if (platform === "macOS") {
+		jucerFile = `${installPath}/projects/standalone/HISE Standalone.jucer`;
+		projucerPath = `${installPath}/JUCE/Projucer/Projucer.app/Contents/MacOS/Projucer`;
+	} else if (platform === "Linux") {
+		jucerFile = `${installPath}/projects/standalone/HISE Standalone.jucer`;
+		projucerPath = `${installPath}/JUCE/Projucer/Projucer`;
+	} else {
+		jucerFile = `${installPath}\\projects\\standalone\\HISE Standalone.jucer`;
+		projucerPath = `${installPath}\\JUCE\\Projucer\\Projucer.exe`;
+	}
+
+	const resave = await executor.spawn(projucerPath, ["--resave", jucerFile], {
+		onLog: (line, transient) => onProgress({ phase, message: line, transient }),
+	});
+	if (resave.exitCode !== 0) return fail(`Projucer resave failed: ${resave.stderr}`);
+
+	// Optional clean before build. Required by the update wizard because
+	// Projucer regenerates the Makefile with a slightly different CONFIG
+	// dir capitalization (e.g. ReleasewithFaust → ReleaseWithFaust), which
+	// orphans the stale .d files and leaves make thinking nothing changed.
+	if (spec.clean) {
+		onProgress({ phase, percent: 5, message: "Cleaning previous build..." });
+		if (platform === "macOS") {
+			const makeDir = `${installPath}/projects/standalone/Builds/MacOSXMakefile`;
+			await executor.spawn("make", [`CONFIG=${buildConfig}`, "clean"], {
+				cwd: makeDir,
+				onLog: (line, transient) => onProgress({ phase, message: line, transient }),
+			});
+		} else if (platform === "Linux") {
+			const makeDir = `${installPath}/projects/standalone/Builds/LinuxMakefile`;
+			await executor.spawn("make", [`CONFIG=${buildConfig}`, "clean"], {
+				cwd: makeDir,
+				onLog: (line, transient) => onProgress({ phase, message: line, transient }),
+			});
+		}
+		// Windows MSBuild clean is folded into the build step via /t:Rebuild
+		// below — no separate clean pass needed.
+	}
+
+	onProgress({ phase, percent: 10, message: `Compiling (${buildConfig})...` });
+
+	// Platform-specific build
+	const jobs = Math.max(1, parallelJobs);
+	if (platform === "macOS") {
+		const makeDir = `${installPath}/projects/standalone/Builds/MacOSXMakefile`;
+		// Build a single-slice binary matching the detected architecture
+		// (halves compile time vs the Makefile's default x86_64+arm64
+		// universal binary). Override via the Architecture field.
+		const archFlag = architecture === "x64" ? "x86_64" : "arm64";
+		const result = await executor.spawn("make", [
+			`CONFIG=${buildConfig}`,
+			`-j${jobs}`,
+			`TARGET_ARCH=-arch ${archFlag}`,
+		], {
+			cwd: makeDir,
+			env: {
+				// JUCE_JOBS_CAPPED=1 suppresses the Makefile's auto -j so
+				// our explicit -jN (RAM-aware) wins.
+				JUCE_JOBS_CAPPED: "1",
+				// SRCROOT is an Xcode-only variable but Projucer's
+				// Makefile exporter bakes `-rpath $(SRCROOT)/../../../../tools/faust/lib`
+				// into the link. Without this, the linker writes an
+				// absolute rpath starting with `/` and HISE crashes at
+				// launch with "Library not loaded: libfaust.2.dylib".
+				SRCROOT: makeDir,
+				// Strip the source-snippet + caret rendering from clang
+				// diagnostics — keeps warning/error messages one line
+				// each instead of 10+ lines of code context.
+				CFLAGS: "-fno-caret-diagnostics",
+				CXXFLAGS: "-fno-caret-diagnostics",
+			},
+			onLog: (line, transient) => onProgress({ phase, message: line, transient }),
+		});
+		if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
+
+		// Make drops only HISE.app in build/<CONFIG>/. Add a bare `HISE`
+		// symlink alongside so the addPath phase can register this dir
+		// on $PATH and users can still invoke `HISE` from the shell.
+		const outDir = `${makeDir}/build/${buildConfig}`;
+		await executor.spawn("ln", ["-sf", "HISE.app/Contents/MacOS/HISE", `${outDir}/HISE`], {});
+	} else if (platform === "Linux") {
+		const makeDir = `${installPath}/projects/standalone/Builds/LinuxMakefile`;
+		const result = await executor.spawn("make", [`CONFIG=${buildConfig}`, "AR=gcc-ar", `-j${jobs}`], {
+			cwd: makeDir,
+			onLog: (line, transient) => onProgress({ phase, message: line, transient }),
+		});
+		if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
+	} else {
+		const msbuild = await resolveMsbuildPath(executor);
+		if (!msbuild) {
+			return fail("Could not locate a Visual Studio installation with MSBuild. Re-run the setup wizard.");
+		}
+		const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\HISE Standalone.sln`;
+		const config = includeFaust ? "ReleaseWithFaust" : "Release";
+		const msbuildArgs = [
+			sln,
+			`/p:Configuration=${config}`,
+			"/p:Platform=x64",
+			"/verbosity:minimal",
+		];
+		// /t:Rebuild forces clean + build, handling the same stale-dep-file
+		// case as `make clean` on POSIX platforms.
+		if (spec.clean) msbuildArgs.push("/t:Rebuild");
+		const result = await executor.spawn(msbuild, msbuildArgs, {
+			// VSLANG=1033 (en-US LCID) forces MSBuild / cl.exe / link.exe
+			// to emit English diagnostics regardless of the OS UI locale,
+			// so filterMsbuildLine's regex only needs to parse one language.
+			env: {
+				PreferredToolArchitecture: "x64",
+				VSLANG: "1033",
+				VSLANGCODE: "en-US",
+			},
+			onLog: (line, transient) => {
+				const filtered = filterMsbuildLine(line, installPath);
+				if (filtered !== null) onProgress({ phase, message: filtered, transient });
+			},
+		});
+		if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
+	}
+
+	onProgress({ phase, percent: 100, message: "Compilation complete." });
+	return ok("✓ HISE compiled successfully.");
+}
+
 export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
-		const installPath = answers.installPath!;
-		const platform = answers.platform ?? "Linux";
-		const includeFaust = isOn(answers.includeFaust);
-
-		// Windows MSBuild uses the spaced form; macOS + Linux Makefiles use
-		// the space-free form (config names are strict string compares).
-		const buildConfig = (includeFaust ? "ReleaseWithFaust" : "Release");
-
-		onProgress({ phase: "compile", percent: 0, message: "Running Projucer resave..." });
-
-		// Projucer resave
-		let jucerFile: string;
-		let projucerPath: string;
-		if (platform === "macOS") {
-			jucerFile = `${installPath}/projects/standalone/HISE Standalone.jucer`;
-			projucerPath = `${installPath}/JUCE/Projucer/Projucer.app/Contents/MacOS/Projucer`;
-		} else if (platform === "Linux") {
-			jucerFile = `${installPath}/projects/standalone/HISE Standalone.jucer`;
-			projucerPath = `${installPath}/JUCE/Projucer/Projucer`;
-		} else {
-			jucerFile = `${installPath}\\projects\\standalone\\HISE Standalone.jucer`;
-			projucerPath = `${installPath}\\JUCE\\Projucer\\Projucer.exe`;
-		}
-
-		const resave = await executor.spawn(projucerPath, ["--resave", jucerFile], {
-			onLog: (line, transient) => onProgress({ phase: "compile", message: line, transient }),
-		});
-		if (resave.exitCode !== 0) return fail(`Projucer resave failed: ${resave.stderr}`);
-
-		onProgress({ phase: "compile", percent: 10, message: `Compiling (${buildConfig})...` });
-
-		// Platform-specific build
-		const jobs = Math.max(1, parseInt(answers.parallelJobs ?? "1", 10) || 1);
-		if (platform === "macOS") {
-			const makeDir = `${installPath}/projects/standalone/Builds/MacOSXMakefile`;
-			// Build a single-slice binary matching the detected architecture
-			// (halves compile time vs the Makefile's default x86_64+arm64
-			// universal binary). Override via the Architecture field.
-			const archFlag = answers.architecture === "x64" ? "x86_64" : "arm64";
-			const result = await executor.spawn("make", [
-				`CONFIG=${buildConfig}`,
-				`-j${jobs}`,
-				`TARGET_ARCH=-arch ${archFlag}`,
-			], {
-				cwd: makeDir,
-				env: {
-					// JUCE_JOBS_CAPPED=1 suppresses the Makefile's auto -j so
-					// our explicit -jN (RAM-aware) wins.
-					JUCE_JOBS_CAPPED: "1",
-					// SRCROOT is an Xcode-only variable but Projucer's
-					// Makefile exporter bakes `-rpath $(SRCROOT)/../../../../tools/faust/lib`
-					// into the link. Without this, the linker writes an
-					// absolute rpath starting with `/` and HISE crashes at
-					// launch with "Library not loaded: libfaust.2.dylib".
-					SRCROOT: makeDir,
-					// Strip the source-snippet + caret rendering from clang
-					// diagnostics — keeps warning/error messages one line
-					// each instead of 10+ lines of code context.
-					CFLAGS: "-fno-caret-diagnostics",
-					CXXFLAGS: "-fno-caret-diagnostics",
-				},
-				onLog: (line, transient) => onProgress({ phase: "compile", message: line, transient }),
-			});
-			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
-
-			// Make drops only HISE.app in build/<CONFIG>/. Add a bare `HISE`
-			// symlink alongside so the addPath phase can register this dir
-			// on $PATH and users can still invoke `HISE` from the shell.
-			const outDir = `${makeDir}/build/${buildConfig}`;
-			await executor.spawn("ln", ["-sf", "HISE.app/Contents/MacOS/HISE", `${outDir}/HISE`], {});
-		} else if (platform === "Linux") {
-			const makeDir = `${installPath}/projects/standalone/Builds/LinuxMakefile`;
-			const result = await executor.spawn("make", [`CONFIG=${buildConfig}`, "AR=gcc-ar", `-j${jobs}`], {
-				cwd: makeDir,
-				onLog: (line, transient) => onProgress({ phase: "compile", message: line, transient }),
-			});
-			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
-		} else {
-			const msbuild = await resolveMsbuildPath(executor);
-			if (!msbuild) {
-				return fail("Could not locate a Visual Studio installation with MSBuild. Re-run the setup wizard.");
-			}
-			const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\HISE Standalone.sln`;
-			const config = includeFaust ? "ReleaseWithFaust" : "Release";
-			const result = await executor.spawn(msbuild, [
-				sln,
-				`/p:Configuration=${config}`,
-				"/p:Platform=x64",
-				"/verbosity:minimal",
-			], {
-				// VSLANG=1033 (en-US LCID) forces MSBuild / cl.exe / link.exe
-				// to emit English diagnostics regardless of the OS UI locale,
-				// so filterMsbuildLine's regex only needs to parse one language.
-				env: {
-					PreferredToolArchitecture: "x64",
-					VSLANG: "1033",
-					VSLANGCODE: "en-US",
-				},
-				onLog: (line, transient) => {
-					const filtered = filterMsbuildLine(line, installPath);
-					if (filtered !== null) onProgress({ phase: "compile", message: filtered, transient });
-				},
-			});
-			if (result.exitCode !== 0) return fail(`Compilation failed: ${result.stderr}`);
-		}
-
-		onProgress({ phase: "compile", percent: 100, message: "Compilation complete." });
-		return ok("✓ HISE compiled successfully.");
+		return compileHise(executor, {
+			installPath: answers.installPath!,
+			platform: answers.platform ?? "Linux",
+			architecture: answers.architecture,
+			includeFaust: isOn(answers.includeFaust),
+			parallelJobs: Math.max(1, parseInt(answers.parallelJobs ?? "1", 10) || 1),
+		}, onProgress);
 	};
 }
 
 // ── 7. Add to PATH ───────────────────────────────────────────────────
+
+/** Directory that contains the HISE binary for a given install + config.
+ *  Shared by setupAddPath (setup wizard) and the update wizard's realign
+ *  step, which needs to prepend the new build's dir if the existing PATH
+ *  still points at a stale config (e.g. Release vs ReleaseWithFaust). */
+export function hiseBinDir(
+	installPath: string,
+	platform: string,
+	includeFaust: boolean,
+): string {
+	if (platform === "Windows") {
+		const config = includeFaust ? "ReleaseWithFaust" : "Release";
+		return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App`;
+	}
+	if (platform === "macOS") {
+		const cfg = includeFaust ? "ReleaseWithFaust" : "Release";
+		return `${installPath}/projects/standalone/Builds/MacOSXMakefile/build/${cfg}`;
+	}
+	return `${installPath}/projects/standalone/Builds/LinuxMakefile/build`;
+}
+
+/** Absolute path of the built HISE binary (what we symlink into PATH).
+ *  On macOS the .app bundle holds the real binary; we target it directly
+ *  so the symlink chain is a single hop. */
+export function hiseBinaryPath(
+	installPath: string,
+	platform: string,
+	includeFaust: boolean,
+): string {
+	const binDir = hiseBinDir(installPath, platform, includeFaust);
+	if (platform === "Windows") return `${binDir}\\HISE.exe`;
+	if (platform === "macOS") return `${binDir}/HISE.app/Contents/MacOS/HISE`;
+	return `${binDir}/HISE Standalone`;
+}
+
+// ── Shared: create a HISE → binary symlink in a writable PATH entry ──
+//
+// Scans process.env.PATH for the first writable dir and drops the symlink
+// there. POSIX uses `ln -sf`; Windows uses `cmd /c mklink` which requires
+// admin or developer mode. Falls back to ~/.local/bin (POSIX) with a note
+// when nothing on PATH is writable; on Windows a hard failure is returned
+// so the caller can surface a clear "run as admin" message.
+
+// System dirs we refuse to touch even if they happen to be writable —
+// polluting /bin/HISE or C:\Windows\System32\HISE.exe is never what the
+// user wants.
+const POSIX_BLOCKED_RE = /^\/(?:bin|sbin|usr\/bin|usr\/sbin|usr\/local\/sbin|System|Library\/Apple)(?:\/|$)/;
+const WINDOWS_BLOCKED_RE = /[\\/](?:System32|SysWOW64|WindowsApps)(?:[\\/]|$)/i;
+
+export interface CreateHiseSymlinkResult {
+	readonly success: boolean;
+	/** Directory the symlink landed in (caller may splice into PATH). */
+	readonly dir?: string;
+	readonly execResult: WizardExecResult;
+}
+
+/** Create (or replace) a `HISE` shim in the first writable PATH entry. */
+export async function createHiseSymlink(
+	executor: PhaseExecutor,
+	binary: string,
+	platform: string,
+	phase: string,
+	onProgress: (p: import("../../engine/wizard/types.js").WizardProgress) => void,
+): Promise<CreateHiseSymlinkResult> {
+	if (platform === "Windows") {
+		return createWindowsSymlink(executor, binary, phase, onProgress);
+	}
+	return createPosixSymlink(executor, binary, phase, onProgress);
+}
+
+async function createPosixSymlink(
+	executor: PhaseExecutor,
+	binary: string,
+	phase: string,
+	onProgress: (p: import("../../engine/wizard/types.js").WizardProgress) => void,
+): Promise<CreateHiseSymlinkResult> {
+	const pathDirs = (process.env.PATH ?? "").split(":").filter((p) => p.length > 0);
+	const errors: string[] = [];
+	for (const dir of pathDirs) {
+		if (POSIX_BLOCKED_RE.test(dir)) continue;
+		const isDir = await executor.spawn("test", ["-d", dir], {});
+		if (isDir.exitCode !== 0) continue;
+		const writable = await executor.spawn("test", ["-w", dir], {});
+		if (writable.exitCode !== 0) continue;
+
+		onProgress({ phase, percent: 50, message: `Symlinking into ${dir}/HISE...` });
+		const ln = await executor.spawn("ln", ["-sf", binary, `${dir}/HISE`], {});
+		if (ln.exitCode !== 0) {
+			errors.push(`ln ${dir}/HISE: ${ln.stderr.trim() || "failed"}`);
+			continue;
+		}
+		onProgress({ phase, percent: 100 });
+		return {
+			success: true,
+			dir,
+			execResult: ok(`✓ ${dir}/HISE → ${binary}`),
+		};
+	}
+
+	// Nothing on PATH is writable — last resort: create ~/.local/bin and
+	// warn the user to put it on PATH.
+	const home = process.env.HOME ?? "";
+	if (!home) {
+		return {
+			success: false,
+			execResult: fail(
+				`No writable directory on PATH. Tried:\n  ${errors.join("\n  ") || "(nothing matched)"}`,
+			),
+		};
+	}
+	const userBin = `${home}/.local/bin`;
+	onProgress({ phase, percent: 60, message: `Nothing writable on PATH; falling back to ${userBin}...` });
+	const mk = await executor.spawn("mkdir", ["-p", userBin], {});
+	if (mk.exitCode !== 0) {
+		return { success: false, execResult: fail(`mkdir ${userBin} failed: ${mk.stderr}`) };
+	}
+	const fallback = await executor.spawn("ln", ["-sf", binary, `${userBin}/HISE`], {});
+	if (fallback.exitCode !== 0) {
+		return { success: false, execResult: fail(`ln ${userBin}/HISE failed: ${fallback.stderr}`) };
+	}
+	onProgress({ phase, percent: 100 });
+	return {
+		success: true,
+		dir: userBin,
+		execResult: ok(
+			`✓ ${userBin}/HISE → ${binary} (note: ${userBin} is not on your PATH — add it to invoke HISE by name)`,
+		),
+	};
+}
+
+async function createWindowsSymlink(
+	executor: PhaseExecutor,
+	binary: string,
+	phase: string,
+	onProgress: (p: import("../../engine/wizard/types.js").WizardProgress) => void,
+): Promise<CreateHiseSymlinkResult> {
+	const pathDirs = (process.env.PATH ?? "").split(";").filter((p) => p.length > 0);
+	const errors: string[] = [];
+	for (const dir of pathDirs) {
+		if (WINDOWS_BLOCKED_RE.test(dir)) continue;
+		// Probe dir existence + writability via cmd. `echo > ...` on a
+		// read-only dir fails with nonzero exit; we clean the probe file up
+		// immediately so this is side-effect-free on success.
+		const probeFile = `${dir}\\.hise-cli-write-probe`;
+		const probe = await executor.spawn("cmd", [
+			"/c",
+			`if exist "${dir}" (type nul > "${probeFile}" 2>nul && del /q "${probeFile}" 2>nul && echo OK)`,
+		], {});
+		if (!probe.stdout.includes("OK")) continue;
+
+		onProgress({ phase, percent: 50, message: `Creating ${dir}\\HISE.exe symlink...` });
+		const linkPath = `${dir}\\HISE.exe`;
+		// Delete any stale link/file so mklink doesn't fail with "already
+		// exists". /f forces deletion of symlinks too.
+		await executor.spawn("cmd", ["/c", `if exist "${linkPath}" del /f /q "${linkPath}"`], {});
+		// mklink <Link> <Target>. No /D — HISE.exe is a file. Requires admin
+		// or developer mode on Windows 10+; failure means the user didn't
+		// start hise-cli elevated.
+		const mklink = await executor.spawn("cmd", ["/c", `mklink "${linkPath}" "${binary}"`], {});
+		if (mklink.exitCode !== 0) {
+			errors.push(`mklink ${linkPath}: ${mklink.stderr.trim() || mklink.stdout.trim() || "failed"}`);
+			continue;
+		}
+		onProgress({ phase, percent: 100 });
+		return {
+			success: true,
+			dir,
+			execResult: ok(`✓ ${linkPath} → ${binary}`),
+		};
+	}
+
+	return {
+		success: false,
+		execResult: fail(
+			`Could not create HISE symlink on Windows. mklink requires administrator ` +
+			`rights or Developer Mode. Tried:\n  ${errors.join("\n  ") || "(no writable PATH entries)"}`,
+		),
+	};
+}
 
 export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
@@ -751,62 +993,19 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
 		const includeFaust = isOn(answers.includeFaust);
-
-		onProgress({ phase: "add-path", percent: 0, message: "Adding HISE to PATH..." });
-
-		if (platform === "Windows") {
-			// HISE.exe lives in the App\ subfolder of the build-config output
-			// dir. Register that dir on the per-user PATH via PowerShell so no
-			// elevation is needed and the change survives the session.
-			const config = includeFaust ? "ReleaseWithFaust" : "Release";
-			const binDir = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App`;
-			const psCmd =
-				`$cur = [Environment]::GetEnvironmentVariable('Path','User'); ` +
-				`if ($cur -notlike '*${binDir.replace(/'/g, "''")}*') { ` +
-				`  [Environment]::SetEnvironmentVariable('Path', ($cur.TrimEnd(';') + ';${binDir.replace(/'/g, "''")}'), 'User') ` +
-				`}`;
-			const result = await executor.spawn("powershell", [
-				"-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd,
-			], {});
-			if (result.exitCode !== 0) return fail(`Failed to update user PATH: ${result.stderr}`);
-			// Also update this Node process's PATH so subsequent phases
-			// (verify, test) can invoke HISE by name without waiting for
-			// a terminal restart. The registry update above covers new
-			// shells; this in-memory update covers the running wizard.
-			const existing = process.env.PATH ?? "";
-			if (!existing.toLowerCase().includes(binDir.toLowerCase())) {
-				process.env.PATH = `${existing.replace(/;$/, "")};${binDir}`;
+		const binary = hiseBinaryPath(installPath, platform, includeFaust);
+		const result = await createHiseSymlink(executor, binary, platform, "add-path", onProgress);
+		// Mirror the update wizard: splice the chosen dir into this Node
+		// process's PATH so later setup phases (verify, test) resolve HISE
+		// without waiting for a fresh shell.
+		if (result.success && result.dir) {
+			const sep = platform === "Windows" ? ";" : ":";
+			const current = process.env.PATH ?? "";
+			if (!current.split(sep).includes(result.dir)) {
+				process.env.PATH = [result.dir, ...current.split(sep).filter((p) => p.length > 0)].join(sep);
 			}
-			onProgress({ phase: "add-path", percent: 100 });
-			return ok(`✓ Added ${binDir} to your user PATH.`);
 		}
-
-		let binPath: string;
-		if (platform === "macOS") {
-			const cfg = includeFaust ? "ReleaseWithFaust" : "Release";
-			binPath = `${installPath}/projects/standalone/Builds/MacOSXMakefile/build/${cfg}`;
-		} else {
-			binPath = `${installPath}/projects/standalone/Builds/LinuxMakefile/build`;
-		}
-
-		// Detect shell config
-		const shell = process.env.SHELL ?? "/bin/bash";
-		const shellConfig = shell.includes("zsh") ? `${process.env.HOME}/.zshrc` : `${process.env.HOME}/.bashrc`;
-
-		const exportLine = `export PATH="$PATH:${binPath}"`;
-		const result = await executor.spawn("bash", ["-c", `echo '${exportLine}' >> "${shellConfig}"`], {});
-		if (result.exitCode !== 0) return fail(`Failed to update ${shellConfig}: ${result.stderr}`);
-
-		// Also patch this Node process's PATH so the verify + test phases
-		// can invoke HISE by bare name in the same session — the shell rc
-		// append above only takes effect in new shells.
-		const currentPath = process.env.PATH ?? "";
-		if (!currentPath.split(":").includes(binPath)) {
-			process.env.PATH = currentPath ? `${currentPath}:${binPath}` : binPath;
-		}
-
-		onProgress({ phase: "add-path", percent: 100 });
-		return ok(`✓ Added HISE to PATH in ${shellConfig}. Restart your shell or run: source ${shellConfig}`);
+		return result.execResult;
 	};
 }
 

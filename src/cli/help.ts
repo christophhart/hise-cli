@@ -424,6 +424,7 @@ SYNTAX
 
 AVAILABLE WIZARDS
   setup                Install and build HISE from source
+  update               Pull latest CI-green develop commit and rebuild HISE
   new_project          Create a new HISE project folder
   plugin_export        Compile project as VST/AU/AAX or standalone
   compile_networks     Compile scriptnode C++ networks into DLL

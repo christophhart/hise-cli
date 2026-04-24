@@ -106,12 +106,14 @@ export function extractStatusPayload(response: Record<string, unknown>): StatusP
 }
 
 export function formatVersion(data: Pick<StatusPayload, "server">): CommandResult {
+	const sha = data.server.buildCommit ? data.server.buildCommit.slice(0, 7) : "N/A";
 	const markdown = `## Server Version
 
 | Field | Value |
 |-------|-------|
 | Version | ${data.server.version} |
-| Compile Timeout | ${data.server.compileTimeout ?? "N/A"} |`;
+| Compile Timeout | ${data.server.compileTimeout ?? "N/A"} |
+| Build Commit | ${sha} |`;
 	return markdownResult(markdown);
 }
 

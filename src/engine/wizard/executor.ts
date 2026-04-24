@@ -15,6 +15,19 @@ import type {
 } from "./types.js";
 import { validateAnswers } from "./validator.js";
 
+// ── Abort signal for init handlers ──────────────────────────────────
+
+/** Thrown from an init handler to halt the wizard before the form opens.
+ *  Callers catch this and show `message` to the user instead of rendering
+ *  the form — e.g. when prerequisites aren't met and the wizard cannot
+ *  usefully proceed. */
+export class WizardInitAbortError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "WizardInitAbortError";
+	}
+}
+
 // ── Type guards for response dispatch ────────────────────────────────
 
 interface AsyncJobResult {
@@ -66,6 +79,11 @@ export class WizardExecutor {
 	/**
 	 * Run the wizard's init function (if any) to fetch default values.
 	 * Returns a Record to merge into globalDefaults before form display.
+	 *
+	 * Init handlers can throw {@link WizardInitAbortError} to halt the wizard
+	 * before the form renders — callers should catch this and surface the
+	 * message to the user instead of opening the form. Any other error from
+	 * the handler is swallowed (treated as "no defaults").
 	 */
 	async initialize(def: WizardDefinition): Promise<Record<string, string>> {
 		if (!def.init) return {};
@@ -92,7 +110,10 @@ export class WizardExecutor {
 		if (!handler) return {};
 		try {
 			return await handler(def.id);
-		} catch {
+		} catch (err) {
+			// Abort is a signal, not a silent failure — propagate so the TUI
+			// can close the wizard and show the user the reason.
+			if (err instanceof WizardInitAbortError) throw err;
 			return {};
 		}
 	}

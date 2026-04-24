@@ -9,6 +9,8 @@ import { serializeCliOutput, type CliOutputPayload } from "./output.js";
 import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { createDefaultMockRuntime } from "../mock/runtime.js";
 import type { WizardHandlerRegistry } from "../engine/wizard/handler-registry.js";
+import { createNodePhaseExecutor } from "../tui/nodePhaseExecutor.js";
+import { registerUpdateHandlers } from "../tui/wizard-handlers/index.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { watch } from "node:fs";
@@ -58,6 +60,13 @@ export async function executeCliCommand(
 	const connection = new CapturingHiseConnection(
 		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
 	);
+	if (opts.handlerRegistry && opts.launcher) {
+		registerUpdateHandlers(opts.handlerRegistry, {
+			executor: createNodePhaseExecutor(),
+			connection,
+			launcher: opts.launcher,
+		});
+	}
 	let datasets: import("../session-bootstrap.js").SessionDatasets = {};
 	const { session, completionEngine } = createSession({
 		connection,

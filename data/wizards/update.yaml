@@ -1,0 +1,139 @@
+id: update
+header: HISE Update
+description: Pull latest CI-green develop commit and rebuild HISE
+aliases:
+  - update
+body: |
+  Fetches the most recent HISE `develop` commit that passed the `CI Build`
+  GitHub Actions workflow, shuts down any running HISE instance, pulls,
+  recompiles, and relaunches.
+
+  - **Status**: shows your current build SHA, the latest CI-green SHA, and
+    the commit list between them.
+  - **Actions**: toggle shutdown / compile / launch and override the target
+    SHA if you need to pin to a specific commit.
+
+  > Rebuilding HISE can take 30+ minutes depending on your machine.
+
+init:
+  type: internal
+  function: updateDetectEnvironment
+
+tabs:
+  - label: Status
+    fields:
+      - id: installPath
+        type: file
+        label: Install Path
+        directory: true
+        help: Read from HISE's compilerSettings.xml. Override only if the path is stale.
+      - id: platform
+        type: choice
+        label: Platform
+        disabled: true
+        help: Detected automatically from your system
+        items:
+          - macOS
+          - Windows
+          - Linux
+        valueMode: text
+      - id: architecture
+        type: choice
+        label: Architecture
+        disabled: true
+        help: Detected automatically from your system
+        items:
+          - arm64
+          - x64
+        valueMode: text
+      - id: currentSha
+        type: text
+        label: Current Build SHA
+        disabled: true
+        help: Commit SHA reported by the running HISE (empty if HISE is not running)
+        emptyText: HISE not running
+      - id: updateAvailable
+        type: toggle
+        label: Update Available
+        disabled: true
+        help: True when the running build differs from the latest CI-green develop commit
+      - id: hiseRunning
+        type: toggle
+        label: HISE Running
+        disabled: true
+        help: Detected via /api/status probe at wizard load time
+      - id: latestCommitPassedCi
+        type: toggle
+        label: Latest Commit Passed CI
+        disabled: true
+        help: Checked when develop's HEAD commit has a passing CI run (unchecked means CI failed or is still running)
+      - id: latestCommitTitle
+        type: text
+        label: Target Commit
+        disabled: true
+        help: Subject line of the commit we're updating to (latest CI-green on develop)
+
+  - label: Actions
+    fields:
+      - id: shutdownHise
+        type: toggle
+        label: Shutdown HISE
+        help: POST /api/shutdown and wait for disconnect before pulling
+        defaultValue: "0"
+      - id: cleanBuilds
+        type: toggle
+        label: Clean HISE Builds
+        help: Discard local changes (git checkout .) and wipe projects/standalone/Builds before compile. Turn off for incremental builds.
+        defaultValue: "1"
+      - id: compileHise
+        type: toggle
+        label: Compile HISE
+        help: Re-run Projucer + make / MSBuild after checkout
+        defaultValue: "1"
+      - id: launchHise
+        type: toggle
+        label: Launch HISE
+        help: Spawn HISE detached after the rebuild finishes
+        defaultValue: "0"
+      - id: targetCommit
+        type: text
+        label: Target Commit
+        help: Override the target SHA (defaults to latest CI-green develop)
+        emptyText: latest CI-green develop
+      - id: parallelJobs
+        type: text
+        label: Parallel Jobs
+        help: Override the RAM-aware auto-detected -j value (set lower on constrained machines)
+
+submitLabel: Updates HISE to the selected commit (runs the full build pipeline).
+tasks:
+  - id: shutdown
+    function: updateShutdown
+    type: internal
+    label: Shutdown HISE
+  - id: checkout
+    function: updateCheckout
+    type: internal
+    label: Pull target commit
+  - id: cleanBuilds
+    function: updateCleanBuilds
+    type: internal
+    label: Wipe Builds folder
+  - id: compile
+    function: updateCompile
+    type: internal
+    label: Compile HISE
+  - id: symlink
+    function: updateSymlink
+    type: internal
+    label: Symlink HISE binary
+  - id: launch
+    function: updateLaunch
+    type: internal
+    label: Launch HISE
+  - id: verify
+    function: updateVerify
+    type: internal
+    label: Verify build SHA
+postActions: []
+globalDefaults: {}
