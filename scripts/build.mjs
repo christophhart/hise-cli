@@ -1,10 +1,22 @@
 import { build } from "esbuild";
 import { chmodSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
+
+// Build the SPA first; the Node bundle ships the dist/web/ tree alongside.
+{
+	const result = spawnSync(process.execPath, ["scripts/build-web.mjs"], {
+		stdio: "inherit",
+	});
+	if (result.status !== 0) {
+		process.stderr.write("[build] SPA build failed\n");
+		process.exit(1);
+	}
+}
 
 await build({
 	entryPoints: ["src/index.ts"],

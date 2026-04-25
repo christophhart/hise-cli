@@ -5,31 +5,23 @@ import { render } from "ink";
 import React from "react";
 import { App as TuiApp } from "./tui/app.js";
 import { HttpHiseConnection } from "./engine/hise.js";
-import { createBundledDataLoader } from "./tui/bundledDataLoader.js";
 import { createSession } from "./session-bootstrap.js";
 import { executeCliCommand } from "./cli/run.js";
 import { renderCliHelp } from "./cli/help.js";
 import { listCliCommands } from "./cli/commands.js";
 import { createDefaultMockRuntime } from "./mock/runtime.js";
-import { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
-import { createNodePhaseExecutor } from "./tui/nodePhaseExecutor.js";
-import { registerSetupHandlers, registerCompileHandlers, registerUpdateHandlers } from "./tui/wizard-handlers/index.js";
-import { createNodeHiseLauncher } from "./tui/nodeHiseLauncher.js";
+import { registerUpdateHandlers } from "./tui/wizard-handlers/index.js";
+import { bootstrapNodeRuntime, type NodeRuntime } from "./bootstrap-runtime.js";
 
-// ── Wizard handler setup ────────────────────────────────────────────
+// ── Runtime singleton ───────────────────────────────────────────────
 
-const phaseExecutor = createNodePhaseExecutor();
-const handlerRegistry = new WizardHandlerRegistry();
-registerSetupHandlers(handlerRegistry, phaseExecutor);
-registerCompileHandlers(handlerRegistry, phaseExecutor);
-
-const hiseLauncher = createNodeHiseLauncher();
+const runtime: NodeRuntime = bootstrapNodeRuntime();
 
 // ── Alt-screen helpers ──────────────────────────────────────────────
 
 function setupAltScreen(): () => void {
-	const enterAlt = "\u001b[?1049h\u001b[2J\u001b[H";
-	const leaveAlt = "\u001b[?1049l";
+	const enterAlt = "\x1b[?1049h\x1b[2J\x1b[H";
+	const leaveAlt = "\x1b[?1049l";
 	let restored = false;
 
 	const restore = () => {
@@ -47,8 +39,6 @@ function setupAltScreen(): () => void {
 	return restore;
 }
 
-const dataLoader = createBundledDataLoader();
-
 async function launchTui(
 	connection: import("./engine/hise.js").HiseConnection,
 	options?: { animate?: boolean; showKeys?: boolean },
@@ -56,20 +46,20 @@ async function launchTui(
 	// Update wizard handlers need a live connection + launcher, so register
 	// them per-session once those are in scope. Re-registering replaces any
 	// previous binding on the shared handler registry.
-	registerUpdateHandlers(handlerRegistry, {
-		executor: phaseExecutor,
+	registerUpdateHandlers(runtime.handlerRegistry, {
+		executor: runtime.phaseExecutor,
 		connection,
-		launcher: hiseLauncher,
+		launcher: runtime.hiseLauncher,
 	});
 	const restoreAltScreen = setupAltScreen();
 
 	const instance = render(
 		React.createElement(TuiApp, {
 			connection,
-			dataLoader,
+			dataLoader: runtime.dataLoader,
 			animate: options?.animate,
-			handlerRegistry,
-			launcher: hiseLauncher,
+			handlerRegistry: runtime.handlerRegistry,
+			launcher: runtime.hiseLauncher,
 			showKeys: options?.showKeys,
 		}),
 		{
@@ -103,6 +93,19 @@ async function launchRepl(args: string[]): Promise<void> {
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+	// Web frontend: hise-cli --web [--mock] [--no-open] [--port=N]
+	if (process.argv.includes("--web")) {
+		const { launchWeb } = await import("./web/server.js");
+		const args = process.argv.slice(2);
+		await launchWeb({
+			runtime,
+			useMock: args.includes("--mock"),
+			openBrowser: !args.includes("--no-open"),
+			port: parsePortFlag(args),
+		});
+		return;
+	}
+
 	// Fast-path: diagnose subcommand (no session bootstrap needed)
 	if (process.argv[2] === "diagnose") {
 		const args = process.argv.slice(3);
@@ -137,7 +140,7 @@ async function main(): Promise<void> {
 
 	const bootstrap = createSession({ connection: null });
 	const cliCommands = listCliCommands(bootstrap.session.allCommands());
-	const cliResult = await executeCliCommand(process.argv, cliCommands, dataLoader, { handlerRegistry, launcher: hiseLauncher });
+	const cliResult = await executeCliCommand(process.argv, cliCommands, runtime.dataLoader, { handlerRegistry: runtime.handlerRegistry, launcher: runtime.hiseLauncher });
 
 	if (cliResult.kind === "help") {
 		console.log(renderCliHelp(cliCommands, cliResult.scope));
@@ -163,6 +166,16 @@ async function main(): Promise<void> {
 	}
 
 	await launchRepl(cliResult.args);
+}
+
+function parsePortFlag(args: string[]): number | undefined {
+	for (const arg of args) {
+		if (arg.startsWith("--port=")) {
+			const n = Number(arg.slice("--port=".length));
+			if (Number.isFinite(n) && n > 0 && n < 65536) return n;
+		}
+	}
+	return undefined;
 }
 
 void main();
