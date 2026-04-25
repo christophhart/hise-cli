@@ -30,7 +30,8 @@ See `src/engine/data.ts` for type definitions.
 
 **Wizard framework**: Declarative multi-step workflows for complex operations (broadcaster
 setup, asset payloads, monolith encoding, plugin export, HISE installation). Same
-definition serves TUI (step-by-step overlay) and CLI (single-shot with `--answers` JSON).
+definition serves TUI (step-by-step form rendered inline in the output log) and
+CLI (single-shot with `--answers` JSON).
 Source wizard JSONs from HISE's C++ multipage dialogs live in
 `data/wizards/`. Conversion guide: [docs/WIZARD_CONVERSION.md](docs/WIZARD_CONVERSION.md).
 
@@ -100,8 +101,8 @@ src/
     data.ts            # DataLoader interface
   tui/                 # TUI frontend - Ink/React
     components/        # TopBar, Output, Input, CompletionPopup, StatusBar,
-                       #   Overlay, Markdown, scrollbar, TreeSidebar, LandingLogo,
-                       #   prerender, dim-ansi
+                       #   Markdown, scrollbar, TreeSidebar, LandingLogo,
+                       #   prerender, wizard-render, wizard-keys
     theme.ts           # Color system, darkenHex, lightenHex, lerpHex, mix
     theme-context.tsx  # ThemeProvider, useTheme() hook
     app.tsx            # Main TUI shell (central key dispatch)

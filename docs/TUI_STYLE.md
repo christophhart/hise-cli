@@ -58,13 +58,13 @@ appear on: the `[mode]` label in the top bar, the sidebar heading, and the left-
 | Compile  | Magenta  | `#f92672` |
 | Import   | Mint     | `#2de0a5` |
 
-**Wizard accent** (not a mode — a UI chrome color for the wizard overlay):
+**Wizard accent** (not a mode — a UI chrome color for inline wizard forms):
 
 | Context  | Name     | Hex       |
 |----------|----------|-----------|
 | Wizard   | Copper   | `#e8a060` |
 
-Used for: wizard overlay border, step indicator highlight, header title, confirm
+Used for: wizard form border, step indicator highlight, header title, confirm
 highlights, selected item markers. See Section 3.10 for full specification.
 
 ### 1.4 Focus Visibility (Rule)
@@ -171,7 +171,7 @@ may import `brand` directly since they run outside the React tree.
 
 ### 1.9 Overlay Dimming System
 
-When a modal overlay opens (help, wizard, command palette), the underlying UI
+When a modal overlay opens (help, command palette), the underlying UI
 freezes and dims to create a visual backdrop. This is implemented as a full
 component re-render with darkened colors, not a semi-transparent CSS overlay
 (terminals don't support alpha compositing).
@@ -598,25 +598,25 @@ Continuously updating metrics driven by SSE push events from `GET /api/events`.
 | MIDI dots `●`  | SIGNAL_COLOUR (active), `foreground.muted` (inactive) |
 | MIDI log       | `foreground.muted`       |
 
-### 3.10 Wizard Overlay (Planned)
+### 3.10 Wizard Form
 
-Planned centered floating panel for multi-step guided workflows. Wizard
-commands are not implemented in the current build. This section is a design
-spec for future implementation. See [DESIGN.md](../DESIGN.md) "Wizard
+Multi-step guided workflows render as a form block inside the output log
+(scrollback), produced by `renderWizardBlock()` in
+`src/tui/components/wizard-render.ts`. See [DESIGN.md](../DESIGN.md) "Wizard
 Framework" for the engine-layer architecture and type definitions.
 
-**Dimensions**: Two size presets defined in `src/tui/components/Overlay.tsx`
-(`OVERLAY_SIZES`): `overlay_compact` (60×20) and `overlay_standard` (90×35).
-Wizard overlays typically use `overlay_compact` for simple prompts; help overlays
-use `overlay_standard` for detailed content. Centered horizontally and vertically
-over the REPL using absolute positioning. The REPL remains visible behind the
-overlay, frozen and dimmed via the overlay dimming system (see Section 1.9).
+**Placement**: The form is appended as a CommandResult-rendered block at the
+current bottom of the output log. It scrolls with the rest of the scrollback
+and does not float; nothing is dimmed and the REPL chrome (TopBar, Input,
+StatusBar) stays at full brightness. The block sizes itself to its content
+rather than to a fixed preset.
 
-**Background**: `backgrounds.overlay` (at full brightness — only the backdrop
-dims). No border — solid filled rectangle matching the help overlay style.
-Title row uses wizard copper accent `#e8a060` for the step label.
+**Background**: `backgrounds.standard` — the form sits on the same surface
+as the surrounding output. No floating panel, no backdrop. The title row
+uses wizard copper accent `#e8a060` for the step label.
 
-**Layout** (inside border: 58 usable columns × 18 usable rows):
+**Layout** (block width follows the output viewport; the example below uses
+60 columns for illustration):
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -778,19 +778,18 @@ When the user presses Enter to advance and validation fails (sync or async):
 │  Unknown parameter "Attack" for SimpleGain               │  ← HISE_ERROR_COLOUR
 ```
 
-#### Standalone Mode (Planned)
+#### Standalone Mode
 
-Planned standalone wizards run without a REPL session. The overlay renders
-identically but on a bare background:
+Standalone wizards run without a REPL session. The form block renders
+identically, just without the surrounding REPL chrome:
 
 - Terminal filled with `backgrounds.standard`
-- Wizard panel centered using overlay size preset (see `OVERLAY_SIZES` in
-  `src/tui/components/Overlay.tsx`)
+- Wizard form block rendered inline at the top of the output area
 - Top-left corner of terminal: `HISE` in `SIGNAL_COLOUR` (`#90FFB1`), bold
 - No top bar, no bottom bar, no sidebar — just the branded background and
-  the wizard panel
+  the wizard form
 - All other rendering (border, header, content, footer) is identical to the
-  REPL overlay mode
+  REPL mode
 
 #### Help Text
 
@@ -858,9 +857,12 @@ Slash commands are always available in every mode. They are never recorded in pl
 
 ### 4.5 Wizard Keyboard Map
 
-When a wizard overlay is active, it captures all keyboard input. The standard
-REPL shortcuts (`Ctrl+Space`, `Ctrl+B`, etc.) are inactive while the overlay
-is open.
+When a wizard form block is active in the output log, the form's key router
+(`src/tui/components/wizard-keys.ts`) consumes step navigation and answer
+keys before they reach the input. The form is not a screen-grabbing modal —
+global REPL shortcuts (`Ctrl+C`, `Ctrl+L`, scroll keys) still work, and
+typing into the prompt remains possible; only the keys listed below are
+intercepted while the form is on screen.
 
 | Key              | Action                                      | Step types       |
 |------------------|---------------------------------------------|------------------|

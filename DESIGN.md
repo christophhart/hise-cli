@@ -955,7 +955,7 @@ rendering and `CommandResult { type: "table" }` output.
 | XML syntax highlighter | ~30 | Regex tokenizer for module tree XML output |
 | Highlighted input | ~100-150 | Lezer-tokenized input with ghost text completion |
 | CompletionPopup | ~120 | Absolute-positioned dropdown above input, arrow keys, Tab/Enter accept |
-| Overlay | ~180 | Centered floating panel for help/wizard, absolute-positioned, mouse wheel scroll |
+| Overlay | ~180 | Centered floating panel for help, absolute-positioned, mouse wheel scroll |
 | ThemeContext | ~75 | `ThemeProvider` + `useTheme()` — all components read colors from context. Enables the overlay dimming system: the backdrop wraps a `ThemeProvider` with `darkenScheme()` values, so every component automatically renders dimmed without override props. See TUI_STYLE.md §1.7–1.8. |
 
 ### Bundle Impact
@@ -1243,7 +1243,7 @@ A wizard definition lives in the engine layer and serves both frontends:
 | Aspect           | TUI (human)                          | CLI (LLM / automation)                |
 |------------------|--------------------------------------|---------------------------------------|
 | Invocation       | `/wizard broadcaster`                | `hise-cli wizard broadcaster --answers '{...}'` |
-| Interaction      | Step-by-step overlay, one page at a time | Single-shot: all answers supplied upfront |
+| Interaction      | Step-by-step form rendered inline in scrollback, one page at a time | Single-shot: all answers supplied upfront |
 | Validation       | Per-step, inline error display       | All-at-once, returns error array      |
 | Dynamic data     | Resolved lazily per step             | Resolved during validation            |
 | Output           | Preview → accept/copy/reject         | JSON result with generated content    |
@@ -1566,11 +1566,16 @@ construct the right answers without step-by-step interaction.
 ### Lifecycle
 
 **TUI:**
-1. User invokes wizard → engine creates `WizardRunner` → TUI opens overlay
-2. Each step: engine resolves options if needed → TUI renders step → user
-   answers → engine validates and advances
-3. On complete: engine generates output → TUI shows preview or executes action
-4. On cancel (`Escape` from step 1): engine discards runner → TUI closes overlay
+1. User invokes wizard → engine creates `WizardRunner` → TUI appends a wizard
+   form block to the output log (rendered by `renderWizardBlock()` in
+   `src/tui/components/wizard-render.ts`)
+2. Each step: engine resolves options if needed → form block re-renders in
+   place → user answers via the form key router (`wizard-keys.ts`) → engine
+   validates and advances
+3. On complete: engine generates output → form block is replaced with a
+   preview or action result in the same scrollback slot
+4. On cancel (`Escape` from step 1): engine discards runner → form block is
+   replaced with a cancellation result
 
 **CLI:**
 1. Tool invokes `hise-cli wizard <id> --answers '{...}'`
@@ -1585,9 +1590,8 @@ connection. This covers operations that must work before HISE exists (setup),
 on installations that may be broken (update, migrate), or that destroy
 installations (nuke). In standalone mode:
 
-- The wizard overlay renders using size presets from `Overlay.tsx`
-  (`OVERLAY_SIZES`), centered on a plain `backgrounds.standard` fill
-  (no REPL content behind it)
+- The wizard form block renders inline at the top of the output log on a
+  plain `backgrounds.standard` fill (no REPL content above it)
 - The entry point is `hise-cli wizard <id>`
 - Resolver functions receive no `HiseConnection` — they use local
   filesystem scanning, GitHub API calls, or static data instead
@@ -1893,8 +1897,9 @@ in their editor and calls `POST /api/recompile` from the TUI.
 **Decision**: Complex multi-parameter operations (broadcaster setup, monolith
 encoding, asset payload creation, project scaffolding, plugin export, HISE
 installation) are modeled as declarative wizard definitions in the engine
-layer, with the TUI rendering them as interactive step-by-step overlays and
-the CLI exposing them as single-shot parameterized commands. This includes
+layer, with the TUI rendering them as interactive step-by-step forms inline
+in the output log and the CLI exposing them as single-shot parameterized
+commands. This includes
 the setup/update/migrate/nuke lifecycle, which becomes standalone wizards
 replacing the current dedicated TUI flows.
 
@@ -1914,7 +1919,7 @@ DLLs). Battle-tested platform-specific compilation logic from legacy setup
 templates (see `docs/LEGACY_SETUP_SCRIPTS.md`) becomes a shared building
 block rather than being locked inside one flow.
 
-**Alternative rejected**: Separate TUI overlays and CLI commands per operation.
+**Alternative rejected**: Separate TUI flows and CLI commands per operation.
 This duplicates validation logic, option definitions, and help text across two
 codepaths. The wizard framework ensures a single source of truth.
 
