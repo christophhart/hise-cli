@@ -9,10 +9,6 @@ export default defineConfig({
 		// but vitest needs to resolve them to .ts source files.
 		extensions: [".ts", ".tsx", ".js", ".jsx"],
 		conditions: ["import", "module", "default"],
-		alias: {
-			// Mirror esbuild alias so ink-shim can import stock Ink in tests
-			"ink-stock": "ink",
-		},
 	},
 	plugins: [
 		{

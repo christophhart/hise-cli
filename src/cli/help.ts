@@ -52,7 +52,6 @@ HISE CONNECTION
   Use --mock to test without a running HISE instance.
 
 ENVIRONMENT VARIABLES
-  HISE_RENDERER=ink|rezi   Force a specific TUI renderer
   FORCE_COLOR=0|1|2|3      Override terminal color detection
   NO_COLOR=1               Disable all color output`;
 

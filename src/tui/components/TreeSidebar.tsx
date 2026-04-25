@@ -6,7 +6,7 @@
 // app.tsx — this component exposes imperative methods via ref.
 
 import React, { useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Box, Text, type DOMElement } from "../ink-shim.js";
+import { Box, Text, type DOMElement } from "ink";
 import { useOnClick, useOnWheel, useElementPosition } from "@ink-tools/ink-mouse";
 import type { TreeNode } from "../../engine/result.js";
 import type { ColorScheme } from "../theme.js";

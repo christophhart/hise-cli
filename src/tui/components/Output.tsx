@@ -10,7 +10,7 @@
 // ScrollBar, regardless of content size.
 
 import React from "react";
-import { Box, Text } from "../ink-shim.js";
+import { Box, Text } from "ink";
 import { ScrollBar } from "@byteland/ink-scroll-bar";
 import { useTheme } from "../theme-context.js";
 import { LandingLogo } from "./LandingLogo.js";

@@ -873,8 +873,7 @@ concern for a CLI tool (current bundle: 2.6MB, Node.js itself: ~40MB).
 
 | Library | Size | Purpose |
 |---------|------|---------|
-| `ink` + `chalk` + `ink-text-input` + `ink-spinner` | Existing | Core TUI framework (stock Ink, used as fallback) |
-| `@rezi-ui/ink-compat` | ~200KB | Drop-in Ink replacement with faster rendering (default on truecolor terminals) |
+| `ink` + `chalk` + `ink-text-input` + `ink-spinner` | Existing | Core TUI framework |
 | `marked` + `marked-terminal` | ~80KB | Markdown rendering for output and overlay |
 | `@byteland/ink-scroll-bar` | 5KB | Scrollbar for output and overlay |
 | `ink-scroll-view` | 10KB | Overlay body scrolling |
@@ -1024,38 +1023,14 @@ replacement. The most practical fallback is a lower-level Node.js terminal
 renderer (direct ANSI escape codes, no React reconciler) rather than a
 full-language rewrite.
 
-### Renderer Dispatch (Rezi / Stock Ink)
+### Renderer
 
-Both renderers are bundled. At startup, `src/tui/ink-shim.ts` picks one
-based on terminal capability and re-exports `render`, `Box`, `Text`, and
-hooks. All TUI components import from the shim, never from `"ink"` directly.
+The TUI uses stock [Ink](https://github.com/vadimdemedes/ink) (Yoga-backed
+layout). All components import `Box`, `Text`, and hooks directly from
+`"ink"`.
 
-**Why Rezi**: `@rezi-ui/ink-compat` is a drop-in Ink replacement with
-significantly faster rendering. It eliminates Yoga layout overhead by
-using its own lightweight layout engine. The API surface is identical —
-`Box`, `Text`, hooks, `render()` — so components need no changes.
-
-**Why not Rezi everywhere**: Rezi forces 24-bit truecolor when it detects
-pre-rendered ANSI escape sequences in `<Text>` children (the
-`FORCED_TRUECOLOR_SUPPORT` override in its render pipeline). Our Output
-component renders pre-computed ANSI lines, triggering this detection.
-Terminals without truecolor support (macOS Terminal.app) display garbled
-colors because the entire frame — including Rezi's own backgrounds and
-borders — gets rendered at 24-bit.
-
-**Selection logic** (`src/tui/ink-shim.ts`):
-
-| Condition | Renderer | Reason |
-|-----------|----------|--------|
-| `HISE_RENDERER=ink` | Stock Ink | Explicit override |
-| `HISE_RENDERER=rezi` | Rezi | Explicit override |
-| `TERM_PROGRAM=Apple_Terminal` | Stock Ink | No truecolor |
-| `COLORTERM=truecolor` or `24bit` | Rezi | Full color support |
-| Default | Rezi | Modern terminals assumed |
-| `VITEST` or `NODE_ENV=test` | Stock Ink | ink-testing-library compat |
-
-**256-color fallback**: When stock Ink is active on a non-truecolor
-terminal, two mechanisms ensure correct colors:
+**256-color fallback**: For terminals without truecolor support, two
+mechanisms keep colors faithful:
 
 1. `snapSchemeFor256()` (`src/tui/theme.ts`) — pre-snaps all theme hex
    colors to their nearest xterm-256 palette equivalent. Applied once in
@@ -1064,26 +1039,6 @@ terminal, two mechanisms ensure correct colors:
 2. `fgHex()`/`bgHex()` (`src/tui/components/prerender.ts`) — detect
    truecolor at import time and emit `\x1b[38;5;Nm` (256-color) instead
    of `\x1b[38;2;r;g;bm` (24-bit) for pre-rendered ANSI output.
-
-**Build pipeline implications** (`scripts/build.mjs`):
-
-- esbuild alias: `ink` → `@rezi-ui/ink-compat` (third-party packages get
-  Rezi's `Box`/`Text` when Rezi is active)
-- esbuild alias: `ink-stock` → `ink` (shim imports real Ink for fallback)
-- Both `ink` and `@rezi-ui/ink-compat` are externalized (React single-copy
-  requirement)
-- `--ink` build flag disables Rezi entirely (everything bundled, no alias)
-- vitest config mirrors the `ink-stock` → `ink` alias
-
-**Developing new features**: always import `Box`, `Text`, hooks from
-`../ink-shim.js` (or appropriate relative path), never from `"ink"`.
-Third-party Ink packages (ScrollBar, ink-mouse) import from `"ink"` which
-resolves to Rezi via the esbuild alias — this is correct.
-
-**Testing**: unit tests run with stock Ink (vitest sets `VITEST=true`).
-Screencast tests (pty-based) strip `VITEST` from the env so the spawned
-app uses its normal renderer selection. The `ink-smoke.test.ts` standalone
-test imports directly from `"ink"` — this is intentional.
 
 ---
 

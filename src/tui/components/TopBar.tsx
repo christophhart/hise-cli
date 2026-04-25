@@ -1,7 +1,7 @@
 // ── TopBar — tree label + brand + mode + connection status ──────────
 
 import React from "react";
-import { Box, Text, isRezi } from "../ink-shim.js";
+import { Box, Text } from "ink";
 import { statusDot, type ConnectionStatus } from "../theme.js";
 import { useTheme } from "../theme-context.js";
 
@@ -47,11 +47,10 @@ export const TopBar = React.memo(function TopBar({
 		: projectPath ?? "";
 	const projectWidth = projectDisplay ? pad.length + projectDisplay.length : 0;
 
-	// ── Right side: brand + renderer + [mode] + dot ──
+	// ── Right side: brand + [mode] + dot ──
 	const brandText = "HISE CLI";
-	const rendererTag = isRezi ? " rezi" : " ink";
 	const modeDisplay = modeLabel === "root" ? "" : ` [${modeLabel}]`;
-	const rightContent = `${brandText}${rendererTag}${modeDisplay} ${dot} `;
+	const rightContent = `${brandText}${modeDisplay} ${dot} `;
 	const rightWidth = rightContent.length + pad.length;
 
 	// Fill between left and right
@@ -105,7 +104,6 @@ export const TopBar = React.memo(function TopBar({
 					<Text>{" ".repeat(fillWidth)}</Text>
 					<Text>{pad}</Text>
 					<Text color={brand.signal} bold>{brandText}</Text>
-					<Text color={scheme.foreground.muted}>{rendererTag}</Text>
 					{modeDisplay ? (
 						<Text color={modeAccent} bold>{modeDisplay}</Text>
 					) : null}

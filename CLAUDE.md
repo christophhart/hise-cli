@@ -160,6 +160,6 @@ For full code style reference, see [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
   both `src/engine/commands/help.ts` (TUI `/help`) and `src/cli/help.ts` (CLI `--help`).
   The CLI help is the primary reference for LLM consumers — it must include full
   syntax, examples, and all available subcommands.
-- **Ink imports**: TUI components must import `Box`, `Text`, hooks from
-  `src/tui/ink-shim.ts`, never from `"ink"` directly. See DESIGN.md § Renderer Dispatch.
+- **Ink imports**: TUI components import `Box`, `Text`, and hooks directly
+  from `"ink"`.
 - **Key input debugging**: see [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Debugging

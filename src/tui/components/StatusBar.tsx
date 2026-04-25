@@ -1,7 +1,7 @@
 // ── StatusBar — context hints + scroll position ─────────────────────
 
 import React from "react";
-import { Box, Text } from "../ink-shim.js";
+import { Box, Text } from "ink";
 import type { ConnectionStatus } from "../theme.js";
 import { brand, statusDot } from "../theme.js";
 import { useTheme } from "../theme-context.js";

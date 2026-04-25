@@ -1,21 +1,7 @@
 #!/usr/bin/env node
 
-// ── Terminal color detection (must run before any renderer import) ───
-// Rezi forces truecolor when it detects pre-rendered ANSI in text content,
-// which breaks terminals like macOS Terminal.app that don't support 24-bit
-// RGB. Set FORCE_COLOR early so Rezi respects the terminal's actual level.
-if (!process.env.FORCE_COLOR && !process.env.NO_COLOR) {
-	const ct = process.env.COLORTERM ?? "";
-	if (ct !== "truecolor" && ct !== "24bit") {
-		const depth = process.stdout.getColorDepth?.();
-		if (typeof depth === "number" && depth < 24) {
-			process.env.FORCE_COLOR = "2"; // 256-color
-		}
-	}
-}
-
 import chalk from "chalk";
-import { render } from "./tui/ink-shim.js";
+import { render } from "ink";
 import React from "react";
 import { App as TuiApp } from "./tui/app.js";
 import { HttpHiseConnection } from "./engine/hise.js";
