@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -24,7 +25,12 @@ jobs:
       - run: node scripts/build-binary.mjs --target bun-darwin-x64
       - run: mv dist/hise-cli dist/hise-cli-bun-darwin-x64
       - run: lipo -create -output dist/hise-cli dist/hise-cli-bun-darwin-arm64 dist/hise-cli-bun-darwin-x64
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hise-cli-macos
+          path: dist/hise-cli
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/hise-cli
 
@@ -39,6 +45,11 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node scripts/build-binary.mjs --target bun-windows-x64
-      - uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hise-cli-windows
+          path: dist/hise-cli.exe
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/hise-cli.exe
