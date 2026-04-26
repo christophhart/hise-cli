@@ -148,6 +148,46 @@ html, body, #root {
 }
 .output-log::-webkit-scrollbar { display: none; } /* Safari/Chrome */
 
+/* ── Landing logo (web port of TUI LandingLogo) ─────────────────── */
+.output-log-landing {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	overflow: hidden;
+}
+.landing-logo {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.5rem;
+	color: var(--fg-muted);
+}
+.landing-logo-art {
+	margin: 0;
+	font-family: ui-monospace, SFMono-Regular, Menlo, "JetBrains Mono", monospace;
+	font-size: 1.25rem;
+	line-height: 1.05;
+	letter-spacing: 0;
+	white-space: pre;
+}
+.landing-logo-tagline {
+	font-size: 0.95rem;
+}
+.landing-logo-update {
+	font-size: 0.9rem;
+	color: var(--accent);
+}
+.landing-logo-update code {
+	background: var(--bg-input);
+	padding: 0.1em 0.35em;
+	border-radius: 3px;
+	font-size: 0.85rem;
+}
+.landing-logo-hint {
+	font-size: 0.85rem;
+	margin-top: 0.5rem;
+}
+
 /* ── Custom Monaco-style scrollbar overlay ───────────────────────── */
 .custom-scrollbar {
 	position: absolute;

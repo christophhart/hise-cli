@@ -13,7 +13,7 @@ import { join } from "node:path";
 
 const RELEASES_LATEST_URL = "https://github.com/christophhart/hise-cli/releases/latest";
 const PKG_URL = "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli.pkg";
-const EXE_URL = "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli.exe";
+const INSTALLER_URL = "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli-setup.exe";
 
 export interface UpdateInfo {
 	current: string;
@@ -125,11 +125,16 @@ async function installMacOS(latest: string): Promise<number> {
 }
 
 async function installWindows(latest: string): Promise<number> {
+	const setupPath = join(tmpdir(), "hise-cli-setup.exe");
+	const ok = await downloadTo(INSTALLER_URL, setupPath);
+	if (!ok) return 1;
+
 	const exe = process.execPath;
 	const oldPath = `${exe}.old`;
 
 	// Rename current .exe out of the way. Windows allows renaming a
-	// running .exe but not deleting/overwriting it.
+	// running .exe but not deleting/overwriting it. The installer would
+	// otherwise see the file as locked.
 	try {
 		renameSync(exe, oldPath);
 	} catch (err) {
@@ -137,15 +142,25 @@ async function installWindows(latest: string): Promise<number> {
 		return 1;
 	}
 
-	const ok = await downloadTo(EXE_URL, exe);
-	if (!ok) {
+	process.stdout.write("running installer (silent)...\n");
+	const result = spawnSync(setupPath, ["/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES"], {
+		stdio: "inherit",
+	});
+	if (result.status !== 0) {
 		// Best-effort restore on failure.
 		try {
 			renameSync(oldPath, exe);
 		} catch {
 			// ignore
 		}
-		return 1;
+		process.stderr.write(`installer exited ${result.status}\n`);
+		return result.status ?? 1;
+	}
+
+	try {
+		unlinkSync(setupPath);
+	} catch {
+		// ignore
 	}
 
 	process.stdout.write(`updated to v${latest}. restart your shell to use the new version.\n`);

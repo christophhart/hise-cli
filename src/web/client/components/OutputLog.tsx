@@ -5,6 +5,7 @@ import { buildModeMap, tokenizerForLine } from "../../../engine/run/mode-map.js"
 import { TOKEN_COLORS } from "../../../engine/highlight/index.js";
 import type { ModeId } from "../../../engine/modes/mode.js";
 import { CustomScrollbar } from "./CustomScrollbar.js";
+import { LandingLogoWeb } from "./LandingLogo.js";
 
 export function OutputLog() {
 	const output = useStore((s) => s.output);
@@ -15,6 +16,16 @@ export function OutputLog() {
 		if (!el) return;
 		el.scrollTop = el.scrollHeight;
 	}, [output.length]);
+
+	if (output.length === 0) {
+		return (
+			<div className="output-log-wrap">
+				<div className="output-log output-log-landing">
+					<LandingLogoWeb />
+				</div>
+			</div>
+		);
+	}
 
 	return (
 		<div className="output-log-wrap">
