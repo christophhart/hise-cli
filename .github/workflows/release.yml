@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: oven-sh/setup-bun@v2
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/build-binary.mjs --target bun-darwin-arm64
+      - run: mv dist/hise-cli dist/hise-cli-bun-darwin-arm64
+      - run: node scripts/build-binary.mjs --target bun-darwin-x64
+      - run: mv dist/hise-cli dist/hise-cli-bun-darwin-x64
+      - run: lipo -create -output dist/hise-cli dist/hise-cli-bun-darwin-arm64 dist/hise-cli-bun-darwin-x64
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/hise-cli
+
+  build-windows:
+    runs-on: [self-hosted, Windows]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: oven-sh/setup-bun@v2
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/build-binary.mjs --target bun-windows-x64
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/hise-cli.exe
