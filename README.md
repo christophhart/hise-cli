@@ -21,6 +21,30 @@ JSON output).
 
 ## Install
 
+### Standalone binary (no Node.js required)
+
+**macOS** (universal, Apple Silicon + Intel — signed + notarized):
+
+```bash
+curl -fsSL -o /tmp/hise-cli.pkg https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli.pkg \
+  && sudo installer -pkg /tmp/hise-cli.pkg -target /
+```
+
+Installs to `/usr/local/bin/hise-cli` (already on `PATH`).
+
+**Windows** (PowerShell, x64):
+
+```powershell
+$dir="$env:LOCALAPPDATA\Programs\hise-cli"; `
+  New-Item -Force -ItemType Directory $dir | Out-Null; `
+  Invoke-WebRequest "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli.exe" -OutFile "$dir\hise-cli.exe"; `
+  [Environment]::SetEnvironmentVariable("PATH", "$([Environment]::GetEnvironmentVariable('PATH','User'));$dir", "User")
+```
+
+Open a new shell after install so the updated `PATH` is picked up.
+
+### Via npm
+
 ```bash
 npm i -g @hise/cli
 hise-cli

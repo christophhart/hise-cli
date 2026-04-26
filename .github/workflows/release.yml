@@ -21,14 +21,46 @@ jobs:
       - run: node scripts/build-binary.mjs --target bun-darwin-x64
       - run: mv dist/hise-cli dist/hise-cli-bun-darwin-x64
       - run: lipo -create -output dist/hise-cli dist/hise-cli-bun-darwin-arm64 dist/hise-cli-bun-darwin-x64
+      - name: Sign binary
+        run: |
+          codesign --force --timestamp --options runtime \
+            --sign "Developer ID Application: Christoph Hart (PF9H8PK77F)" \
+            dist/hise-cli
+          codesign -dv --verbose=2 dist/hise-cli
+      - name: Notarize binary
+        run: |
+          ditto -c -k --keepParent dist/hise-cli dist/hise-cli.zip
+          xcrun notarytool submit dist/hise-cli.zip \
+            --keychain-profile notarize --wait
+          rm dist/hise-cli.zip
+      - name: Build pkg
+        run: |
+          mkdir -p dist/payload
+          cp dist/hise-cli dist/payload/hise-cli
+          VERSION=$(node -p "require('./package.json').version")
+          pkgbuild --root dist/payload \
+            --identifier dev.hise.cli \
+            --version "$VERSION" \
+            --install-location /usr/local/bin \
+            --sign "Developer ID Installer: Christoph Hart (PF9H8PK77F)" \
+            dist/hise-cli.pkg
+      - name: Notarize pkg
+        run: |
+          xcrun notarytool submit dist/hise-cli.pkg \
+            --keychain-profile notarize --wait
+          xcrun stapler staple dist/hise-cli.pkg
       - uses: actions/upload-artifact@v4
         with:
           name: hise-cli-macos
-          path: dist/hise-cli
+          path: |
+            dist/hise-cli
+            dist/hise-cli.pkg
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/hise-cli
+          files: |
+            dist/hise-cli
+            dist/hise-cli.pkg
 
   build-windows:
     runs-on: [self-hosted, Windows]
