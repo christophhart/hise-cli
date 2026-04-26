@@ -84,6 +84,46 @@ use a separate vitest config (`vitest.screencast.config.ts`).
 `--recurse-submodules`) into `hise-source/` for C++ source inspection. This directory
 is gitignored — it is a local reference, not tracked.
 
+## Release pipeline
+
+Tag-triggered builds via `.github/workflows/release.yml`. Pushing a tag matching
+`v*` runs two parallel jobs on self-hosted runners:
+
+- **macOS** (`[self-hosted, macOS]`) → universal2 binary (lipo arm64 + x64) →
+  codesign with hardened runtime → `pkgbuild` → notarize + staple →
+  uploads `hise-cli.pkg` to the GitHub Release.
+- **Windows** (`[self-hosted, Windows]`) → bun-compiled `hise-cli.exe` →
+  Inno Setup compile (`installer/hise-cli.iss`) → uploads
+  `hise-cli-setup.exe` to the same release.
+
+`workflow_dispatch` is enabled for build-only smoke tests on a branch — those
+runs upload artifacts but skip the GitHub Release publish step.
+
+`hise-cli update` (in `src/cli/update.ts`) is the in-binary self-updater. It
+resolves the latest tag via the `/releases/latest` redirect (no GitHub API
+auth, no rate limit), downloads the platform installer, and runs it: macOS
+`sudo installer -pkg`, Windows silent installer with the rename trick (rename
+running `.exe` → `.exe.old`, run `setup.exe /VERYSILENT`). Auto-check fires
+2s into TUI launch only — CLI invocations stay silent so LLM agents don't
+make extra network calls.
+
+### Web SPA embedding
+
+The bun-compiled binary serves the `--web` SPA from memory, not disk.
+`scripts/embed-web-assets.mjs` walks `dist/web/` after the SPA build and emits
+`src/web/embedded-assets.ts` (gitignored) — a `Map<string, Uint8Array>` of all
+assets, base64-encoded for the JS bundle, decoded once at startup. The build
+chain order is:
+
+```
+build-web.mjs → embed-web-assets.mjs → build-embed.mjs → esbuild
+```
+
+### Self-hosted runner setup
+
+One-time bootstrap per machine — see [docs/RUNNER_SETUP.md](docs/RUNNER_SETUP.md).
+Without it, signing / notarization / Inno Setup steps will fail.
+
 ## Project Structure
 
 ```
