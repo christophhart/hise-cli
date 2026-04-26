@@ -16,8 +16,9 @@ import {
 	statSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(new URL(import.meta.url).pathname), "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const out = resolve(root, "dist", "embed");
 const dataOut = resolve(out, "data");
 const dataIn = resolve(root, "data");
