@@ -37,6 +37,11 @@ export {
 	dryRunScript,
 	formatRunReport,
 } from "../engine/run/executor.js";
+export {
+	analyzeScriptForEmbed,
+	MODE_EMBED_BLOCKLIST,
+} from "../engine/run/embed-check.js";
+export type { EmbedRunnability } from "../engine/run/embed-check.js";
 
 export type {
 	ParsedScript,

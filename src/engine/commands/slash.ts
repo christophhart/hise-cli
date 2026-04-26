@@ -901,6 +901,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		description: "Enter audio analysis mode (waveform, spectrogram)",
 		handler: createModeHandler("analyse"),
 		kind: "mode",
+		embedBlockedReason: "Audio file analysis needs local filesystem access.",
 	});
 
 	registry.register({
@@ -976,6 +977,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		description: "Execute a .hsc script file",
 		handler: handleRun,
 		kind: "command",
+		embedBlockedReason: "Reading .hsc files needs local filesystem access.",
 	});
 
 	registry.register({
@@ -983,6 +985,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		description: "Validate a .hsc script file (dry run, no execution)",
 		handler: handleParse,
 		kind: "command",
+		embedBlockedReason: "Reading .hsc files needs local filesystem access.",
 	});
 
 	registry.register({
@@ -1110,6 +1113,7 @@ export function registerWizardAliases(
 			description: `${def.header} (wizard)`,
 			handler: (args, session) => handleWizardWithDef(def, args, session),
 			kind: "command",
+			embedBlockedReason: "Wizards run shell commands and need the local CLI.",
 		});
 	}
 }

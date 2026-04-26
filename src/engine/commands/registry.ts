@@ -75,6 +75,9 @@ export interface CommandEntry {
 	handler: CommandHandler;
 	surfaces?: CommandSurface[];
 	kind?: "command" | "mode";
+	/** If set, this command cannot run in the web-embed bundle. The string
+	 *  is the user-facing reason — surfaced as the "Run" button tooltip. */
+	embedBlockedReason?: string;
 }
 
 export type CommandSurface = "tui" | "cli";
