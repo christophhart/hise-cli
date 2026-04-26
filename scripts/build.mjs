@@ -18,6 +18,18 @@ mkdirSync("dist", { recursive: true });
 	}
 }
 
+// Embed dist/web/* into src/web/embedded-assets.ts so the compiled
+// binary serves them from memory.
+{
+	const result = spawnSync(process.execPath, ["scripts/embed-web-assets.mjs"], {
+		stdio: "inherit",
+	});
+	if (result.status !== 0) {
+		process.stderr.write("[build] web asset embed failed\n");
+		process.exit(1);
+	}
+}
+
 // Build the docs-site embed bundle (browser-targeted ESM).
 {
 	const result = spawnSync(process.execPath, ["scripts/build-embed.mjs"], {

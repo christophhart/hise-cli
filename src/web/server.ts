@@ -2,13 +2,10 @@
 //
 // Single binary (--web flag). Spawns Bun.serve on 127.0.0.1, accepts
 // one WS per browser tab, broadcasts state through the singleton
-// WebHost. Embedded SPA assets served from dist/web/ (loaded from disk
-// in dev, embedded in compiled binary via build-web codegen).
+// WebHost. SPA assets are embedded at build time via
+// scripts/embed-web-assets.mjs and served from memory.
 
 import { randomUUID } from "node:crypto";
-import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
 import type { NodeRuntime } from "../bootstrap-runtime.js";
 import { HttpHiseConnection, type HiseConnection } from "../engine/hise.js";
 import {
@@ -90,8 +87,7 @@ export async function launchWeb(options: LaunchWebOptions): Promise<void> {
 
 	// ── HTTP + WS ─────────────────────────────────────────────────────
 	const token = randomUUID();
-	const assetRoot = resolveAssetRoot();
-	const restFetch = createRestHandler({ assetRoot });
+	const restFetch = createRestHandler();
 
 	const server = startServer(options.port ?? 1901, token, host, restFetch);
 
@@ -208,26 +204,3 @@ function startServer(
 	return tryPort(port);
 }
 
-// ── Asset root resolution ───────────────────────────────────────────
-
-function resolveAssetRoot(): string {
-	// Order:
-	//   1. Bundled `dist/index.js` → assets at <here>/web
-	//   2. Dev `bun run src/index.ts --web` → src/web/server.ts → ../../dist/web
-	//   3. Fallback: cwd/dist/web
-	let here: string;
-	try {
-		here = dirname(fileURLToPath(import.meta.url));
-	} catch {
-		here = process.cwd();
-	}
-	const candidates = [
-		resolve(here, "web"),
-		resolve(here, "..", "..", "dist", "web"),
-		resolve(process.cwd(), "dist", "web"),
-	];
-	for (const c of candidates) {
-		if (existsSync(c)) return c;
-	}
-	return candidates[0]!;
-}

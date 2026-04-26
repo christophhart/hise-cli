@@ -1,11 +1,6 @@
 // ── HTTP request handler — token check + static asset serving ───────
 
-import { resolve, normalize } from "node:path";
-
-export interface RestHandlerOptions {
-	/** Returns the absolute filesystem path of `dist/web/` (the built SPA). */
-	assetRoot: string;
-}
+import { embeddedAssets } from "./embedded-assets.js";
 
 const CONTENT_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -30,32 +25,17 @@ function contentTypeFor(path: string): string {
 	return CONTENT_TYPES[path.slice(dot).toLowerCase()] ?? "application/octet-stream";
 }
 
-export function createRestHandler(options: RestHandlerOptions) {
-	const root = resolve(options.assetRoot);
-
+export function createRestHandler() {
 	return async function fetch(req: Request): Promise<Response | undefined> {
 		const url = new URL(req.url);
-
-		// Static assets bind to 127.0.0.1 only — anyone reaching them is
-		// already on this machine. The token gates the WS upgrade in
-		// server.ts; that's where session control lives.
-		// SPA root → serve index.html
 		const path = url.pathname === "/" ? "/index.html" : url.pathname;
-		const filePath = normalize(resolve(root, "." + path));
-
-		// Path traversal guard
-		if (!filePath.startsWith(root)) {
-			return new Response("Forbidden", { status: 403 });
-		}
-
-		const file = Bun.file(filePath);
-		if (!(await file.exists())) {
+		const data = embeddedAssets.get(path);
+		if (!data) {
 			return new Response("Not Found", { status: 404 });
 		}
-
-		return new Response(await file.arrayBuffer(), {
+		return new Response(data as BodyInit, {
 			headers: {
-				"Content-Type": contentTypeFor(filePath),
+				"Content-Type": contentTypeFor(path),
 				"Cache-Control": "no-cache",
 				"X-Content-Type-Options": "nosniff",
 			},
