@@ -18,6 +18,17 @@ mkdirSync("dist", { recursive: true });
 	}
 }
 
+// Build the docs-site embed bundle (browser-targeted ESM).
+{
+	const result = spawnSync(process.execPath, ["scripts/build-embed.mjs"], {
+		stdio: "inherit",
+	});
+	if (result.status !== 0) {
+		process.stderr.write("[build] embed build failed\n");
+		process.exit(1);
+	}
+}
+
 await build({
 	entryPoints: ["src/index.ts"],
 	bundle: true,

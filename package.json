@@ -33,6 +33,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "build:web": "node scripts/build-web.mjs",
+    "build:embed": "node scripts/build-embed.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
