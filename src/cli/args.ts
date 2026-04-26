@@ -6,6 +6,7 @@ export type CliParseResult =
 	| { kind: "error"; message: string }
 	| { kind: "diagnose"; filePath: string }
 	| { kind: "run"; source: { type: "file"; path: string } | { type: "stdin" } | { type: "inline"; content: string }; dryRun: boolean; useMock: boolean; watch: boolean; verbosity: import("../engine/run/executor.js").RunReportVerbosity }
+	| { kind: "update"; check: boolean }
 	| {
 		kind: "execute";
 		entry: CommandEntry;
@@ -141,6 +142,10 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 
 	if (first === "repl") {
 		return { kind: "tui", args: args.slice(1) };
+	}
+
+	if (first === "update") {
+		return { kind: "update", check: args.includes("--check") };
 	}
 
 	if (first === "diagnose") {

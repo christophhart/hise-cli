@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import chalk from "chalk";
+import { existsSync, unlinkSync } from "node:fs";
 import { render } from "ink";
 import React from "react";
 import { App as TuiApp } from "./tui/app.js";
@@ -16,6 +17,21 @@ import { bootstrapNodeRuntime, type NodeRuntime } from "./bootstrap-runtime.js";
 // ── Runtime singleton ───────────────────────────────────────────────
 
 const runtime: NodeRuntime = bootstrapNodeRuntime();
+
+// ── Windows: clean up post-update sidecar ──────────────────────────
+//
+// `hise-cli update` on Windows renames the running .exe to .exe.old and
+// writes the new .exe at the original path. The .old file lingers
+// because Windows can't unlink a running executable. On the next launch
+// (a fresh process), we silently delete it.
+if (process.platform === "win32") {
+	try {
+		const oldExe = `${process.execPath}.old`;
+		if (existsSync(oldExe)) unlinkSync(oldExe);
+	} catch {
+		// best-effort; ignore failures (e.g. file in use, permissions)
+	}
+}
 
 // ── Alt-screen helpers ──────────────────────────────────────────────
 
@@ -163,6 +179,12 @@ async function main(): Promise<void> {
 		// Should not reach here — handled by fast-path above
 		console.error("diagnose must be handled before session bootstrap");
 		process.exit(1);
+	}
+
+	if (cliResult.kind === "update") {
+		const { executeUpdateCommand } = await import("./cli/update.js");
+		process.exitCode = await executeUpdateCommand({ check: cliResult.check });
+		return;
 	}
 
 	await launchRepl(cliResult.args);

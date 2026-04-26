@@ -22,6 +22,7 @@ USAGE
   hise-cli --run - < script.hsc                  Run script from stdin
   hise-cli wizard <subcommand>              Wizard operations (JSON output)
   hise-cli diagnose <filepath>              Diagnose HiseScript file (JSON output)
+  hise-cli update [--check]                 Self-update to latest GitHub release
   hise-cli --help                           Show this help
   hise-cli -<mode> --help                   Show mode-specific help
 

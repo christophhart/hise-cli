@@ -71,6 +71,9 @@ export interface LandingLogoProps {
 	scheme: ColorScheme;
 	/** Set to false to freeze the gradient animation. Default: true. */
 	animate?: boolean;
+	/** When set, replaces the blank line below the version with an
+	 *  "update available" hint. Layout dimensions are unchanged. */
+	updateInfo?: { latest: string } | null;
 }
 
 export const LandingLogo = React.memo(function LandingLogo({
@@ -78,6 +81,7 @@ export const LandingLogo = React.memo(function LandingLogo({
 	columns,
 	scheme,
 	animate = true,
+	updateInfo,
 }: LandingLogoProps) {
 	const [offset, setOffset] = useState(0);
 
@@ -94,12 +98,15 @@ export const LandingLogo = React.memo(function LandingLogo({
 	// Layout: logo + 1 blank + tagline + 1 blank + hint = logo + 4
 	const totalBlock = logoHeight + 4;
 
+	const updateText = updateInfo ? `update available: v${updateInfo.latest} — run \`hise-cli update\`` : "";
+
 	// Center vertically
 	const startRow = Math.max(0, Math.floor((viewportHeight - totalBlock) / 2));
 	// Center horizontally
 	const logoIndent = Math.max(0, Math.floor((columns - logoWidth) / 2));
 	const taglineIndent = Math.max(0, Math.floor((columns - TAGLINE.length) / 2));
 	const hintIndent = Math.max(0, Math.floor((columns - HINT_TEXT.length) / 2));
+	const updateIndent = Math.max(0, Math.floor((columns - updateText.length) / 2));
 
 	const rows: React.ReactNode[] = [];
 
@@ -144,6 +151,20 @@ export const LandingLogo = React.memo(function LandingLogo({
 					<Text backgroundColor={scheme.backgrounds.standard}>
 						{padLeft}
 						<Text color={scheme.foreground.muted}>{TAGLINE}</Text>
+						{padRight}
+					</Text>
+				</Box>,
+			);
+		} else if (logoRow === logoHeight + 2 && updateInfo) {
+			// Update-available indicator (replaces the blank row between
+			// tagline and hint when an update has been detected).
+			const padLeft = " ".repeat(updateIndent);
+			const padRight = " ".repeat(Math.max(0, columns - updateIndent - updateText.length));
+			rows.push(
+				<Box key={row}>
+					<Text backgroundColor={scheme.backgrounds.standard}>
+						{padLeft}
+						<Text color={MODE_ACCENTS.builder}>{updateText}</Text>
 						{padRight}
 					</Text>
 				</Box>,

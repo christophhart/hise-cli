@@ -70,6 +70,8 @@ export interface OutputProps {
 	scrollOffset: number;
 	/** Hide the scrollbar (e.g. when completion popup overlays it) */
 	hideScrollbar?: boolean;
+	/** When set, shows an "update available" line below the version on the landing logo. */
+	updateInfo?: { latest: string } | null;
 }
 
 export const Output = React.memo(function Output({
@@ -81,6 +83,7 @@ export const Output = React.memo(function Output({
 	animate,
 	scrollOffset,
 	hideScrollbar,
+	updateInfo,
 }: OutputProps) {
 	const { scheme, layout } = useTheme();
 
@@ -91,6 +94,7 @@ export const Output = React.memo(function Output({
 				columns={columns}
 				scheme={scheme}
 				animate={animate}
+				updateInfo={updateInfo}
 			/>
 		);
 	}

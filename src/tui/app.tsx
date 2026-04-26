@@ -416,6 +416,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// Connection / command state
 	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("error");
+	const [updateInfo, setUpdateInfo] = useState<{ latest: string } | null>(null);
 	const [disabled, setDisabled] = useState(false);
 	// Synchronous disabled check — avoids the React render-cycle gap
 	// where keystrokes can arrive between setDisabled(true) and the
@@ -501,6 +502,18 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 
 	// Show-keys badge — managed by custom hook
 	const { keyLabel, pushKeyLabel } = useKeyLabel(showKeys ?? false, f5PressedRef, f7PressedRef);
+
+	// Background update check — TUI only. Fires once 2s after mount so it
+	// never blocks startup. Failure (network, etc.) is silent — checkLatest
+	// returns null and we leave updateInfo at null (no indicator rendered).
+	useEffect(() => {
+		const timer = setTimeout(async () => {
+			const { checkLatest } = await import("../cli/update.js");
+			const info = await checkLatest();
+			if (info?.hasUpdate) setUpdateInfo({ latest: info.latest });
+		}, 2000);
+		return () => clearTimeout(timer);
+	}, []);
 
 	// ── Central key dispatcher — single useInput, priority chain ────
 	//
@@ -2043,6 +2056,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 							columns={contentColumns}
 							animate={animate}
 							hideScrollbar={completionState?.visible}
+							updateInfo={updateInfo}
 						/>
 					</Profiler>
 					) : (
