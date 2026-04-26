@@ -1087,6 +1087,9 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 									session.projectFolder = folder;
 									void session.refreshScriptFileCache();
 								}
+								if (typeof data.activeIsSnippetBrowser === "boolean") {
+									session.playgroundActive = data.activeIsSnippetBrowser;
+								}
 								if (!cancelled) {
 									setProjectName(name);
 									setProjectPath(folder);

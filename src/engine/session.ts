@@ -55,6 +55,7 @@ export class Session implements SessionContext, CommandSession {
 	pendingWizard: PendingWizard | null = null;
 	projectName: string | null = null;
 	projectFolder: string | null = null;
+	playgroundActive: boolean | null = null;
 	loadScriptFile?: (filePath: string) => Promise<string>;
 	saveScriptFile?: (filePath: string, content: string) => Promise<void>;
 	globScriptFiles?: (pattern: string) => Promise<string[]>;

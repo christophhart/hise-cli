@@ -46,6 +46,9 @@ export interface SessionContext {
 	projectName?: string | null;
 	/** HISE project folder (set on initial connection or after /hise launch). */
 	projectFolder?: string | null;
+	/** True when the snippet browser (a second HISE instance) is the active backend.
+	 *  Mirrors `/api/status`'s `activeIsSnippetBrowser`. Null until the first probe. */
+	playgroundActive?: boolean | null;
 	/** Exit the current mode (pops the mode stack). At root, signals quit. */
 	popMode(): import("../result.js").CommandResult;
 	/** Invalidate all cached mode trees — call after undo/redo operations. */

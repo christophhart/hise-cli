@@ -71,7 +71,7 @@ Enter a mode to start working, or use /wizard for guided workflows.
 - **/inspect** — Runtime monitor (version, project info)
 - **/export** — Build targets and export settings
 - **/undo** — Undo history and plan groups
-- **/hise** — Runtime control (launch, shutdown, screenshot, profile)
+- **/hise** — Runtime control (launch, shutdown, screenshot, profile, playground)
 - **/wizard** — Guided workflows (setup, export, project creation)
 - **/setup** — Install and build HISE from source (wizard alias)
 - **/update** — Pull latest CI-green develop commit and rebuild HISE (wizard alias)

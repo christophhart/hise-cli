@@ -492,6 +492,166 @@ describe("HiseMode profile", () => {
 	});
 });
 
+// ── Status (snippet browser cache) ─────────────────────────────────
+
+describe("HiseMode status", () => {
+	it("caches activeIsSnippetBrowser on session and annotates status text", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/status", () => ({
+			...STATUS_RESPONSE,
+			activeIsSnippetBrowser: true,
+		}));
+
+		const session = mockSession(mock);
+		const result = await mode.parse("status", session);
+
+		expect(session.playgroundActive).toBe(true);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("snippet browser active");
+		}
+	});
+
+	it("clears playgroundActive when activeIsSnippetBrowser is false", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/status", () => ({
+			...STATUS_RESPONSE,
+			activeIsSnippetBrowser: false,
+		}));
+
+		const session = mockSession(mock);
+		session.playgroundActive = true;
+		const result = await mode.parse("status", session);
+
+		expect(session.playgroundActive).toBe(false);
+		if (result.type === "text") {
+			expect(result.content).not.toContain("snippet browser active");
+		}
+	});
+});
+
+// ── Playground ─────────────────────────────────────────────────────
+
+describe("HiseMode playground", () => {
+	function playgroundResponse(active: "main" | "snippet", exists = true) {
+		return {
+			success: true as const,
+			exists,
+			active,
+			logs: [] as string[],
+			errors: [] as Array<{ errorMessage: string; callstack: string[] }>,
+		};
+	}
+
+	it("open POSTs action 'launch' and sets playgroundActive=true", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+		mock.onPost("/api/snippet_browser", () => playgroundResponse("snippet"));
+
+		const session = mockSession(mock);
+		const result = await mode.parse("playground open", session);
+
+		const call = mock.calls.find((c) => c.endpoint === "/api/snippet_browser");
+		expect(call).toBeDefined();
+		expect(call?.body).toEqual({ action: "launch" });
+		expect(session.playgroundActive).toBe(true);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toContain("Snippet browser opened");
+		}
+	});
+
+	it("close POSTs action 'shutdown' and sets playgroundActive=false", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+		mock.onPost("/api/snippet_browser", () => playgroundResponse("main", false));
+
+		const session = mockSession(mock);
+		session.playgroundActive = true;
+		const result = await mode.parse("playground close", session);
+
+		const call = mock.calls.find((c) => c.endpoint === "/api/snippet_browser");
+		expect(call?.body).toEqual({ action: "shutdown" });
+		expect(session.playgroundActive).toBe(false);
+		if (result.type === "text") {
+			expect(result.content).toContain("Snippet browser closed");
+		}
+	});
+
+	it("enable POSTs action 'enable'", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+		mock.onPost("/api/snippet_browser", () => playgroundResponse("snippet"));
+
+		const result = await mode.parse("playground enable", mockSession(mock));
+		const call = mock.calls.find((c) => c.endpoint === "/api/snippet_browser");
+		expect(call?.body).toEqual({ action: "enable" });
+		if (result.type === "text") {
+			expect(result.content).toContain("Snippet browser active");
+		}
+	});
+
+	it("disable POSTs action 'disable'", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+		mock.onPost("/api/snippet_browser", () => playgroundResponse("main"));
+
+		const result = await mode.parse("playground disable", mockSession(mock));
+		const call = mock.calls.find((c) => c.endpoint === "/api/snippet_browser");
+		expect(call?.body).toEqual({ action: "disable" });
+		if (result.type === "text") {
+			expect(result.content).toContain("Main project active");
+		}
+	});
+
+	it("surfaces error envelope (e.g. 409 no snippet exists)", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+		mock.onPost("/api/snippet_browser", () => ({
+			success: false as const,
+			logs: [],
+			errors: [{ errorMessage: "No snippet browser instance.", callstack: [] }],
+		}));
+
+		const result = await mode.parse("playground enable", mockSession(mock));
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain("No snippet browser instance.");
+		}
+	});
+
+	it("returns error without connection", async () => {
+		const mode = new HiseMode(null);
+		const session: SessionContext = {
+			connection: null,
+			projectName: null,
+			projectFolder: null,
+			popMode: () => ({ type: "text", content: "" }),
+		};
+		const result = await mode.parse("playground open", session);
+		expect(result.type).toBe("error");
+	});
+
+	it("returns usage error for missing or unknown subcommand", async () => {
+		const mode = new HiseMode(null);
+		const mock = new MockHiseConnection();
+
+		const empty = await mode.parse("playground", mockSession(mock));
+		expect(empty.type).toBe("error");
+		if (empty.type === "error") {
+			expect(empty.message).toContain("Usage:");
+		}
+
+		const bad = await mode.parse("playground foo", mockSession(mock));
+		expect(bad.type).toBe("error");
+		if (bad.type === "error") {
+			expect(bad.message).toContain("Usage:");
+		}
+	});
+});
+
 // ── Completion ─────────────────────────────────────────────────────
 
 describe("HiseMode completion", () => {
@@ -527,5 +687,19 @@ describe("HiseMode completion", () => {
 		const mode = new HiseMode(null);
 		const result = mode.complete!("screenshot o", 12);
 		expect(result.items.some((i) => i.label === "of")).toBe(true);
+	});
+
+	it("completes playground actions", () => {
+		const mode = new HiseMode(null);
+		const result = mode.complete!("playground ", 11);
+		const labels = result.items.map((i) => i.label);
+		expect(labels).toEqual(["open", "close", "enable", "disable"]);
+	});
+
+	it("filters playground actions by prefix", () => {
+		const mode = new HiseMode(null);
+		const result = mode.complete!("playground e", 12);
+		const labels = result.items.map((i) => i.label);
+		expect(labels).toEqual(["enable"]);
 	});
 });

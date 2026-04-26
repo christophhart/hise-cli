@@ -109,8 +109,16 @@ const HISE_COMMANDS = new Map<string, string>([
 	["shutdown", "Gracefully quit HISE"],
 	["screenshot", "Capture interface screenshot"],
 	["profile", "Record and display a performance profile"],
+	["playground", "Snippet browser control (open/close/enable/disable)"],
 	["help", "Show available commands"],
 ]);
+
+const PLAYGROUND_ACTIONS: Record<string, string> = {
+	open: "launch",
+	close: "shutdown",
+	enable: "enable",
+	disable: "disable",
+};
 
 // ── Delay utility ──────────────────────────────────────────────────
 
@@ -168,6 +176,19 @@ export class HiseMode implements Mode {
 			const items = ["debug"]
 				.filter((k) => k.startsWith(tail.toLowerCase()))
 				.map((k) => ({ label: k, detail: "Launch HISE Debug build" }));
+			return { items, from: tailFrom, to: input.length };
+		}
+
+		if (cmd === "playground") {
+			const details: Record<string, string> = {
+				open: "Open snippet browser",
+				close: "Close snippet browser",
+				enable: "Switch to snippet browser",
+				disable: "Switch back to main project",
+			};
+			const items = Object.keys(PLAYGROUND_ACTIONS)
+				.filter((k) => k.startsWith(tail.toLowerCase()))
+				.map((k) => ({ label: k, detail: details[k] }));
 			return { items, from: tailFrom, to: input.length };
 		}
 
@@ -229,6 +250,8 @@ export class HiseMode implements Mode {
 				return this.handleScreenshot(args, session);
 			case "profile":
 				return this.handleProfile(args, session);
+			case "playground":
+				return this.handlePlayground(args, session);
 			default:
 				return errorResult(`Unhandled command: ${command}`);
 		}
@@ -256,6 +279,7 @@ export class HiseMode implements Mode {
 						session.projectName = name;
 						session.projectFolder = folder;
 					}
+					session.playgroundActive = extractSnippetBrowserActive(resp);
 				}
 			} catch {
 				online = false;
@@ -270,7 +294,8 @@ export class HiseMode implements Mode {
 			return textResult("HISE offline.");
 		}
 
-		return textResult(`HISE online. Project: "${name}" at ${folder}`);
+		const suffix = session.playgroundActive === true ? " (snippet browser active)" : "";
+		return textResult(`HISE online. Project: "${name}" at ${folder}${suffix}`);
 	}
 
 	// ── launch ────────────────────────────────────────────────────
@@ -320,6 +345,7 @@ export class HiseMode implements Mode {
 			return textResult("HISE is running.");
 		}
 		if (isSuccessResponse(resp)) {
+			session.playgroundActive = extractSnippetBrowserActive(resp);
 			const project = extractProjectFromStatus(resp);
 			if (project) {
 				session.projectName = project.name;
@@ -355,6 +381,44 @@ export class HiseMode implements Mode {
 		}
 
 		return textResult("HISE shut down.");
+	}
+
+	// ── playground ────────────────────────────────────────────────
+
+	private async handlePlayground(args: string, session: SessionContext): Promise<CommandResult> {
+		if (!session.connection) {
+			return errorResult("No HISE connection.");
+		}
+
+		const sub = args.trim().toLowerCase();
+		if (!sub || !(sub in PLAYGROUND_ACTIONS)) {
+			return errorResult("Usage: playground open|close|enable|disable");
+		}
+
+		const response = await session.connection.post("/api/snippet_browser", {
+			action: PLAYGROUND_ACTIONS[sub],
+		});
+
+		if (isErrorResponse(response)) {
+			return errorResult(response.message);
+		}
+		if (isEnvelopeResponse(response) && !response.success) {
+			const msg = response.errors?.[0]?.errorMessage ?? "Snippet browser request failed.";
+			return errorResult(msg);
+		}
+
+		const data = response as unknown as Record<string, unknown>;
+		const active = typeof data.active === "string" ? data.active : null;
+		if (active === "snippet") session.playgroundActive = true;
+		else if (active === "main") session.playgroundActive = false;
+
+		const verbs: Record<string, string> = {
+			open: "Snippet browser opened",
+			close: "Snippet browser closed",
+			enable: "Snippet browser active",
+			disable: "Main project active",
+		};
+		return textResult(verbs[sub] + ".");
 	}
 
 	// ── screenshot ────────────────────────────────────────────────
@@ -467,11 +531,17 @@ ${rows.join("\n")}
 - \`launch [debug]\` — start HISE (or HISE Debug) and wait for connection
 - \`shutdown\` — gracefully quit HISE
 - \`screenshot [of <id>] [at <scale>] [to <path>]\` — capture interface
-- \`profile [thread audio|ui|scripting] [for <N>ms]\` — performance profile`);
+- \`profile [thread audio|ui|scripting] [for <N>ms]\` — performance profile
+- \`playground open|close|enable|disable\` — drive the snippet browser (a second HISE instance for auditioning snippets)`);
 	}
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
+
+function extractSnippetBrowserActive(response: Record<string, unknown>): boolean | null {
+	const v = response.activeIsSnippetBrowser;
+	return typeof v === "boolean" ? v : null;
+}
 
 function extractProjectFromStatus(
 	response: Record<string, unknown>,

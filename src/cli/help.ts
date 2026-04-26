@@ -603,10 +603,11 @@ SYNTAX
   hise-cli -hise "<command>"
 
 COMMANDS
-  launch [debug]                                  Start HISE and wait for connection
-  shutdown                                        Gracefully quit HISE
-  screenshot [of <id>] [at <scale>] [to <path>]  Capture interface screenshot
-  profile [thread audio|ui|scripting] [for <N>ms] Record performance profile
+  launch [debug]                                   Start HISE and wait for connection
+  shutdown                                         Gracefully quit HISE
+  screenshot [of <id>] [at <scale>] [to <path>]    Capture interface screenshot
+  profile [thread audio|ui|scripting] [for <N>ms]  Record performance profile
+  playground open|close|enable|disable             Control the snippet browser
 
 LAUNCH
   Finds HISE (or "HISE Debug") on PATH, spawns it, and polls /api/status
@@ -622,12 +623,22 @@ PROFILE
   then displays a summary table sorted by peak duration. Thread names
   are case-insensitive: audio, ui, scripting (or script).
 
+PLAYGROUND
+  Drives a second HISE instance dedicated to browsing and auditioning
+  snippets. While the snippet browser is active, runtime endpoints
+  (list_components, repl, recompile, ...) target the snippet, not the
+  main project. 'open' creates and switches to the snippet browser;
+  'close' destroys it; 'enable'/'disable' switch between the two without
+  destroying the snippet (errors if no snippet exists).
+
 EXAMPLES
   hise-cli -hise "launch"
   hise-cli -hise "launch debug"
   hise-cli -hise "screenshot"
   hise-cli -hise "screenshot of Knob1 at 50% to images/knob.png"
   hise-cli -hise "profile thread audio for 2000ms"
+  hise-cli -hise "playground open"
+  hise-cli -hise "playground disable"
   hise-cli -hise "shutdown"`,
 
 	sequence: `hise-cli -sequence — timed MIDI sequence composer
