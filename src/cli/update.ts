@@ -13,7 +13,8 @@ import { join } from "node:path";
 
 const RELEASES_LATEST_URL = "https://github.com/christophhart/hise-cli/releases/latest";
 const PKG_URL = "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli.pkg";
-const INSTALLER_URL = "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli-setup.exe";
+const INSTALLER_URL_X64 = "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli-setup.exe";
+const INSTALLER_URL_ARM64 = "https://github.com/christophhart/hise-cli/releases/latest/download/hise-cli-setup-arm64.exe";
 
 export interface UpdateInfo {
 	current: string;
@@ -126,7 +127,8 @@ async function installMacOS(latest: string): Promise<number> {
 
 async function installWindows(latest: string): Promise<number> {
 	const setupPath = join(tmpdir(), "hise-cli-setup.exe");
-	const ok = await downloadTo(INSTALLER_URL, setupPath);
+	const url = process.arch === "arm64" ? INSTALLER_URL_ARM64 : INSTALLER_URL_X64;
+	const ok = await downloadTo(url, setupPath);
 	if (!ok) return 1;
 
 	const exe = process.execPath;

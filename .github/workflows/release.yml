@@ -60,15 +60,24 @@ jobs:
       - run: npm install --prefer-offline --no-audit --no-fund
       - run: npm run build
       - run: node scripts/build-binary.mjs --target bun-windows-x64
-      - name: Build installer
+      - name: Build x64 installer
         run: |
           $version = node -p "require('./package.json').version"
           iscc /DAppVersion=$version installer\hise-cli.iss
+      - run: node scripts/build-binary.mjs --target bun-windows-arm64
+      - name: Build arm64 installer
+        run: |
+          $version = node -p "require('./package.json').version"
+          iscc /DAppVersion=$version /DArch=arm64 installer\hise-cli.iss
       - uses: actions/upload-artifact@v4
         with:
           name: hise-cli-windows
-          path: dist/hise-cli-setup.exe
+          path: |
+            dist/hise-cli-setup.exe
+            dist/hise-cli-setup-arm64.exe
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/hise-cli-setup.exe
+          files: |
+            dist/hise-cli-setup.exe
+            dist/hise-cli-setup-arm64.exe

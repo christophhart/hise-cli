@@ -18,6 +18,19 @@
   #define AppVersion "0.0.0-dev"
 #endif
 
+; Arch is "x64" (default) or "arm64". Set via /DArch=arm64 for ARM build.
+#ifndef Arch
+  #define Arch "x64"
+#endif
+
+#if Arch == "arm64"
+  #define ArchAllowed "arm64"
+  #define OutBase "hise-cli-setup-arm64"
+#else
+  #define ArchAllowed "x64compatible"
+  #define OutBase "hise-cli-setup"
+#endif
+
 [Setup]
 AppId={{9E3A8E22-3F2C-4B5D-9A4E-6C2C9F3E8A11}
 AppName={#AppName}
@@ -33,13 +46,13 @@ DisableFinishedPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\dist
-OutputBaseFilename=hise-cli-setup
+OutputBaseFilename={#OutBase}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 ChangesEnvironment=yes
-ArchitecturesInstallIn64BitMode=x64compatible
-ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode={#ArchAllowed}
+ArchitecturesAllowed={#ArchAllowed}
 
 [Files]
 Source: "..\dist\{#AppExeName}"; DestDir: "{app}"; Flags: ignoreversion

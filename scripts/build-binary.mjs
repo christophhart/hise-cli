@@ -18,6 +18,7 @@ const targets = [
 	"bun-darwin-x64",
 	"bun-linux-x64",
 	"bun-windows-x64",
+	"bun-windows-arm64",
 ];
 
 const requestedTarget = args.includes("--target")
