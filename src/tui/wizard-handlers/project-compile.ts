@@ -17,7 +17,7 @@
 // output directory) and we drive MSBuild directly.
 
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
-import { filterMsbuildLine, resolveMsbuildPath, type VsVersion } from "./setup-tasks.js";
+import { filterMsbuildLine, resolveMsbuildPath, stripPinnedToolsetVersions, type VsVersion } from "./setup-tasks.js";
 
 /** Progress callback: a log line plus the transient flag from spawn. */
 export type CompileEmit = (message: string, transient?: boolean) => void;
@@ -33,6 +33,10 @@ export interface WindowsCompileSpec {
 	readonly configuration: string;
 	/** MSBuild /p:Platform value (e.g. "x64", "Win32", "ARM64"). Default "x64". */
 	readonly msbuildPlatform?: string;
+	/** Visual Studio major year — picks the Builds/VisualStudio<vsVersion> dir
+	 *  that the toolset-pin stripper walks before MSBuild runs. Defaults to
+	 *  "2022". */
+	readonly vsVersion?: VsVersion;
 	/**
 	 * Root of the HISE install — used only to strip the path prefix on
 	 * MSBuild diagnostic lines so they render compactly. Optional.
@@ -95,9 +99,20 @@ export async function runWindowsJuceCompile(
 		};
 	}
 
+	// Projucer's VS2022 exporter pins MSVC toolset 14.36.32532 in the
+	// .vcxproj. Newer VS2022 installs (14.43+) don't ship that exact
+	// subversion → MSB8070. Strip the pin so MSBuild picks the latest
+	// installed toolset.
+	const vsVersion = spec.vsVersion ?? "2022";
+	const slnDir = spec.slnFile.replace(/\\[^\\]+\.sln$/i, "");
+	await stripPinnedToolsetVersions(executor, slnDir);
+
 	const env: Record<string, string> = {
 		PreferredToolArchitecture: "x64",
-		VisualStudioVersion: "18.0",
+		// MSBuild loads version-specific .targets keyed off this env var.
+		// Mirror the user's installed VS major version so VS2022 MSBuild
+		// doesn't try to load the VS2026 (18.0) targets.
+		VisualStudioVersion: vsVersion === "2026" ? "18.0" : "17.0",
 		// VSLANG=1033 (en-US LCID) forces MSBuild / cl.exe to emit English
 		// diagnostics regardless of the OS UI locale so filterMsbuildLine
 		// only has to parse one language.
@@ -167,6 +182,7 @@ export async function runJuceCompile(
 			slnFile,
 			configuration: spec.configuration ?? "Release",
 			msbuildPlatform: spec.msbuildPlatform ?? "x64",
+			vsVersion,
 			hiseInstallPath: spec.hisePath,
 		}, emit);
 	}

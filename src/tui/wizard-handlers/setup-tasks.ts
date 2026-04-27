@@ -861,8 +861,16 @@ export async function compileHise(
 			return fail("Could not locate a Visual Studio installation with MSBuild. Re-run the setup wizard.");
 		}
 		const vsVersion = spec.vsVersion ?? "2022";
-		const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio${vsVersion}\\HISE Standalone.sln`;
+		const buildsRoot = `${installPath}\\projects\\standalone\\Builds\\VisualStudio${vsVersion}`;
+		const sln = `${buildsRoot}\\HISE Standalone.sln`;
 		const config = includeFaust ? "ReleaseWithFaust" : "Release";
+
+		// Projucer's VS2022 exporter pins MSVC toolset 14.36.32532 in the
+		// .vcxproj. Newer VS2022 installs (14.43+) don't ship that exact
+		// subversion → MSB8070. Strip the pin so MSBuild picks the latest
+		// installed toolset.
+		await stripPinnedToolsetVersions(executor, buildsRoot);
+
 		const msbuildArgs = [
 			sln,
 			`/p:Configuration=${config}`,
@@ -1147,6 +1155,30 @@ function hiseBinaryName(platform: string): string {
 	if (platform === "Windows") return "HISE.exe";
 	if (platform === "macOS") return "HISE";
 	return "HISE Standalone";
+}
+
+/** Strip pinned MSVC toolset versions from every .vcxproj under `buildsDir`.
+ *  Projucer's VS2022 exporter bakes a specific subversion (e.g. 14.36.32532)
+ *  into the .vcxproj. Users on a newer VS2022 install (with 14.43+) hit
+ *  MSB8070 because that exact toolset isn't on disk. Removing the pin makes
+ *  MSBuild fall back to the default (latest installed) toolset.
+ *  No-op on non-Windows (the helper only runs in the Windows branch). */
+export async function stripPinnedToolsetVersions(
+	executor: PhaseExecutor,
+	buildsDir: string,
+): Promise<void> {
+	const escaped = buildsDir.replace(/'/g, "''");
+	await executor.spawn("powershell", [
+		"-NoProfile",
+		"-ExecutionPolicy", "Bypass",
+		"-Command",
+		`if (Test-Path -LiteralPath '${escaped}') { ` +
+		`Get-ChildItem -Path '${escaped}' -Filter *.vcxproj -Recurse -ErrorAction SilentlyContinue | ForEach-Object { ` +
+		`$c = [IO.File]::ReadAllText($_.FullName); ` +
+		`$n = $c -replace '<VCToolsVersion>[^<]*</VCToolsVersion>', '' -replace '<PlatformToolsetVersion>[^<]*</PlatformToolsetVersion>', ''; ` +
+		`if ($n -ne $c) { [IO.File]::WriteAllText($_.FullName, $n, (New-Object Text.UTF8Encoding $false)) } ` +
+		`} }`,
+	], {});
 }
 
 /** Resolve the MSBuild.exe path via vswhere so BuildTools / Community /
