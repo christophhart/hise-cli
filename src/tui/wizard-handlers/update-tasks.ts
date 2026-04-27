@@ -13,7 +13,7 @@ import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type { WizardExecResult } from "../../engine/wizard/types.js";
 import { isOn } from "../../engine/wizard/types.js";
 import { extractStatusPayload } from "../../engine/modes/inspect.js";
-import { compileHise, createHiseSymlink, hiseBinaryPath } from "./setup-tasks.js";
+import { compileHise, createHiseSymlink, hiseBinaryPath, normaliseVsVersion } from "./setup-tasks.js";
 
 export interface UpdateHandlerDeps {
 	readonly executor: PhaseExecutor;
@@ -212,6 +212,7 @@ export function createUpdateCompileHandler(deps: UpdateHandlerDeps): InternalTas
 			architecture: answers.architecture,
 			includeFaust: isOn(answers.includeFaust),
 			parallelJobs: Math.max(1, parseInt(answers.parallelJobs ?? "1", 10) || 1),
+			vsVersion: normaliseVsVersion(answers.vsVersion),
 			// No `clean: true` here — when the cleanBuilds toggle is on the
 			// previous task wiped the entire Builds folder; when it's off the
 			// user explicitly asked for an incremental build, and running
@@ -238,8 +239,9 @@ export function createUpdateSymlinkHandler(deps: UpdateHandlerDeps): InternalTas
 		if (!installPath) return fail("Install path is empty — cannot resolve bin dir.");
 		const platform = answers.platform ?? "Linux";
 		const includeFaust = isOn(answers.includeFaust);
+		const vsVersion = normaliseVsVersion(answers.vsVersion);
 
-		const binary = hiseBinaryPath(installPath, platform, includeFaust);
+		const binary = hiseBinaryPath(installPath, platform, includeFaust, vsVersion);
 		const result = await createHiseSymlink(executor, binary, platform, "symlink", onProgress);
 
 		// Splice the chosen directory into this Node process's PATH so

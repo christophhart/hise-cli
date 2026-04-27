@@ -105,6 +105,14 @@ tabs:
         label: Faust Installed
         disabled: true
         help: Detected automatically — skips Faust installation if found
+      - id: vsVersion
+        type: text
+        label: Visual Studio Version
+        disabled: true
+        help: Detected major year (2022 or 2026). Drives the Projucer exporter folder.
+        visibleIf:
+          fieldId: platform
+          value: Windows
 
 submitLabel: Starts the HISE build pipeline (may take 30+ minutes)
 tasks:
@@ -136,6 +144,10 @@ tasks:
     function: setupIppInstall
     type: internal
     label: Install Intel IPP
+  - id: adaptVsVersion
+    function: setupAdaptVsVersion
+    type: internal
+    label: Adapt Projucer file
   - id: compile
     function: setupCompile
     type: internal

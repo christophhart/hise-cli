@@ -64,6 +64,11 @@ export function createUpdateDetectHandler(deps: UpdateDetectDeps): InternalInitH
 		}
 		defaults.installPath = installPath;
 
+		// VS version — for the Windows MSBuild path. Falls back to "2022"
+		// (the year aka.ms/vs/stable installs) when compilerSettings.xml
+		// has no VisualStudioVersion element.
+		defaults.vsVersion = (await readVsVersionFromCompilerSettings(deps.executor, platform)) ?? "2022";
+
 		// Running build SHA + reachability. When HISE is running we trust
 		// /api/status; when it's offline we fall back to the currentGitHash.txt
 		// file that the build writes next to the repo root. If neither source
@@ -173,6 +178,26 @@ export function parseHisePath(xml: string): string | null {
 	if (!match || !match[1]) return null;
 	const value = match[1].trim();
 	return value.length > 0 ? value : null;
+}
+
+/** Extract the major year from `<VisualStudioVersion value="Visual Studio 20XX"/>`. */
+export function parseVsVersion(xml: string): "2022" | "2026" | null {
+	const match = /<VisualStudioVersion\s+value="Visual Studio (\d{4})"\s*\/?>/.exec(xml);
+	if (!match) return null;
+	if (match[1] === "2022" || match[1] === "2026") return match[1];
+	return null;
+}
+
+export async function readVsVersionFromCompilerSettings(
+	executor: PhaseExecutor,
+	platform: string,
+): Promise<"2022" | "2026" | null> {
+	const path = compilerSettingsPath(platform);
+	const read = platform === "Windows"
+		? await executor.spawn("cmd", ["/c", "type", path], {})
+		: await executor.spawn("cat", [path], {});
+	if (read.exitCode !== 0) return null;
+	return parseVsVersion(read.stdout);
 }
 
 /** Read `<installPath>/currentGitHash.txt` — a plain SHA that the HISE build

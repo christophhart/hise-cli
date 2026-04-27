@@ -5,6 +5,7 @@
 
 import type { InternalInitHandler } from "../../engine/wizard/handler-registry.js";
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
+import { detectVsVersion } from "./setup-tasks.js";
 
 const DEFAULT_INSTALL_PATHS_MACOS = ["~/HISE", "/Users/Shared/HISE", "~/Documents/HISE", "~/Desktop/HISE"];
 const DEFAULT_INSTALL_PATHS_WINDOWS = ["C:\\HISE", "~/HISE", "D:\\HISE", "~/Documents/HISE", "~/Desktop/HISE"];
@@ -36,6 +37,17 @@ export function createSetupDetectHandler(executor: PhaseExecutor): InternalInitH
 		defaults.compilerVersion = await detectCompiler(executor, platform);
 		defaults.hasVs =
 			platform === "Windows" && defaults.compilerVersion !== "Not detected" ? "1" : "0";
+
+		// Visual Studio major year (Windows only). Defaults to "2022" — the
+		// year aka.ms/vs/stable installs when compilerInstall has to fetch
+		// VS Build Tools — so first-time setups on a clean VM end up with
+		// VS2022 paths. The adaptVsVersion task re-probes after install in
+		// case the detected version changed.
+		if (platform === "Windows") {
+			defaults.vsVersion = (await detectVsVersion(executor)) ?? "2022";
+		} else {
+			defaults.vsVersion = "2022";
+		}
 
 		// Intel IPP detection (Windows only)
 		defaults.hasIpp = await detectIpp(executor, platform) ? "1" : "0";

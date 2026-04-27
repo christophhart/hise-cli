@@ -7,6 +7,8 @@ import {
 	createSetupCompilerInstallHandler,
 	createSetupCompileHandler,
 	filterMsbuildLine,
+	adaptJucerToVsVersion,
+	normaliseVsVersion,
 } from "./setup-tasks.js";
 import { MockPhaseExecutor } from "../../engine/wizard/mock-phase-executor.js";
 import type { WizardProgress } from "../../engine/wizard/types.js";
@@ -394,10 +396,11 @@ describe("setupCompilerInstall", () => {
 describe("setupCompile (Windows)", () => {
 	it("passes VSLANG=1033 to MSBuild so output is English", async () => {
 		const executor = new MockPhaseExecutor();
-		// vswhere → installationPath, Projucer + MSBuild → success
+		// vswhere -find returns the MSBuild.exe path directly; no
+		// installationPath concat in resolveMsbuildPath any more.
 		executor.onSpawn("C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe", {
 			exitCode: 0,
-			stdout: "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\n",
+			stdout: "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe\n",
 			stderr: "",
 		});
 		const handler = createSetupCompileHandler(executor);
@@ -407,6 +410,52 @@ describe("setupCompile (Windows)", () => {
 		expect(msbuildCall).toBeDefined();
 		expect(msbuildCall?.env?.VSLANG).toBe("1033");
 		expect(msbuildCall?.env?.VSLANGCODE).toBe("en-US");
+	});
+});
+
+describe("adaptJucerToVsVersion", () => {
+	const vs2026 = `<JUCERPROJECT>
+  <EXPORTFORMATS>
+    <VS2026 targetFolder="Builds/VisualStudio2026" smallIcon="abc"
+            extraDefs="HISE_USE_VS2022=0&#10;PERFETTO=0">
+      <CONFIGURATIONS>
+        <CONFIGURATION name="Release"/>
+      </CONFIGURATIONS>
+    </VS2026>
+  </EXPORTFORMATS>
+</JUCERPROJECT>`;
+
+	it("rewrites VS2026 → VS2022 and flips HISE_USE_VS2022 to 1", () => {
+		const out = adaptJucerToVsVersion(vs2026, "2022");
+		expect(out).not.toBeNull();
+		expect(out).toContain("<VS2022 targetFolder=\"Builds/VisualStudio2022\"");
+		expect(out).toContain("</VS2022>");
+		expect(out).toContain("HISE_USE_VS2022=1");
+		expect(out).not.toContain("VS2026");
+		expect(out).not.toContain("VisualStudio2026");
+	});
+
+	it("returns null when already targeting the requested VS version", () => {
+		const out = adaptJucerToVsVersion(vs2026, "2026");
+		expect(out).toBeNull();
+	});
+
+	it("is idempotent — second pass after a 2022 rewrite is a no-op", () => {
+		const first = adaptJucerToVsVersion(vs2026, "2022");
+		expect(first).not.toBeNull();
+		const second = adaptJucerToVsVersion(first!, "2022");
+		expect(second).toBeNull();
+	});
+});
+
+describe("normaliseVsVersion", () => {
+	it("returns 2022 by default for missing / unknown values", () => {
+		expect(normaliseVsVersion(undefined)).toBe("2022");
+		expect(normaliseVsVersion("")).toBe("2022");
+		expect(normaliseVsVersion("garbage")).toBe("2022");
+	});
+	it("returns 2026 only for an exact match", () => {
+		expect(normaliseVsVersion("2026")).toBe("2026");
 	});
 });
 

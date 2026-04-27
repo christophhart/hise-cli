@@ -374,24 +374,118 @@ export function createSetupFaustInstallHandler(_executor: PhaseExecutor): Intern
 	};
 }
 
+// ── 4b. Adapt the .jucer file to the installed VS version ───────────
+//
+// HISE's upstream .jucer ships only a <VS2026> exporter targeting
+// Builds/VisualStudio2026. When the user has VS2022 installed we rewrite
+// the exporter to <VS2022 targetFolder="Builds/VisualStudio2022" …> and
+// flip HISE_USE_VS2022=0 → 1 in extraDefs (HISE C++ has compile-time
+// branches keyed off this define). Idempotent — re-running on /resume is
+// a no-op once the file is already VS2022.
+
+/** Mutate a .jucer file's VS exporter element + targetFolder + the
+ *  HISE_USE_VS2022 define so Projucer emits a solution for `target`.
+ *  Returns the new content, or null when no change is needed. */
+export function adaptJucerToVsVersion(content: string, target: VsVersion): string | null {
+	const otherTag = target === "2022" ? "VS2026" : "VS2022";
+	const otherFolder = target === "2022" ? "VisualStudio2026" : "VisualStudio2022";
+	const targetTag = `VS${target}`;
+	const targetFolder = `VisualStudio${target}`;
+	if (!content.includes(`<${otherTag} `) && !content.includes(`Builds/${otherFolder}`)) {
+		return null;
+	}
+	let next = content;
+	next = next.replace(new RegExp(`<${otherTag}\\b`, "g"), `<${targetTag}`);
+	next = next.replace(new RegExp(`</${otherTag}>`, "g"), `</${targetTag}>`);
+	next = next.replace(new RegExp(`Builds/${otherFolder}`, "g"), `Builds/${targetFolder}`);
+	const useVs2022 = target === "2022" ? "1" : "0";
+	next = next.replace(/HISE_USE_VS2022=[01]/g, `HISE_USE_VS2022=${useVs2022}`);
+	return next === content ? null : next;
+}
+
+export function createSetupAdaptVsVersionHandler(_executor: PhaseExecutor): InternalTaskHandler {
+	return async (answers, onProgress, signal) => {
+		const executor = withSignal(_executor, signal);
+		const platform = answers.platform ?? "Linux";
+		if (platform !== "Windows") {
+			onProgress({ phase: "adapt-vs", percent: 100, message: "Skipping (not Windows)." });
+			return ok("✓ VS exporter adaptation not needed.");
+		}
+
+		const installPath = answers.installPath!;
+		const vsVersion = normaliseVsVersion(answers.vsVersion);
+		const jucerPath = `${installPath}\\projects\\standalone\\HISE Standalone.jucer`;
+
+		onProgress({ phase: "adapt-vs", percent: 0, message: `Adapting Projucer file for VS ${vsVersion}...` });
+
+		const read = await executor.spawn("powershell", [
+			"-NoProfile",
+			"-ExecutionPolicy", "Bypass",
+			"-Command",
+			`Get-Content -Raw -LiteralPath '${jucerPath.replace(/'/g, "''")}'`,
+		], {});
+		if (read.exitCode !== 0) return fail(`Could not read .jucer file: ${read.stderr || read.stdout}`);
+
+		const next = adaptJucerToVsVersion(read.stdout, vsVersion);
+		if (next === null) {
+			onProgress({ phase: "adapt-vs", percent: 100, message: `Already targeting VS ${vsVersion}.` });
+			return ok(`✓ .jucer already targets VS ${vsVersion}.`);
+		}
+
+		// Pass the new content through a base64-encoded env var so we don't
+		// have to quote-escape the multi-kB XML body into a PowerShell
+		// command line. WriteAllBytes writes the decoded UTF-8 bytes
+		// verbatim — no extra encoding conversion in PowerShell.
+		const write = await executor.spawn("powershell", [
+			"-NoProfile",
+			"-ExecutionPolicy", "Bypass",
+			"-Command",
+			`[IO.File]::WriteAllBytes('${jucerPath.replace(/'/g, "''")}', [Convert]::FromBase64String($env:HISE_JUCER_B64))`,
+		], { env: { HISE_JUCER_B64: Buffer.from(next, "utf8").toString("base64") } });
+		if (write.exitCode !== 0) return fail(`Could not write .jucer file: ${write.stderr || write.stdout}`);
+
+		onProgress({ phase: "adapt-vs", percent: 100 });
+		return ok(`✓ .jucer rewritten for VS ${vsVersion}.`);
+	};
+}
+
 // ── 5. Extract SDKs ─────────────────────────────────────────────────
 
 export function createSetupExtractSdksHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
-		const sdkDir = `${installPath}/tools/SDK`;
+		const platform = answers.platform ?? "Linux";
+		const sep = platform === "Windows" ? "\\" : "/";
+		const sdkDir = `${installPath}${sep}tools${sep}SDK`;
+		const marker = `${sdkDir}${sep}ASIOSDK2.3`;
 
 		onProgress({ phase: "extract-sdks", percent: 0, message: "Extracting SDK files..." });
 
-		const check = await executor.spawn("ls", ["-d", `${sdkDir}/ASIOSDK2.3`], {});
-		if (check.exitCode === 0) {
+		const exists = platform === "Windows"
+			? (await executor.spawn("cmd", ["/c", `if exist "${marker}" echo found`], {})).stdout.includes("found")
+			: (await executor.spawn("test", ["-d", marker], {})).exitCode === 0;
+		if (exists) {
 			onProgress({ phase: "extract-sdks", percent: 100, message: "SDKs already extracted." });
 			return ok("✓ SDKs already extracted.");
 		}
 
-		const result = await executor.spawn("tar", ["-xf", "sdk.zip"], { cwd: sdkDir });
-		if (result.exitCode !== 0) return fail(`SDK extraction failed: ${result.stderr}`);
+		// Windows: PowerShell Expand-Archive avoids the GNU-tar-shadows-bsdtar
+		// case (Git for Windows / MSYS put a GNU tar earlier on PATH, which
+		// fails with "This does not look like a tar archive" on .zip input).
+		// macOS bsdtar handles zip transparently; Linux uses unzip when
+		// available and falls back to tar.
+		const result = platform === "Windows"
+			? await executor.spawn("powershell", [
+				"-NoProfile",
+				"-ExecutionPolicy", "Bypass",
+				"-Command",
+				`Expand-Archive -Path "${sdkDir}\\sdk.zip" -DestinationPath "${sdkDir}" -Force`,
+			], {
+				onLog: (line, transient) => onProgress({ phase: "extract-sdks", message: line, transient }),
+			})
+			: await executor.spawn("tar", ["-xf", "sdk.zip"], { cwd: sdkDir });
+		if (result.exitCode !== 0) return fail(`SDK extraction failed: ${result.stderr || result.stdout}`);
 
 		onProgress({ phase: "extract-sdks", percent: 100 });
 		return ok("✓ SDKs extracted.");
@@ -636,6 +730,11 @@ export interface CompileHiseSpec {
 	readonly architecture?: string;
 	readonly includeFaust: boolean;
 	readonly parallelJobs: number;
+	/** Visual Studio major year — picks the Projucer exporter folder
+	 *  (Builds/VisualStudio2022 vs VisualStudio2026). Required on Windows;
+	 *  ignored on macOS / Linux. Defaults to "2022" — matches what
+	 *  aka.ms/vs/stable/vs_BuildTools.exe installs today. */
+	readonly vsVersion?: VsVersion;
 	/** Phase tag used in progress events. Defaults to "compile". */
 	readonly phase?: string;
 	/** Clean build outputs before compiling. Used by the update wizard to
@@ -761,7 +860,8 @@ export async function compileHise(
 		if (!msbuild) {
 			return fail("Could not locate a Visual Studio installation with MSBuild. Re-run the setup wizard.");
 		}
-		const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\HISE Standalone.sln`;
+		const vsVersion = spec.vsVersion ?? "2022";
+		const sln = `${installPath}\\projects\\standalone\\Builds\\VisualStudio${vsVersion}\\HISE Standalone.sln`;
 		const config = includeFaust ? "ReleaseWithFaust" : "Release";
 		const msbuildArgs = [
 			sln,
@@ -802,8 +902,16 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 			architecture: answers.architecture,
 			includeFaust: isOn(answers.includeFaust),
 			parallelJobs: Math.max(1, parseInt(answers.parallelJobs ?? "1", 10) || 1),
+			vsVersion: normaliseVsVersion(answers.vsVersion),
 		}, onProgress);
 	};
+}
+
+/** Coerce a free-form answers value to a known VsVersion, defaulting to
+ *  "2022" (the year aka.ms/vs/stable currently installs). Centralises the
+ *  fallback so every consumer agrees on the same default. */
+export function normaliseVsVersion(raw: string | undefined): VsVersion {
+	return raw === "2026" ? "2026" : "2022";
 }
 
 // ── 7. Add to PATH ───────────────────────────────────────────────────
@@ -811,15 +919,18 @@ export function createSetupCompileHandler(_executor: PhaseExecutor): InternalTas
 /** Directory that contains the HISE binary for a given install + config.
  *  Shared by setupAddPath (setup wizard) and the update wizard's realign
  *  step, which needs to prepend the new build's dir if the existing PATH
- *  still points at a stale config (e.g. Release vs ReleaseWithFaust). */
+ *  still points at a stale config (e.g. Release vs ReleaseWithFaust).
+ *  `vsVersion` selects the Projucer exporter dir on Windows (2022 vs 2026);
+ *  ignored elsewhere. */
 export function hiseBinDir(
 	installPath: string,
 	platform: string,
 	includeFaust: boolean,
+	vsVersion: VsVersion = "2022",
 ): string {
 	if (platform === "Windows") {
 		const config = includeFaust ? "ReleaseWithFaust" : "Release";
-		return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App`;
+		return `${installPath}\\projects\\standalone\\Builds\\VisualStudio${vsVersion}\\x64\\${config}\\App`;
 	}
 	if (platform === "macOS") {
 		const cfg = includeFaust ? "ReleaseWithFaust" : "Release";
@@ -835,8 +946,9 @@ export function hiseBinaryPath(
 	installPath: string,
 	platform: string,
 	includeFaust: boolean,
+	vsVersion: VsVersion = "2022",
 ): string {
-	const binDir = hiseBinDir(installPath, platform, includeFaust);
+	const binDir = hiseBinDir(installPath, platform, includeFaust, vsVersion);
 	if (platform === "Windows") return `${binDir}\\HISE.exe`;
 	if (platform === "macOS") return `${binDir}/HISE.app/Contents/MacOS/HISE`;
 	return `${binDir}/HISE Standalone`;
@@ -993,7 +1105,8 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
 		const includeFaust = isOn(answers.includeFaust);
-		const binary = hiseBinaryPath(installPath, platform, includeFaust);
+		const vsVersion = normaliseVsVersion(answers.vsVersion);
+		const binary = hiseBinaryPath(installPath, platform, includeFaust, vsVersion);
 		const result = await createHiseSymlink(executor, binary, platform, "add-path", onProgress);
 		// Mirror the update wizard: splice the chosen dir into this Node
 		// process's PATH so later setup phases (verify, test) resolve HISE
@@ -1011,7 +1124,12 @@ export function createSetupAddPathHandler(_executor: PhaseExecutor): InternalTas
 
 // ── HISE binary path helper ───────────────────────────────────────────
 
-function hiseBinPath(installPath: string, platform: string, includeFaust = false): string {
+function hiseBinPath(
+	installPath: string,
+	platform: string,
+	includeFaust = false,
+	vsVersion: VsVersion = "2022",
+): string {
 	if (platform === "macOS") {
 		const cfg = includeFaust ? "ReleaseWithFaust" : "Release";
 		return `${installPath}/projects/standalone/Builds/MacOSXMakefile/build/${cfg}/HISE.app/Contents/MacOS/HISE`;
@@ -1021,7 +1139,7 @@ function hiseBinPath(installPath: string, platform: string, includeFaust = false
 	// MSBuild config name becomes the output subfolder name, so the
 	// Faust-enabled build lives under "ReleaseWithFaust\App\HISE.exe".
 	const config = includeFaust ? "ReleaseWithFaust" : "Release";
-	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio2026\\x64\\${config}\\App\\HISE.exe`;
+	return `${installPath}\\projects\\standalone\\Builds\\VisualStudio${vsVersion}\\x64\\${config}\\App\\HISE.exe`;
 }
 
 /** Bare binary name used when invoking HISE via PATH lookup. */
@@ -1032,18 +1150,51 @@ function hiseBinaryName(platform: string): string {
 }
 
 /** Resolve the MSBuild.exe path via vswhere so BuildTools / Community /
- *  Pro / Enterprise installs all work. Returns null if not found. */
+ *  Pro / Enterprise installs all work. Returns null if not found.
+ *  Uses vswhere's `-find` mode (the Microsoft-recommended idiom) — the
+ *  earlier `-requires Microsoft.Component.MSBuild` approach failed on some
+ *  VS2022 installs that don't expose that exact component ID. */
 export async function resolveMsbuildPath(executor: PhaseExecutor): Promise<string | null> {
 	const vswhere = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe";
 	const vs = await executor.spawn(vswhere, [
 		"-latest",
 		"-products", "*",
-		"-requires", "Microsoft.Component.MSBuild",
-		"-property", "installationPath",
+		"-find", "MSBuild\\**\\Bin\\MSBuild.exe",
 	], {});
-	const vsPath = vs.stdout.trim();
-	if (vs.exitCode !== 0 || !vsPath) return null;
-	return `${vsPath}\\MSBuild\\Current\\Bin\\MSBuild.exe`;
+	if (vs.exitCode !== 0) return null;
+	const first = vs.stdout.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0)[0];
+	return first ?? null;
+}
+
+/** Detected Visual Studio major year, used to pick the matching Projucer
+ *  exporter folder ("Builds/VisualStudio2022" vs "VisualStudio2026") and
+ *  the value written to compilerSettings.xml's <VisualStudioVersion>. */
+export type VsVersion = "2022" | "2026";
+
+/** Detect the installed Visual Studio major-year via vswhere. Returns null
+ *  when no VS install is found (compilerInstall will then install VS Build
+ *  Tools, after which a re-probe in the adaptVsVersion task fills it in). */
+export async function detectVsVersion(executor: PhaseExecutor): Promise<VsVersion | null> {
+	const vswhere = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe";
+	// catalog_productLineVersion returns the year string ("2022", "2026").
+	// Older vswhere builds may not expose it — fall back to installationVersion
+	// (17.x → 2022, 18.x → 2026).
+	const yearProbe = await executor.spawn(vswhere, [
+		"-latest",
+		"-products", "*",
+		"-property", "catalog_productLineVersion",
+	], {});
+	const year = yearProbe.stdout.trim();
+	if (year === "2022" || year === "2026") return year;
+	const verProbe = await executor.spawn(vswhere, [
+		"-latest",
+		"-products", "*",
+		"-property", "installationVersion",
+	], {});
+	const major = parseInt(verProbe.stdout.trim().split(".")[0] ?? "", 10);
+	if (major === 17) return "2022";
+	if (major === 18) return "2026";
+	return null;
 }
 
 // ── 8. Verify ────────────────────────────────────────────────────────
@@ -1054,6 +1205,8 @@ export function createSetupVerifyHandler(_executor: PhaseExecutor): InternalTask
 		const installPath = answers.installPath!;
 		const platform = answers.platform ?? "Linux";
 		const includeFaust = isOn(answers.includeFaust);
+		const includeIpp = isOn(answers.includeIpp);
+		const vsVersion = normaliseVsVersion(answers.vsVersion);
 
 		onProgress({ phase: "verify", percent: 0, message: "Verifying HISE binary on PATH..." });
 
@@ -1065,7 +1218,7 @@ export function createSetupVerifyHandler(_executor: PhaseExecutor): InternalTask
 			onLog: (line, transient) => onProgress({ phase: "verify", message: line, transient }),
 		});
 		if (flags.exitCode !== 0) {
-			const expected = hiseBinPath(installPath, platform, includeFaust);
+			const expected = hiseBinPath(installPath, platform, includeFaust, vsVersion);
 			return fail(
 				`HISE not found on PATH (expected '${binaryName}'). ` +
 				`Binary should be at: ${expected}`,
@@ -1073,9 +1226,42 @@ export function createSetupVerifyHandler(_executor: PhaseExecutor): InternalTask
 		}
 		const logs = flags.stdout.trim() ? [flags.stdout.trim()] : undefined;
 
+		// Persist HISE compiler settings via HISE's own CLI — it writes
+		// compilerSettings.xml canonically through JUCE's ValueTree::createXml
+		// (see hise-source/projects/standalone/Source/Main.cpp:1316). Plugin
+		// export depends on this file existing with HisePath set; before this
+		// step the user had to launch HISE once and configure it manually.
+		onProgress({ phase: "verify", percent: 50, message: "Writing HISE compiler settings..." });
+		const settingsArgs = ["set_hise_settings", `-hisepath:${installPath}`];
+		if (platform === "Windows") settingsArgs.push(`-vs:${vsVersion}`);
+		if (includeIpp) settingsArgs.push("-ipp:1");
+		if (includeFaust) {
+			const faustPath = faustInstallPath(platform, installPath);
+			if (faustPath) settingsArgs.push(`-faustpath:${faustPath}`);
+		}
+		const settings = await executor.spawn(binaryName, settingsArgs, {
+			onLog: (line, transient) => onProgress({ phase: "verify", message: line, transient }),
+		});
+		if (settings.exitCode !== 0) {
+			return fail(
+				`HISE set_hise_settings failed: ${settings.stderr || settings.stdout}. ` +
+				`compilerSettings.xml could not be written — plugin exports won't work until this is resolved.`,
+			);
+		}
+
 		onProgress({ phase: "verify", percent: 100, message: "HISE verified successfully." });
 		return ok("✓ HISE binary verified.", logs);
 	};
+}
+
+/** Resolve the directory where Faust is installed for a given platform.
+ *  Mirrors the install locations chosen by `setupFaustInstall`. Returns null
+ *  on Linux where Faust comes from apt and lives in standard system dirs
+ *  (HISE doesn't need an explicit FaustPath in that case). */
+function faustInstallPath(platform: string, installPath: string): string | null {
+	if (platform === "Windows") return "C:\\Program Files\\Faust";
+	if (platform === "macOS") return `${installPath}/tools/faust`;
+	return null;
 }
 
 // ── 9. Test export ───────────────────────────────────────────────────
@@ -1133,6 +1319,7 @@ export function createSetupTestHandler(_executor: PhaseExecutor): InternalTaskHa
 			configuration: "Release",
 			parallelJobs,
 			macArchitecture,
+			vsVersion: normaliseVsVersion(answers.vsVersion),
 		}, emit);
 
 		if (!compile.success) return fail(`Demo project compilation failed: ${compile.stderr}`);

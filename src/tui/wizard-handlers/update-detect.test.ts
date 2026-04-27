@@ -7,6 +7,7 @@ import {
 	fetchDevelopHead,
 	fetchLatestCiSha,
 	parseHisePath,
+	parseVsVersion,
 } from "./update-detect.js";
 
 /** Build a fetch mock that dispatches on URL — GitHub Actions runs vs commits.
@@ -27,6 +28,17 @@ function mockGithubFetch(ciResponse: unknown, headResponse: unknown | null): typ
 	});
 	return impl as unknown as typeof globalThis.fetch;
 }
+
+describe("parseVsVersion", () => {
+	it("extracts 2022 / 2026 from a real compilerSettings.xml", () => {
+		expect(parseVsVersion('<VisualStudioVersion value="Visual Studio 2022"/>')).toBe("2022");
+		expect(parseVsVersion('<VisualStudioVersion value="Visual Studio 2026"/>')).toBe("2026");
+	});
+	it("returns null when the element is missing or unrecognised", () => {
+		expect(parseVsVersion("<CompilerSettings></CompilerSettings>")).toBeNull();
+		expect(parseVsVersion('<VisualStudioVersion value="Visual Studio 2017"/>')).toBeNull();
+	});
+});
 
 describe("parseHisePath", () => {
 	it("extracts HisePath from a real compilerSettings.xml", () => {

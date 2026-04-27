@@ -17,7 +17,7 @@
 // output directory) and we drive MSBuild directly.
 
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
-import { filterMsbuildLine, resolveMsbuildPath } from "./setup-tasks.js";
+import { filterMsbuildLine, resolveMsbuildPath, type VsVersion } from "./setup-tasks.js";
 
 /** Progress callback: a log line plus the transient flag from spawn. */
 export type CompileEmit = (message: string, transient?: boolean) => void;
@@ -142,6 +142,9 @@ export interface JuceCompileSpec {
 	/** Single-slice architecture override for macOS ("arm64" or "x86_64").
 	 *  Omit to inherit the Makefile's universal (x86_64+arm64) build. */
 	readonly macArchitecture?: "arm64" | "x86_64";
+	/** Visual Studio major year — picks the Projucer exporter folder
+	 *  on Windows. Defaults to "2022" (the year aka.ms/vs/stable installs). */
+	readonly vsVersion?: VsVersion;
 }
 
 /**
@@ -155,7 +158,8 @@ export async function runJuceCompile(
 	emit: CompileEmit,
 ): Promise<CompileOutcome> {
 	if (process.platform === "win32") {
-		const slnFile = `${spec.binaryFolder}\\Builds\\VisualStudio2026\\${spec.projectName}.sln`;
+		const vsVersion = spec.vsVersion ?? "2022";
+		const slnFile = `${spec.binaryFolder}\\Builds\\VisualStudio${vsVersion}\\${spec.projectName}.sln`;
 		const projucerPath = `${spec.hisePath}\\JUCE\\Projucer\\Projucer.exe`;
 		return runWindowsJuceCompile(executor, {
 			jucerFile: spec.jucerFile,
