@@ -2,6 +2,7 @@ import type { CommandEntry } from "../engine/commands/registry.js";
 
 export type CliParseResult =
 	| { kind: "tui"; args: string[] }
+	| { kind: "tui-inline"; args: string[] }
 	| { kind: "help"; scope?: string }
 	| { kind: "error"; message: string }
 	| { kind: "diagnose"; filePath: string }
@@ -100,6 +101,14 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	}
 
 	const first = args[0]!;
+
+	// Top-level --inline flag → inline (non-fullscreen) REPL.
+	// Distinct from `--run --inline` which uses --inline as a sub-flag.
+	if (first !== "--run" && first !== "-run" && first !== "run" && args.includes("--inline")) {
+		const filtered = args.filter(a => a !== "--inline");
+		const stripped = filtered[0] === "repl" ? filtered.slice(1) : filtered;
+		return { kind: "tui-inline", args: stripped };
+	}
 
 	// --run <file.hsc | - | --inline "script"> [--mock] [--dry-run] [--verbosity=<level>]
 	if (first === "--run" || first === "-run" || first === "run") {

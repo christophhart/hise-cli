@@ -78,9 +78,10 @@ export function renderWizardBlock(
 	state: WizardFormState,
 	scheme: ColorScheme,
 	width: number,
+	options?: { flat?: boolean },
 ): PrerenderedBlock {
 	const def = state.definition;
-	const bg = chalk.bgHex(scheme.backgrounds.raised);
+	const bg = options?.flat ? ((s: string) => s) : chalk.bgHex(scheme.backgrounds.raised);
 	const accent = "#e8a060";
 	const signal = brand.signal;
 	const padLen = 2;

@@ -106,6 +106,17 @@ async function launchRepl(args: string[]): Promise<void> {
 	await launchTui(connection, { animate: !noAnimation, showKeys });
 }
 
+async function launchInline(args: string[]): Promise<void> {
+	const { launchInlineRepl } = await import("./inline/launch.js");
+	if (args.includes("--mock")) {
+		const mockRuntime = createDefaultMockRuntime();
+		await launchInlineRepl(mockRuntime.connection, runtime);
+		return;
+	}
+	const connection = new HttpHiseConnection();
+	await launchInlineRepl(connection, runtime);
+}
+
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -184,6 +195,11 @@ async function main(): Promise<void> {
 	if (cliResult.kind === "update") {
 		const { executeUpdateCommand } = await import("./cli/update.js");
 		process.exitCode = await executeUpdateCommand({ check: cliResult.check });
+		return;
+	}
+
+	if (cliResult.kind === "tui-inline") {
+		await launchInline(cliResult.args);
 		return;
 	}
 

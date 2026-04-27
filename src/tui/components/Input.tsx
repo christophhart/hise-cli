@@ -376,6 +376,8 @@ export interface InputProps {
 	tokenize?: (value: string) => TokenSpan[];
 	/** Whether the input has keyboard focus. When true, the prompt char uses brand.signal. */
 	focused?: boolean;
+	/** Flat style: no row bg, top is a thin dimmed horizontal rule, no bottom pad. */
+	flat?: boolean;
 }
 
 /** Cursor background: lighten the input bar's raised bg by 30% */
@@ -397,6 +399,7 @@ export const Input = React.memo(function Input({
 	multiline = false,
 	maxLines = 10,
 	errorLines,
+	flat = false,
 }: InputProps) {
 	const { scheme, brand, layout } = useTheme();
 
@@ -608,7 +611,7 @@ export const Input = React.memo(function Input({
 	layoutRef.current = { padLen: pad.length, promptWidth, scrollStart };
 
 	// Cursor colors
-	const cursorBg = lightenHex(scheme.backgrounds.raised, CURSOR_LIGHTEN);
+	const cursorBg = focused ? lightenHex(scheme.backgrounds.raised, CURSOR_LIGHTEN) : undefined;
 
 	// ── Build rendered spans (highlighted or plain) ────────────────
 	// Tokenize → slice to scroll window → split at cursor → render
@@ -944,13 +947,17 @@ export const Input = React.memo(function Input({
 		);
 	}
 
-	// ── Single-line render path (unchanged) ────────────────────────
+	// ── Single-line render path ──────────────────────────────────
+	const rowBg = flat ? undefined : scheme.backgrounds.raised;
+	const topRow = flat
+		? <Text color={focused ? brand.signal : scheme.foreground.muted} wrap="truncate-end">{"─".repeat(columns)}</Text>
+		: <Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">{" ".repeat(columns)}</Text>;
 	return (
 		<Box flexDirection="column">
-			<Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">{" ".repeat(columns)}</Text>
+			{topRow}
 			<Box>
-				<Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">
-					<Text>{pad}</Text>
+				<Text backgroundColor={rowBg} wrap="truncate-end">
+					{!flat && <Text>{pad}</Text>}
 					{!isRoot ? (
 						<>
 							<Text color={scheme.foreground.muted}>[{modeLabel}]</Text>
@@ -979,7 +986,7 @@ export const Input = React.memo(function Input({
 					<Text>{pad}</Text>
 				</Text>
 			</Box>
-			<Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">{" ".repeat(columns)}</Text>
+			{!flat && <Text backgroundColor={scheme.backgrounds.raised} wrap="truncate-end">{" ".repeat(columns)}</Text>}
 		</Box>
 	);
 });
