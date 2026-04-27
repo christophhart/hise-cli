@@ -55,6 +55,12 @@ const nodeDataLoader: DataLoader = {
 		const raw = fs.readFileSync(filePath, "utf8");
 		return JSON.parse(raw);
 	},
+	async loadPreprocessorDefinitions() {
+		const filePath = path.join(DATA_DIR, "preprocessor.json");
+		if (!fs.existsSync(filePath)) return { preprocessors: {} };
+		const raw = fs.readFileSync(filePath, "utf8");
+		return JSON.parse(raw);
+	},
 };
 
 // ── Module List ─────────────────────────────────────────────────────

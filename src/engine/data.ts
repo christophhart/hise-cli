@@ -164,6 +164,26 @@ export interface ScriptingApi {
 	classes: Record<string, ApiClass>;
 }
 
+// ── Preprocessor list types (data/preprocessor.json) ─────────────────
+
+export interface PreprocessorDefinition {
+	autoConfig: boolean;
+	brief: string;
+	category: string;
+	"category-slug": string;
+	crossRefs: string[];
+	defaultValue: number;
+	description: string;
+	supportsHotReload: boolean;
+	value: number;
+	valueRange: string;
+	vestigal: boolean;
+}
+
+export interface PreprocessorList {
+	preprocessors: Record<string, PreprocessorDefinition>;
+}
+
 // ── DataLoader interface ────────────────────────────────────────────
 
 export interface DataLoader {
@@ -174,4 +194,6 @@ export interface DataLoader {
 	loadWizardDefinitions(): Promise<Array<import("./wizard/types.js").WizardDefinition>>;
 	/** Load UI component property definitions from data/ui_component_properties.json. */
 	loadComponentProperties(): Promise<import("./modes/ui.js").ComponentPropertyMap>;
+	/** Load HISE preprocessor definitions for /project completion + describe. */
+	loadPreprocessorDefinitions(): Promise<PreprocessorList>;
 }

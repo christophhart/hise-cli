@@ -345,6 +345,73 @@ EXAMPLES
   hise-cli -script "Synth.addNoteOn(1, 64, 127, 0)"
   hise-cli -script "Content.getComponent('Knob1').getValue()"`,
 
+	project: `hise-cli -project — project lifecycle (list, switch, save, settings, snippets)
+
+SYNTAX
+  hise-cli -project "<command>"
+
+QUICK START
+  hise-cli -project info                          name, projectFolder, scriptsFolder
+  hise-cli -project show projects                 list known projects, mark active
+  hise-cli -project show settings                 project settings table
+  hise-cli -project show files                    saveable XML + HIP files
+  hise-cli -project show preprocessors            preprocessor macros (all scopes)
+  hise-cli -project describe Version              full description + options for one key
+  hise-cli -project "switch TestSynth"            switch by name (resolved to path)
+  hise-cli -project "switch /Users/foo/HISE Projects/X"  switch by absolute path
+  hise-cli -project "save xml as MyPlugin_v2"     save XML preset (renames chain if differs)
+  hise-cli -project "save hip"                    save HIP archive with default filename
+  hise-cli -project "load XmlPresetBackups/MyPlugin.xml"  restore a saved XML
+  hise-cli -project "set Version 1.1.0"           update a project setting
+  hise-cli -project "set VST3Support yes"         lenient bool norm (yes/no/on/off/1/0)
+  hise-cli -project "set preprocessor ENABLE_FOO 1 on win for plugin"
+  hise-cli -project "clear preprocessor ENABLE_FOO on Windows"
+  hise-cli -project snippet export                emit full snippet to stdout
+
+COMMANDS
+  info                                          Project name + folder + scripts folder
+  show projects                                 List available HISE projects
+  show settings                                 List all settings (key, value, options)
+  show files                                    Saveable XML + HIP files
+  show preprocessors [for <target>] [on <os>]   Preprocessor macros grouped by scope
+  show tree                                     File tree (referenced files highlighted)
+  describe <key>                                Full description + options for one setting
+  switch <name|path>                            Switch active project
+  save xml [as <filename>]                      Save as XML preset
+  save hip [as <filename>]                      Save as HIP archive
+  load <relative-path>                          Load XML or HIP file
+  set <key> <value>                             Update a project setting
+  set preprocessor <name> <value>               Upsert a preprocessor macro
+                                                  ([on <os>] [for <target>])
+  clear preprocessor <name>                     Remove a preprocessor override
+                                                  ([on <os>] [for <target>])
+  snippet export                                Export snippet (CLI: stdout)
+  snippet load [<string>]                       Import snippet (omit arg → clipboard)
+  create                                        Alias for /wizard new_project
+
+OS ALIASES
+  Windows:  windows | win | Win | x64 | WIN
+  macOS:    macos | mac | osx | macosx | apple | darwin
+  Linux:    linux
+  all:      all | * | any  (default when "on" clause is omitted)
+
+TARGET ALIASES
+  Project:  project | plugin
+  Dll:      dll | DLL
+  all:      all | * | any  (default when "for" clause is omitted)
+
+PREPROCESSOR VALUES
+  Integer:   "1", "0", "42"           macro is set to MACRO=N
+  Default:   "default"                 clears the override (same as "clear preprocessor")
+
+NOTES
+  - switch resolves names client-side via /api/project/list, then sends the
+    absolute path to /api/project/switch. Pass an absolute path to bypass.
+  - save xml/hip with a custom filename renames the master chain when the
+    filename differs from the current chain id.
+  - When the snippet browser is active in HISE, /api/project/* returns 409;
+    info will surface a hint when this is the case.`,
+
 	inspect: `hise-cli -inspect — runtime monitor
 
 SYNTAX

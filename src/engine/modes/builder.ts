@@ -785,6 +785,10 @@ export class BuilderMode implements Mode {
 		// Execute against HISE
 		const result = await this.executeOps(opsResult.ops, session.connection);
 
+		if (result.type !== "error") {
+			session.markProjectTreeDirty?.();
+		}
+
 		// For successful set commands, echo the changed parameter as a table row
 		if (cmd.type === "set" && result.type !== "error") {
 			const echo = await this.echoSetParam(cmd, session.connection);

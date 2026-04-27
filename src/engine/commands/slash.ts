@@ -551,7 +551,11 @@ async function handleCompileCallbacks(
 		const recompileResp = await session.connection.post("/api/recompile", {
 			moduleId: scriptMode.processorId,
 		});
-		return formatCompileResponse(recompileResp, scriptMode.processorId);
+		const result = formatCompileResponse(recompileResp, scriptMode.processorId);
+		if (result.type !== "error") {
+			session.markProjectTreeDirty?.();
+		}
+		return result;
 	}
 
 	const callbacks = Object.fromEntries(
@@ -572,6 +576,7 @@ async function handleCompileCallbacks(
 	const result = formatSetScriptResponse(response, scriptMode.processorId);
 	if (result.type !== "error") {
 		session.clearScriptCompilerState?.(scriptMode.processorId);
+		session.markProjectTreeDirty?.();
 	}
 	return result;
 }

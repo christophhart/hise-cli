@@ -67,6 +67,10 @@ export class Session implements SessionContext, CommandSession {
 	resolveHiseProjectFolder?: () => Promise<string | null>;
 	onWizardProgress?: (progress: import("./wizard/types.js").WizardProgress) => void;
 
+	// ── Clipboard hooks (wired by TUI; CLI uses stdout for snippet export) ──
+	copyToClipboard?: (text: string) => void;
+	readClipboard?: () => Promise<string | null>;
+
 	setPendingWizard(pending: PendingWizard | null): void {
 		this.pendingWizard = pending;
 	}
@@ -177,6 +181,16 @@ export class Session implements SessionContext, CommandSession {
 		for (const mode of this.modeCache.values()) {
 			mode.invalidateTree?.();
 		}
+	}
+
+	/** Signal that filesystem state has changed — invalidates the cached
+	 *  /project tree so the next read refetches from HISE. Called by
+	 *  cross-mode mutators (builder/dsp/ui apply, script save/recompile,
+	 *  sampler save_map / import, presets save) and by the project mode
+	 *  itself after save/load/switch/set/snippet load. */
+	markProjectTreeDirty(): void {
+		const projectMode = this.modeCache.get("project");
+		projectMode?.invalidateTree?.();
 	}
 
 	/** Reset the undo mode's local plan tracking state. */

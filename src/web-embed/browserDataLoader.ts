@@ -7,6 +7,7 @@
 import type {
 	DataLoader,
 	ModuleList,
+	PreprocessorList,
 	ScriptingApi,
 	ScriptnodeList,
 } from "../engine/data.js";
@@ -67,6 +68,13 @@ export function createBrowserDataLoader(
 		},
 		async loadWizardDefinitions(): Promise<WizardDefinition[]> {
 			return [];
+		},
+		async loadPreprocessorDefinitions(): Promise<PreprocessorList> {
+			try {
+				return await loadJson<PreprocessorList>("preprocessor.json");
+			} catch {
+				return { preprocessors: {} };
+			}
 		},
 	};
 }

@@ -11,6 +11,7 @@ import moduleListData from "../../data/moduleList.json";
 import scriptingApiData from "../../data/scripting_api.json";
 import scriptnodeListData from "../../data/scriptnodeList.json";
 import componentPropertiesData from "../../data/ui_component_properties.json";
+import preprocessorData from "../../data/preprocessor.json";
 
 import audioExportYaml from "../../data/wizards/audio_export.yaml";
 import compileNetworksYaml from "../../data/wizards/compile_networks.yaml";
@@ -25,6 +26,7 @@ import { parse as parseYaml } from "yaml";
 import type {
 	DataLoader,
 	ModuleList,
+	PreprocessorList,
 	ScriptingApi,
 	ScriptnodeList,
 } from "../engine/data.js";
@@ -57,6 +59,9 @@ export function createBundledDataLoader(): DataLoader {
 		},
 		async loadComponentProperties() {
 			return componentPropertiesData as import("../engine/modes/ui.js").ComponentPropertyMap;
+		},
+		async loadPreprocessorDefinitions(): Promise<PreprocessorList> {
+			return preprocessorData as unknown as PreprocessorList;
 		},
 	};
 }

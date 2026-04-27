@@ -591,6 +591,10 @@ export class UiMode implements Mode {
 
 		const result = await this.executeOps(opsResult.ops, session.connection);
 
+		if (result.type !== "error") {
+			session.markProjectTreeDirty?.();
+		}
+
 		// For successful set commands, fetch the actual value back from HISE
 		if (cmd.type === "set" && result.type !== "error") {
 			const echo = await this.echoSetProperty(cmd, session.connection);

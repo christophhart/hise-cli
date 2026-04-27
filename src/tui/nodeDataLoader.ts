@@ -6,6 +6,7 @@ import { parse as parseYaml } from "yaml";
 import type {
 	DataLoader,
 	ModuleList,
+	PreprocessorList,
 	ScriptingApi,
 	ScriptnodeList,
 } from "../engine/data.js";
@@ -45,6 +46,12 @@ export function createNodeDataLoader(dataDir: string): DataLoader {
 			if (!fs.existsSync(filePath)) return {};
 			const raw = fs.readFileSync(filePath, "utf8");
 			return JSON.parse(raw) as ComponentPropertyMap;
+		},
+		async loadPreprocessorDefinitions(): Promise<PreprocessorList> {
+			const filePath = path.join(dataDir, "preprocessor.json");
+			if (!fs.existsSync(filePath)) return { preprocessors: {} };
+			const raw = fs.readFileSync(filePath, "utf8");
+			return JSON.parse(raw) as PreprocessorList;
 		},
 		async loadWizardDefinitions(): Promise<WizardDefinition[]> {
 			const wizardDir = path.join(dataDir, "wizards");

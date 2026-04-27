@@ -269,9 +269,42 @@ Sample map editor.
 
 	project: `# Project Mode
 
-Project settings and configuration.
+Project lifecycle — list, switch, save/load, settings, preprocessor defines,
+file tree, and HISE snippet I/O.
 
-*(Not yet implemented — Phase 6)*`,
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| \`info\` | Project name + folder + scripts folder |
+| \`show projects\` | Available HISE projects (active marked) |
+| \`show settings\` | Project settings table (use \`describe\` for details) |
+| \`show files\` | XML + HIP files saved under the project root |
+| \`show preprocessors [for <target>] [on <os>]\` | Macros grouped by scope |
+| \`show tree\` | Project file tree (referenced files highlighted) |
+| \`describe <key>\` | Full description + options for one setting |
+| \`switch <name\\|path>\` | Switch active project (name resolved client-side) |
+| \`save xml [as <filename>]\` | Save state as XML preset |
+| \`save hip [as <filename>]\` | Save state as HIP archive |
+| \`load <relative-path>\` | Load XML or HIP file |
+| \`set <key> <value>\` | Update a project setting (lenient bool norm) |
+| \`set preprocessor <name> <value> [on <os>] [for <target>]\` | Upsert a macro |
+| \`clear preprocessor <name> [on <os>] [for <target>]\` | Remove a macro override |
+| \`snippet export\` | Export snippet to clipboard |
+| \`snippet load [<string>]\` | Import a snippet (clipboard if empty) |
+| \`create\` | Alias for \`/wizard new_project\` |
+
+## Notes
+
+- \`switch <name>\` resolves names against \`/api/project/list\` then sends the
+  resolved absolute path. Pass an absolute path to bypass resolution.
+- \`save xml as Foo\` and \`save hip as Foo\` will rename the master chain when
+  the filename differs from the current chain id (HISE behaviour).
+- Preprocessor OS aliases: windows/win/x64, macos/mac/osx/macosx/apple/darwin,
+  linux. Target aliases: project/plugin, dll, all/*. iOS is not supported.
+- Snippets are memory-first: \`snippet export\` copies to clipboard and renders
+  the first 50 chars as a preview. \`snippet load\` accepts an inline string or
+  reads from the clipboard if no argument is given.`,
 
 	compile: `# Export Mode
 

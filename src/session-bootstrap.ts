@@ -1,10 +1,11 @@
-import type { DataLoader, ModuleList, ScriptnodeList } from "./engine/data.js";
+import type { DataLoader, ModuleList, PreprocessorList, ScriptnodeList } from "./engine/data.js";
 import type { HiseConnection } from "./engine/hise.js";
 import { CompletionEngine } from "./engine/completion/engine.js";
 import { Session } from "./engine/session.js";
 import { BuilderMode } from "./engine/modes/builder.js";
 import { DspMode } from "./engine/modes/dsp.js";
 import { InspectMode } from "./engine/modes/inspect.js";
+import { ProjectMode } from "./engine/modes/project.js";
 import { ScriptMode } from "./engine/modes/script.js";
 import { UndoMode } from "./engine/modes/undo.js";
 import { UiMode, type ComponentPropertyMap } from "./engine/modes/ui.js";
@@ -15,7 +16,7 @@ import { WizardRegistry } from "./engine/wizard/registry.js";
 import type { WizardHandlerRegistry } from "./engine/wizard/handler-registry.js";
 import { registerWizardAliases } from "./engine/commands/slash.js";
 
-export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "dsp", "undo", "ui", "sequence", "hise", "analyse"] as const;
+export const SUPPORTED_MODE_IDS = ["script", "inspect", "builder", "dsp", "project", "undo", "ui", "sequence", "hise", "analyse"] as const;
 
 export interface CreateSessionOptions {
 	connection: HiseConnection | null;
@@ -23,6 +24,7 @@ export interface CreateSessionOptions {
 	getModuleList?: () => ModuleList | undefined;
 	getScriptnodeList?: () => ScriptnodeList | undefined;
 	getComponentProperties?: () => ComponentPropertyMap | undefined;
+	getPreprocessorList?: () => PreprocessorList | undefined;
 	handlerRegistry?: WizardHandlerRegistry;
 	launcher?: HiseLauncher;
 }
@@ -33,6 +35,7 @@ export function createSession({
 	getModuleList,
 	getScriptnodeList,
 	getComponentProperties,
+	getPreprocessorList,
 	handlerRegistry,
 	launcher,
 }: CreateSessionOptions): { session: Session; completionEngine: CompletionEngine } {
@@ -40,6 +43,10 @@ export function createSession({
 	if (handlerRegistry) session.handlerRegistry = handlerRegistry;
 	session.registerMode("script", (ctx) => new ScriptMode(ctx, completionEngine));
 	session.registerMode("inspect", () => new InspectMode(completionEngine));
+	session.registerMode(
+		"project",
+		() => new ProjectMode(completionEngine, getPreprocessorList?.() ?? null),
+	);
 	session.registerMode(
 		"builder",
 		(ctx) => new BuilderMode(getModuleList?.(), completionEngine, ctx),
@@ -63,6 +70,7 @@ export interface SessionDatasets {
 	moduleList?: ModuleList;
 	scriptnodeList?: ScriptnodeList;
 	componentProperties?: ComponentPropertyMap;
+	preprocessorList?: PreprocessorList;
 }
 
 export async function loadSessionDatasets(
@@ -106,6 +114,12 @@ export async function loadSessionDatasets(
 		result.componentProperties = await dataLoader.loadComponentProperties();
 	} catch {
 		// component properties not available
+	}
+
+	try {
+		result.preprocessorList = await dataLoader.loadPreprocessorDefinitions();
+	} catch {
+		// preprocessor definitions not available
 	}
 
 	return result;

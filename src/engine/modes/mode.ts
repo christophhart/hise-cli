@@ -70,6 +70,18 @@ export interface SessionContext {
 
 	/** Resolve a file path against the project folder. Absolute paths pass through. */
 	resolvePath?(filePath: string): string;
+
+	// ── Project mode hooks ──────────────────────────────────────────
+	/** Wizard registry — used by /project create to launch the new_project wizard. */
+	readonly wizardRegistry?: import("../wizard/registry.js").WizardRegistry | null;
+	/** Mark the project tree as needing a refetch on the next read. Cross-mode
+	 *  mutators (script save/recompile, builder/dsp/ui apply, sampler save_map,
+	 *  preset save) call this after a successful state change. */
+	markProjectTreeDirty?(): void;
+	/** Copy text to the host's clipboard. Wired by the TUI via OSC 52; CLI uses stdout. */
+	copyToClipboard?(text: string): void;
+	/** Read text from the host's clipboard. Returns null when unavailable. */
+	readClipboard?(): Promise<string | null>;
 	// ── File I/O hooks for /analyse mode ────────────────────────────
 	readBinaryFile?(path: string): Promise<Uint8Array>;
 	writeTextFile?(path: string, content: string): Promise<void>;

@@ -373,6 +373,108 @@ export class CompletionEngine {
 	}
 
 	/**
+	 * Complete /project mode subcommands. Pulls dynamic candidates
+	 * (setting keys, preprocessor names, project names) from the caller
+	 * since they live outside the static dataset cache.
+	 */
+	completeProject(
+		prefix: string,
+		dynamic: { preprocessorNames: string[]; settingKeys: string[]; projectNames: string[] },
+	): CompletionItem[] {
+		const tokens = prefix.trimStart().split(/\s+/);
+		const verb = tokens[0]?.toLowerCase() ?? "";
+		const tail = tokens[tokens.length - 1] ?? "";
+
+		// Empty / first token: complete top-level verbs.
+		if (tokens.length <= 1) {
+			const verbs: CompletionItem[] = [
+				{ label: "info", detail: "Show project info" },
+				{ label: "show", detail: "show projects | settings | files | preprocessors | tree" },
+				{ label: "describe", detail: "describe <key>" },
+				{ label: "switch", detail: "switch <name|path>" },
+				{ label: "save", detail: "save xml | hip [as <filename>]" },
+				{ label: "load", detail: "load <relative-path>" },
+				{ label: "set", detail: "set <key> <value> | preprocessor <name> ..." },
+				{ label: "clear", detail: "clear preprocessor <name> ..." },
+				{ label: "snippet", detail: "snippet export | snippet load" },
+				{ label: "create", detail: "Alias for /wizard new_project" },
+				{ label: "help", detail: "Show /project commands" },
+			];
+			return fuzzyFilter(prefix, verbs);
+		}
+
+		if (verb === "show" && tokens.length === 2) {
+			return fuzzyFilter(tail, [
+				{ label: "projects" },
+				{ label: "settings" },
+				{ label: "files" },
+				{ label: "preprocessors" },
+				{ label: "tree" },
+			]);
+		}
+
+		if (verb === "save" && tokens.length === 2) {
+			return fuzzyFilter(tail, [
+				{ label: "xml", detail: "Human-readable XML preset" },
+				{ label: "hip", detail: "Binary archive" },
+			]);
+		}
+
+		if (verb === "switch" && tokens.length === 2) {
+			return fuzzyFilter(tail, dynamic.projectNames.map((name) => ({ label: name })));
+		}
+
+		if (verb === "describe" && tokens.length === 2) {
+			return fuzzyFilter(tail, dynamic.settingKeys.map((key) => ({ label: key })));
+		}
+
+		if (verb === "set" && tokens.length === 2) {
+			const items: CompletionItem[] = dynamic.settingKeys.map((key) => ({ label: key }));
+			items.push({ label: "preprocessor", detail: "set preprocessor <name> <value> ..." });
+			return fuzzyFilter(tail, items);
+		}
+
+		if (verb === "set" && tokens[1]?.toLowerCase() === "preprocessor" && tokens.length === 3) {
+			return fuzzyFilter(tail, dynamic.preprocessorNames.map((name) => ({ label: name })));
+		}
+
+		if (verb === "clear" && tokens.length === 2) {
+			return fuzzyFilter(tail, [{ label: "preprocessor", detail: "Clear a preprocessor override" }]);
+		}
+
+		if (verb === "clear" && tokens[1]?.toLowerCase() === "preprocessor" && tokens.length === 3) {
+			return fuzzyFilter(tail, dynamic.preprocessorNames.map((name) => ({ label: name })));
+		}
+
+		if (verb === "snippet" && tokens.length === 2) {
+			return fuzzyFilter(tail, [
+				{ label: "export", detail: "Export snippet to clipboard" },
+				{ label: "load", detail: "Load snippet (clipboard if blank)" },
+			]);
+		}
+
+		// Trailing scope clause helpers.
+		const lastToken = tokens[tokens.length - 2]?.toLowerCase();
+		if (lastToken === "on") {
+			return fuzzyFilter(tail, [
+				{ label: "Windows" },
+				{ label: "macOS" },
+				{ label: "Linux" },
+				{ label: "all" },
+			]);
+		}
+		if (lastToken === "for") {
+			return fuzzyFilter(tail, [
+				{ label: "Project" },
+				{ label: "Dll" },
+				{ label: "all" },
+			]);
+		}
+
+		return [];
+	}
+
+	/**
 	 * Complete inspect mode subcommands.
 	 */
 	completeInspect(prefix: string): CompletionItem[] {

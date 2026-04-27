@@ -41,6 +41,7 @@
     "test:live-contract:inspect": "vitest run --config vitest.live.config.ts src/live-contract/inspect.live.test.ts",
     "test:live-contract:script": "vitest run --config vitest.live.config.ts src/live-contract/script.live.test.ts",
     "test:live-contract:dsp": "vitest run --config vitest.live.config.ts src/live-contract/dsp.live.test.ts",
+    "test:live-contract:project": "vitest run --config vitest.live.config.ts src/live-contract/project.live.test.ts",
     "test:screencasts": "vitest run --config vitest.screencast.config.ts",
     "export-highlight": "node scripts/export-highlight.mjs",
     "prepack": "npm run build",

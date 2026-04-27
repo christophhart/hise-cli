@@ -591,6 +591,7 @@ export class DspMode implements Mode {
 		}
 		try {
 			const parsed = normalizeDspSaveResponse(resp);
+			session.markProjectTreeDirty?.();
 			return textResult(`Saved: ${parsed.filePath}`);
 		} catch (e) {
 			return errorResult(String(e));
@@ -665,7 +666,11 @@ export class DspMode implements Mode {
 		if (!session.connection) {
 			return textResult(`(offline) would apply: ${JSON.stringify(opsResult.ops)}`);
 		}
-		return this.executeOps(opsResult.ops, session.connection);
+		const result = await this.executeOps(opsResult.ops, session.connection);
+		if (result.type !== "error") {
+			session.markProjectTreeDirty?.();
+		}
+		return result;
 	}
 
 	private async executeOps(

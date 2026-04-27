@@ -62,6 +62,9 @@ export interface CommandSession {
 	setPendingWizard?(pending: import("../session.js").PendingWizard | null): void;
 	/** Clear the paused-wizard checkpoint. */
 	clearPendingWizard?(): void;
+	/** Mark the cached /project tree as stale — called by FS-mutating ops
+	 *  in other modes so the project sidebar refreshes on next access. */
+	markProjectTreeDirty?(): void;
 }
 
 export type CommandHandler = (

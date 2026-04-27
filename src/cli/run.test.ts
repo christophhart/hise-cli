@@ -58,6 +58,9 @@ function createDataLoader(moduleList = createModuleList()): DataLoader {
 		async loadComponentProperties() {
 			return {};
 		},
+		async loadPreprocessorDefinitions() {
+			return { preprocessors: {} };
+		},
 	};
 }
 

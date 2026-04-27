@@ -233,6 +233,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 	const moduleListRef = useRef<import("../engine/data.js").ModuleList | undefined>(undefined);
 	const scriptnodeListRef = useRef<import("../engine/data.js").ScriptnodeList | undefined>(undefined);
 	const componentPropsRef = useRef<import("../engine/modes/ui.js").ComponentPropertyMap | undefined>(undefined);
+	const preprocessorListRef = useRef<import("../engine/data.js").PreprocessorList | undefined>(undefined);
 
 	// Session — created once, stored in ref
 	const sessionRef = useRef<ReturnType<typeof createSession>["session"] | null>(null);
@@ -243,6 +244,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 			getModuleList: () => moduleListRef.current,
 			getScriptnodeList: () => scriptnodeListRef.current,
 			getComponentProperties: () => componentPropsRef.current,
+			getPreprocessorList: () => preprocessorListRef.current,
 			handlerRegistry,
 			launcher,
 		}).session;
@@ -269,6 +271,39 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 				const xml = await readFile(xmlPath, "utf-8");
 				const match = xml.match(/current="([^"]+)"/);
 				return match?.[1] ?? null;
+			} catch {
+				return null;
+			}
+		};
+	}
+
+	if (!session.copyToClipboard) {
+		session.copyToClipboard = (text: string) => {
+			// OSC 52 — works in iTerm2, kitty, recent VS Code terminal, etc.
+			process.stdout.write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
+		};
+	}
+	if (!session.readClipboard) {
+		session.readClipboard = async () => {
+			try {
+				const { execFile } = await import("node:child_process");
+				const { promisify } = await import("node:util");
+				const run = promisify(execFile);
+				if (process.platform === "darwin") {
+					const { stdout } = await run("pbpaste", []);
+					return stdout;
+				}
+				if (process.platform === "win32") {
+					const { stdout } = await run("powershell.exe", ["-NoProfile", "-Command", "Get-Clipboard"]);
+					return stdout.replace(/\r\n$/, "");
+				}
+				try {
+					const { stdout } = await run("xclip", ["-selection", "clipboard", "-o"]);
+					return stdout;
+				} catch {
+					const { stdout } = await run("xsel", ["--clipboard", "--output"]);
+					return stdout;
+				}
 			} catch {
 				return null;
 			}
@@ -1151,6 +1186,7 @@ function AppInner({ connection, dataLoader, scheme: schemeProp, width, height, a
 					moduleListRef.current = datasets.moduleList;
 					scriptnodeListRef.current = datasets.scriptnodeList;
 					componentPropsRef.current = datasets.componentProperties;
+					preprocessorListRef.current = datasets.preprocessorList;
 					// Update existing builder mode instances with module data
 					if (datasets.moduleList) {
 						for (const mode of session.modeStack) {

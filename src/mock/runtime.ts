@@ -10,12 +10,15 @@ import { normalizeReplResponse } from "./contracts/repl.js";
 import type { BuilderDiffEntry, BuilderApplyResult } from "./contracts/builder.js";
 import type { DiffEntry } from "./contracts/builder.js";
 import { installDspMock } from "./dspMock.js";
+import { createMockProjectState, type MockProjectState } from "./projectFixtures.js";
+import { installProjectMock } from "./projectMock.js";
 
 export interface MockRuntimeProfile {
 	kind: "mock";
 	connection: HiseConnection;
 	builderTree: TreeNode;
 	status: StatusPayload;
+	project: MockProjectState;
 }
 
 export function createDefaultMockRuntime(): MockRuntimeProfile {
@@ -221,11 +224,16 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 		},
 	});
 
+	// ── Project endpoints ───────────────────────────────────────────
+	const project = createMockProjectState();
+	installProjectMock(connection, project, status);
+
 	return {
 		kind: "mock",
 		connection,
 		builderTree,
 		status,
+		project,
 	};
 }
 
