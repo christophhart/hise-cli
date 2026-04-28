@@ -167,12 +167,6 @@ describe("Session input dispatch", () => {
 		expect(session.currentMode().id).toBe("root");
 	});
 
-	it("/clear returns empty", async () => {
-		const session = createSession();
-		const result = await session.handleInput("/clear");
-		expect(result.type).toBe("empty");
-	});
-
 	it("/modes returns table", async () => {
 		const session = createSession();
 		const result = await session.handleInput("/modes");

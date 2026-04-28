@@ -21,7 +21,6 @@ export class InspectMode implements Mode {
 	readonly name = "Inspect";
 	readonly accent = MODE_ACCENTS.inspect;
 	readonly prompt = "[inspect] > ";
-	readonly treeLabel = "System Monitor";
 	private readonly completionEngine: CompletionEngine | null;
 
 	constructor(completionEngine?: CompletionEngine) {

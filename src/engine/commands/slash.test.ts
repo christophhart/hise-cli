@@ -130,7 +130,6 @@ describe("built-in slash commands", () => {
 
 		expect(names).toContain("exit");
 		expect(names).toContain("help");
-		expect(names).toContain("clear");
 		expect(names).toContain("modes");
 		expect(names).toContain("builder");
 		expect(names).toContain("script");
@@ -150,13 +149,6 @@ describe("built-in slash commands", () => {
 		if (result.type === "text") {
 			expect(result.content.length).toBeGreaterThan(0);
 		}
-	});
-
-	it("/clear returns empty", async () => {
-		const registry = createRegistry();
-		const session = createMockSession();
-		const result = await registry.dispatch("/clear", session);
-		expect(result.type).toBe("empty");
 	});
 
 	it("/modes returns table", async () => {
@@ -318,41 +310,6 @@ describe("built-in slash commands", () => {
 		expect(session.quitRequested).toBe(true);
 	});
 
-	it("/expand returns text with default pattern", async () => {
-		const registry = createRegistry();
-		const session = createMockSession();
-		const result = await registry.dispatch("/expand", session);
-		expect(result.type).toBe("text");
-		if (result.type === "text") {
-			expect(result.content).toContain("*");
-		}
-	});
-
-	it("/expand with pattern returns text with that pattern", async () => {
-		const registry = createRegistry();
-		const session = createMockSession();
-		const result = await registry.dispatch("/expand Sampler*", session);
-		expect(result.type).toBe("text");
-		if (result.type === "text") {
-			expect(result.content).toContain("Sampler*");
-		}
-	});
-
-	it("/collapse returns text with default pattern", async () => {
-		const registry = createRegistry();
-		const session = createMockSession();
-		const result = await registry.dispatch("/collapse", session);
-		expect(result.type).toBe("text");
-		if (result.type === "text") {
-			expect(result.content).toContain("*");
-		}
-	});
-
-	it("registers expand and collapse commands", () => {
-		const registry = createRegistry();
-		expect(registry.has("expand")).toBe(true);
-		expect(registry.has("collapse")).toBe(true);
-	});
 });
 
 // ── Phase 3.5.3: One-shot execution + context entry ─────────────────

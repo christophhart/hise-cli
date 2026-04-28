@@ -2,7 +2,6 @@
 
 import type { CommandResult } from "../result.js";
 import {
-	emptyResult,
 	errorResult,
 	runReportResult,
 	tableResult,
@@ -45,13 +44,6 @@ async function handleHelp(
 	const result = textResult(help.content);
 	result.accent = modeId === "root" ? "#90FFB1" : MODE_ACCENTS[modeId];
 	return result;
-}
-
-async function handleClear(
-	_args: string,
-	_session: CommandSession,
-): Promise<CommandResult> {
-	return emptyResult();
 }
 
 async function handleModes(
@@ -151,25 +143,6 @@ function createModeHandler(modeId: ModeId): CommandHandler {
 		}
 	};
 	return handler;
-}
-
-async function handleExpand(
-	args: string,
-	_session: CommandSession,
-): Promise<CommandResult> {
-	const pattern = args.trim() || "*";
-	// Actual expand is handled by the TUI layer (app.tsx) which
-	// intercepts this command and delegates to TreeSidebar.
-	return textResult(`Expanded: ${pattern}`);
-}
-
-async function handleCollapse(
-	args: string,
-	_session: CommandSession,
-): Promise<CommandResult> {
-	const pattern = args.trim() || "*";
-	// Actual collapse is handled by the TUI layer (app.tsx).
-	return textResult(`Collapsed: ${pattern}`);
 }
 
 // ── Wizard command ──────────────────────────────────────────────────
@@ -379,24 +352,6 @@ async function handleWizardWithDef(
 
 	// Default: return wizard result to open the form in TUI
 	return wizardResult(def, prefill);
-}
-
-const VALID_DENSITIES = ["auto", "compact", "standard", "spacious"];
-
-async function handleDensity(
-	args: string,
-	_session: CommandSession,
-): Promise<CommandResult> {
-	const arg = args.trim().toLowerCase();
-	if (arg && !VALID_DENSITIES.includes(arg)) {
-		return errorResult(
-			`Unknown density "${arg}". Valid options: ${VALID_DENSITIES.join(", ")}`,
-		);
-	}
-	// The actual density change is handled by the TUI layer (app.tsx)
-	// which intercepts this command's input. The engine returns a
-	// placeholder text that the TUI will replace with the actual state.
-	return textResult(`Density: ${arg || "auto"}`);
 }
 
 // ── /wait command ──────────────────────────────────────────────────
@@ -798,14 +753,6 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
-		name: "clear",
-		description: "Clear the output",
-		handler: handleClear,
-		kind: "command",
-		surfaces: ["tui"],
-	});
-
-	registry.register({
 		name: "modes",
 		description: "List available modes",
 		handler: handleModes,
@@ -932,34 +879,10 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	});
 
 	registry.register({
-		name: "density",
-		description: "Set layout density (auto/compact/standard/spacious)",
-		handler: handleDensity,
-		kind: "command",
-		surfaces: ["tui"],
-	});
-
-	registry.register({
-		name: "expand",
-		description: "Expand tree sidebar nodes (wildcard pattern, default: *)",
-		handler: handleExpand,
-		kind: "command",
-		surfaces: ["tui"],
-	});
-
-	registry.register({
-		name: "collapse",
-		description: "Collapse tree sidebar nodes (wildcard pattern, default: *)",
-		handler: handleCollapse,
-		kind: "command",
-		surfaces: ["tui"],
-	});
-
-	registry.register({
 		name: "compact",
 		description: "Toggle compact tree view (hide chains, show modules only)",
 		handler: async (_args, session) => {
-			const mode = session.currentMode() as { compactView?: boolean };
+			const mode = session.getOrCreateMode(session.currentModeId) as { compactView?: boolean };
 			if (typeof mode.compactView !== "boolean") {
 				return textResult("/compact is only available in builder mode");
 			}

@@ -19,8 +19,8 @@ const TOOL_COMMANDS = new Set<string>([
 
 /** Slash commands that are always valid. */
 const BUILTIN_COMMANDS = new Set<string>([
-	"exit", "quit", "help", "clear", "modes", "connect",
-	"wizard", "density", "expand", "collapse", "compact",
+	"exit", "quit", "help", "modes", "connect",
+	"wizard", "compact",
 ]);
 
 /**

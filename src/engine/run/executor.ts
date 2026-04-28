@@ -389,8 +389,6 @@ export function formatResultForLog(result: CommandResult): string | null {
 			const lines = result.rows.map(row => row.join("  "));
 			return lines.join("\n");
 		}
-		case "tree":
-			return null; // Trees are too complex for single-line log
 		case "wizard":
 			return null; // Wizard results don't belong in run log
 		default:

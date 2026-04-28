@@ -45,7 +45,6 @@ export type CommandResult =
 	| { type: "error"; message: string; detail?: string; accent?: string }
 	| { type: "code"; content: string; language?: string; accent?: string }
 	| { type: "table"; headers: string[]; rows: string[][]; accent?: string }
-	| { type: "tree"; root: TreeNode; accent?: string }
 	| { type: "markdown"; content: string; accent?: string }
 	| { type: "wizard"; definition: WizardDefinition; prefill: WizardAnswers; autoRun: boolean; accent?: string }
 	| { type: "resume-wizard"; definition: WizardDefinition; answers: WizardAnswers; startIndex: number; failedTaskLabel: string; accent?: string }
@@ -78,10 +77,6 @@ export function tableResult(
 	rows: string[][],
 ): CommandResult {
 	return { type: "table", headers, rows };
-}
-
-export function treeResult(root: TreeNode): CommandResult {
-	return { type: "tree", root };
 }
 
 export function markdownResult(content: string): CommandResult {

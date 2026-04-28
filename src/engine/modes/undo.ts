@@ -32,7 +32,6 @@ export class UndoMode implements Mode {
 	readonly id: Mode["id"] = "undo";
 	readonly name = "Undo";
 	readonly accent = MODE_ACCENTS.undo;
-	readonly treeLabel = "Undo History";
 
 	private inPlan = false;
 	private planName = "";

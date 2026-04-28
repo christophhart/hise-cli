@@ -199,7 +199,6 @@ export class DspMode implements Mode {
 	readonly name = "DSP";
 	readonly accent = MODE_ACCENTS.dsp;
 	readonly prompt = "[dsp] > ";
-	readonly treeLabel = "DSP Graph";
 
 	private readonly scriptnodeList: ScriptnodeList | null;
 	private readonly completionEngine: CompletionEngine | null;

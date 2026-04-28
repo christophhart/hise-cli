@@ -97,9 +97,6 @@ export interface Mode {
 	readonly prompt: string;
 	/** Dynamic context path (e.g. "SineGenerator.pitch" in builder mode) */
 	readonly contextLabel?: string;
-	/** Label describing the tree sidebar content, shown in the TopBar
-	 *  (e.g. "Module Tree", "Variable Tree"). Omit for modes with no tree. */
-	readonly treeLabel?: string;
 	parse(input: string, session: SessionContext): Promise<CommandResult>;
 	complete?(input: string, cursor: number): CompletionResult;
 	/** Tokenize input for syntax highlighting. Returns spans with token types. */

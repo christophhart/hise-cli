@@ -5,7 +5,8 @@
 // formatter parity can be asserted without re-implementing rendering.
 
 import type { CommandResult, TreeNode } from "../result.js";
-import { errorResult, markdownResult, textResult, treeResult } from "../result.js";
+import { errorResult, markdownResult, preformattedResult, textResult } from "../result.js";
+import { renderTreeBox } from "./builder-ops.js";
 import type {
 	PreprocessorListPayload,
 	ProjectFilesPayload,
@@ -162,7 +163,7 @@ function sortScope(scope: string): number {
 }
 
 export function formatProjectTree(payload: ProjectTreePayload): CommandResult {
-	return treeResult(buildTreeNode(payload.root));
+	return preformattedResult(renderTreeBox(buildTreeNode(payload.root)), undefined, true);
 }
 
 export function buildTreeNode(

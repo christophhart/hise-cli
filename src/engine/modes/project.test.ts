@@ -56,7 +56,6 @@ describe("ProjectMode identity", () => {
 		expect(mode.name).toBe("Project");
 		expect(mode.accent).toBe("#e6db74");
 		expect(mode.prompt).toBe("[project] > ");
-		expect(mode.treeLabel).toBe("Project Files");
 	});
 });
 

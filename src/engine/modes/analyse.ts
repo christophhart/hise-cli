@@ -120,7 +120,6 @@ export class AnalyseMode implements Mode {
 	readonly name = "Analyse";
 	readonly accent = MODE_ACCENTS.analyse;
 	readonly prompt = "[analyse] > ";
-	readonly treeLabel = "Audio Files";
 
 	private readonly completionEngine: CompletionEngine | null;
 	private currentDir = "";

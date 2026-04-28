@@ -20,7 +20,6 @@ import { Input, type InputHandle, buildVisualRowMap, offsetToLineCol, lineColToO
 import { formatScriptLog } from "../tui/components/script-log.js";
 import { buildModeMap } from "../engine/run/mode-map.js";
 import { CompletionPopup } from "../tui/components/CompletionPopup.js";
-import { ThemeProvider } from "../tui/theme-context.js";
 import {
 	brand,
 	defaultScheme,
@@ -30,7 +29,13 @@ import {
 	type ColorScheme,
 	type ConnectionStatus,
 } from "../tui/theme.js";
-import { COMPACT } from "../tui/layout.js";
+
+const HORIZONTAL_PAD = 2;
+const COMPLETION_MAX_VISIBLE = 8;
+const COMPACT = {
+	horizontalPad: HORIZONTAL_PAD,
+	completionMaxVisible: COMPLETION_MAX_VISIBLE,
+} as const;
 import {
 	renderEcho,
 	renderError,
@@ -71,9 +76,7 @@ export function InlineApp(props: InlineAppProps): React.ReactElement {
 	const scheme = hasTrueColor ? schemeRaw : snapSchemeFor256(schemeRaw);
 	return (
 		<MouseProvider autoEnable={false}>
-			<ThemeProvider scheme={scheme} layout={COMPACT}>
-				<InlineAppInner {...props} scheme={scheme} />
-			</ThemeProvider>
+			<InlineAppInner {...props} scheme={scheme} />
 		</MouseProvider>
 	);
 }
@@ -1123,7 +1126,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			const moduleId = ctxLabel.split("/")[0] ?? "";
 			prefix = `DspNetwork Tree (${moduleId}.${tree.label})`;
 		} else {
-			prefix = mode.treeLabel ?? "Tree";
+			prefix = "Tree";
 		}
 		const breadcrumb = `${dim}${prefix}: ${RESET}` + segs.join(sep);
 

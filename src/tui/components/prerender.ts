@@ -10,7 +10,7 @@ import { brand, darkenHex, hasTrueColor } from "../theme.js";
 import type { TokenSpan } from "../../engine/highlight/tokens.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import type { CommandResult } from "../../engine/result.js";
-import { renderMarkdown } from "./Markdown.js";
+import { renderMarkdown } from "./markdown.js";
 
 // ── Types ───────────────────────────────────────────────────────────
 

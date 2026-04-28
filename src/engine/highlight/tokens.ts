@@ -19,7 +19,7 @@ export type TokenType =
 	| "punctuation"
 	| "plain"
 	// Slash command tokens
-	| "command"      // generic slash commands (/clear, /help, /exit, etc.)
+	| "command"      // generic slash commands (/help, /exit, etc.)
 	// Mode-colored tokens (slash commands that enter modes)
 	| "builder"
 	| "script"

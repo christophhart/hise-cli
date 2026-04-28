@@ -39,11 +39,6 @@ describe("tokenizeSlash", () => {
 		expect(spans).toEqual([{ text: "/help", token: "command", bold: true }]);
 	});
 
-	it("classifies /clear as command token", () => {
-		const spans = tokenizeSlash("/clear");
-		expect(spans).toEqual([{ text: "/clear", token: "command", bold: true }]);
-	});
-
 	it("classifies /exit as command token", () => {
 		const spans = tokenizeSlash("/exit");
 		expect(spans).toEqual([{ text: "/exit", token: "command", bold: true }]);

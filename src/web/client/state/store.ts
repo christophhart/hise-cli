@@ -118,11 +118,6 @@ export const useStore = create<AppState>((set, get) => ({
 	},
 
 	pushUserCommand(command, result, modeId) {
-		// Tree results route to the sidebar, not the output log.
-		if (result.type === "tree") {
-			set({ tree: result.root });
-			return;
-		}
 		set({
 			output: [
 				...get().output,

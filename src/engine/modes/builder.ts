@@ -198,7 +198,6 @@ export class BuilderMode implements Mode {
 	readonly name = "Builder";
 	readonly accent = MODE_ACCENTS.builder;
 	readonly prompt = "[builder] > ";
-	readonly treeLabel = "Module Tree";
 
 	private moduleList: ModuleList | null = null;
 	private readonly completionEngine: CompletionEngine | null;

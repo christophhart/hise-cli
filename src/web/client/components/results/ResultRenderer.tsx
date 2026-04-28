@@ -26,8 +26,6 @@ export function ResultRenderer({ result }: { result: CommandResult }) {
 			return <RunReportResult result={result} />;
 		case "preformatted":
 			return <PreformattedResult result={result} />;
-		case "tree":
-			return <em className="muted">[tree → see sidebar]</em>;
 		case "wizard":
 		case "resume-wizard":
 			return <WizardResult result={result} />;

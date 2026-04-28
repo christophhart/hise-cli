@@ -87,7 +87,6 @@ export class UiMode implements Mode {
 	readonly name = "UI";
 	readonly accent = MODE_ACCENTS.ui;
 	readonly prompt = "[ui] > ";
-	readonly treeLabel = "Component Tree";
 
 	private moduleId = "Interface";
 	private currentPath: string[] = [];

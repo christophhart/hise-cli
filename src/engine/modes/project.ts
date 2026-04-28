@@ -6,7 +6,8 @@
 
 import { isEnvelopeResponse, isErrorResponse, isSuccessResponse, type HiseSuccessResponse } from "../hise.js";
 import type { CommandResult, TreeNode } from "../result.js";
-import { errorResult, markdownResult, textResult, treeResult, wizardResult } from "../result.js";
+import { errorResult, markdownResult, preformattedResult, textResult, wizardResult } from "../result.js";
+import { renderTreeBox } from "./builder-ops.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenizeProject } from "../highlight/project.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
@@ -62,7 +63,6 @@ export class ProjectMode implements Mode {
 	readonly name = "Project";
 	readonly accent = MODE_ACCENTS.project;
 	readonly prompt = "[project] > ";
-	readonly treeLabel = "Project Files";
 
 	private readonly completionEngine: CompletionEngine | null;
 	private readonly preprocessorList: PreprocessorList | null;
@@ -220,7 +220,7 @@ export class ProjectMode implements Mode {
 			case "tree": {
 				const ok = await this.refreshTree(session);
 				if (!ok) return errorResult("Failed to load project tree.");
-				return treeResult(buildTreeNode(this.cachedTree!.root));
+				return preformattedResult(renderTreeBox(buildTreeNode(this.cachedTree!.root)), undefined, true);
 			}
 			default:
 				return errorResult(`Unknown show target: "${sub}". Use projects | settings | files | preprocessors | tree.`);

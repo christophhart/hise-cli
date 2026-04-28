@@ -2,9 +2,6 @@
 
 import chalk from "chalk";
 import { existsSync, unlinkSync } from "node:fs";
-import { render } from "ink";
-import React from "react";
-import { App as TuiApp } from "./tui/app.js";
 import { HttpHiseConnection } from "./engine/hise.js";
 import { createSession } from "./session-bootstrap.js";
 import { executeCliCommand } from "./cli/run.js";
@@ -33,87 +30,18 @@ if (process.platform === "win32") {
 	}
 }
 
-// ── Alt-screen helpers ──────────────────────────────────────────────
+// ── Launch ──────────────────────────────────────────────────────────
 
-function setupAltScreen(): () => void {
-	const enterAlt = "\x1b[?1049h\x1b[2J\x1b[H";
-	const leaveAlt = "\x1b[?1049l";
-	let restored = false;
-
-	const restore = () => {
-		if (restored) return;
-		restored = true;
-		process.stdout.write(leaveAlt);
-	};
-
-	process.once("exit", restore);
-	process.once("SIGTERM", restore);
-	process.once("uncaughtException", restore);
-	process.once("unhandledRejection", restore);
-	process.stdout.write(enterAlt);
-
-	return restore;
-}
-
-async function launchTui(
-	connection: import("./engine/hise.js").HiseConnection,
-	options?: { animate?: boolean; showKeys?: boolean },
-): Promise<void> {
-	// Update wizard handlers need a live connection + launcher, so register
-	// them per-session once those are in scope. Re-registering replaces any
-	// previous binding on the shared handler registry.
+async function launchRepl(args: string[]): Promise<void> {
+	const { launchInlineRepl } = await import("./inline/launch.js");
+	const connection = args.includes("--mock")
+		? createDefaultMockRuntime().connection
+		: new HttpHiseConnection();
 	registerUpdateHandlers(runtime.handlerRegistry, {
 		executor: runtime.phaseExecutor,
 		connection,
 		launcher: runtime.hiseLauncher,
 	});
-	const restoreAltScreen = setupAltScreen();
-
-	const instance = render(
-		React.createElement(TuiApp, {
-			connection,
-			dataLoader: runtime.dataLoader,
-			animate: options?.animate,
-			handlerRegistry: runtime.handlerRegistry,
-			launcher: runtime.hiseLauncher,
-			showKeys: options?.showKeys,
-		}),
-		{
-			exitOnCtrlC: false,
-			maxFps: 60,
-		},
-	);
-	await instance.waitUntilExit().finally(() => {
-		restoreAltScreen();
-	});
-}
-
-// ── Launch functions ────────────────────────────────────────────────
-
-async function launchRepl(args: string[]): Promise<void> {
-	const noAnimation = args.includes("--no-animation");
-	const showKeys = args.includes("--show-keys");
-
-	if (args.includes("--mock")) {
-		const mockRuntime = createDefaultMockRuntime();
-		await launchTui(mockRuntime.connection, { animate: !noAnimation, showKeys });
-		return;
-	}
-
-	// Launch immediately — the TUI's 5s polling detects HISE when it comes online.
-	// Use /connect to manually check connection status.
-	const connection = new HttpHiseConnection();
-	await launchTui(connection, { animate: !noAnimation, showKeys });
-}
-
-async function launchInline(args: string[]): Promise<void> {
-	const { launchInlineRepl } = await import("./inline/launch.js");
-	if (args.includes("--mock")) {
-		const mockRuntime = createDefaultMockRuntime();
-		await launchInlineRepl(mockRuntime.connection, runtime);
-		return;
-	}
-	const connection = new HttpHiseConnection();
 	await launchInlineRepl(connection, runtime);
 }
 
@@ -195,11 +123,6 @@ async function main(): Promise<void> {
 	if (cliResult.kind === "update") {
 		const { executeUpdateCommand } = await import("./cli/update.js");
 		process.exitCode = await executeUpdateCommand({ check: cliResult.check });
-		return;
-	}
-
-	if (cliResult.kind === "tui-inline") {
-		await launchInline(cliResult.args);
 		return;
 	}
 

@@ -23,7 +23,6 @@ export class ScriptMode implements Mode {
 	readonly id: Mode["id"] = "script";
 	readonly name = "Script";
 	readonly accent = MODE_ACCENTS.script;
-	readonly treeLabel = "Variable Tree";
 	private processorIdValue: string;
 	private readonly completionEngine: CompletionEngine | null;
 
