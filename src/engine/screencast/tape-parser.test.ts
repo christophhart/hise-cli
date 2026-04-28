@@ -127,23 +127,23 @@ Sleep 100
 		});
 	});
 
-	it("parses Expect with region", () => {
-		const result = parseTape('Expect "builder" topbar');
+	it("parses Expect with statusbar region", () => {
+		const result = parseTape('Expect "builder" statusbar');
 		expect(result.commands).toHaveLength(1);
 		expect(result.commands[0]).toEqual({
 			type: "Expect",
 			pattern: "builder",
-			region: "topbar",
+			region: "statusbar",
 		});
 	});
 
-	it("parses Expect with sidebar region", () => {
-		const result = parseTape('Expect "Oscillators" sidebar');
+	it("parses Expect with input region", () => {
+		const result = parseTape('Expect "/help" input');
 		expect(result.commands).toHaveLength(1);
 		expect(result.commands[0]).toEqual({
 			type: "Expect",
-			pattern: "Oscillators",
-			region: "sidebar",
+			pattern: "/help",
+			region: "input",
 		});
 	});
 
@@ -207,7 +207,7 @@ Annotation "Starting in root mode"
 Type "/script"
 Enter
 Wait "\\[script:Interface\\]"
-Expect "script" topbar
+Expect "script" statusbar
 
 Type "Engine.getSampleRate()"
 Enter

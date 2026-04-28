@@ -7,13 +7,14 @@
 import * as path from "node:path";
 import * as pty from "node-pty";
 import type { TapeCommand } from "../../engine/screencast/types.js";
-import {
-	computeLayout,
-	topBarHeight,
-	bottomBarHeight,
-	sidebarWidth as calcSidebarWidth,
-	INPUT_SECTION_ROWS,
-} from "../layout.js";
+
+// Inline shell layout (sticky bottom):
+// - 1 row: status line (above prompt)
+// - 1 row: prompt input
+// Everything else above is committed scrollback (CommittedBlocks via <Static>).
+const PROMPT_ROWS = 1;
+const STATUS_ROWS = 1;
+const STATIC_REGION_ROWS = PROMPT_ROWS + STATUS_ROWS;
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -76,102 +77,34 @@ function delay(ms: number): Promise<void> {
 	return new Promise((r) => setTimeout(r, ms));
 }
 
-/**
- * Find the start of the last full-screen repaint in the pty output buffer.
- *
- * On macOS, Ink repaints using cursor-up + line-erase sequences, and the
- * pty output occasionally includes `\x1b[2J` (ED2 — clear entire screen).
- *
- * On Windows, ConPTY intercepts Ink's VT sequences and translates each
- * repaint cycle into `\x1b[H` (CUP — cursor home) followed by a full
- * content rewrite. The `\x1b[2J` clear only appears once at boot.
- *
- * Using the later of the two markers works on both platforms.
- */
-function lastScreenStart(buffer: string): number {
-	return Math.max(
-		buffer.lastIndexOf("\x1b[2J"),
-		buffer.lastIndexOf("\x1b[H"),
-	);
-}
-
-// ── Region extraction ───────────────────────────────────────────────
+// ── Region extraction (inline shell) ────────────────────────────────
 //
-// Splits a plain-text terminal screen (ANSI already stripped) into
-// named regions based on the TUI layout geometry.
+// Inline shell sticky-bottom layout: scrollback above, then a status
+// line, then the prompt input. <Static> only redraws the bottom region.
 //
-// Layout at 140×34 standard density with sidebar visible:
-//   rows 0–1:   TopBar (full width)
-//   rows 2–31:  Main area — left cols = sidebar, right cols = output+input
-//   rows 32–33: StatusBar (full width)
+// "output"    = scrollback (everything above the static region)
+// "statusbar" = status line above the prompt
+// "input"     = prompt line at the bottom
 
-/** The search icon rendered at the top of the TreeSidebar (standard+ density). */
-const SIDEBAR_SEARCH_ICON = "⌕";
-
-/**
- * Extract text from a named region of the terminal screen.
- * Returns `null` if the region is not visible (e.g., sidebar not open).
- */
 function extractRegion(
 	plainScreen: string,
-	region: "topbar" | "statusbar" | "sidebar" | "output" | "input",
+	region: "statusbar" | "output" | "input",
 	width: number,
-	height: number,
-): string | null {
-	const layout = computeLayout(width, height);
-	const topH = topBarHeight(layout);
-	const botH = bottomBarHeight(layout);
-	const sideW = calcSidebarWidth(layout, width);
-
-	// Split screen into rows, pad each to full width
+): string {
 	const rawRows = plainScreen.split("\n");
-	const rows: string[] = [];
-	for (let i = 0; i < height; i++) {
-		const row = rawRows[i] ?? "";
-		rows.push(row.padEnd(width).slice(0, width));
-	}
-
-	// Detect sidebar visibility by looking for the search icon
-	// in the main area rows within the sidebar column range
-	const sidebarVisible = rows.some((row, i) =>
-		i >= topH && i < height - botH && row.slice(0, sideW).includes(SIDEBAR_SEARCH_ICON),
-	);
-
-	const contentLeft = sidebarVisible ? sideW : 0;
+	const rows = rawRows.map((r) => r.padEnd(width).slice(0, width));
+	const total = rows.length;
 
 	switch (region) {
-		case "topbar":
-			return rows.slice(0, topH).join("\n");
-
+		case "input":
+			return rows.slice(Math.max(0, total - PROMPT_ROWS)).join("\n");
 		case "statusbar":
-			return rows.slice(height - botH).join("\n");
-
-		case "sidebar": {
-			if (!sidebarVisible) return null;
-			// Extract main area rows plus a few extra to account for ConPTY
-			// rendering offsets (blank lines inserted by cursor positioning).
-			// On Windows, content may be shifted down by a few rows.
-			const mainStart = Math.max(0, topH - 2);  // start a bit earlier
-			const mainEnd = Math.min(height, height - botH + 3);  // end a bit later
-			const mainRows = rows.slice(mainStart, mainEnd);
-			return mainRows.map((r) => r.slice(0, sideW)).join("\n");
-		}
-
-		case "output": {
-			// Output viewport: main area minus input section rows at the bottom.
-			// Also skip the 1-row gap above and below output.
-			const mainStart = topH;
-			const inputStart = height - botH - INPUT_SECTION_ROWS;
-			const outputRows = rows.slice(mainStart, inputStart);
-			return outputRows.map((r) => r.slice(contentLeft)).join("\n");
-		}
-
-		case "input": {
-			const inputStart = height - botH - INPUT_SECTION_ROWS;
-			const inputEnd = height - botH;
-			const inputRows = rows.slice(inputStart, inputEnd);
-			return inputRows.map((r) => r.slice(contentLeft)).join("\n");
-		}
+			return rows.slice(
+				Math.max(0, total - STATIC_REGION_ROWS),
+				Math.max(0, total - PROMPT_ROWS),
+			).join("\n");
+		case "output":
+			return rows.slice(0, Math.max(0, total - STATIC_REGION_ROWS)).join("\n");
 	}
 }
 
@@ -402,98 +335,67 @@ export async function runTape(
 				}
 
 		case "Expect": {
-			// Check the last visible screen for the pattern.
-			// This is more reliable than cursor-based tracking
-			// because the pty output contains full screen repaints.
-			const lastClear = lastScreenStart(outputBuffer);
-				const lastScreen = lastClear >= 0
-					? stripAnsi(outputBuffer.slice(lastClear))
-					: stripAnsi(outputBuffer.slice(-2000));
+			// Inline shell appends to scrollback; no full-screen repaints.
+			// Check the recent slice of the output buffer for the pattern.
+			const recent = stripAnsi(outputBuffer.slice(-8000));
 
 			if (cmd.region) {
-				// Region-scoped assertion — extract only the
-				// requested region from the screen
-				const regionText = extractRegion(
-					lastScreen, cmd.region, width, height,
-				);
-				if (regionText === null) {
-					assertions.push({
-						pass: false,
-						command: cmd,
-						message: `Expect failed: ${cmd.region} region is not visible`,
-					});
-				} else {
-					const pass = regionText.includes(cmd.pattern);
-					assertions.push({
-						pass,
-						command: cmd,
-						message: pass
-							? `Expect passed: found "${cmd.pattern}" in ${cmd.region}`
-							: `Expect failed: "${cmd.pattern}" not found in ${cmd.region}`,
-					});
-				}
-				} else {
-					// Full-screen search (default)
-					const pass = lastScreen.includes(cmd.pattern);
-					assertions.push({
-						pass,
-						command: cmd,
-						message: pass
-							? `Expect passed: found "${cmd.pattern}"`
-							: `Expect failed: "${cmd.pattern}" not found in last screen`,
-					});
-				}
-				break;
+				const regionText = extractRegion(recent, cmd.region, width);
+				const pass = regionText.includes(cmd.pattern);
+				assertions.push({
+					pass,
+					command: cmd,
+					message: pass
+						? `Expect passed: found "${cmd.pattern}" in ${cmd.region}`
+						: `Expect failed: "${cmd.pattern}" not found in ${cmd.region}`,
+				});
+			} else {
+				const pass = recent.includes(cmd.pattern);
+				assertions.push({
+					pass,
+					command: cmd,
+					message: pass
+						? `Expect passed: found "${cmd.pattern}"`
+						: `Expect failed: "${cmd.pattern}" not found in recent output`,
+				});
 			}
+			break;
+		}
 
-			case "ExpectMode": {
-				// The pty output contains full screen repaints. We check
-				// the LAST screen repaint (the final clear+redraw in the
-				// buffer) to determine the currently visible mode.
-				const plain = stripAnsi(outputBuffer);
-				// Find the last screen repaint start — cursor home on
-				// Windows (ConPTY), or screen clear on macOS.
-				const lastClear = lastScreenStart(outputBuffer);
-					const lastScreen = lastClear >= 0
-						? stripAnsi(outputBuffer.slice(lastClear))
-						: plain.slice(-2000);
-					let pass: boolean;
-					if (cmd.mode === "root") {
-						// Root mode: the visible screen should NOT contain
-						// any mode bracket in the status/prompt area.
-						pass = !lastScreen.includes("[script]")
-							&& !lastScreen.includes("[builder]")
-							&& !lastScreen.includes("[inspect]");
-					} else {
-						pass = lastScreen.toLowerCase().includes(cmd.mode.toLowerCase());
-					}
-					assertions.push({
-						pass,
-						command: cmd,
-						message: pass
-							? `ExpectMode passed: "${cmd.mode}"`
-							: `ExpectMode failed: "${cmd.mode}" not visible in output`,
-					});
-					break;
-				}
+		case "ExpectMode": {
+			const recent = stripAnsi(outputBuffer.slice(-4000));
+			let pass: boolean;
+			if (cmd.mode === "root") {
+				const tail = stripAnsi(outputBuffer.slice(-200));
+				pass = !tail.includes("[script]")
+					&& !tail.includes("[builder]")
+					&& !tail.includes("[inspect]");
+			} else {
+				pass = recent.toLowerCase().includes(cmd.mode.toLowerCase());
+			}
+			assertions.push({
+				pass,
+				command: cmd,
+				message: pass
+					? `ExpectMode passed: "${cmd.mode}"`
+					: `ExpectMode failed: "${cmd.mode}" not visible in output`,
+			});
+			break;
+		}
 
-			case "ExpectPrompt": {
-				// Check the last visible screen for the prompt text
-				const lastClear = lastScreenStart(outputBuffer);
-					const lastScreen = lastClear >= 0
-						? stripAnsi(outputBuffer.slice(lastClear))
-						: stripAnsi(outputBuffer.slice(-2000));
-					const trimmed = cmd.prompt.trimEnd();
-					const pass = lastScreen.includes(trimmed);
-					assertions.push({
-						pass,
-						command: cmd,
-						message: pass
-							? `ExpectPrompt passed: "${cmd.prompt}"`
-							: `ExpectPrompt failed: "${cmd.prompt}" not found in output`,
-					});
-					break;
-				}
+		case "ExpectPrompt": {
+			const recent = stripAnsi(outputBuffer.slice(-2000));
+			const trimmed = cmd.prompt.trimEnd();
+			const pass = recent.includes(trimmed);
+			assertions.push({
+				pass,
+				command: cmd,
+				message: pass
+					? `ExpectPrompt passed: "${cmd.prompt}"`
+					: `ExpectPrompt failed: "${cmd.prompt}" not found in output`,
+			});
+			break;
+		}
 
 				case "Snapshot": {
 					// In pty mode, snapshot captures the full output buffer

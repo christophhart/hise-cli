@@ -212,7 +212,7 @@ function parseWait(line: string): LineResult {
 function parseExpect(line: string): LineResult {
 	// Expect "pattern" [region]
 	const match = line.match(
-		/^Expect\s+"((?:[^"\\]|\\.)*)"\s*(?:(output|topbar|statusbar|input|sidebar))?$/,
+		/^Expect\s+"((?:[^"\\]|\\.)*)"\s*(?:(output|statusbar|input))?$/,
 	);
 	if (!match) {
 		return { error: "Expect requires a quoted pattern" };
@@ -220,10 +220,8 @@ function parseExpect(line: string): LineResult {
 	const pattern = unescapeQuotes(match[1]);
 	const region = match[2] as
 		| "output"
-		| "topbar"
 		| "statusbar"
 		| "input"
-		| "sidebar"
 		| undefined;
 	return { command: { type: "Expect", pattern, region } };
 }
