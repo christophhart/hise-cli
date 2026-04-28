@@ -81,7 +81,15 @@ export async function launchInlineRepl(
 	}
 
 	const version = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
-	process.stdout.write(renderInlineBanner(version));
+	// Race the update check against a tight timeout so a slow network never
+	// stalls the banner. Failure / timeout silently drops the badge.
+	const { checkLatest } = await import("../cli/update.js");
+	const info = await Promise.race([
+		checkLatest(),
+		new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+	]);
+	const updateLatest = info?.hasUpdate ? info.latest : null;
+	process.stdout.write(renderInlineBanner(version, updateLatest));
 
 	const instance = render(
 		React.createElement(InlineApp, { session, connection }),

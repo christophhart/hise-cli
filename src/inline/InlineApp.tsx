@@ -11,6 +11,8 @@ import type { Session } from "../engine/session.js";
 import type { HiseConnection } from "../engine/hise.js";
 import type { CommandResult } from "../engine/result.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
+import { MODE_ACCENTS } from "../engine/modes/mode.js";
+import { startObserverServer, type ObserverEvent } from "../tui/observer.js";
 import { Input, type InputHandle, buildVisualRowMap, offsetToLineCol, lineColToOffset } from "../tui/components/Input.js";
 import { formatScriptLog } from "../tui/components/script-log.js";
 import { buildModeMap } from "../engine/run/mode-map.js";
@@ -154,6 +156,26 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		};
 	}, []);
 
+	// F5/F7 detection: Ink's useInput cannot reliably distinguish these
+	// across terminals, so we attach a raw stdin listener that parses the
+	// escape sequences and flips a ref. The multiline useInput branch
+	// checks the refs and fires the corresponding action.
+	const f5PressedRef = useRef(false);
+	const f7PressedRef = useRef(false);
+	// Ink maps both Delete (\x1b[3~) and Backspace (\x7f) to key.delete/backspace,
+	// so we sniff the raw sequence to distinguish forward-delete.
+	const deleteForwardRef = useRef(false);
+	useEffect(() => {
+		const onData = (data: Buffer) => {
+			const str = data.toString();
+			if (str === "\x1b[15~" || str === "\x1b[[E") f5PressedRef.current = true;
+			if (str === "\x1b[18~") f7PressedRef.current = true;
+			if (str === "\x1b[3~") deleteForwardRef.current = true;
+		};
+		process.stdin.on("data", onData);
+		return () => { process.stdin.off("data", onData); };
+	}, []);
+
 	const inputHandleRef = useRef<InputHandle | null>(null);
 
 	const [, forceModeRender] = useState(0);
@@ -209,6 +231,48 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		setCommitted(prev => [...prev, { id, text }]);
 	}, []);
 
+	// Observer: HTTP server receives async events from the CLI runner
+	// (LLM-triggered commands) and commits annotated blocks to scrollback.
+	const observerCtxRef = useRef({ scheme, innerW });
+	observerCtxRef.current = { scheme, innerW };
+
+	const handleObserverEvent = useCallback((event: ObserverEvent) => {
+		const { scheme: s, innerW: w } = observerCtxRef.current;
+
+		if (event.type === "command.start") {
+			const accent = MODE_ACCENTS[event.mode as keyof typeof MODE_ACCENTS] || s.foreground.default;
+			appendBlock(
+				renderEcho(event.command, accent, s.backgrounds.raised, w, undefined, {
+					prefix: "[LLM] ",
+					prefixColor: s.foreground.muted,
+				}),
+				false,
+			);
+			return;
+		}
+
+		if (event.type === "command.progress") {
+			const parts = [event.phase, event.percent !== undefined ? `${event.percent}%` : undefined, event.message]
+				.filter(Boolean)
+				.join(" ");
+			if (parts) {
+				const block = renderResult({ type: "text", content: parts }, s, w);
+				if (block) appendBlock(block);
+			}
+			return;
+		}
+
+		const block = renderResult(event.result, s, w);
+		if (block) appendBlock(block);
+	}, [appendBlock]);
+
+	useEffect(() => {
+		const server = startObserverServer(handleObserverEvent);
+		return () => {
+			server.close();
+		};
+	}, [handleObserverEvent]);
+
 	useEffect(() => {
 		if (!connection) {
 			setConnectionStatus("error");
@@ -232,6 +296,9 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 							if (folder) {
 								session.projectFolder = folder;
 								void session.refreshScriptFileCache();
+							}
+							if (typeof data.activeIsSnippetBrowser === "boolean") {
+								session.playgroundActive = data.activeIsSnippetBrowser;
 							}
 							if (!cancelled) bumpModeRender();
 						}
@@ -566,6 +633,8 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				setEditorErrorLines([result.error.line]);
 			}
 			appendBlock(formatScriptLog(source, result, scheme));
+			const hr = fgHex(scheme.foreground.muted) + "─".repeat(columns) + RESET;
+			appendBlock({ lines: [hr], height: 1 }, false);
 		} catch (err) {
 			appendBlock(renderError(
 				`Script error: ${err instanceof Error ? err.message : String(err)}`,
@@ -574,6 +643,49 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		} finally {
 			disabledRef.current = false;
 			setDisabled(false);
+		}
+	}, [session, scheme, innerW, appendBlock, editorFilePath]);
+
+	const validateAndSaveScript = useCallback(async (source: string) => {
+		const { parseScript } = await import("../engine/run/parser.js");
+		const { validateScript, formatValidationReport } = await import("../engine/run/validator.js");
+		const { dryRunScript } = await import("../engine/run/executor.js");
+
+		setEditorErrorLines(undefined);
+
+		const script = parseScript(source);
+		const staticResult = validateScript(script, session);
+		if (!staticResult.ok) {
+			setEditorErrorLines(staticResult.errors.map(e => e.line));
+			const block = renderResult({ type: "error", message: formatValidationReport(staticResult) }, scheme, innerW);
+			if (block) appendBlock(block);
+			return;
+		}
+
+		if (session.connection) {
+			const liveResult = await dryRunScript(script, session);
+			if (!liveResult.ok) {
+				setEditorErrorLines(liveResult.errors.map(e => e.line));
+				const block = renderResult({ type: "error", message: formatValidationReport(liveResult) }, scheme, innerW);
+				if (block) appendBlock(block);
+				return;
+			}
+		}
+
+		if (editorFilePath && session.saveScriptFile) {
+			try {
+				await session.saveScriptFile(editorFilePath, source);
+				const block = renderResult({ type: "text", content: `Validation passed — saved "${editorFilePath.split(/[\\/]/).pop()}"` }, scheme, innerW);
+				if (block) appendBlock(block);
+			} catch (err) {
+				appendBlock(renderError(
+					`Save failed: ${err instanceof Error ? err.message : String(err)}`,
+					undefined, scheme.foreground.muted, innerW,
+				));
+			}
+		} else {
+			const block = renderResult({ type: "text", content: "Validation passed — no errors found." }, scheme, innerW);
+			if (block) appendBlock(block);
 		}
 	}, [session, scheme, innerW, appendBlock, editorFilePath]);
 
@@ -754,7 +866,10 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				return;
 			} else if (key.escape) {
 				setCompletionState(null);
-				return;
+				// In multiline, fall through so the editor's Esc-Esc
+				// timestamp tracker still sees this keystroke. Single-line
+				// consumes (popup-close is the only effect).
+				if (!multilineModeRef.current) return;
 			}
 		}
 
@@ -763,6 +878,21 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 
 		// ── Multiline-specific dispatch ─────────────────────────
 		if (multilineModeRef.current) {
+			// F5 — run script (HISE compile shortcut)
+			if (f5PressedRef.current) {
+				f5PressedRef.current = false;
+				setCompletionState(null);
+				handle.submit();
+				return;
+			}
+			// F7 — validate + dry-run + save (no execution)
+			if (f7PressedRef.current) {
+				f7PressedRef.current = false;
+				setCompletionState(null);
+				const value = handle.getValue();
+				void validateAndSaveScript(value);
+				return;
+			}
 			// Ctrl+Enter → submit
 			if (key.ctrl && key.return) {
 				setCompletionState(null);
@@ -785,8 +915,9 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 					editorContentRef.current = handle.getValue();
 					setMultilineMode(false);
 					setEditorErrorLines(undefined);
-					handle.setValue(singleLineContentRef.current);
+					handle.setValue("");
 					setEditorValueVersion(v => v + 1);
+					void session.refreshScriptFileCache();
 				} else {
 					escTimestampRef.current = now;
 					handleEscape();
@@ -802,8 +933,17 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			// Cursor left/right
 			if (key.leftArrow) { handle.moveCursor("left", key.shift); return; }
 			if (key.rightArrow) { handle.moveCursor("right", key.shift); return; }
-			// Backspace
-			if (key.backspace || key.delete) { handle.deleteBackward(); setEditorValueVersion(v => v + 1); return; }
+			// Backspace / Delete (forward)
+			if (key.backspace || key.delete) {
+				if (deleteForwardRef.current) {
+					deleteForwardRef.current = false;
+					handle.deleteForward();
+				} else {
+					handle.deleteBackward();
+				}
+				setEditorValueVersion(v => v + 1);
+				return;
+			}
 			// Ctrl+A / Ctrl+Z / Ctrl+Y / Ctrl+C / Ctrl+D — same as single-line
 			if (key.ctrl && input === "a") { handle.selectAll(); return; }
 			if (key.ctrl && input === "z") { handle.undo(); setEditorValueVersion(v => v + 1); return; }
@@ -867,7 +1007,15 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		if (key.downArrow) { handle.historyDown(); return; }
 		if (key.leftArrow) { handle.moveCursor("left", key.shift); return; }
 		if (key.rightArrow) { handle.moveCursor("right", key.shift); return; }
-		if (key.backspace || key.delete) { handle.deleteBackward(); return; }
+		if (key.backspace || key.delete) {
+			if (deleteForwardRef.current) {
+				deleteForwardRef.current = false;
+				handle.deleteForward();
+			} else {
+				handle.deleteBackward();
+			}
+			return;
+		}
 		if (key.tab) { handleTab(); return; }
 		if (input && !key.ctrl && !key.meta) {
 			const code = input.charCodeAt(0);
@@ -878,11 +1026,24 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 
 	const popupLeftOffset = useMemo(() => {
 		if (!completionState) return 0;
+		if (multilineMode) {
+			// Multiline editor: gutter = horizontalPad + lineNumberWidth + indicator + space.
+			// result.from is absolute; need column within the current line.
+			const val = inputHandleRef.current?.getValue() ?? "";
+			const lines = val.split("\n");
+			const maxLineNum = Math.max(lines.length, editorMaxLines);
+			const lineNumberWidth = String(maxLineNum).length;
+			const gutterW = COMPACT.horizontalPad + lineNumberWidth + 2;
+			const { line: lineIdx } = offsetToLineCol(val, completionState.result.from);
+			const lineStart = lineColToOffset(val, lineIdx, 0);
+			const lineRelFrom = completionState.result.from - lineStart;
+			return Math.min(columns - 4, gutterW + lineRelFrom);
+		}
 		// Flat single-line prompt: "> " = 2 chars, no left pad
 		const promptW = 2;
 		const lineRel = completionState.result.from;
 		return Math.min(columns - 4, promptW + lineRel);
-	}, [completionState, columns]);
+	}, [completionState, columns, multilineMode, editorMaxLines]);
 
 	const wizardBlockText = useMemo(() => {
 		if (!wizardForm) return null;

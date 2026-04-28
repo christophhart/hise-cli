@@ -7,7 +7,7 @@ import { brand } from "../theme.js";
 import type { RunResult, ScriptProgressEvent } from "../../engine/run/types.js";
 import { formatResultForLog, filterLogNoise } from "../../engine/run/executor.js";
 import { buildModeMap, type ModeMapEntry } from "../../engine/run/mode-map.js";
-import { fgHex, bgHex, RESET, type PrerenderedBlock } from "./prerender.js";
+import { fgHex, RESET, type PrerenderedBlock } from "./prerender.js";
 
 /** Render a single script progress event as ANSI output lines. */
 export function renderProgressLine(
@@ -16,12 +16,11 @@ export function renderProgressLine(
 	modeMap?: ModeMapEntry[],
 ): string[] {
 	const dimmed = fgHex(scheme.foreground.muted);
-	const bg = bgHex(scheme.backgrounds.standard);
 
 	if (event.type === "command") {
 		const cmd = event.output;
 		if (cmd.label) {
-			return [bg + dimmed + "│ ── " + cmd.label + " ──" + RESET];
+			return [dimmed + "│ ── " + cmd.label + " ──" + RESET];
 		}
 		if (cmd.result.type === "text" && /^(Entered |Exited |Already in )/.test(cmd.result.content)) {
 			return [];
@@ -34,7 +33,7 @@ export function renderProgressLine(
 			?? (modeEntry && modeEntry.modeId !== "root" ? modeEntry.accent : undefined);
 		const barColor = accent ? fgHex(accent) : dimmed;
 		return val.split("\n").map(line =>
-			bg + barColor + "│" + RESET + bg + " " + line + RESET);
+			barColor + "│" + RESET + " " + line);
 	}
 
 	if (event.type === "expect") {
@@ -43,12 +42,12 @@ export function renderProgressLine(
 		const color = e.passed ? fgHex(brand.ok) : fgHex(brand.error);
 		let line = `${icon} line ${e.line}: ${e.command} is ${e.expected}`;
 		if (!e.passed) line += ` — got ${e.actual}`;
-		return [bg + color + "│ " + line + RESET];
+		return [color + "│ " + line + RESET];
 	}
 
 	if (event.type === "error") {
 		const errFg = fgHex(brand.error);
-		return [bg + errFg + "│ ✗ " + `ABORTED at line ${event.line}: ${filterLogNoise(event.message)}` + RESET];
+		return [errFg + "│ ✗ " + `ABORTED at line ${event.line}: ${filterLogNoise(event.message)}` + RESET];
 	}
 
 	return [];
@@ -60,7 +59,6 @@ export function renderScriptFooter(
 	scheme: ColorScheme,
 	actionCount: number,
 ): string[] {
-	const bg = bgHex(scheme.backgrounds.standard);
 	const errFg = fgHex(brand.error);
 	const okFg = fgHex(brand.ok);
 	const passed = result.expects.filter(e => e.passed).length;
@@ -70,7 +68,7 @@ export function renderScriptFooter(
 	const parts: string[] = [];
 	if (actionCount > 0) parts.push(`${actionCount} command${actionCount !== 1 ? "s" : ""} executed`);
 	if (total > 0) parts.push(result.ok ? `PASSED ${passed}/${total}` : `FAILED ${passed}/${total}`);
-	return [bg + statusColor + "│ " + statusIcon + " " + parts.join(", ") + RESET, ""];
+	return [statusColor + "│ " + statusIcon + " " + parts.join(", ") + RESET];
 }
 
 /** Non-streaming fallback: format a complete RunResult as a block. */

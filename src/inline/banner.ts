@@ -33,7 +33,7 @@ function sampleGradient(pos: number): string {
 	return lerpHex(colorA, colorB, frac);
 }
 
-export function renderInlineBanner(version: string): string {
+export function renderInlineBanner(version: string, updateLatest?: string | null): string {
 	const logoWidth = LOGO_LINES.reduce((max, l) => Math.max(max, l.length), 0);
 	const cols = process.stdout.columns ?? 80;
 	const dim = fgHex("#888888");
@@ -60,11 +60,13 @@ export function renderInlineBanner(version: string): string {
 	}
 
 	lines.push("");
-	lines.push(dim + `  Command line TUI v${version}` + RESET);
+	const accent = fgHex(MODE_ACCENTS.builder);
+	const updateSuffix = updateLatest
+		? ` ${accent}[Update available: v${updateLatest}]${RESET}${dim}`
+		: "";
+	lines.push(dim + `  Command line TUI v${version}` + updateSuffix + RESET);
 	lines.push("");
 	lines.push(dim + "  Type /help to get started" + RESET);
-	lines.push("");
-	lines.push(hr);
 	lines.push("");
 
 	return lines.join("\n") + "\n";
