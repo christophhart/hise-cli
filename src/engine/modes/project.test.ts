@@ -320,6 +320,31 @@ describe("ProjectMode mutations", () => {
 		expect(result.type).not.toBe("error");
 		expect(dirtyCount()).toBeGreaterThan(0);
 	});
+
+	it("load <bareName> prefers .xml over .hip when both exist", async () => {
+		const { session, mock } = createMockSession();
+		const result = await new ProjectMode().parse("load Mock Project", session);
+		expect(result.type).not.toBe("error");
+		const call = mock.calls.find((c) => c.endpoint === "/api/project/load");
+		expect((call!.body as { file: string }).file).toBe("XmlPresetBackups/Mock Project.xml");
+	});
+
+	it("load <bareName>.hip overrides the .xml preference", async () => {
+		const { session, mock } = createMockSession();
+		const result = await new ProjectMode().parse("load Mock Project.hip", session);
+		expect(result.type).not.toBe("error");
+		const call = mock.calls.find((c) => c.endpoint === "/api/project/load");
+		expect((call!.body as { file: string }).file).toBe("Presets/Mock Project.hip");
+	});
+
+	it("load errors with a clear message when no file matches", async () => {
+		const { session } = createMockSession();
+		const result = await new ProjectMode().parse("load DoesNotExist", session);
+		expect(result.type).toBe("error");
+		if (result.type === "error") {
+			expect(result.message).toContain('No project file matches "DoesNotExist"');
+		}
+	});
 });
 
 describe("ProjectMode contract validation against mock runtime", () => {
@@ -487,6 +512,73 @@ describe("ProjectMode completion", () => {
 		const labels = result.items.map((i) => i.label);
 		expect(labels).toContain("Project");
 		expect(labels).toContain("Dll");
+	});
+
+	it("replaces only the trailing token when completing a sub-arg", () => {
+		// Regression: previously `from` was 0, so accepting `switch Pro<Tab>` wiped the verb.
+		const engine = new CompletionEngine();
+		const mode = new ProjectMode(engine);
+		const input = "switch Pro";
+		const result = mode.complete!(input, input.length);
+		expect(result.from).toBe(7); // start of "Pro"
+		expect(result.to).toBe(input.length);
+	});
+
+	it("first token completion still spans the whole verb", () => {
+		const engine = new CompletionEngine();
+		const mode = new ProjectMode(engine);
+		const result = mode.complete!("swi", 3);
+		expect(result.from).toBe(0);
+		expect(result.to).toBe(3);
+	});
+
+	it("suggests export targets after `export`", () => {
+		const engine = new CompletionEngine();
+		const mode = new ProjectMode(engine);
+		const result = mode.complete!("export ", 7);
+		const labels = result.items.map((i) => i.label);
+		expect(labels).toContain("dll");
+		expect(labels).toContain("project");
+	});
+});
+
+describe("ProjectMode export verb", () => {
+	function makeWizardRegistry() {
+		const wizards = new Map<string, { id: string; title?: string; pages: unknown[] }>([
+			["compile_networks", { id: "compile_networks", title: "Compile networks", pages: [] }],
+			["plugin_export", { id: "plugin_export", title: "Plugin export", pages: [] }],
+		]);
+		return {
+			get: (id: string) => wizards.get(id) ?? null,
+			list: () => [...wizards.values()],
+		};
+	}
+
+	it("export dll returns wizardResult for compile_networks", async () => {
+		const { session } = createMockSession();
+		(session as { wizardRegistry?: unknown }).wizardRegistry = makeWizardRegistry();
+		const result = await new ProjectMode().parse("export dll", session);
+		expect(result.type).toBe("wizard");
+		if (result.type === "wizard") {
+			expect(result.definition.id).toBe("compile_networks");
+		}
+	});
+
+	it("export project returns wizardResult for plugin_export", async () => {
+		const { session } = createMockSession();
+		(session as { wizardRegistry?: unknown }).wizardRegistry = makeWizardRegistry();
+		const result = await new ProjectMode().parse("export project", session);
+		expect(result.type).toBe("wizard");
+		if (result.type === "wizard") {
+			expect(result.definition.id).toBe("plugin_export");
+		}
+	});
+
+	it("export errors on unknown target", async () => {
+		const { session } = createMockSession();
+		(session as { wizardRegistry?: unknown }).wizardRegistry = makeWizardRegistry();
+		const result = await new ProjectMode().parse("export bogus", session);
+		expect(result.type).toBe("error");
 	});
 });
 

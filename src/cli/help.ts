@@ -45,6 +45,7 @@ MODES
 OPTIONS
   --help             Show this help (or mode help with -<mode> --help)
   --mock             Use mock HISE connection (for testing without HISE)
+  --pretty           Render output as ANSI/markdown text (default: JSON)
   --show-keys        Show key press badge in the top bar (for screencasts)
   --target:<path>    Set context path for mode commands
 
@@ -361,7 +362,12 @@ QUICK START
   hise-cli -project "switch /Users/foo/HISE Projects/X"  switch by absolute path
   hise-cli -project "save xml as MyPlugin_v2"     save XML preset (renames chain if differs)
   hise-cli -project "save hip"                    save HIP archive with default filename
-  hise-cli -project "load XmlPresetBackups/MyPlugin.xml"  restore a saved XML
+  hise-cli -project "load MyPlugin"               resolve bare name (.xml > .hip)
+  hise-cli -project "load MyPlugin.hip"            force the .hip variant
+  hise-cli -project "load XmlPresetBackups/MyPlugin.xml"  exact relative path
+  hise-cli -project "export dll"                   alias for /wizard compile_networks
+  hise-cli -project export dll --default            run compile_networks with default answers
+  hise-cli -project "export project"               alias for /wizard plugin_export
   hise-cli -project "set Version 1.1.0"           update a project setting
   hise-cli -project "set VST3Support yes"         lenient bool norm (yes/no/on/off/1/0)
   hise-cli -project "set preprocessor ENABLE_FOO 1 on win for plugin"
@@ -379,7 +385,9 @@ COMMANDS
   switch <name|path>                            Switch active project
   save xml [as <filename>]                      Save as XML preset
   save hip [as <filename>]                      Save as HIP archive
-  load <relative-path>                          Load XML or HIP file
+  load <name|relative-path>                     Load XML or HIP file
+                                                  bare name resolves to .xml > .hip;
+                                                  add .xml/.hip to override
   set <key> <value>                             Update a project setting
   set preprocessor <name> <value>               Upsert a preprocessor macro
                                                   ([on <os>] [for <target>])
@@ -388,6 +396,8 @@ COMMANDS
   snippet export                                Export snippet (CLI: stdout)
   snippet load [<string>]                       Import snippet (omit arg → clipboard)
   create                                        Alias for /wizard new_project
+  export dll                                    Alias for /wizard compile_networks
+  export project                                Alias for /wizard plugin_export
 
 OS ALIASES
   Windows:  windows | win | Win | x64 | WIN
@@ -487,6 +497,7 @@ EXAMPLES
 SYNTAX
   hise-cli wizard list                            List available wizards
   hise-cli wizard <id> --schema                   Show field schema (JSON)
+  hise-cli wizard <id> --default                  Execute with default answers
   hise-cli wizard <id> --answers '{"k":"v"}'      Execute with answers
 
 AVAILABLE WIZARDS
@@ -501,12 +512,13 @@ AVAILABLE WIZARDS
 
 WORKFLOW
   1. Call --schema to get field definitions and types
-  2. Build an answers JSON object with field IDs as keys
-  3. Call --answers to execute the wizard
+  2. Either call --default, or build an answers JSON object with field IDs as keys
+  3. Call --answers to execute the wizard with explicit values
 
 EXAMPLES
   hise-cli wizard list
   hise-cli wizard new_project --schema
+  hise-cli wizard compile_networks --default
   hise-cli wizard new_project --answers '{"ProjectName":"MyPlugin","DefaultProjectFolder":"/path","Template":"0"}'
   hise-cli wizard recompile --answers '{"clearGlobals":"1","clearFonts":"0","clearAudioFiles":"0","clearImages":"0"}'`,
 

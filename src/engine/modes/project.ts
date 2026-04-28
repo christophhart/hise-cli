@@ -22,6 +22,7 @@ import {
 	normalizeProjectSettings,
 	normalizeProjectSnippet,
 	normalizeProjectTree,
+	type ProjectFileEntry,
 	type ProjectListPayload,
 	type ProjectSettingsPayload,
 	type ProjectTreePayload,
@@ -44,17 +45,23 @@ import {
 	tokenize,
 } from "./project-parse.js";
 
+const EXPORT_TARGETS: Record<string, string> = {
+	dll: "compile_networks",
+	project: "plugin_export",
+};
+
 const PROJECT_VERBS = new Map<string, string>([
 	["info", "Show name + folder + scripts folder"],
 	["show", "show projects | settings | files | preprocessors [for <target>] [on <os>]"],
 	["describe", "describe <key> — full setting description"],
 	["switch", "switch <name|path> — switch active project"],
 	["save", "save xml | hip [as <filename>]"],
-	["load", "load <relative-path>"],
+	["load", "load <name|relative-path>"],
 	["set", "set <key> <value> | set preprocessor <name> <value> [on <os>] [for <target>]"],
 	["clear", "clear preprocessor <name> [on <os>] [for <target>]"],
 	["snippet", "snippet export | snippet load [<string>]"],
 	["create", "create — alias for /wizard new_project"],
+	["export", "export dll | project — alias for /wizard compile_networks | plugin_export"],
 	["help", "Show /project commands"],
 ]);
 
@@ -92,7 +99,11 @@ export class ProjectMode implements Mode {
 				projectNames: this.cachedList?.projects.map((p) => p.name) ?? [],
 			})
 			: [];
-		return { items, from: leadingSpaces, to: input.length, label: "Project commands" };
+		// Replace only the trailing token (after the last space), not the whole input.
+		// Without this, accepting `switch Pro<Tab>` wipes the verb and inserts just the project name.
+		const lastSpace = input.lastIndexOf(" ");
+		const from = lastSpace === -1 ? leadingSpaces : lastSpace + 1;
+		return { items, from, to: input.length, label: "Project commands" };
 	}
 
 	async onEnter(session: SessionContext): Promise<void> {
@@ -127,6 +138,10 @@ export class ProjectMode implements Mode {
 
 		if (verb === "create") {
 			return this.handleCreate(session);
+		}
+
+		if (verb === "export") {
+			return this.handleExport(rest, session);
 		}
 
 		if (!session.connection) {
@@ -269,13 +284,31 @@ export class ProjectMode implements Mode {
 	}
 
 	private async handleLoad(rest: string, session: SessionContext): Promise<CommandResult> {
-		const file = rest.trim();
-		if (!file) return errorResult("load requires a relative file path.");
-		const response = await session.connection!.post("/api/project/load", { file });
+		const arg = rest.trim();
+		if (!arg) return errorResult("load requires a project file name or relative path.");
+
+		const filesResponse = await session.connection!.get("/api/project/files");
+		const filesErrored = errorOrSuccess(filesResponse);
+		if (filesErrored.kind === "error") return filesErrored.result;
+		let files;
+		try {
+			files = normalizeProjectFiles(filesErrored.envelope).files;
+		} catch (err) {
+			return errorResult(String(err));
+		}
+
+		const resolved = resolveLoadTarget(files, arg);
+		if (!resolved) {
+			return errorResult(
+				`No project file matches "${arg}". Use \`show files\` to list candidates.`,
+			);
+		}
+
+		const response = await session.connection!.post("/api/project/load", { file: resolved.path });
 		const errored = errorOrSuccess(response);
 		if (errored.kind === "error") return errored.result;
 		this.markDirtyAfterMutation(session);
-		return textResult(`Loaded ${file}`);
+		return textResult(`Loaded ${resolved.name}`);
 	}
 
 	private async handleSet(rest: string, session: SessionContext): Promise<CommandResult> {
@@ -431,6 +464,23 @@ export class ProjectMode implements Mode {
 		return wizardResult(def);
 	}
 
+	private handleExport(rest: string, session: SessionContext): CommandResult {
+		const target = rest.trim().toLowerCase();
+		const wizardId = EXPORT_TARGETS[target];
+		if (!wizardId) {
+			return errorResult('export requires a target: `dll` or `project`.');
+		}
+		const registry = session.wizardRegistry;
+		if (!registry) {
+			return errorResult("Wizard registry not loaded. Use /wizard list to inspect.");
+		}
+		const def = registry.get(wizardId);
+		if (!def) {
+			return errorResult(`Wizard "${wizardId}" is not registered.`);
+		}
+		return wizardResult(def);
+	}
+
 	// ── Cache helpers ───────────────────────────────────────────────
 
 	private async refreshList(
@@ -534,6 +584,40 @@ function readActiveIsSnippetBrowser(envelope: HiseSuccessResponse): boolean {
 	if (typeof raw === "boolean") return raw;
 	if (typeof raw === "string") return raw === "true";
 	return false;
+}
+
+function resolveLoadTarget(
+	files: ProjectFileEntry[],
+	arg: string,
+): ProjectFileEntry | null {
+	// Exact path match (back-compat for "XmlPresetBackups/Foo.xml" / "Presets/Foo.hip").
+	const exactPath = files.find((f) => f.path === arg);
+	if (exactPath) return exactPath;
+	if (arg.includes("/") || arg.includes("\\")) return null;
+
+	// Exact full-name match (e.g. "Foo.xml") — case-insensitive.
+	const argLower = arg.toLowerCase();
+	const exactName = files.find((f) => f.name.toLowerCase() === argLower);
+	if (exactName) return exactName;
+
+	// Bare basename — find files whose name without extension matches.
+	// Prefer xml over hip when both exist.
+	const dotIndex = arg.lastIndexOf(".");
+	const ext = dotIndex >= 0 ? arg.slice(dotIndex + 1).toLowerCase() : "";
+	if (ext === "xml" || ext === "hip") {
+		// Explicit extension already covered by exactName; nothing else to try.
+		return null;
+	}
+	const matches = files.filter((f) => stripExt(f.name).toLowerCase() === argLower);
+	if (matches.length === 0) return null;
+	const xml = matches.find((f) => f.type === "xml");
+	if (xml) return xml;
+	return matches[0]!;
+}
+
+function stripExt(name: string): string {
+	const dot = name.lastIndexOf(".");
+	return dot === -1 ? name : name.slice(0, dot);
 }
 
 function resolveSwitchTarget(

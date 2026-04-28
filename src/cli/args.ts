@@ -15,9 +15,14 @@ export type CliParseResult =
 		useMock: boolean;
 	};
 
-const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch", "--show-keys", "--quiet", "--verbose"]);
+const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch", "--show-keys", "--quiet", "--verbose", "--pretty"]);
 
 const VALID_VERBOSITIES = new Set(["verbose", "summary", "quiet"]);
+
+const PROJECT_EXPORT_WIZARDS: Record<string, string> = {
+	dll: "compile_networks",
+	project: "plugin_export",
+};
 
 function parseVerbosityFlags(
 	rest: string[],
@@ -193,7 +198,7 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		return { kind: "error", message: `${commandFlag} does not support --target` };
 	}
 
-	const tailParts = args.filter((arg) => arg !== commandFlag && arg !== targetArg && arg !== "--mock");
+	const tailParts = args.filter((arg) => arg !== commandFlag && arg !== targetArg && arg !== "--mock" && arg !== "--pretty");
 	// Do NOT re-add quotes around multi-word args. The mode parsers treat a
 	// quoted string as a distinct QuotedString token, so wrapping the user's
 	// input in quotes turns a valid verb like `show tree` into an unparseable
@@ -207,11 +212,27 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	// (e.g. hise-cli -script --compile → /script /compile).
 	const tail = tailParts.map((p) => {
 		const stripped = stripMatchedOuterQuotes(p);
+		if (stripped === "--default") return stripped;
 		if (stripped.startsWith("--") && !stripped.includes("=") && entry.kind === "mode") {
 			return "/" + stripped.slice(2);
 		}
 		return stripped;
 	}).join(" ").trim();
+
+	if (entry.name === "project") {
+		const defaultExport = parseProjectExportDefault(tail);
+		if (defaultExport) {
+			const wizardEntry = commands.find((c) => c.name === "wizard");
+			if (!wizardEntry) return { kind: "error", message: "Wizard command not available" };
+			return {
+				kind: "execute",
+				entry: wizardEntry,
+				canonicalCommand: `/wizard ${defaultExport} --run`,
+				mode: "root",
+				useMock,
+			};
+		}
+	}
 
 	if (entry.kind === "mode" && tail === "") {
 		return { kind: "error", message: `${commandFlag} requires a one-shot command or expression` };
@@ -226,7 +247,15 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 
 // ── wizard subcommand ────────────────────────────────────────────────
 
-const WIZARD_RESERVED = new Set(["--mock", "--schema", "--answers"]);
+const WIZARD_RESERVED = new Set(["--mock", "--schema", "--answers", "--default"]);
+
+function parseProjectExportDefault(tail: string): string | null {
+	const parts = tail.split(/\s+/).filter(Boolean);
+	if (parts.length !== 3) return null;
+	if (parts[0] !== "export") return null;
+	if (parts[2] !== "--default") return null;
+	return PROJECT_EXPORT_WIZARDS[parts[1]!] ?? null;
+}
 
 function parseWizardSubcommand(args: string[], commands: CommandEntry[]): CliParseResult {
 	const wizardEntry = commands.find((c) => c.name === "wizard");
@@ -247,9 +276,13 @@ function parseWizardSubcommand(args: string[], commands: CommandEntry[]): CliPar
 		return { kind: "execute", entry: wizardEntry, canonicalCommand: `/wizard ${wizardId} --schema`, mode: "root", useMock };
 	}
 
+	if (rest.includes("--default")) {
+		return { kind: "execute", entry: wizardEntry, canonicalCommand: `/wizard ${wizardId} --run`, mode: "root", useMock };
+	}
+
 	const answersIdx = rest.indexOf("--answers");
 	if (answersIdx === -1) {
-		return { kind: "error", message: "wizard subcommand requires --schema or --answers" };
+		return { kind: "error", message: "wizard subcommand requires --schema, --default, or --answers" };
 	}
 
 	const answersJson = rest[answersIdx + 1];

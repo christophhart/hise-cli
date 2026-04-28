@@ -7,7 +7,8 @@ import type { InternalTaskHandler } from "../../engine/wizard/handler-registry.j
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type { WizardExecResult } from "../../engine/wizard/types.js";
 import type { CompileEmit } from "./project-compile.js";
-import { runJuceCompile, runLinuxJuceCompile } from "./project-compile.js";
+import { runJuceCompile } from "./project-compile.js";
+import { normaliseVsVersion } from "./setup-tasks.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export function createCompileProjectHandler(_executor: PhaseExecutor): InternalT
 		const macArchitecture = context?.macArchitecture === "arm64" || context?.macArchitecture === "x86_64"
 			? context.macArchitecture
 			: undefined;
+		const vsVersion = context?.vsVersion ? normaliseVsVersion(context.vsVersion) : undefined;
 
 		onProgress({ phase: "compile", percent: 0, message: `Compiling (${configuration})...` });
 
@@ -56,6 +58,7 @@ export function createCompileProjectHandler(_executor: PhaseExecutor): InternalT
 			projectName,
 			configuration,
 			macArchitecture,
+			vsVersion,
 		}, (message, transient) => {
 			onProgress({ phase: "compile", message, transient });
 		});
@@ -73,19 +76,35 @@ export function createCompileProjectHandler(_executor: PhaseExecutor): InternalT
 
 export function createCompileNetworksHandler(_executor: PhaseExecutor): InternalTaskHandler {
 	return async (_answers, onProgress, signal, context) => {
-		if (!context?.buildScript || !context?.buildDirectory) {
+		const binaryFolder = context?.binaryFolder;
+		const hisePath = context?.hisePath;
+		const jucerFile = context?.jucerFile;
+		const projectName = context?.projectName;
+		if (!binaryFolder || !hisePath || !jucerFile || !projectName) {
 			return fail("Missing build paths from prepare step — cannot compile networks.");
 		}
 
 		const executor = withSignal(_executor, signal);
-		const { buildScript, buildDirectory, configuration } = context;
+		const configuration = context?.configuration ?? "Release";
+		const macArchitecture = context?.macArchitecture === "arm64" || context?.macArchitecture === "x86_64"
+			? context.macArchitecture
+			: undefined;
+		const vsVersion = context?.vsVersion ? normaliseVsVersion(context.vsVersion) : undefined;
 
-		onProgress({ phase: "compile-networks", percent: 0, message: `Compiling DLL (${configuration ?? "Release"})...` });
+		onProgress({ phase: "compile-networks", percent: 0, message: `Compiling DLL (${configuration})...` });
 
 		const emit: CompileEmit = (message, transient) => {
 			onProgress({ phase: "compile-networks", message, transient });
 		};
-		const result = await runLinuxJuceCompile(executor, { buildScript, buildDirectory }, emit);
+		const result = await runJuceCompile(executor, {
+			binaryFolder,
+			hisePath,
+			jucerFile,
+			projectName,
+			configuration,
+			macArchitecture,
+			vsVersion,
+		}, emit);
 
 		if (!result.success) {
 			return fail(`Network DLL compilation failed (exit code ${result.exitCode}).`);

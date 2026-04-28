@@ -17,7 +17,7 @@
 // output directory) and we drive MSBuild directly.
 
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
-import { filterMsbuildLine, resolveMsbuildPath, stripPinnedToolsetVersions, type VsVersion } from "./setup-tasks.js";
+import { detectVsVersion, filterMsbuildLine, resolveMsbuildPath, stripPinnedToolsetVersions, type VsVersion } from "./setup-tasks.js";
 
 /** Progress callback: a log line plus the transient flag from spawn. */
 export type CompileEmit = (message: string, transient?: boolean) => void;
@@ -173,7 +173,7 @@ export async function runJuceCompile(
 	emit: CompileEmit,
 ): Promise<CompileOutcome> {
 	if (process.platform === "win32") {
-		const vsVersion = spec.vsVersion ?? "2022";
+		const vsVersion = spec.vsVersion ?? await detectVsVersion(executor) ?? "2022";
 		const slnFile = `${spec.binaryFolder}\\Builds\\VisualStudio${vsVersion}\\${spec.projectName}.sln`;
 		const projucerPath = `${spec.hisePath}\\JUCE\\Projucer\\Projucer.exe`;
 		return runWindowsJuceCompile(executor, {

@@ -188,11 +188,34 @@ describe("wizard subcommand", () => {
 		}
 	});
 
-	it("errors on wizard id without --schema or --answers", () => {
+	it("parses wizard --default as run with definition defaults", () => {
+		const result = parseCliArgs(
+			["node", "hise-cli", "wizard", "compile_networks", "--default"],
+			getCliCommands(),
+		);
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe("/wizard compile_networks --run");
+		}
+	});
+
+	it("parses project export dll --default as compile_networks run", () => {
+		const result = parseCliArgs(
+			["node", "hise-cli", "-project", "export", "dll", "--default"],
+			getCliCommands(),
+		);
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe("/wizard compile_networks --run");
+			expect(result.mode).toBe("root");
+		}
+	});
+
+	it("errors on wizard id without --schema, --default, or --answers", () => {
 		const result = parseCliArgs(["node", "hise-cli", "wizard", "plugin_export"], getCliCommands());
 		expect(result).toEqual({
 			kind: "error",
-			message: "wizard subcommand requires --schema or --answers",
+			message: "wizard subcommand requires --schema, --default, or --answers",
 		});
 	});
 

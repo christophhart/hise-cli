@@ -398,6 +398,7 @@ export class CompletionEngine {
 				{ label: "clear", detail: "clear preprocessor <name> ..." },
 				{ label: "snippet", detail: "snippet export | snippet load" },
 				{ label: "create", detail: "Alias for /wizard new_project" },
+				{ label: "export", detail: "export dll | project (wizard alias)" },
 				{ label: "help", detail: "Show /project commands" },
 			];
 			return fuzzyFilter(prefix, verbs);
@@ -450,6 +451,13 @@ export class CompletionEngine {
 			return fuzzyFilter(tail, [
 				{ label: "export", detail: "Export snippet to clipboard" },
 				{ label: "load", detail: "Load snippet (clipboard if blank)" },
+			]);
+		}
+
+		if (verb === "export" && tokens.length === 2) {
+			return fuzzyFilter(tail, [
+				{ label: "dll", detail: "Alias for /wizard compile_networks" },
+				{ label: "project", detail: "Alias for /wizard plugin_export" },
 			]);
 		}
 

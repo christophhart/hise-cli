@@ -114,25 +114,25 @@ describe("createCompileProjectHandler", () => {
 });
 
 describe("createCompileNetworksHandler", () => {
-	it("spawns build script from context", async () => {
-		const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
-		const executor: PhaseExecutor = {
-			spawn: async (cmd, args) => {
-				spawnCalls.push({ cmd, args });
-				if (cmd === "cat") return { exitCode: 0, stdout: "make CONFIG=Release", stderr: "" };
-				return okResult;
-			},
-		};
+	it("uses the same JUCE compile path as plugin export", async () => {
+		await withPlatform("linux", async () => {
+			const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+			const executor: PhaseExecutor = {
+				spawn: async (cmd, args) => {
+					spawnCalls.push({ cmd, args });
+					if (cmd === "cat") return { exitCode: 0, stdout: "make CONFIG=Release", stderr: "" };
+					return okResult;
+				},
+			};
 
-		const handler = createCompileNetworksHandler(executor);
-		const result = await handler({}, () => {}, undefined, {
-			buildScript: "/dll/build.sh",
-			buildDirectory: "/dll/Binaries",
-			configuration: "Release",
+			const handler = createCompileNetworksHandler(executor);
+			const result = await handler({}, () => {}, undefined, fullContext);
+
+			expect(result.success).toBe(true);
+			expect(spawnCalls[0]!.cmd).toBe("cat");
+			expect(spawnCalls[0]!.args).toEqual(["/path/to/Binaries/batchCompileLinux"]);
+			expect(spawnCalls[1]!.cmd).toBe("bash");
 		});
-
-		expect(result.success).toBe(true);
-		expect(spawnCalls[0]!.cmd).toBe("cat");
 	});
 
 	it("fails when context is missing", async () => {
