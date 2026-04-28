@@ -1,7 +1,7 @@
 // ── Static ASCII banner for inline mode startup ─────────────────────
 
-import { MODE_ACCENTS, lerpHex } from "../tui/theme.js";
-import { fgHex, RESET } from "../tui/components/prerender.js";
+import { MODE_ACCENTS, lerpHex } from "./theme.js";
+import { fgHex, RESET } from "./prerender.js";
 
 const LOGO_LINES = [
 	"██    ██ ██  ▄████▄  ███████",

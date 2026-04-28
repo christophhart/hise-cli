@@ -7,9 +7,9 @@
 import React, { useRef } from "react";
 import { Box, Text, type DOMElement } from "ink";
 import { useOnWheel } from "@ink-tools/ink-mouse";
-import type { CompletionItem } from "../../engine/modes/mode.js";
-import type { ColorScheme } from "../theme.js";
-import { brand } from "../theme.js";
+import type { CompletionItem } from "../engine/modes/mode.js";
+import type { ColorScheme } from "./theme.js";
+import { brand } from "./theme.js";
 
 export interface CompletionPopupProps {
 	items: CompletionItem[];

@@ -1,7 +1,7 @@
 // ── Wizard form + execution state hook ───────────────────────────────
 
 import { useState, useRef } from "react";
-import type { WizardFormState } from "../components/wizard-render.js";
+import type { WizardFormState } from "./wizard-render.js";
 
 export interface WizardState {
 	/** Active wizard form (null when no wizard is open). */

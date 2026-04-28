@@ -5,7 +5,7 @@
 
 import type { WizardFormState } from "./wizard-render.js";
 import { isTabEnabled, getVisibleTabIndices } from "./wizard-render.js";
-import { isTabComplete, getVisibleFields } from "../../engine/wizard/validator.js";
+import { isTabComplete, getVisibleFields } from "../engine/wizard/validator.js";
 import { wordBoundaryLeft, wordBoundaryRight } from "./Input.js";
 
 const ESC_TIMEOUT_MS = 500;
@@ -27,7 +27,7 @@ export interface KeyInfo {
 
 export type WizardKeyResult =
 	| { action: "update"; state: WizardFormState; recomputeCompletions?: boolean }
-	| { action: "submit"; answers: import("../../engine/wizard/types.js").WizardAnswers }
+	| { action: "submit"; answers: import("../engine/wizard/types.js").WizardAnswers }
 	| { action: "cancel" }
 	| null; // key not consumed
 

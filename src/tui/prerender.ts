@@ -5,11 +5,11 @@
 // Output component's line buffer and sliced for viewport display,
 // avoiding React reconciliation and Yoga layout on scroll.
 
-import type { ColorScheme } from "../theme.js";
-import { brand, darkenHex } from "../theme.js";
-import type { TokenSpan } from "../../engine/highlight/tokens.js";
-import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
-import type { CommandResult } from "../../engine/result.js";
+import type { ColorScheme } from "./theme.js";
+import { brand, darkenHex } from "./theme.js";
+import type { TokenSpan } from "../engine/highlight/tokens.js";
+import { TOKEN_COLORS } from "../engine/highlight/tokens.js";
+import type { CommandResult } from "../engine/result.js";
 import { renderMarkdown } from "./markdown.js";
 
 // ── Types ───────────────────────────────────────────────────────────

@@ -13,11 +13,11 @@ import React, {
 // by the central key dispatcher in app.tsx via imperative methods.
 import { Box, Text } from "ink";
 
-import { defaultScheme, brand, lightenHex, lerpHex, darkenHex } from "../theme.js";
-import type { TokenSpan } from "../../engine/highlight/tokens.js";
-import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
-import { sliceSpans, splitSpansAtCursor } from "../../engine/highlight/split.js";
-import { buildModeMap, tokenizerForLine } from "../../engine/run/mode-map.js";
+import { defaultScheme, brand, lightenHex, lerpHex, darkenHex } from "./theme.js";
+import type { TokenSpan } from "../engine/highlight/tokens.js";
+import { TOKEN_COLORS } from "../engine/highlight/tokens.js";
+import { sliceSpans, splitSpansAtCursor } from "../engine/highlight/split.js";
+import { buildModeMap, tokenizerForLine } from "../engine/run/mode-map.js";
 
 // ── Word boundary helpers ───────────────────────────────────────────
 

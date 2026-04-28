@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { renderWizardBlock, createInitialFormState } from "./wizard-render.js";
-import { defaultScheme } from "../theme.js";
-import type { WizardDefinition } from "../../engine/wizard/types.js";
+import { defaultScheme } from "./theme.js";
+import type { WizardDefinition } from "../engine/wizard/types.js";
 
 // Strip ANSI for content assertions
 function strip(str: string): string {

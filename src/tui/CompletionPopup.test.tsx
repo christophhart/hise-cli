@@ -5,8 +5,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render } from "ink-testing-library";
 import { MouseProvider } from "@ink-tools/ink-mouse";
 import { CompletionPopup } from "./CompletionPopup.js";
-import { defaultScheme } from "../theme.js";
-import type { CompletionItem } from "../../engine/modes/mode.js";
+import { defaultScheme } from "./theme.js";
+import type { CompletionItem } from "../engine/modes/mode.js";
 
 const scheme = defaultScheme;
 const w = (el: React.ReactElement) => <MouseProvider autoEnable={false}>{el}</MouseProvider>;

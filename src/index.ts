@@ -33,7 +33,7 @@ if (process.platform === "win32") {
 // ── Launch ──────────────────────────────────────────────────────────
 
 async function launchRepl(args: string[]): Promise<void> {
-	const { launchInlineRepl } = await import("./inline/launch.js");
+	const { launchInlineRepl } = await import("./tui/launch.js");
 	const connection = args.includes("--mock")
 		? createDefaultMockRuntime().connection
 		: new HttpHiseConnection();

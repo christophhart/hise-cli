@@ -3,10 +3,10 @@
 import type { TerminalRendererOptions } from "marked-terminal";
 import chalk from "chalk";
 import { highlight as highlightCli } from "cli-highlight";
-import type { ColorScheme } from "../theme.js";
-import { darkenHex, lerpHex } from "../theme.js";
-import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
-import { tokenize as tokenizeHiseScript } from "../../engine/highlight/hisescript.js";
+import type { ColorScheme } from "./theme.js";
+import { darkenHex, lerpHex } from "./theme.js";
+import { TOKEN_COLORS } from "../engine/highlight/tokens.js";
+import { tokenize as tokenizeHiseScript } from "../engine/highlight/hisescript.js";
 
 import { Marked } from "marked";
 import { markedTerminal } from "marked-terminal";

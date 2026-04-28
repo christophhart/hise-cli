@@ -2,11 +2,11 @@
 //
 // Pure functions: ANSI strings out, no React, no Ink.
 
-import type { ColorScheme } from "../theme.js";
-import { brand } from "../theme.js";
-import type { RunResult, ScriptProgressEvent } from "../../engine/run/types.js";
-import { formatResultForLog, filterLogNoise } from "../../engine/run/executor.js";
-import { buildModeMap, type ModeMapEntry } from "../../engine/run/mode-map.js";
+import type { ColorScheme } from "./theme.js";
+import { brand } from "./theme.js";
+import type { RunResult, ScriptProgressEvent } from "../engine/run/types.js";
+import { formatResultForLog, filterLogNoise } from "../engine/run/executor.js";
+import { buildModeMap, type ModeMapEntry } from "../engine/run/mode-map.js";
 import { fgHex, RESET, type PrerenderedBlock } from "./prerender.js";
 
 /** Render a single script progress event as ANSI output lines. */

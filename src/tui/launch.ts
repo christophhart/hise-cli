@@ -9,7 +9,7 @@ import type { HiseConnection } from "../engine/hise.js";
 import { CompletionEngine } from "../engine/completion/engine.js";
 import { createSession, loadSessionDatasets } from "../session-bootstrap.js";
 import { BuilderMode } from "../engine/modes/builder.js";
-import { registerUpdateHandlers } from "../tui/wizard-handlers/index.js";
+import { registerUpdateHandlers } from "./wizard-handlers/index.js";
 import type { NodeRuntime } from "../bootstrap-runtime.js";
 import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
 import { InlineApp } from "./InlineApp.js";

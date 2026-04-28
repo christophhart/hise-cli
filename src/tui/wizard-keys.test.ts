@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { handleWizardKey, type KeyInfo } from "./wizard-keys.js";
 import { createInitialFormState, type WizardFormState } from "./wizard-render.js";
-import type { WizardDefinition } from "../../engine/wizard/types.js";
+import type { WizardDefinition } from "../engine/wizard/types.js";
 
 const DEF: WizardDefinition = {
 	id: "test",

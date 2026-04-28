@@ -4,12 +4,12 @@
 // No React, no Ink — just strings. Displayed in the Output viewport.
 
 import chalk from "chalk";
-import type { ColorScheme } from "../theme.js";
-import { brand, lightenHex } from "../theme.js";
+import type { ColorScheme } from "./theme.js";
+import { brand, lightenHex } from "./theme.js";
 import type { PrerenderedBlock } from "./prerender.js";
 import { renderMarkdown } from "./markdown.js";
-import type { WizardDefinition, WizardField, WizardTab, WizardAnswers } from "../../engine/wizard/types.js";
-import { isTabComplete, getVisibleFields } from "../../engine/wizard/validator.js";
+import type { WizardDefinition, WizardField, WizardTab, WizardAnswers } from "../engine/wizard/types.js";
+import { isTabComplete, getVisibleFields } from "../engine/wizard/validator.js";
 
 // ── Form state (shared with wizard-keys.ts) ─────────────────────────
 

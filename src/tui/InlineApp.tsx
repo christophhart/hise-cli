@@ -12,21 +12,21 @@ import type { HiseConnection } from "../engine/hise.js";
 import type { CommandResult } from "../engine/result.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import { MODE_ACCENTS } from "../engine/modes/mode.js";
-import { startObserverServer, type ObserverEvent } from "../tui/observer.js";
+import { startObserverServer, type ObserverEvent } from "./observer.js";
 import type { TreeNode } from "../engine/result.js";
 import { renderTreeBox } from "../engine/modes/builder-ops.js";
 import { resolveNodeByPath } from "../engine/tree-utils.js";
-import { Input, type InputHandle, buildVisualRowMap, offsetToLineCol, lineColToOffset } from "../tui/components/Input.js";
-import { formatScriptLog } from "../tui/components/script-log.js";
+import { Input, type InputHandle, buildVisualRowMap, offsetToLineCol, lineColToOffset } from "./Input.js";
+import { formatScriptLog } from "./script-log.js";
 import { buildModeMap } from "../engine/run/mode-map.js";
-import { CompletionPopup } from "../tui/components/CompletionPopup.js";
+import { CompletionPopup } from "./CompletionPopup.js";
 import {
 	brand,
 	defaultScheme,
 	statusColor,
 	type ColorScheme,
 	type ConnectionStatus,
-} from "../tui/theme.js";
+} from "./theme.js";
 
 const HORIZONTAL_PAD = 2;
 const COMPLETION_MAX_VISIBLE = 8;
@@ -42,20 +42,20 @@ import {
 	RESET,
 	wrapAnsi,
 	type PrerenderedBlock,
-} from "../tui/components/prerender.js";
+} from "./prerender.js";
 import {
 	renderWizardBlock,
 	createInitialFormState,
 	type WizardFormState,
-} from "../tui/components/wizard-render.js";
-import { handleWizardKey } from "../tui/components/wizard-keys.js";
+} from "./wizard-render.js";
+import { handleWizardKey } from "./wizard-keys.js";
 import {
 	WizardExecutor,
 	WizardInitAbortError,
 } from "../engine/wizard/executor.js";
 import { mergeInitDefaults } from "../engine/wizard/types.js";
 import type { WizardAnswers, WizardDefinition } from "../engine/wizard/types.js";
-import { listPathCompletions } from "../tui/wizard-files.js";
+import { listPathCompletions } from "./wizard-files.js";
 
 const ENTER_ACCEPTS_COMPLETION = false;
 
