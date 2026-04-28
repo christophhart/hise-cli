@@ -6,42 +6,42 @@ Set Height 34
 Set Connection "mock"
 
 # Start in root mode
-ExpectPrompt "> "
+Expect "Root" statusbar
 
 # Enter script mode
 Type "/script"
 Enter
 Sleep 300ms
 ExpectMode "script"
-ExpectPrompt "[script] >"
+Expect "Script" statusbar
 
 # Exit back to root
 Type "/exit"
 Enter
 Sleep 300ms
 ExpectMode "root"
-ExpectPrompt "> "
+Expect "Root" statusbar
 
 # Enter builder mode
 Type "/builder"
 Enter
 Sleep 300ms
 ExpectMode "builder"
-ExpectPrompt "[builder] >"
+Expect "Builder" statusbar
 
 # Exit back to root
 Type "/exit"
 Enter
 Sleep 300ms
 ExpectMode "root"
-ExpectPrompt "> "
+Expect "Root" statusbar
 
 # Enter inspect mode
 Type "/inspect"
 Enter
 Sleep 300ms
 ExpectMode "inspect"
-ExpectPrompt "[inspect] >"
+Expect "Inspect" statusbar
 
 # Exit
 Type "/exit"

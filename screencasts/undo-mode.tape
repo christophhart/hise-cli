@@ -10,7 +10,7 @@ Type "/undo"
 Enter
 Sleep 500ms
 ExpectMode "undo"
-ExpectPrompt "[undo] >"
+Expect "Undo" statusbar
 
 # History should be empty initially
 Type "history"
@@ -29,7 +29,7 @@ Type "discard"
 Enter
 Sleep 300ms
 Expect "Discarded"
-ExpectPrompt "[undo] >"
+Expect "Undo" statusbar
 
 # Exit
 Type "/exit"

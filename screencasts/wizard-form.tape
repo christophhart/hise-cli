@@ -5,7 +5,7 @@ Set Width 140
 Set Height 34
 Set Connection "mock"
 
-ExpectPrompt "> "
+Expect "Root" statusbar
 
 # ── Open the new_project wizard ─────────────────────────────────────
 
@@ -56,4 +56,4 @@ Escape
 Sleep 100ms
 Escape
 Sleep 300ms
-ExpectPrompt "> "
+Expect "Root" statusbar

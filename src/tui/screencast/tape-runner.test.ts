@@ -11,11 +11,35 @@
 // spawns dist/index.js, not source.
 
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { describe, it, afterAll } from "vitest";
 import { testTape } from "./tester.js";
 
 const SCREENCASTS_DIR = path.resolve(import.meta.dirname, "../../../screencasts");
+
+/** Find a usable Python interpreter for generate.py. Returns null if none found. */
+function findPython(): string | null {
+	const candidates: Array<[string, string[]]> = [
+		["python3", ["--version"]],
+		["python", ["--version"]],
+		["py", ["-3", "--version"]],
+		// Common Windows install locations
+		[`${process.env.LOCALAPPDATA ?? ""}\\Python\\pythoncore-3.14-64\\python.exe`, ["--version"]],
+		[`${process.env.LOCALAPPDATA ?? ""}\\Programs\\Python\\Python314\\python.exe`, ["--version"]],
+		[`${process.env.LOCALAPPDATA ?? ""}\\Programs\\Python\\Python313\\python.exe`, ["--version"]],
+		[`${process.env.LOCALAPPDATA ?? ""}\\Programs\\Python\\Python312\\python.exe`, ["--version"]],
+	];
+	for (const [cmd, args] of candidates) {
+		if (!cmd) continue;
+		try {
+			execFileSync(cmd, args, { stdio: "ignore" });
+			return cmd;
+		} catch {
+			// try next
+		}
+	}
+	return null;
+}
 
 function tape(name: string): string {
 	return path.join(SCREENCASTS_DIR, `${name}.tape`);
@@ -65,8 +89,13 @@ describe("screencasts", () => {
 	afterAll(() => {
 		// Gzip .cast files and generate HTML preview page
 		const script = path.join(SCREENCASTS_DIR, "generate.py");
+		const python = findPython();
+		if (!python) {
+			console.error("Warning: no python interpreter found; skipping generate.py");
+			return;
+		}
 		try {
-			execSync(`python3 "${script}"`, {
+			execFileSync(python, [script], {
 				cwd: SCREENCASTS_DIR,
 				stdio: "inherit",
 			});

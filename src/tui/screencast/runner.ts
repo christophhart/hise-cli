@@ -8,13 +8,6 @@ import * as path from "node:path";
 import * as pty from "node-pty";
 import type { TapeCommand } from "../../engine/screencast/types.js";
 
-// Inline shell layout (sticky bottom):
-// - 1 row: status line (above prompt)
-// - 1 row: prompt input
-// Everything else above is committed scrollback (CommittedBlocks via <Static>).
-const PROMPT_ROWS = 1;
-const STATUS_ROWS = 1;
-const STATIC_REGION_ROWS = PROMPT_ROWS + STATUS_ROWS;
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -79,33 +72,18 @@ function delay(ms: number): Promise<void> {
 
 // ── Region extraction (inline shell) ────────────────────────────────
 //
-// Inline shell sticky-bottom layout: scrollback above, then a status
-// line, then the prompt input. <Static> only redraws the bottom region.
-//
-// "output"    = scrollback (everything above the static region)
-// "statusbar" = status line above the prompt
-// "input"     = prompt line at the bottom
+// The pty output buffer is a stream of writes (cursor moves, partial
+// redraws), not a screen snapshot. Reconstructing per-row regions
+// from it is unreliable on ConPTY (Windows). Instead, all regions
+// search the recent stripped output. The "region" hint is a
+// documentation aid, not a hard scope.
 
 function extractRegion(
 	plainScreen: string,
-	region: "statusbar" | "output" | "input",
-	width: number,
+	_region: "statusbar" | "output" | "input",
+	_width: number,
 ): string {
-	const rawRows = plainScreen.split("\n");
-	const rows = rawRows.map((r) => r.padEnd(width).slice(0, width));
-	const total = rows.length;
-
-	switch (region) {
-		case "input":
-			return rows.slice(Math.max(0, total - PROMPT_ROWS)).join("\n");
-		case "statusbar":
-			return rows.slice(
-				Math.max(0, total - STATIC_REGION_ROWS),
-				Math.max(0, total - PROMPT_ROWS),
-			).join("\n");
-		case "output":
-			return rows.slice(0, Math.max(0, total - STATIC_REGION_ROWS)).join("\n");
-	}
+	return plainScreen;
 }
 
 /** Map a Key command name to the stdin byte sequence. */
@@ -384,7 +362,7 @@ export async function runTape(
 		}
 
 		case "ExpectPrompt": {
-			const recent = stripAnsi(outputBuffer.slice(-2000));
+			const recent = stripAnsi(outputBuffer.slice(-8000));
 			const trimmed = cmd.prompt.trimEnd();
 			const pass = recent.includes(trimmed);
 			assertions.push({

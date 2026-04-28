@@ -11,7 +11,7 @@ Type "/script"
 Enter
 Sleep 500ms
 ExpectMode "script"
-ExpectPrompt "[script] >"
+Expect "Script" statusbar
 
 # Exit
 Type "/exit"
