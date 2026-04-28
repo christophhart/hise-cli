@@ -290,7 +290,12 @@ function renderPreformatted(
 	scheme: ColorScheme,
 	width: number,
 	accent?: string,
+	plain?: boolean,
 ): PrerenderedBlock {
+	if (plain) {
+		const rawLines = content.split("\n");
+		return { lines: rawLines, height: rawLines.length };
+	}
 	const bg = bgHex(darkenHex(scheme.backgrounds.standard, 0.85));
 	const border = "\u258E "; // ▎ + space (same as echo box)
 	const borderFg = accent ? fgHex(accent) : "";
@@ -344,7 +349,7 @@ export function renderResult(
 			break;
 
 		case "preformatted":
-			return renderPreformatted(result.content, scheme, width, result.accent);
+			return renderPreformatted(result.content, scheme, width, result.accent, result.plain);
 
 		case "table":
 			source = tableToMarkdown(result.headers, result.rows);

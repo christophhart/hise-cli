@@ -261,17 +261,135 @@ export function compactTree(node: TreeNode, remainingPath: string[]): TreeNode {
 	return { ...node, children: newChildren.length > 0 ? newChildren : undefined };
 }
 
-/** Simple text rendering of the tree for `show tree` command. */
-export function renderTreeText(node: TreeNode, depth: number): string {
-	const indent = "  ".repeat(depth);
-	const kind = node.nodeKind === "chain" ? `[${node.label}]` : node.label;
-	const typeInfo = node.type ? ` (${node.type})` : "";
-	let line = `${indent}${kind}${typeInfo}`;
+/**
+ * Format a single TreeNode label for the box-drawing tree renderer.
+ *
+ * - Chain: bare label (e.g. "GainModulation").
+ * - Module with distinct type + label: `Type "Label"` (e.g. `SynthChain "Master Chain"`).
+ * - Otherwise: type or label, whichever is set.
+ */
+function formatTreeNodeLabel(node: TreeNode, compact: boolean): string {
+	if (node.nodeKind === "chain") {
+		return node.label;
+	}
+	if (compact) {
+		return node.label || node.type || "";
+	}
+	if (node.type && node.label && node.type !== node.label) {
+		return `${node.type} "${node.label}"`;
+	}
+	return node.type ?? node.label;
+}
 
-	if (node.children) {
-		for (const child of node.children) {
-			line += "\n" + renderTreeText(child, depth + 1);
+const ANSI_RESET = "\x1b[0m";
+const DEFAULT_SIGNAL_HEX = "#90FFB1";
+const DEFAULT_MUTED_HEX = "#888888";
+
+const DIFF_CHARS = {
+	added: { char: "+", hex: "#4E8E35" },     // green
+	removed: { char: "-", hex: "#BB3434" },   // red
+	modified: { char: "*", hex: "#E0A93B" },  // amber
+} as const;
+
+function fgAnsi(hex: string | undefined): string {
+	if (!hex || hex.length < 7 || hex[0] !== "#") return "";
+	const r = parseInt(hex.slice(1, 3), 16);
+	const g = parseInt(hex.slice(3, 5), 16);
+	const b = parseInt(hex.slice(5, 7), 16);
+	if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "";
+	return `\x1b[38;2;${r};${g};${b}m`;
+}
+
+export interface RenderTreeBoxOptions {
+	/** Node to highlight as PWD. Compared by reference identity, so callers
+	 *  must pass a node from the same tree object that's being rendered. */
+	pwdNode?: TreeNode | null;
+	/** Hex colour for the PWD node label. Default: brand signal. */
+	signalColor?: string;
+	/** Hex colour for dimmed nodes (and bypassed/invisible labels). Default: muted grey. */
+	mutedColor?: string;
+	/** Cap on recursion depth. Root is depth 0. When set, descendants
+	 *  beyond `maxDepth` are not rendered. */
+	maxDepth?: number;
+	/** Compact label format: drop the `Type "Label"` form, render just label. */
+	compact?: boolean;
+}
+
+interface RenderCtx {
+	pwdNode?: TreeNode | null;
+	signalAnsi: string;
+	mutedAnsi: string;
+	maxDepth?: number;
+	compact: boolean;
+}
+
+/**
+ * Render a TreeNode as a Unicode box-drawing tree with ANSI colour annotations.
+ * Used by `show tree` commands across builder/ui/dsp modes.
+ *
+ * Honours TreeNode flags from the data pipeline:
+ * - `colour` + `filledDot` → coloured `●` / `○` prefix.
+ * - `dimmed` → label rendered in muted colour.
+ * - `badge` → suffix (e.g. `★` for saveInPreset) in badge colour.
+ * - PWD match (via `pwdId`) overrides label colour with signal colour.
+ */
+export function renderTreeBox(node: TreeNode, options: RenderTreeBoxOptions = {}): string {
+	const ctx: RenderCtx = {
+		pwdNode: options.pwdNode,
+		signalAnsi: fgAnsi(options.signalColor ?? DEFAULT_SIGNAL_HEX),
+		mutedAnsi: fgAnsi(options.mutedColor ?? DEFAULT_MUTED_HEX),
+		maxDepth: options.maxDepth,
+		compact: options.compact ?? false,
+	};
+	const lines: string[] = [formatTreeRow(node, "", "", ctx)];
+	if (ctx.maxDepth === undefined || ctx.maxDepth >= 1) {
+		const children = node.children ?? [];
+		for (let i = 0; i < children.length; i++) {
+			renderTreeBoxRec(children[i]!, "", i === children.length - 1, lines, ctx, 1);
 		}
 	}
+	return lines.join("\n");
+}
+
+function formatTreeRow(node: TreeNode, prefix: string, connector: string, ctx: RenderCtx): string {
+	// Diff indicator (added/removed/modified) — leftmost column, before connector.
+	let diffPrefix = "";
+	if (node.diff && DIFF_CHARS[node.diff]) {
+		const d = DIFF_CHARS[node.diff];
+		diffPrefix = fgAnsi(d.hex) + d.char + ANSI_RESET + " ";
+	}
+
+	const treeAnsi = ctx.mutedAnsi;
+	let line = diffPrefix + (treeAnsi ? treeAnsi + prefix + connector + ANSI_RESET : prefix + connector);
+
+	if (node.colour != null && node.filledDot != null) {
+		const dot = node.filledDot ? "● " : "○ ";
+		const dotAnsi = node.dimmed ? ctx.mutedAnsi : fgAnsi(node.colour);
+		line += dotAnsi + dot + ANSI_RESET;
+	}
+
+	const label = formatTreeNodeLabel(node, ctx.compact);
+	const isPwd = ctx.pwdNode != null && node === ctx.pwdNode;
+	let labelAnsi = "";
+	if (isPwd) labelAnsi = ctx.signalAnsi;
+	else if (node.dimmed) labelAnsi = ctx.mutedAnsi;
+	line += labelAnsi + label + (labelAnsi ? ANSI_RESET : "");
+
+	if (node.badge) {
+		const badgeAnsi = fgAnsi(node.badge.colour);
+		line += " " + badgeAnsi + node.badge.text + ANSI_RESET;
+	}
+
 	return line;
+}
+
+function renderTreeBoxRec(node: TreeNode, prefix: string, isLast: boolean, out: string[], ctx: RenderCtx, depth: number): void {
+	const connector = isLast ? "└── " : "├── ";
+	out.push(formatTreeRow(node, prefix, connector, ctx));
+	if (ctx.maxDepth !== undefined && depth >= ctx.maxDepth) return;
+	const children = node.children ?? [];
+	const childPrefix = prefix + (isLast ? "    " : "│   ");
+	for (let i = 0; i < children.length; i++) {
+		renderTreeBoxRec(children[i]!, childPrefix, i === children.length - 1, out, ctx, depth + 1);
+	}
 }

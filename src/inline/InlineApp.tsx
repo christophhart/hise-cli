@@ -13,6 +13,9 @@ import type { CommandResult } from "../engine/result.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import { MODE_ACCENTS } from "../engine/modes/mode.js";
 import { startObserverServer, type ObserverEvent } from "../tui/observer.js";
+import type { TreeNode } from "../engine/result.js";
+import { renderTreeBox } from "../engine/modes/builder-ops.js";
+import { resolveNodeByPath } from "../engine/tree-utils.js";
 import { Input, type InputHandle, buildVisualRowMap, offsetToLineCol, lineColToOffset } from "../tui/components/Input.js";
 import { formatScriptLog } from "../tui/components/script-log.js";
 import { buildModeMap } from "../engine/run/mode-map.js";
@@ -84,6 +87,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 	const { stdout } = useStdout();
 
 	const [columns, setColumns] = useState<number>(stdout?.columns ?? 80);
+	const [terminalRows, setTerminalRows] = useState<number>(stdout?.rows ?? 24);
 
 	useEffect(() => {
 		if (!stdout) return;
@@ -92,6 +96,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			if (timer) clearTimeout(timer);
 			timer = setTimeout(() => {
 				setColumns(stdout.columns ?? 80);
+				setTerminalRows(stdout.rows ?? 24);
 				timer = null;
 			}, 300);
 		};
@@ -123,6 +128,8 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 	const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
 		connection ? "warning" : "error",
 	);
+
+	const [treePanelVisible, setTreePanelVisible] = useState(false);
 
 	const [terminalFocused, setTerminalFocused] = useState(true);
 	const focusSeqTimestampRef = useRef(0);
@@ -178,7 +185,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 
 	const inputHandleRef = useRef<InputHandle | null>(null);
 
-	const [, forceModeRender] = useState(0);
+	const [modeRenderTick, forceModeRender] = useState(0);
 	const bumpModeRender = useCallback(() => forceModeRender(v => v + 1), []);
 
 	const [wizardForm, setWizardForm] = useState<WizardFormState | null>(null);
@@ -233,11 +240,11 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 
 	// Observer: HTTP server receives async events from the CLI runner
 	// (LLM-triggered commands) and commits annotated blocks to scrollback.
-	const observerCtxRef = useRef({ scheme, innerW });
-	observerCtxRef.current = { scheme, innerW };
+	const observerCtxRef = useRef({ scheme, innerW, treePanelVisible });
+	observerCtxRef.current = { scheme, innerW, treePanelVisible };
 
 	const handleObserverEvent = useCallback((event: ObserverEvent) => {
-		const { scheme: s, innerW: w } = observerCtxRef.current;
+		const { scheme: s, innerW: w, treePanelVisible: panelOpen } = observerCtxRef.current;
 
 		if (event.type === "command.start") {
 			const accent = MODE_ACCENTS[event.mode as keyof typeof MODE_ACCENTS] || s.foreground.default;
@@ -264,7 +271,24 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 
 		const block = renderResult(event.result, s, w);
 		if (block) appendBlock(block);
-	}, [appendBlock]);
+
+		// command.end — external CLI call mutated HISE state. Invalidate
+		// every cached tree so the panel and `show tree` reflect changes.
+		// If the panel is open, eagerly refetch the active mode's tree.
+		if (event.type === "command.end") {
+			session.invalidateAllTrees();
+			if (panelOpen) {
+				const active = session.currentMode();
+				if (active.onEnter) {
+					void active.onEnter(session).then(() => bumpModeRender()).catch(() => { /* best-effort */ });
+				} else {
+					bumpModeRender();
+				}
+			} else {
+				bumpModeRender();
+			}
+		}
+	}, [appendBlock, session, bumpModeRender]);
 
 	useEffect(() => {
 		const server = startObserverServer(handleObserverEvent);
@@ -635,6 +659,18 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			appendBlock(formatScriptLog(source, result, scheme));
 			const hr = fgHex(scheme.foreground.muted) + "─".repeat(columns) + RESET;
 			appendBlock({ lines: [hr], height: 1 }, false);
+
+			// Script may have mutated module/component/dsp state — invalidate
+			// every cached tree so cross-mode panels (or `show tree`) refetch
+			// on next access.
+			session.invalidateAllTrees();
+			if (treePanelVisible) {
+				const active = session.currentMode();
+				if (active.onEnter) {
+					try { await active.onEnter(session); } catch { /* refetch best-effort */ }
+				}
+			}
+			bumpModeRender();
 		} catch (err) {
 			appendBlock(renderError(
 				`Script error: ${err instanceof Error ? err.message : String(err)}`,
@@ -644,7 +680,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			disabledRef.current = false;
 			setDisabled(false);
 		}
-	}, [session, scheme, innerW, appendBlock, editorFilePath]);
+	}, [session, scheme, innerW, columns, appendBlock, editorFilePath, treePanelVisible, bumpModeRender]);
 
 	const validateAndSaveScript = useCallback(async (source: string) => {
 		const { parseScript } = await import("../engine/run/parser.js");
@@ -767,6 +803,18 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				gracefulExit();
 				return;
 			}
+
+			// Cross-mode mutations (e.g. /script setting Component visibility)
+			// invalidate every cached tree. If the tree panel is open, eagerly
+			// refetch the active mode's tree so the panel renders fresh data
+			// on the next paint. Otherwise fetch lazily on next parse.
+			session.invalidateAllTrees();
+			if (treePanelVisible) {
+				const active = session.currentMode();
+				if (active.onEnter) {
+					try { await active.onEnter(session); } catch { /* refetch best-effort */ }
+				}
+			}
 			bumpModeRender();
 		} catch (err) {
 			appendBlock(renderError(
@@ -777,7 +825,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			disabledRef.current = false;
 			setDisabled(false);
 		}
-	}, [session, scheme, innerW, appendBlock, exit, bumpModeRender]);
+	}, [session, scheme, innerW, appendBlock, exit, bumpModeRender, treePanelVisible]);
 
 	useInput((input, key) => {
 		// DECSET 1004 focus reports: terminal emits \x1b[I / \x1b[O.
@@ -844,6 +892,12 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		}
 
 		if (disabledRef.current) return;
+
+		// Ctrl+B — toggle live tree panel above input
+		if (key.ctrl && input === "b") {
+			setTreePanelVisible(v => !v);
+			return;
+		}
 
 		if (completionState) {
 			if (key.return && !ENTER_ACCEPTS_COMPLETION) {
@@ -1024,6 +1078,70 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		}
 	});
 
+	const treePanelText = useMemo<string | null>(() => {
+		if (!treePanelVisible) return null;
+		const mode = session.currentMode();
+		if (!mode.getTree) return null;
+		const tree = mode.getTree();
+		if (!tree) return null;
+
+		const path = mode.getSelectedPath?.() ?? [];
+		const root: TreeNode = path.length > 0 ? (resolveNodeByPath(tree, path) ?? tree) : tree;
+		const maxRows = Math.max(6, Math.floor(terminalRows / 2));
+		const compact = (mode as { compactView?: boolean }).compactView === true;
+		// Panel is rooted at PWD, so its first row IS the PWD — skip the
+		// signal-colour highlight inside the tree (kept for `show tree`
+		// command which renders the full tree). Only the breadcrumb's last
+		// segment carries the PWD highlight here.
+		const opts = { mutedColor: scheme.foreground.muted, compact };
+
+		// Breadcrumb (always visible, prefixed with mode-specific tree
+		// context label). Walks tree root → PWD; muted segments + signal
+		// final segment.
+		const dim = fgHex(scheme.foreground.muted);
+		const sig = fgHex(brand.signal);
+		const sep = `${dim} / ${RESET}`;
+		const segs: string[] = [];
+		segs.push((path.length === 0 ? sig : dim) + tree.label + RESET);
+		let cur: TreeNode = tree;
+		for (let i = 0; i < path.length; i++) {
+			if (!cur.children) break;
+			const lower = path[i]!.toLowerCase();
+			const child = cur.children.find((c) => c.id?.toLowerCase() === lower);
+			if (!child) break;
+			const isLast = i === path.length - 1;
+			segs.push((isLast ? sig : dim) + child.label + RESET);
+			cur = child;
+		}
+		let prefix: string;
+		if (mode.id === "builder") {
+			prefix = "Module-Tree";
+		} else if (mode.id === "ui") {
+			prefix = `Component-Tree (${tree.label})`;
+		} else if (mode.id === "dsp") {
+			const ctxLabel = mode.contextLabel ?? "";
+			const moduleId = ctxLabel.split("/")[0] ?? "";
+			prefix = `DspNetwork Tree (${moduleId}.${tree.label})`;
+		} else {
+			prefix = mode.treeLabel ?? "Tree";
+		}
+		const breadcrumb = `${dim}${prefix}: ${RESET}` + segs.join(sep);
+
+		let lines = renderTreeBox(root, opts).split("\n");
+		if (lines.length > maxRows) {
+			lines = renderTreeBox(root, { ...opts, maxDepth: 1 }).split("\n");
+		}
+		if (lines.length > maxRows) {
+			lines = [
+				...lines.slice(0, maxRows - 1),
+				`${dim}… +${lines.length - maxRows + 1} more rows${RESET}`,
+			];
+		}
+		return [breadcrumb, "", ...lines].join("\n");
+		// modeRenderTick: re-runs after every command (bumpModeRender fires post-submit).
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [treePanelVisible, modeRenderTick, columns, terminalRows, scheme, session]);
+
 	const popupLeftOffset = useMemo(() => {
 		if (!completionState) return 0;
 		if (multilineMode) {
@@ -1069,6 +1187,12 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 					>
 						<Text>{wizardBlockText}</Text>
 					</Box>
+				)}
+				{!wizardForm && !wizardExecuting && treePanelText && (
+					<>
+						<Text color={scheme.foreground.muted} wrap="truncate-end">{"─".repeat(columns)}</Text>
+						<Text wrap="truncate-end">{treePanelText}</Text>
+					</>
 				)}
 				{!wizardForm && !wizardExecuting && (
 					<Input

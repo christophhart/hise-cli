@@ -11,8 +11,8 @@ import {
 	preformattedResult,
 	tableResult,
 	textResult,
-	treeResult,
 } from "../result.js";
+import { renderTreeBox } from "./builder-ops.js";
 import type { ScriptnodeList } from "../data.js";
 import type { TreeNode } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
@@ -453,7 +453,7 @@ export class DspMode implements Mode {
 		const what = cmd.what;
 		if (what === "tree") {
 			if (!this.treeRoot) return textResult("(no tree — call `init <name>` first)");
-			return treeResult(this.getTree()!);
+			return preformattedResult(renderTreeBox(this.getTree()!), undefined, true);
 		}
 		if (what === "networks") {
 			if (!session.connection) return errorResult("show networks requires a HISE connection");

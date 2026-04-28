@@ -50,7 +50,7 @@ export type CommandResult =
 	| { type: "wizard"; definition: WizardDefinition; prefill: WizardAnswers; autoRun: boolean; accent?: string }
 	| { type: "resume-wizard"; definition: WizardDefinition; answers: WizardAnswers; startIndex: number; failedTaskLabel: string; accent?: string }
 	| { type: "run-report"; source: string; runResult: RunResult; verbosity: import("./run/executor.js").RunReportVerbosity; accent?: string }
-	| { type: "preformatted"; content: string; accent?: string }
+	| { type: "preformatted"; content: string; accent?: string; plain?: boolean }
 	| { type: "empty"; accent?: string };
 
 // ── Result factory helpers ──────────────────────────────────────────
@@ -113,8 +113,8 @@ export function runReportResult(
 	return { type: "run-report", source, runResult, verbosity };
 }
 
-export function preformattedResult(content: string, accent?: string): CommandResult {
-	return { type: "preformatted", content, accent };
+export function preformattedResult(content: string, accent?: string, plain?: boolean): CommandResult {
+	return { type: "preformatted", content, accent, plain };
 }
 
 export function emptyResult(): CommandResult {

@@ -958,7 +958,14 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 	registry.register({
 		name: "compact",
 		description: "Toggle compact tree view (hide chains, show modules only)",
-		handler: async (_args, _session) => textResult("compact:toggle"),
+		handler: async (_args, session) => {
+			const mode = session.currentMode() as { compactView?: boolean };
+			if (typeof mode.compactView !== "boolean") {
+				return textResult("/compact is only available in builder mode");
+			}
+			mode.compactView = !mode.compactView;
+			return textResult(mode.compactView ? "Compact view (chains hidden)" : "Full view (chains visible)");
+		},
 		kind: "command",
 		surfaces: ["tui"],
 	});

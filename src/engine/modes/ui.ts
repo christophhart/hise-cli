@@ -4,7 +4,7 @@
 // Falls back to local-only validation when no connection is available.
 
 import type { CommandResult, TreeNode } from "../result.js";
-import { errorResult, tableResult, textResult } from "../result.js";
+import { errorResult, preformattedResult, tableResult, textResult } from "../result.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 import { tokenizeUi } from "../highlight/ui.js";
 import type { CompletionItem, CompletionResult, Mode, ModeId, SessionContext } from "./mode.js";
@@ -12,6 +12,7 @@ import { MODE_ACCENTS } from "./mode.js";
 import { isErrorResponse, isEnvelopeResponse } from "../hise.js";
 import { stripQuotes } from "../string-utils.js";
 import { findNodeById, resolveNodeByPath } from "../tree-utils.js";
+import { renderTreeBox } from "./builder-ops.js";
 import {
 	normalizeUiTreeResponse,
 	normalizeUiApplyResult,
@@ -78,19 +79,6 @@ function componentIdCompletionItems(tree: TreeNode | null): CompletionItem[] {
 	}));
 }
 
-/** Simple text rendering of the component tree for `show tree` command. */
-function renderTreeText(node: TreeNode, depth: number): string {
-	const indent = "  ".repeat(depth);
-	const typeInfo = node.type ? ` (${node.type})` : "";
-	let line = `${indent}${node.label}${typeInfo}`;
-
-	if (node.children) {
-		for (const child of node.children) {
-			line += "\n" + renderTreeText(child, depth + 1);
-		}
-	}
-	return line;
-}
 
 // ── UI mode class ────────────────────────────────────────────────
 
@@ -663,7 +651,8 @@ export class UiMode implements Mode {
 			if (!this.treeRoot) {
 				return textResult("No component tree available (requires HISE connection).");
 			}
-			return textResult(renderTreeText(this.treeRoot, 0));
+			const pwdNode = this.currentPath.length > 0 ? resolveNodeByPath(this.treeRoot, this.currentPath) : null;
+			return preformattedResult(renderTreeBox(this.treeRoot, { pwdNode }), undefined, true);
 		}
 
 		if (!connection) {

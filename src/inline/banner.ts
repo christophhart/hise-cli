@@ -60,11 +60,13 @@ export function renderInlineBanner(version: string, updateLatest?: string | null
 	}
 
 	lines.push("");
-	const accent = fgHex(MODE_ACCENTS.builder);
-	const updateSuffix = updateLatest
-		? ` ${accent}[Update available: v${updateLatest}]${RESET}${dim}`
-		: "";
-	lines.push(dim + `  Command line TUI v${version}` + updateSuffix + RESET);
+	lines.push(dim + `  Command line TUI v${version}` + RESET);
+	if (updateLatest) {
+		const accent = fgHex(MODE_ACCENTS.builder);
+		lines.push("");
+		lines.push(`  ${accent}Update available: v${updateLatest}${RESET}`);
+		lines.push(dim + `  Run \`hise-cli update\` to install.` + RESET);
+	}
 	lines.push("");
 	lines.push(dim + "  Type /help to get started" + RESET);
 	lines.push("");

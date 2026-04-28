@@ -6,6 +6,7 @@
 import type { CommandResult } from "../result.js";
 import {
 	errorResult,
+	preformattedResult,
 	tableResult,
 	textResult,
 } from "../result.js";
@@ -92,7 +93,7 @@ import {
 	moduleIdCompletionItems,
 	resolveInstanceType,
 	compactTree,
-	renderTreeText,
+	renderTreeBox,
 } from "./builder-ops.js";
 
 // ── Chain color constants (FX and MIDI are always fixed) ────────────
@@ -943,11 +944,14 @@ export class BuilderMode implements Mode {
 			return this.handleShowTarget(cmd.target!, connection);
 		}
 
-		// show tree — render from treeRoot
+		// show tree — render from treeRoot (with chain colours propagated)
 		if (!this.treeRoot) {
 			return textResult("No module tree available (requires HISE connection).");
 		}
-		return textResult(renderTreeText(this.treeRoot, 0));
+		const tree = this.getTree();
+		if (!tree) return textResult("No module tree available (requires HISE connection).");
+		const pwdNode = this.currentPath.length > 0 ? resolveNodeByPath(tree, this.currentPath) : null;
+		return preformattedResult(renderTreeBox(tree, { pwdNode, compact: this.compactView }), undefined, true);
 	}
 
 	private async handleGet(
