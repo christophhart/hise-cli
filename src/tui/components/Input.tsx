@@ -13,8 +13,7 @@ import React, {
 // by the central key dispatcher in app.tsx via imperative methods.
 import { Box, Text } from "ink";
 
-import { useTheme } from "../theme-context.js";
-import { lightenHex, lerpHex, darkenHex } from "../theme.js";
+import { defaultScheme, brand, lightenHex, lerpHex, darkenHex } from "../theme.js";
 import type { TokenSpan } from "../../engine/highlight/tokens.js";
 import { TOKEN_COLORS } from "../../engine/highlight/tokens.js";
 import { sliceSpans, splitSpansAtCursor } from "../../engine/highlight/split.js";
@@ -401,7 +400,8 @@ export const Input = React.memo(function Input({
 	errorLines,
 	flat = false,
 }: InputProps) {
-	const { scheme, brand, layout } = useTheme();
+	const scheme = defaultScheme;
+	const layout = { horizontalPad: 2 };
 
 	const [state, dispatch] = useReducer(inputReducer, {
 		value: "",

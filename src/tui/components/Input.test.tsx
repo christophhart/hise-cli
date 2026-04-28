@@ -12,10 +12,7 @@ import {
 	findVisualRow,
 	type InputHandle,
 } from "./Input.js";
-import { defaultScheme } from "../theme.js";
-import { ThemeProvider } from "../theme-context.js";
-
-const w = (el: React.ReactElement) => <ThemeProvider scheme={defaultScheme}>{el}</ThemeProvider>;
+const w = (el: React.ReactElement) => el;
 
 // Strip ANSI escape codes for plain text assertions
 function stripAnsi(s: string): string {

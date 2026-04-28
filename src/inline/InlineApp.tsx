@@ -23,8 +23,6 @@ import { CompletionPopup } from "../tui/components/CompletionPopup.js";
 import {
 	brand,
 	defaultScheme,
-	hasTrueColor,
-	snapSchemeFor256,
 	statusColor,
 	type ColorScheme,
 	type ConnectionStatus,
@@ -72,11 +70,9 @@ export interface InlineAppProps {
 }
 
 export function InlineApp(props: InlineAppProps): React.ReactElement {
-	const schemeRaw = defaultScheme;
-	const scheme = hasTrueColor ? schemeRaw : snapSchemeFor256(schemeRaw);
 	return (
 		<MouseProvider autoEnable={false}>
-			<InlineAppInner {...props} scheme={scheme} />
+			<InlineAppInner {...props} scheme={defaultScheme} />
 		</MouseProvider>
 	);
 }
