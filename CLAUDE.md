@@ -16,8 +16,11 @@ execution to HISE. See [DESIGN.md](DESIGN.md) for the full architecture.
 **HISE communication**: HTTP REST API on `localhost:1900` (request/response). SSE for
 push events is planned but not yet implemented in HISE C++ - polling is the 1.0 fallback.
 
-**Three-layer design** (v2, in progress): `engine/` (zero UI deps), `tui/` (Ink/React),
-`cli/` (JSON output). The engine layer must never import Ink, React, or terminal libraries.
+**Three-layer design**: `engine/` (zero UI deps), `tui/` (inline Ink REPL),
+`cli/` (JSON output). The engine layer must never import Ink, React, or terminal
+libraries. The TUI is a sticky-bottom inline shell — no alt-screen, no full-screen
+layout. Output blocks commit to scrollback via Ink `<Static>`. Tree panel toggles
+above the prompt with **Ctrl+B**; `/compact` (builder mode) flattens chains.
 
 **Isomorphic engine** (`src/engine/`): zero `node:` imports — no `node:fs`, `node:path`,
 `node:child_process`. Platform-specific operations use `DataLoader` (filesystem access)
@@ -44,10 +47,10 @@ canonical mode workflow: contract probing, shared mock runtime support, engine w
 against normalized mock payloads, and live parity tests. For new HISE REST endpoints,
 pair that workflow with the C++ endpoint work tracked in [ROADMAP.md](ROADMAP.md).
 
-**Terminal markdown renderer** (Phase 3.7, complete): Renders markdown via
-`marked` + `marked-terminal` with syntax-highlighted code blocks. Output uses a
-virtualized viewport slicer - blocks are pre-rendered to ANSI strings once, then
-line-sliced for display on scroll.
+**Terminal markdown renderer**: Renders markdown via `marked` + `marked-terminal`
+with syntax-highlighted code blocks. Pre-rendered to ANSI strings once via
+`renderMarkdown()` in `src/tui/markdown.ts`, then committed to scrollback via
+Ink `<Static>` (no virtualization needed in inline shell — terminal handles scroll).
 
 ## Build & Verify
 
@@ -139,15 +142,18 @@ src/
     result.ts          # CommandResult + TreeNode types
     hise.ts            # HiseConnection interface + HttpHiseConnection + Mock
     data.ts            # DataLoader interface
-  tui/                 # TUI frontend - Ink/React
-    components/        # TopBar, Output, Input, CompletionPopup, StatusBar,
-                       #   Markdown, scrollbar, TreeSidebar, LandingLogo,
-                       #   prerender, wizard-render, wizard-keys
-    theme.ts           # Color system, darkenHex, lightenHex, lerpHex, mix
-    theme-context.tsx  # ThemeProvider, useTheme() hook
-    app.tsx            # Main TUI shell (central key dispatch)
-    profiler.ts        # Conditional React.Profiler (--profile flag)
-    nodeDataLoader.ts  # Node.js DataLoader implementation
+  tui/                 # Inline (sticky-bottom) Ink REPL shell
+    InlineApp.tsx      # Main shell: <Static> scrollback + status line + prompt
+    launch.ts          # Boots Session, mounts InlineApp, prints banner
+    banner.ts          # Static ASCII logo + version + update badge
+    Input.tsx, CompletionPopup.tsx, prerender.ts, markdown.ts,
+    script-log.ts, wizard-render.ts, wizard-keys.ts, useWizardState.ts
+    theme.ts           # Hardcoded monokai constants + darken/lighten/lerp helpers
+    observer.ts        # Local HTTP server piping CLI invocations into the shell
+    nodeDataLoader.ts, nodeHiseLauncher.ts, nodePhaseExecutor.ts,
+    bundledDataLoader.ts  # Node platform implementations
+    wizard-handlers/   # Wizard task handler bindings (setup, update, compile, ...)
+    wizard-files.ts    # Path completion for wizard file fields
     screencast/        # Tape runner, asciicast writer, vitest tester
   cli/                 # CLI execution, args, help, observer client
   globals.d.ts         # Build-time constants (__APP_VERSION__)
@@ -167,7 +173,7 @@ visual intent, design decisions). Never duplicate into docs:
 
 - Exact test counts, file counts, method counts, line counts
 - TypeScript interface or type definitions (reference the source file instead)
-- Hex color values (except in TUI_STYLE.md Layer 1-3 design spec tables)
+- Hex color values (live in `src/tui/theme.ts` and `src/engine/highlight/tokens.ts`)
 - Full directory listings of every file (use structural descriptions with brief purpose)
 - Code examples that mirror actual source (they become stale immediately)
 

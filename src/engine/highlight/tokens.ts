@@ -1,6 +1,6 @@
 // ── Token types and color mapping for syntax highlighting ───────────
 
-// Layer 3 colors from TUI_STYLE.md — hardcoded, matches HISE editor.
+// Hardcoded syntax-highlighting colors matching the HISE C++ editor.
 // Mode token types use MODE_ACCENTS from mode.ts as their colors.
 
 import { MODE_ACCENTS } from "./constants.js";

@@ -168,7 +168,6 @@ consumer-side integration (Nuxt ProsePre.vue override, fence table).
 
 - [DESIGN.md](DESIGN.md) — full architecture specification
 - [ROADMAP.md](ROADMAP.md) — implementation plan with phase gates
-- [docs/TUI_STYLE.md](docs/TUI_STYLE.md) — visual design system
 - [docs/CODE_STYLE.md](docs/CODE_STYLE.md) — code conventions
 
 ## License

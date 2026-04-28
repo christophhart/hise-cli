@@ -7,7 +7,7 @@
 //
 // `src/engine/modes/mode.ts` re-exports these for existing callers.
 
-// Mode accent colors from TUI_STYLE.md — Layer 2 (hardcoded)
+// Mode accent colors — hardcoded per-mode identity.
 export const MODE_ACCENTS = {
 	root: "", // uses foreground.default
 	builder: "#fd971f",
