@@ -368,6 +368,7 @@ QUICK START
   hise-cli -project "export dll"                   alias for /wizard compile_networks
   hise-cli -project export dll --default            run compile_networks with default answers
   hise-cli -project "export project"               alias for /wizard plugin_export
+  hise-cli -project "get Version"                 read a single setting value
   hise-cli -project "set Version 1.1.0"           update a project setting
   hise-cli -project "set VST3Support yes"         lenient bool norm (yes/no/on/off/1/0)
   hise-cli -project "set preprocessor ENABLE_FOO 1 on win for plugin"
@@ -388,6 +389,7 @@ COMMANDS
   load <name|relative-path>                     Load XML or HIP file
                                                   bare name resolves to .xml > .hip;
                                                   add .xml/.hip to override
+  get <key>                                     Read a single setting value
   set <key> <value>                             Update a project setting
   set preprocessor <name> <value>               Upsert a preprocessor macro
                                                   ([on <os>] [for <target>])

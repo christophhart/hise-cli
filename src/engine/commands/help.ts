@@ -287,6 +287,7 @@ file tree, and HISE snippet I/O.
 | \`save xml [as <filename>]\` | Save state as XML preset |
 | \`save hip [as <filename>]\` | Save state as HIP archive |
 | \`load <name\\|relative-path>\` | Load XML or HIP file (bare name resolves to .xml > .hip) |
+| \`get <key>\` | Read a single setting value |
 | \`set <key> <value>\` | Update a project setting (lenient bool norm) |
 | \`set preprocessor <name> <value> [on <os>] [for <target>]\` | Upsert a macro |
 | \`clear preprocessor <name> [on <os>] [for <target>]\` | Remove a macro override |

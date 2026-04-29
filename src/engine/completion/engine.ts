@@ -394,6 +394,7 @@ export class CompletionEngine {
 				{ label: "switch", detail: "switch <name|path>" },
 				{ label: "save", detail: "save xml | hip [as <filename>]" },
 				{ label: "load", detail: "load <relative-path>" },
+				{ label: "get", detail: "get <key>" },
 				{ label: "set", detail: "set <key> <value> | preprocessor <name> ..." },
 				{ label: "clear", detail: "clear preprocessor <name> ..." },
 				{ label: "snippet", detail: "snippet export | snippet load" },
@@ -426,6 +427,10 @@ export class CompletionEngine {
 		}
 
 		if (verb === "describe" && tokens.length === 2) {
+			return fuzzyFilter(tail, dynamic.settingKeys.map((key) => ({ label: key })));
+		}
+
+		if (verb === "get" && tokens.length === 2) {
 			return fuzzyFilter(tail, dynamic.settingKeys.map((key) => ({ label: key })));
 		}
 

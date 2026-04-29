@@ -96,15 +96,46 @@ describe("ProjectMode help / dispatch", () => {
 		}
 	});
 
-	it("show settings renders without description column", async () => {
+	it("get <key> returns just the value", async () => {
+		const { session } = createMockSession();
+		const result = await new ProjectMode().parse("get Version", session);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toBe("1.0.0");
+		}
+	});
+
+	it("get <key> normalizes booleans", async () => {
+		const { session } = createMockSession();
+		const result = await new ProjectMode().parse("get VST3Support", session);
+		expect(result.type).toBe("text");
+		if (result.type === "text") {
+			expect(result.content).toBe("true");
+		}
+	});
+
+	it("get without key errors", async () => {
+		const { session } = createMockSession();
+		const result = await new ProjectMode().parse("get", session);
+		expect(result.type).toBe("error");
+	});
+
+	it("get unknown key errors", async () => {
+		const { session } = createMockSession();
+		const result = await new ProjectMode().parse("get Bogus", session);
+		expect(result.type).toBe("error");
+	});
+
+	it("show settings renders stacked name/value blocks", async () => {
 		const { session } = createMockSession();
 		const result = await new ProjectMode().parse("show settings", session);
 		expect(result.type).toBe("markdown");
 		if (result.type === "markdown") {
-			expect(result.content).toContain("VST3Support");
-			expect(result.content).toContain("| Key | Value | Options |");
-			// Description column not present (would appear as `| Description ...` in header)
-			expect(result.content).not.toContain("| Key | Value | Description");
+			expect(result.content).toContain("**VST3Support**");
+			expect(result.content).toContain("## Project Settings");
+			expect(result.content).toContain("[true|false]");
+			expect(result.content).not.toContain("| Key | Value |");
+			expect(result.content).not.toContain("```");
 		}
 	});
 

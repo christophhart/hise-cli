@@ -75,20 +75,28 @@ export function formatSettings(payload: ProjectSettingsPayload): CommandResult {
 	if (entries.length === 0) {
 		return textResult("No settings.");
 	}
-	const lines = [
-		"## Project Settings",
-		"",
-		"| Key | Value | Options |",
-		"|-----|-------|---------|",
-	];
+	const lines = ["## Project Settings", ""];
 	for (const [key, entry] of entries) {
-		const opts = entry.options ? entry.options.map((o) => String(o)).join(", ") : "";
-		const valueStr = formatSettingValue(entry.value);
-		lines.push(`| ${key} | ${valueStr} | ${opts} |`);
+		const value = formatSettingValue(entry.value);
+		const opts = formatOptionsInline(entry.options);
+		lines.push(`**${key}**  `);
+		lines.push(opts ? `${value} ${opts}` : value);
+		lines.push("");
 	}
-	lines.push("");
 	lines.push("Use `describe <key>` for the full description.");
 	return markdownResult(lines.join("\n"));
+}
+
+function formatOptionsInline(
+	options: readonly (string | number | boolean)[] | undefined,
+): string {
+	if (!options || options.length === 0) return "";
+	const strs = options.map((o) => String(o));
+	const full = `[${strs.join("|")}]`;
+	if (full.length <= 60) return full;
+	const shown = strs.slice(0, 2);
+	const rest = strs.length - shown.length;
+	return `[${shown.join("|")}|… +${rest}]`;
 }
 
 export function formatDescribeSetting(

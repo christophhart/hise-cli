@@ -57,6 +57,7 @@ const PROJECT_VERBS = new Map<string, string>([
 	["switch", "switch <name|path> — switch active project"],
 	["save", "save xml | hip [as <filename>]"],
 	["load", "load <name|relative-path>"],
+	["get", "get <key> — read a single setting value"],
 	["set", "set <key> <value> | set preprocessor <name> <value> [on <os>] [for <target>]"],
 	["clear", "clear preprocessor <name> [on <os>] [for <target>]"],
 	["snippet", "snippet export | snippet load [<string>]"],
@@ -161,6 +162,8 @@ export class ProjectMode implements Mode {
 				return this.handleSave(rest, session);
 			case "load":
 				return this.handleLoad(rest, session);
+			case "get":
+				return this.handleGet(rest, session);
 			case "set":
 				return this.handleSet(rest, session);
 			case "clear":
@@ -309,6 +312,21 @@ export class ProjectMode implements Mode {
 		if (errored.kind === "error") return errored.result;
 		this.markDirtyAfterMutation(session);
 		return textResult(`Loaded ${resolved.name}`);
+	}
+
+	private async handleGet(rest: string, session: SessionContext): Promise<CommandResult> {
+		const key = rest.trim();
+		if (!key) return errorResult("get requires a setting key.");
+		const settings = await this.refreshSettings(session);
+		if ("error" in settings) return settings.error;
+		const entry = settings.payload.settings[key];
+		if (!entry) {
+			return errorResult(`Unknown setting: "${key}". Use \`show settings\`.`);
+		}
+		const valueStr = typeof entry.value === "boolean"
+			? (entry.value ? "true" : "false")
+			: String(entry.value);
+		return textResult(valueStr);
 	}
 
 	private async handleSet(rest: string, session: SessionContext): Promise<CommandResult> {

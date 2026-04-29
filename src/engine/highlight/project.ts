@@ -4,7 +4,7 @@ import type { TokenSpan, TokenType } from "./tokens.js";
 import { tokenizeSlash } from "./slash.js";
 
 const PROJECT_KEYWORDS = new Set([
-	"info", "show", "describe", "switch", "save", "load", "set", "clear",
+	"info", "show", "describe", "switch", "save", "load", "get", "set", "clear",
 	"snippet", "create", "help",
 	"projects", "settings", "files", "preprocessors", "tree",
 	"export", "import",
