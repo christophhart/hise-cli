@@ -156,6 +156,7 @@ async function executeRunCommand(
 		getModuleList: () => datasets.moduleList,
 		getScriptnodeList: () => datasets.scriptnodeList,
 		getComponentProperties: () => datasets.componentProperties,
+		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
@@ -250,6 +251,7 @@ async function runWatchMode(
 		getModuleList: () => datasets.moduleList,
 		getScriptnodeList: () => datasets.scriptnodeList,
 		getComponentProperties: () => datasets.componentProperties,
+		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");

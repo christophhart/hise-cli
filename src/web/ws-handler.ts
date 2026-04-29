@@ -54,10 +54,6 @@ export async function dispatchClientMessage(
 			await handleSaveFile(ctx, msg);
 			return;
 
-		case "wizard-step":
-			await handleWizardStep(ctx, msg);
-			return;
-
 		case "select-tree-node":
 			handleSelectTreeNode(ctx, msg);
 			return;
@@ -274,58 +270,6 @@ async function handleSaveFile(
 			kind: "error",
 			id: msg.id,
 			message: `Failed to save ${msg.path}`,
-			detail: String(err),
-		});
-	}
-}
-
-async function handleWizardStep(
-	ctx: ConnectionContext,
-	msg: Extract<ClientMsg, { kind: "wizard-step" }>,
-): Promise<void> {
-	if (msg.action !== "submit") {
-		// Tab navigation, back, cancel are pure client-side operations on
-		// the current form state — server has no work. Acknowledged above.
-		return;
-	}
-
-	// Submit: look up the wizard definition by id, run the executor.
-	const def = lookupWizard(ctx, msg.wizardId);
-	if (!def) {
-		send(ctx, {
-			kind: "error",
-			id: msg.id,
-			message: `Unknown wizard: ${msg.wizardId}`,
-		});
-		return;
-	}
-
-	const cleaned: WizardAnswers = { ...msg.answers };
-
-	const executor = new WizardExecutor({
-		connection: ctx.host.session.connection,
-		handlerRegistry: ctx.host.session.handlerRegistry ?? null,
-	});
-
-	const onProgress = (p: import("../engine/wizard/types.js").WizardProgress) => {
-		ctx.host.broadcast({ kind: "wizard-progress", progress: p });
-	};
-
-	try {
-		const exec = await executor.execute(def, cleaned, onProgress);
-		const result: CommandResult = exec.success
-			? { type: "text", content: exec.message }
-			: {
-				type: "error",
-				message: exec.message,
-				detail: exec.logs?.join("\n"),
-			};
-		send(ctx, { kind: "result", id: msg.id, result });
-	} catch (err) {
-		send(ctx, {
-			kind: "error",
-			id: msg.id,
-			message: "Wizard execution failed",
 			detail: String(err),
 		});
 	}

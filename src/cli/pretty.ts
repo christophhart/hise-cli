@@ -69,9 +69,7 @@ function renderResult(result: CommandResult): string {
 		case "table":
 			return renderTable(result.headers, result.rows);
 		case "wizard":
-			return chalk.yellow(`Wizard: ${result.definition.header ?? result.definition.id} (interactive — run via TUI or pass --answers)`);
-		case "resume-wizard":
-			return chalk.yellow(`Resume wizard: ${result.definition.header ?? result.definition.id} at "${result.failedTaskLabel}"`);
+			return chalk.yellow(`Wizard: ${result.definition.header ?? result.definition.id} (interactive — run via TUI or use /wizard run)`);
 		case "run-report":
 			return formatRunReport(result.runResult, result.verbosity);
 		case "empty":

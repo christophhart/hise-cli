@@ -343,11 +343,11 @@ describe("executeCliCommand", () => {
 	});
 });
 
-describe("wizard subcommand", () => {
-	it("lists wizards via wizard list", async () => {
+describe("-wizard mode flag", () => {
+	it("lists wizards via -wizard list", async () => {
 		mockObserverFetch();
 		const result = await executeCliCommand(
-			["node", "hise-cli", "wizard", "list"],
+			["node", "hise-cli", "-wizard", "list"],
 			getCliCommands(),
 			createDataLoaderWithWizard(),
 			new MockHiseConnection().setProbeResult(true),
@@ -363,10 +363,10 @@ describe("wizard subcommand", () => {
 		}
 	});
 
-	it("returns schema via wizard --schema", async () => {
+	it("returns merged defaults via -wizard get <id>", async () => {
 		mockObserverFetch();
 		const result = await executeCliCommand(
-			["node", "hise-cli", "wizard", "test_wizard", "--schema"],
+			["node", "hise-cli", "-wizard", "get", "test_wizard"],
 			getCliCommands(),
 			createDataLoaderWithWizard(),
 			new MockHiseConnection().setProbeResult(true),
@@ -376,16 +376,15 @@ describe("wizard subcommand", () => {
 		if (result.kind === "json") {
 			expect(result.payload.ok).toBe(true);
 			if ("result" in result.payload) {
-				expect(result.payload.result.type).toBe("text");
-				const content = (result.payload.result as { content: string }).content;
-				const schema = JSON.parse(content);
-				expect(schema.id).toBe("test_wizard");
-				expect(schema.fields).toHaveLength(2);
+				expect(result.payload.result.type).toBe("table");
+				const table = result.payload.result as { headers: string[]; rows: string[][] };
+				expect(table.headers).toEqual(["Field", "Type", "Default", "Required"]);
+				expect(table.rows.find((r) => r[0] === "format")?.[2]).toBe("WAV");
 			}
 		}
 	});
 
-	it("executes wizard via --answers JSON", async () => {
+	it("executes wizard via -wizard run <id> with K=V", async () => {
 		mockObserverFetch();
 		const conn = new MockHiseConnection().setProbeResult(true);
 		conn.onPost("/api/wizard/execute", () => ({
@@ -396,7 +395,7 @@ describe("wizard subcommand", () => {
 		}));
 
 		const result = await executeCliCommand(
-			["node", "hise-cli", "wizard", "test_wizard", "--answers", '{"name":"MyProject","format":"WAV"}'],
+			["node", "hise-cli", "-wizard", "run", "test_wizard", "with", "name=MyProject,", "format=WAV"],
 			getCliCommands(),
 			createDataLoaderWithWizard(),
 			conn,
@@ -411,10 +410,10 @@ describe("wizard subcommand", () => {
 		}
 	});
 
-	it("returns error for unknown wizard with --answers", async () => {
+	it("returns error for unknown wizard with run", async () => {
 		mockObserverFetch();
 		const result = await executeCliCommand(
-			["node", "hise-cli", "wizard", "nonexistent", "--answers", "{}"],
+			["node", "hise-cli", "-wizard", "run", "nonexistent"],
 			getCliCommands(),
 			createDataLoaderWithWizard(),
 			new MockHiseConnection().setProbeResult(true),

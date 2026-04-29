@@ -195,23 +195,291 @@ async function handleWizard(
 		);
 	}
 
-	// Split: first token is wizard ID, rest is args
+	// Split first verb token off
 	const spaceIdx = trimmed.indexOf(" ");
-	const wizardId = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
-	const wizardArgs = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
+	const verb = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+	const rest = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
 
-	const def = registry.get(wizardId);
+	if (verb === "get") return handleWizardGet(rest, session);
+	if (verb === "run") return handleWizardRun(rest, session);
+
+	// Fall-through: first token is a wizard id (legacy form-opener path,
+	// used by /setup-style aliases registered via registerWizardAliases).
+	const def = resolveWizardId(verb, registry);
 	if (!def) {
-		// Try fuzzy match
-		const all = registry.list();
-		const match = all.find((w) => w.id.startsWith(wizardId));
-		if (match) {
-			return handleWizardWithDef(match, wizardArgs, session);
-		}
+		return errorResult(`Unknown wizard: "${verb}". Use /wizard list to see available wizards.`);
+	}
+	return handleWizardWithDef(def, rest, session);
+}
+
+function resolveWizardId(
+	id: string,
+	registry: import("../wizard/registry.js").WizardRegistry,
+): import("../wizard/types.js").WizardDefinition | null {
+	const direct = registry.get(id);
+	if (direct) return direct;
+	const match = registry.list().find((w) => w.id.startsWith(id));
+	return match ? registry.get(match.id) ?? null : null;
+}
+
+async function handleWizardGet(
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	const registry = session.wizardRegistry;
+	if (!registry) return errorResult("No wizard definitions loaded.");
+
+	const trimmed = args.trim();
+	if (!trimmed) {
+		return errorResult("Usage: /wizard get <id>");
+	}
+
+	const idEnd = trimmed.indexOf(" ");
+	const wizardId = idEnd === -1 ? trimmed : trimmed.slice(0, idEnd);
+
+	const def = resolveWizardId(wizardId, registry);
+	if (!def) {
 		return errorResult(`Unknown wizard: "${wizardId}". Use /wizard list to see available wizards.`);
 	}
 
-	return handleWizardWithDef(def, wizardArgs, session);
+	const hasHttpInit = def.init?.type === "http";
+	if (hasHttpInit && !session.connection) {
+		return errorResult(`No HISE connection — cannot fetch init defaults for ${def.id}.`);
+	}
+
+	const { WizardExecutor } = await import("../wizard/executor.js");
+	const executor = new WizardExecutor({
+		connection: session.connection,
+		handlerRegistry: session.handlerRegistry,
+	});
+
+	const initDefaults = await executor.initialize(def);
+
+	// Merge: globalDefaults -> per-field defaultValue -> init defaults (init wins)
+	const merged: Record<string, string> = { ...def.globalDefaults };
+	for (const tab of def.tabs) {
+		for (const field of tab.fields) {
+			if (field.defaultValue !== undefined) {
+				merged[field.id] = String(field.defaultValue);
+			}
+		}
+	}
+	Object.assign(merged, initDefaults);
+
+	const rows: string[][] = [];
+	for (const tab of def.tabs) {
+		for (const field of tab.fields) {
+			rows.push([
+				field.id,
+				field.type ?? "",
+				merged[field.id] ?? "",
+				field.required ? "yes" : "",
+			]);
+		}
+	}
+
+	return tableResult(["Field", "Type", "Default", "Required"], rows);
+}
+
+async function handleWizardRun(
+	args: string,
+	session: CommandSession,
+): Promise<CommandResult> {
+	const registry = session.wizardRegistry;
+	if (!registry) return errorResult("No wizard definitions loaded.");
+
+	const trimmed = args.trim();
+	if (!trimmed) {
+		return errorResult("Usage: /wizard run <id> [with Key=Value, Key2=Value2]");
+	}
+
+	// Split id and (optional) `with ...` clause
+	const withMatch = trimmed.match(/^(\S+)(?:\s+with\s+(.*))?$/);
+	if (!withMatch) {
+		return errorResult("Usage: /wizard run <id> [with Key=Value, Key2=Value2]");
+	}
+
+	const wizardId = withMatch[1]!;
+	const withExpr = (withMatch[2] ?? "").trim();
+
+	const def = resolveWizardId(wizardId, registry);
+	if (!def) {
+		return errorResult(`Unknown wizard: "${wizardId}". Use /wizard list to see available wizards.`);
+	}
+
+	let prefill: WizardAnswers = {};
+	if (withExpr) {
+		const parsed = parseWithClause(withExpr);
+		if ("error" in parsed) return errorResult(parsed.error);
+		prefill = parsed.prefill;
+	}
+
+	return runWizardHeadless(def, prefill, session);
+}
+
+/**
+ * Parse a `with K=V, K2=V2` clause into an answers record.
+ * Supports double- and single-quoted values that may contain commas/spaces.
+ */
+export function parseWithClause(
+	expr: string,
+): { prefill: WizardAnswers } | { error: string } {
+	const tokens: string[] = [];
+	let buf = "";
+	let quote: '"' | "'" | null = null;
+	for (let i = 0; i < expr.length; i++) {
+		const ch = expr[i]!;
+		if (quote) {
+			buf += ch;
+			if (ch === quote) quote = null;
+			continue;
+		}
+		if (ch === '"' || ch === "'") {
+			quote = ch;
+			buf += ch;
+			continue;
+		}
+		if (ch === ",") {
+			tokens.push(buf);
+			buf = "";
+			continue;
+		}
+		buf += ch;
+	}
+	if (quote) return { error: `Unterminated ${quote} in with-clause.` };
+	if (buf.trim()) tokens.push(buf);
+
+	const prefill: WizardAnswers = {};
+	for (const raw of tokens) {
+		const tok = raw.trim();
+		if (!tok) continue;
+		const eq = tok.indexOf("=");
+		if (eq === -1) {
+			return { error: `Malformed override: "${tok}". Expected Key=Value.` };
+		}
+		const key = tok.slice(0, eq).trim();
+		let value = tok.slice(eq + 1).trim();
+		if (!key) {
+			return { error: `Malformed override: "${tok}". Empty key.` };
+		}
+		if (value.length >= 2) {
+			const first = value[0]!;
+			const last = value[value.length - 1]!;
+			if ((first === '"' || first === "'") && first === last) {
+				value = value.slice(1, -1);
+			}
+		}
+		prefill[key] = value;
+	}
+	return { prefill };
+}
+
+/**
+ * Serialize an answers record to a `with`-clause body — inverse of parseWithClause.
+ * Used by wizard form submit handlers to dispatch through the regular slash command path.
+ * Values containing whitespace, commas, or `=` are quoted; preferring double quotes,
+ * falling back to single quotes if the value contains `"`.
+ */
+export function formatWithClause(answers: WizardAnswers): string {
+	const needsQuote = /[\s,=]/;
+	const parts: string[] = [];
+	for (const [key, raw] of Object.entries(answers)) {
+		const value = String(raw);
+		if (!needsQuote.test(value) && !value.includes('"') && !value.includes("'")) {
+			parts.push(`${key}=${value}`);
+		} else if (!value.includes('"')) {
+			parts.push(`${key}="${value}"`);
+		} else if (!value.includes("'")) {
+			parts.push(`${key}='${value}'`);
+		} else {
+			// Both quote chars present in a single value — rare for wizard fields.
+			// Strip single quotes (less common in paths/identifiers) and use them as the wrapper.
+			parts.push(`${key}='${value.replace(/'/g, "")}'`);
+		}
+	}
+	return parts.join(", ");
+}
+
+async function runWizardHeadless(
+	def: import("../wizard/types.js").WizardDefinition,
+	prefill: WizardAnswers,
+	session: CommandSession,
+): Promise<CommandResult> {
+	const { WizardExecutor } = await import("../wizard/executor.js");
+	const { mergeInitDefaults } = await import("../wizard/types.js");
+	const executor = new WizardExecutor({
+		connection: session.connection,
+		handlerRegistry: session.handlerRegistry,
+	});
+
+	const initDefaults = await executor.initialize(def);
+	const mergedDef = mergeInitDefaults(def, initDefaults);
+
+	const answers: WizardAnswers = { ...mergedDef.globalDefaults };
+	for (const tab of mergedDef.tabs) {
+		for (const field of tab.fields) {
+			if (field.defaultValue !== undefined) {
+				answers[field.id] = field.defaultValue;
+			}
+		}
+	}
+	Object.assign(answers, prefill);
+
+	const { validateAnswers } = await import("../wizard/validator.js");
+	const validation = validateAnswers(mergedDef, answers);
+	if (!validation.valid) {
+		const messages = validation.errors.map((e) => `  ${e.fieldId}: ${e.message}`).join("\n");
+		return errorResult(`Validation failed:\n${messages}`);
+	}
+
+	return executeWizardInline(mergedDef, answers, session, executor, 0);
+}
+
+/**
+ * Execute a fully-prepared wizard (definition merged, answers validated).
+ * Single execution path used by /wizard run, /resume, and form-submit flows.
+ * Tracks active-wizard state for status-bar display and wires AbortController
+ * for Esc cancellation.
+ */
+async function executeWizardInline(
+	def: import("../wizard/types.js").WizardDefinition,
+	answers: WizardAnswers,
+	session: CommandSession,
+	executor: import("../wizard/executor.js").WizardExecutor,
+	startIndex: number,
+): Promise<CommandResult> {
+	const hasHttpTasks = def.tasks.some((t) => t.type === "http");
+	if (hasHttpTasks && !session.connection) {
+		return errorResult("No HISE connection — cannot execute HTTP wizard tasks.");
+	}
+
+	const ctrl = new AbortController();
+	session.setActiveWizard?.(def.header ?? def.id, ctrl);
+
+	let result: import("../wizard/executor.js").WizardExecFailure;
+	try {
+		result = await executor.execute(def, answers, session.onWizardProgress, {
+			signal: ctrl.signal,
+			startIndex,
+		});
+	} finally {
+		session.clearActiveWizard?.();
+	}
+
+	if (result.success) {
+		session.clearPendingWizard?.();
+		return textResult(result.message);
+	}
+	if (typeof result.nextTaskIndex === "number") {
+		const failedTask = def.tasks[result.nextTaskIndex];
+		session.setPendingWizard?.({
+			wizardId: def.id,
+			answers,
+			nextTaskIndex: result.nextTaskIndex,
+			failedTaskLabel: failedTask?.label ?? failedTask?.id ?? "task",
+		});
+	}
+	return errorResult(result.message);
 }
 
 async function handleResume(
@@ -234,123 +502,21 @@ async function handleResume(
 		return errorResult(`Paused wizard "${pending.wizardId}" is no longer registered.`);
 	}
 
-	const hasHttpTasks = def.tasks.some((t) => t.type === "http");
-	if (hasHttpTasks && !session.connection) {
-		return errorResult("No HISE connection — cannot execute HTTP wizard tasks.");
-	}
-
-	// TUI path: return a resume-wizard result the frontend picks up and
-	// runs through its streaming executor (same path as a fresh submit).
-	// CLI path (session.onWizardProgress set): execute inline so --run-style
-	// callers see progress streamed via the registered callback.
-	if (!session.onWizardProgress) {
-		const { resumeWizardResult } = await import("../result.js");
-		return resumeWizardResult(def, pending.answers, pending.nextTaskIndex, pending.failedTaskLabel);
-	}
-
 	const { WizardExecutor } = await import("../wizard/executor.js");
 	const executor = new WizardExecutor({
 		connection: session.connection,
 		handlerRegistry: session.handlerRegistry,
 	});
-	const result = await executor.execute(def, pending.answers, session.onWizardProgress, {
-		startIndex: pending.nextTaskIndex,
-	});
-
-	if (result.success) {
-		session.clearPendingWizard?.();
-		return textResult(result.message);
-	}
-
-	// Re-stash with the new failure index so the user can /resume again.
-	if (typeof result.nextTaskIndex === "number") {
-		const failedTask = def.tasks[result.nextTaskIndex];
-		session.setPendingWizard?.({
-			wizardId: pending.wizardId,
-			answers: pending.answers,
-			nextTaskIndex: result.nextTaskIndex,
-			failedTaskLabel: failedTask?.label ?? failedTask?.id ?? pending.failedTaskLabel,
-		});
-	}
-	return errorResult(result.message);
+	return executeWizardInline(def, pending.answers, session, executor, pending.nextTaskIndex);
 }
 
 async function handleWizardWithDef(
 	def: import("../wizard/types.js").WizardDefinition,
 	args: string,
-	session: CommandSession,
+	_session: CommandSession,
 ): Promise<CommandResult> {
-	const { prefill, flags } = parseWizardPrefill(args);
-
-	// --schema: output field schema as JSON
-	if (flags.has("schema")) {
-		const fields = def.tabs.flatMap((t) =>
-			t.fields.map((f) => ({
-				id: f.id,
-				type: f.type,
-				label: f.label,
-				required: f.required,
-				items: f.items,
-				defaultValue: f.defaultValue,
-			})),
-		);
-		return textResult(JSON.stringify({ id: def.id, header: def.header, fields }, null, 2));
-	}
-
-	// --run: execute directly without form
-	if (flags.has("run")) {
-		const { WizardExecutor } = await import("../wizard/executor.js");
-		const { mergeInitDefaults } = await import("../wizard/types.js");
-		const executor = new WizardExecutor({
-			connection: session.connection,
-			handlerRegistry: session.handlerRegistry,
-		});
-
-		// Run init to fetch defaults, then merge with definition defaults and prefill
-		const initDefaults = await executor.initialize(def);
-		const mergedDef = mergeInitDefaults(def, initDefaults);
-
-		const answers: WizardAnswers = { ...mergedDef.globalDefaults };
-		for (const tab of mergedDef.tabs) {
-			for (const field of tab.fields) {
-				if (field.defaultValue !== undefined) {
-					answers[field.id] = field.defaultValue;
-				}
-			}
-		}
-		Object.assign(answers, prefill);
-
-		// Validate and execute
-		const { validateAnswers } = await import("../wizard/validator.js");
-		const validation = validateAnswers(mergedDef, answers);
-		if (!validation.valid) {
-			const messages = validation.errors.map((e) => `  ${e.fieldId}: ${e.message}`).join("\n");
-			return errorResult(`Validation failed:\n${messages}`);
-		}
-
-		const hasHttpTasks = mergedDef.tasks.some((t) => t.type === "http");
-		if (hasHttpTasks && !session.connection) {
-			return errorResult("No HISE connection — cannot execute HTTP wizard tasks.");
-		}
-
-		const result = await executor.execute(mergedDef, answers, session.onWizardProgress);
-		if (result.success) {
-			session.clearPendingWizard?.();
-			return textResult(result.message);
-		}
-		if (typeof result.nextTaskIndex === "number") {
-			const failedTask = mergedDef.tasks[result.nextTaskIndex];
-			session.setPendingWizard?.({
-				wizardId: mergedDef.id,
-				answers,
-				nextTaskIndex: result.nextTaskIndex,
-				failedTaskLabel: failedTask?.label ?? failedTask?.id ?? "task",
-			});
-		}
-		return errorResult(result.message);
-	}
-
-	// Default: return wizard result to open the form in TUI
+	const { prefill } = parseWizardPrefill(args);
+	// Open the form in TUI with optional pre-fill (used by /<alias> shortcuts).
 	return wizardResult(def, prefill);
 }
 
@@ -866,7 +1032,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 
 	registry.register({
 		name: "wizard",
-		description: "Run a wizard (list, <name>, <name> --schema, <name> --run)",
+		description: "Run a wizard (list | get <id> | run <id> [with K=V, K2=V2])",
 		handler: handleWizard,
 		kind: "command",
 	});

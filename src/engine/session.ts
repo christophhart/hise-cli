@@ -53,6 +53,13 @@ export class Session implements SessionContext, CommandSession {
 	wizardRegistry: WizardRegistry | null = null;
 	handlerRegistry: WizardHandlerRegistry | null = null;
 	pendingWizard: PendingWizard | null = null;
+	/** Header of the wizard currently executing, or null if none.
+	 *  Read by status-bar renderers (TUI, web) to show "Running <header>" with a spinner. */
+	activeWizard: string | null = null;
+	/** Abort controller for the active wizard run. Esc in the TUI calls .abort(). */
+	activeWizardAbort: AbortController | null = null;
+	/** Render-tick counter — bumped when activeWizard changes so React TUI re-renders the status bar. */
+	activeWizardTick = 0;
 	projectName: string | null = null;
 	projectFolder: string | null = null;
 	playgroundActive: boolean | null = null;
@@ -77,6 +84,20 @@ export class Session implements SessionContext, CommandSession {
 
 	clearPendingWizard(): void {
 		this.pendingWizard = null;
+	}
+
+	/** Mark a wizard as actively running. Triggers status-bar spinner in the TUI. */
+	setActiveWizard(header: string, abort: AbortController): void {
+		this.activeWizard = header;
+		this.activeWizardAbort = abort;
+		this.activeWizardTick++;
+	}
+
+	/** Clear the active wizard marker. Called in the finally block of every run. */
+	clearActiveWizard(): void {
+		this.activeWizard = null;
+		this.activeWizardAbort = null;
+		this.activeWizardTick++;
 	}
 
 	/** Stack of script files currently executing (recursion guard). */

@@ -36,15 +36,9 @@ export const defaultScheme: ColorScheme = {
 };
 
 // ── Truecolor detection ─────────────────────────────────────────────
-// COLORTERM=truecolor|24bit is set by terminals that support 24-bit RGB
-// (iTerm2, Alacritty, kitty, modern xterm, VS Code, Windows Terminal).
-// macOS Terminal.app and other 256-color terminals leave it unset, so we
-// fall back to the xterm-256 palette in prerender.ts.
+// Re-exported from engine/ansi.ts so engine + tui share one detection.
 
-export const hasTrueColor = (() => {
-	const ct = (typeof process !== "undefined" ? process.env?.COLORTERM : undefined) ?? "";
-	return ct === "truecolor" || ct === "24bit";
-})();
+export { hasTrueColor } from "../engine/ansi.js";
 
 // ── Connection status ───────────────────────────────────────────────
 

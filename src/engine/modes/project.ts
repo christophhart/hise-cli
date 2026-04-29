@@ -482,7 +482,7 @@ export class ProjectMode implements Mode {
 		return wizardResult(def);
 	}
 
-	private handleExport(rest: string, session: SessionContext): CommandResult {
+	private async handleExport(rest: string, session: SessionContext): Promise<CommandResult> {
 		const target = rest.trim().toLowerCase();
 		const wizardId = EXPORT_TARGETS[target];
 		if (!wizardId) {
@@ -496,6 +496,14 @@ export class ProjectMode implements Mode {
 		if (!def) {
 			return errorResult(`Wizard "${wizardId}" is not registered.`);
 		}
+		// Dispatch through the slash-command pipeline so progress streams via
+		// session.onWizardProgress (TUI scrollback / CLI stderr) and the run
+		// goes through the unified executor. The form is still reachable via
+		// `/wizard <id>`.
+		if (session.handleInput) {
+			return session.handleInput(`/wizard run ${wizardId}`);
+		}
+		// Fallback: open the form if the host doesn't expose handleInput.
 		return wizardResult(def);
 	}
 

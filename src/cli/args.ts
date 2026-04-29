@@ -19,11 +19,6 @@ const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch"
 
 const VALID_VERBOSITIES = new Set(["verbose", "summary", "quiet"]);
 
-const PROJECT_EXPORT_WIZARDS: Record<string, string> = {
-	dll: "compile_networks",
-	project: "plugin_export",
-};
-
 function parseVerbosityFlags(
 	rest: string[],
 ): { verbosity: import("../engine/run/executor.js").RunReportVerbosity } | { error: string } {
@@ -161,11 +156,6 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		return { kind: "diagnose", filePath: rest[0]! };
 	}
 
-	if (first === "wizard") {
-		if (args.includes("--help") || args.includes("-h")) return { kind: "help", scope: "wizard" };
-		return parseWizardSubcommand(args.slice(1), commands);
-	}
-
 	const flagToEntry = new Map<string, CommandEntry>();
 	for (const command of commands) {
 		flagToEntry.set(`-${command.name}`, command);
@@ -212,27 +202,11 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	// (e.g. hise-cli -script --compile → /script /compile).
 	const tail = tailParts.map((p) => {
 		const stripped = stripMatchedOuterQuotes(p);
-		if (stripped === "--default") return stripped;
 		if (stripped.startsWith("--") && !stripped.includes("=") && entry.kind === "mode") {
 			return "/" + stripped.slice(2);
 		}
 		return stripped;
 	}).join(" ").trim();
-
-	if (entry.name === "project") {
-		const defaultExport = parseProjectExportDefault(tail);
-		if (defaultExport) {
-			const wizardEntry = commands.find((c) => c.name === "wizard");
-			if (!wizardEntry) return { kind: "error", message: "Wizard command not available" };
-			return {
-				kind: "execute",
-				entry: wizardEntry,
-				canonicalCommand: `/wizard ${defaultExport} --run`,
-				mode: "root",
-				useMock,
-			};
-		}
-	}
 
 	if (entry.kind === "mode" && tail === "") {
 		return { kind: "error", message: `${commandFlag} requires a one-shot command or expression` };
@@ -245,62 +219,3 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	return { kind: "execute", entry, canonicalCommand, mode, useMock };
 }
 
-// ── wizard subcommand ────────────────────────────────────────────────
-
-const WIZARD_RESERVED = new Set(["--mock", "--schema", "--answers", "--default"]);
-
-function parseProjectExportDefault(tail: string): string | null {
-	const parts = tail.split(/\s+/).filter(Boolean);
-	if (parts.length !== 3) return null;
-	if (parts[0] !== "export") return null;
-	if (parts[2] !== "--default") return null;
-	return PROJECT_EXPORT_WIZARDS[parts[1]!] ?? null;
-}
-
-function parseWizardSubcommand(args: string[], commands: CommandEntry[]): CliParseResult {
-	const wizardEntry = commands.find((c) => c.name === "wizard");
-	if (!wizardEntry) {
-		return { kind: "error", message: "Wizard command not available" };
-	}
-
-	const useMock = args.includes("--mock");
-	const rest = args.filter((a) => a !== "--mock");
-
-	if (rest.length === 0 || rest[0] === "list") {
-		return { kind: "execute", entry: wizardEntry, canonicalCommand: "/wizard list", mode: "root", useMock };
-	}
-
-	const wizardId = rest[0]!;
-
-	if (rest.includes("--schema")) {
-		return { kind: "execute", entry: wizardEntry, canonicalCommand: `/wizard ${wizardId} --schema`, mode: "root", useMock };
-	}
-
-	if (rest.includes("--default")) {
-		return { kind: "execute", entry: wizardEntry, canonicalCommand: `/wizard ${wizardId} --run`, mode: "root", useMock };
-	}
-
-	const answersIdx = rest.indexOf("--answers");
-	if (answersIdx === -1) {
-		return { kind: "error", message: "wizard subcommand requires --schema, --default, or --answers" };
-	}
-
-	const answersJson = rest[answersIdx + 1];
-	if (!answersJson) {
-		return { kind: "error", message: "--answers requires a JSON string argument" };
-	}
-
-	let answers: Record<string, string>;
-	try {
-		answers = JSON.parse(answersJson);
-	} catch {
-		return { kind: "error", message: `--answers: invalid JSON: ${answersJson}` };
-	}
-
-	const prefillTokens = Object.entries(answers)
-		.map(([k, v]) => `${k}:${v}`)
-		.join(" ");
-
-	const canonicalCommand = `/wizard ${wizardId} --run${prefillTokens ? ` ${prefillTokens}` : ""}`;
-	return { kind: "execute", entry: wizardEntry, canonicalCommand, mode: "root", useMock };
-}

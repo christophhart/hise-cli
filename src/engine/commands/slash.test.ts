@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CommandRegistry, type CommandSession } from "./registry.js";
-import { registerBuiltinCommands } from "./slash.js";
+import { registerBuiltinCommands, parseWithClause } from "./slash.js";
 import type { CommandResult } from "../result.js";
 import { textResult } from "../result.js";
 import { MockHiseConnection } from "../hise.js";
@@ -482,5 +482,237 @@ describe("mode handler one-shot execution", () => {
 			expect(result.type).toBe("error");
 			expect((session as any).pendingWizard).toBeNull();
 		});
+	});
+});
+
+describe("parseWithClause", () => {
+	it("parses single Key=Value", () => {
+		const r = parseWithClause("Format=VST3");
+		expect("error" in r).toBe(false);
+		if (!("error" in r)) {
+			expect(r.prefill).toEqual({ Format: "VST3" });
+		}
+	});
+
+	it("parses multiple comma-separated pairs", () => {
+		const r = parseWithClause("Format=VST3, ExportType=Plugin");
+		expect("error" in r).toBe(false);
+		if (!("error" in r)) {
+			expect(r.prefill).toEqual({ Format: "VST3", ExportType: "Plugin" });
+		}
+	});
+
+	it("strips double-quoted values with embedded spaces", () => {
+		const r = parseWithClause('Path="/some path/with spaces"');
+		expect("error" in r).toBe(false);
+		if (!("error" in r)) {
+			expect(r.prefill).toEqual({ Path: "/some path/with spaces" });
+		}
+	});
+
+	it("preserves commas inside quoted values", () => {
+		const r = parseWithClause('Tags="a,b,c", Mode=Release');
+		expect("error" in r).toBe(false);
+		if (!("error" in r)) {
+			expect(r.prefill).toEqual({ Tags: "a,b,c", Mode: "Release" });
+		}
+	});
+
+	it("errors on token without =", () => {
+		const r = parseWithClause("badtoken");
+		expect("error" in r).toBe(true);
+		if ("error" in r) expect(r.error).toContain("Malformed override");
+	});
+
+	it("errors on empty key", () => {
+		const r = parseWithClause("=value");
+		expect("error" in r).toBe(true);
+	});
+
+	it("errors on unterminated quote", () => {
+		const r = parseWithClause('Path="oops');
+		expect("error" in r).toBe(true);
+		if ("error" in r) expect(r.error).toContain("Unterminated");
+	});
+});
+
+describe("/wizard subcommands", () => {
+	async function buildSession(opts: { withInit?: boolean; failingTask?: boolean } = {}) {
+		const { WizardRegistry } = await import("../wizard/registry.js");
+		const { WizardHandlerRegistry } = await import("../wizard/handler-registry.js");
+
+		const taskCalls: Array<{ name: string; answers: Record<string, unknown> }> = [];
+		const handlerRegistry = new WizardHandlerRegistry();
+		handlerRegistry.registerTask("ok", async (answers) => {
+			taskCalls.push({ name: "ok", answers: { ...answers } });
+			return { success: true, message: "done" };
+		});
+		if (opts.failingTask) {
+			handlerRegistry.registerTask("boom", async () => ({ success: false, message: "oops" }));
+		}
+		if (opts.withInit) {
+			handlerRegistry.registerInit("seed", async () => ({ Format: "VST3" }));
+		}
+
+		const def: any = {
+			id: "demo",
+			header: "Demo",
+			tabs: [{
+				id: "main",
+				label: "Main",
+				fields: [
+					{ id: "Format", type: "text", label: "Format", required: false, defaultValue: "VST2" },
+					{ id: "ExportType", type: "text", label: "Export", required: false, defaultValue: "Plugin" },
+				],
+			}],
+			tasks: [{ id: "t1", function: opts.failingTask ? "boom" : "ok", type: "internal" }],
+			postActions: [],
+			globalDefaults: {},
+		};
+		if (opts.withInit) {
+			def.init = { type: "internal", function: "seed" };
+		}
+
+		const wizardRegistry = WizardRegistry.fromDefinitions([def]);
+
+		const session = createMockSession() as unknown as CommandSession;
+		(session as any).wizardRegistry = wizardRegistry;
+		(session as any).handlerRegistry = handlerRegistry;
+		(session as any).setPendingWizard = (p: unknown) => { (session as any).pendingWizard = p; };
+		(session as any).clearPendingWizard = () => { (session as any).pendingWizard = null; };
+		(session as any).setActiveWizard = (header: string, abort: AbortController) => {
+			(session as any).activeWizard = header;
+			(session as any).activeWizardAbort = abort;
+		};
+		(session as any).clearActiveWizard = () => {
+			(session as any).activeWizard = null;
+			(session as any).activeWizardAbort = null;
+		};
+		return { session, taskCalls };
+	}
+
+	it("/wizard list returns table of registered wizards", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession();
+		const result = await registry.dispatch("/wizard list", session);
+		expect(result.type).toBe("table");
+		if (result.type === "table") {
+			expect(result.rows.some((r: string[]) => r[0] === "demo")).toBe(true);
+		}
+	});
+
+	it("/wizard get returns merged defaults table", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession();
+		const result = await registry.dispatch("/wizard get demo", session);
+		expect(result.type).toBe("table");
+		if (result.type === "table") {
+			expect(result.headers).toEqual(["Field", "Type", "Default", "Required"]);
+			const formatRow = result.rows.find((r: string[]) => r[0] === "Format");
+			expect(formatRow?.[2]).toBe("VST2");
+		}
+	});
+
+	it("/wizard get applies init defaults on top of field defaults", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession({ withInit: true });
+		const result = await registry.dispatch("/wizard get demo", session);
+		expect(result.type).toBe("table");
+		if (result.type === "table") {
+			const formatRow = result.rows.find((r: string[]) => r[0] === "Format");
+			expect(formatRow?.[2]).toBe("VST3");
+		}
+	});
+
+	it("/wizard run executes with default values", async () => {
+		const registry = createRegistry();
+		const { session, taskCalls } = await buildSession();
+		const result = await registry.dispatch("/wizard run demo", session);
+		expect(result.type).toBe("text");
+		expect(taskCalls).toHaveLength(1);
+		expect(taskCalls[0]!.answers.Format).toBe("VST2");
+	});
+
+	it("/wizard run with K=V applies override", async () => {
+		const registry = createRegistry();
+		const { session, taskCalls } = await buildSession();
+		const result = await registry.dispatch("/wizard run demo with Format=VST3", session);
+		expect(result.type).toBe("text");
+		expect(taskCalls[0]!.answers.Format).toBe("VST3");
+		expect(taskCalls[0]!.answers.ExportType).toBe("Plugin");
+	});
+
+	it("/wizard run with multiple overrides", async () => {
+		const registry = createRegistry();
+		const { session, taskCalls } = await buildSession();
+		const result = await registry.dispatch(
+			"/wizard run demo with Format=VST3, ExportType=Effect",
+			session,
+		);
+		expect(result.type).toBe("text");
+		expect(taskCalls[0]!.answers.Format).toBe("VST3");
+		expect(taskCalls[0]!.answers.ExportType).toBe("Effect");
+	});
+
+	it("/wizard run with quoted value containing spaces", async () => {
+		const registry = createRegistry();
+		const { session, taskCalls } = await buildSession();
+		const result = await registry.dispatch(
+			'/wizard run demo with Format="some name", ExportType=Plugin',
+			session,
+		);
+		expect(result.type).toBe("text");
+		expect(taskCalls[0]!.answers.Format).toBe("some name");
+	});
+
+	it("/wizard run unknown_id returns unknown-wizard error", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession();
+		const result = await registry.dispatch("/wizard run unknown_id", session);
+		expect(result.type).toBe("error");
+		if (result.type === "error") expect(result.message).toContain("Unknown wizard");
+	});
+
+	it("/wizard run with malformed override returns error", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession();
+		const result = await registry.dispatch("/wizard run demo with badtoken", session);
+		expect(result.type).toBe("error");
+		if (result.type === "error") expect(result.message).toContain("Malformed override");
+	});
+
+	it("/wizard run on failing task stashes pendingWizard", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession({ failingTask: true });
+		const result = await registry.dispatch("/wizard run demo", session);
+		expect(result.type).toBe("error");
+		expect((session as any).pendingWizard?.wizardId).toBe("demo");
+	});
+
+	it("/wizard get without id returns usage error", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession();
+		const result = await registry.dispatch("/wizard get", session);
+		expect(result.type).toBe("error");
+		if (result.type === "error") expect(result.message).toContain("Usage");
+	});
+
+	it("/wizard run sets and clears session.activeWizard around execution", async () => {
+		const registry = createRegistry();
+		const { session } = await buildSession();
+		// Spy via a slow-ish task that yields control while we observe the flag.
+		let observedDuringRun: string | null | undefined = "<unset>";
+		(session as any).handlerRegistry.registerTask("slow", async () => {
+			observedDuringRun = (session as any).activeWizard;
+			return { success: true, message: "done" };
+		});
+		// Swap the demo wizard's task for the slow handler.
+		const def = (session as any).wizardRegistry.get("demo");
+		def.tasks = [{ id: "t1", function: "slow", type: "internal" }];
+
+		expect((session as any).activeWizard ?? null).toBeNull();
+		await registry.dispatch("/wizard run demo", session);
+		expect(observedDuringRun).toBe("Demo");
+		expect((session as any).activeWizard ?? null).toBeNull();
 	});
 });

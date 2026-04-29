@@ -6,6 +6,7 @@ import type { CompletionItem } from "./mode.js";
 import type { BuilderCommand } from "./builder-parser.js";
 import { resolveModuleTypeId } from "./builder-validate.js";
 import { findNodeById, resolveNodeByPath } from "../tree-utils.js";
+import { fgHex, RESET as ANSI_RESET } from "../ansi.js";
 
 // ── Operation types ───────────────────────────────────────────────
 
@@ -281,7 +282,6 @@ function formatTreeNodeLabel(node: TreeNode, compact: boolean): string {
 	return node.type ?? node.label;
 }
 
-const ANSI_RESET = "\x1b[0m";
 const DEFAULT_SIGNAL_HEX = "#90FFB1";
 const DEFAULT_MUTED_HEX = "#888888";
 
@@ -291,14 +291,7 @@ const DIFF_CHARS = {
 	modified: { char: "*", hex: "#E0A93B" },  // amber
 } as const;
 
-function fgAnsi(hex: string | undefined): string {
-	if (!hex || hex.length < 7 || hex[0] !== "#") return "";
-	const r = parseInt(hex.slice(1, 3), 16);
-	const g = parseInt(hex.slice(3, 5), 16);
-	const b = parseInt(hex.slice(5, 7), 16);
-	if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "";
-	return `\x1b[38;2;${r};${g};${b}m`;
-}
+const fgAnsi = fgHex;
 
 export interface RenderTreeBoxOptions {
 	/** Node to highlight as PWD. Compared by reference identity, so callers

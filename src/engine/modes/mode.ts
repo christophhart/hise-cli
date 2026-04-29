@@ -71,6 +71,11 @@ export interface SessionContext {
 	/** Resolve a file path against the project folder. Absolute paths pass through. */
 	resolvePath?(filePath: string): string;
 
+	/** Dispatch a slash command through the regular session pipeline. Lets modes
+	 *  forward to other handlers (e.g. /project export -> /wizard run <id>) without
+	 *  duplicating logic. */
+	handleInput?(raw: string): Promise<import("../result.js").CommandResult>;
+
 	// ── Project mode hooks ──────────────────────────────────────────
 	/** Wizard registry — used by /project create to launch the new_project wizard. */
 	readonly wizardRegistry?: import("../wizard/registry.js").WizardRegistry | null;

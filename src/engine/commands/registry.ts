@@ -54,7 +54,7 @@ export interface CommandSession {
 	getActiveScriptCallback?(processorId: string): string | null;
 	/** Return collected callback source by callback id. */
 	getCollectedScriptCallbacks?(processorId: string): Record<string, string>;
-	/** Progress callback for wizard `--run` streaming. Set by CLI layer. */
+	/** Progress callback for `/wizard run` streaming. Always wired. */
 	onWizardProgress?(progress: import("../wizard/types.js").WizardProgress): void;
 	/** Snapshot of the most recently paused wizard (null when none). */
 	pendingWizard?: import("../session.js").PendingWizard | null;
@@ -62,6 +62,16 @@ export interface CommandSession {
 	setPendingWizard?(pending: import("../session.js").PendingWizard | null): void;
 	/** Clear the paused-wizard checkpoint. */
 	clearPendingWizard?(): void;
+	/** Header of the wizard currently executing (null if none). */
+	activeWizard?: string | null;
+	/** Abort controller for the active wizard run. */
+	activeWizardAbort?: AbortController | null;
+	/** Render tick — bumped when activeWizard changes; status bar reads this to re-render. */
+	activeWizardTick?: number;
+	/** Mark a wizard as actively running. */
+	setActiveWizard?(header: string, abort: AbortController): void;
+	/** Clear the active wizard marker. */
+	clearActiveWizard?(): void;
 	/** Mark the cached /project tree as stale — called by FS-mutating ops
 	 *  in other modes so the project sidebar refreshes on next access. */
 	markProjectTreeDirty?(): void;

@@ -27,7 +27,6 @@ export function ResultRenderer({ result }: { result: CommandResult }) {
 		case "preformatted":
 			return <PreformattedResult result={result} />;
 		case "wizard":
-		case "resume-wizard":
 			return <WizardResult result={result} />;
 		case "empty":
 			return null;

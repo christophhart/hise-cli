@@ -20,7 +20,7 @@ USAGE
   hise-cli --run <file.hsc> [--mock] [--dry-run] [--verbosity=<level>]  Run a .hsc script file
   hise-cli --run --inline "<script>"             Run an inline script
   hise-cli --run - < script.hsc                  Run script from stdin
-  hise-cli wizard <subcommand>              Wizard operations (JSON output)
+  hise-cli -wizard <subcommand>             Wizard operations (JSON output)
   hise-cli diagnose <filepath>              Diagnose HiseScript file (JSON output)
   hise-cli update [--check]                 Self-update to latest GitHub release
   hise-cli --help                           Show this help
@@ -40,7 +40,7 @@ MODES
   -undo "<command>"        Undo history & plan groups (--help for syntax)
   -hise "<command>"        Runtime control            (--help for syntax)
 
-  wizard <subcommand>      Guided workflows          (--help for syntax)
+  -wizard <subcommand>     Guided workflows          (--help for syntax)
 
 OPTIONS
   --help             Show this help (or mode help with -<mode> --help)
@@ -365,9 +365,8 @@ QUICK START
   hise-cli -project "load MyPlugin"               resolve bare name (.xml > .hip)
   hise-cli -project "load MyPlugin.hip"            force the .hip variant
   hise-cli -project "load XmlPresetBackups/MyPlugin.xml"  exact relative path
-  hise-cli -project "export dll"                   alias for /wizard compile_networks
-  hise-cli -project export dll --default            run compile_networks with default answers
-  hise-cli -project "export project"               alias for /wizard plugin_export
+  hise-cli -wizard run compile_networks            run network DLL compile with defaults
+  hise-cli -wizard run plugin_export with Format=VST3   plugin export with override
   hise-cli -project "get Version"                 read a single setting value
   hise-cli -project "set Version 1.1.0"           update a project setting
   hise-cli -project "set VST3Support yes"         lenient bool norm (yes/no/on/off/1/0)
@@ -397,9 +396,8 @@ COMMANDS
                                                   ([on <os>] [for <target>])
   snippet export                                Export snippet (CLI: stdout)
   snippet load [<string>]                       Import snippet (omit arg → clipboard)
-  create                                        Alias for /wizard new_project
-  export dll                                    Alias for /wizard compile_networks
-  export project                                Alias for /wizard plugin_export
+  (use 'hise-cli -wizard run new_project', '... compile_networks', '... plugin_export'
+   for the equivalent guided workflows)
 
 OS ALIASES
   Windows:  windows | win | Win | x64 | WIN
@@ -494,13 +492,13 @@ EXAMPLES
   hise-cli -undo "history"
   hise-cli -undo 'plan "My Refactor"'`,
 
-	wizard: `hise-cli wizard — guided multi-step workflows
+	wizard: `hise-cli -wizard — guided multi-step workflows
 
 SYNTAX
-  hise-cli wizard list                            List available wizards
-  hise-cli wizard <id> --schema                   Show field schema (JSON)
-  hise-cli wizard <id> --default                  Execute with default answers
-  hise-cli wizard <id> --answers '{"k":"v"}'      Execute with answers
+  hise-cli -wizard list                                   List available wizards
+  hise-cli -wizard get <id>                               Show merged default state
+  hise-cli -wizard run <id>                               Execute with all defaults
+  hise-cli -wizard run <id> with Key=Value, K2=V2         Execute with overrides
 
 AVAILABLE WIZARDS
   setup                Install and build HISE from source
@@ -513,16 +511,17 @@ AVAILABLE WIZARDS
   install_package_maker  Create installer payload for distribution
 
 WORKFLOW
-  1. Call --schema to get field definitions and types
-  2. Either call --default, or build an answers JSON object with field IDs as keys
-  3. Call --answers to execute the wizard with explicit values
+  1. Call 'get <id>' to see the merged default state (init handler runs if defined)
+  2. Call 'run <id>' to execute with those defaults
+  3. Add 'with Key=Value, ...' to override individual fields inline
+     (quote values with embedded spaces or commas: Path="/some path/file")
 
 EXAMPLES
-  hise-cli wizard list
-  hise-cli wizard new_project --schema
-  hise-cli wizard compile_networks --default
-  hise-cli wizard new_project --answers '{"ProjectName":"MyPlugin","DefaultProjectFolder":"/path","Template":"0"}'
-  hise-cli wizard recompile --answers '{"clearGlobals":"1","clearFonts":"0","clearAudioFiles":"0","clearImages":"0"}'`,
+  hise-cli -wizard list
+  hise-cli -wizard get new_project
+  hise-cli -wizard run compile_networks
+  hise-cli -wizard run new_project with ProjectName=MyPlugin, Template=0
+  hise-cli -wizard run plugin_export with Format=VST3, ExportType=Plugin`,
 
 	run: `hise-cli --run — script runner & test framework
 

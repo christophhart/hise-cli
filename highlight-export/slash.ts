@@ -15,6 +15,8 @@ const MIDI_CALLBACKS = new Set([
 	"onControl",
 ]);
 
+const WIZARD_KEYWORDS = new Set(["list", "get", "run", "with"]);
+
 const MODE_IDS = SLASH_MODE_IDS as Set<string> & Set<TokenType>;
 
 // Argument token rules (applied after the slash command)
@@ -54,6 +56,10 @@ export function tokenizeSlash(source: string): TokenSpan[] {
 		return tokenizeCallbackSlash(source, cmdText);
 	}
 
+	if (cmdName === "wizard") {
+		return tokenizeWizardSlash(source, cmdText);
+	}
+
 	// Classify the command
 	const cmdToken: TokenType = MODE_IDS.has(cmdName as TokenType)
 		? (cmdName as TokenType)
@@ -79,6 +85,32 @@ export function tokenizeSlash(source: string): TokenSpan[] {
 
 		if (!matched) {
 			// Consume one character as plain text
+			spans.push({ text: source[pos]!, token: "plain" });
+			pos++;
+		}
+	}
+
+	return mergeAdjacentSpans(spans);
+}
+
+function tokenizeWizardSlash(source: string, cmdText: string): TokenSpan[] {
+	const spans: TokenSpan[] = [{ text: cmdText, token: "command", bold: true }];
+	let pos = cmdText.length;
+
+	while (pos < source.length) {
+		let matched = false;
+		for (const rule of ARG_RULES) {
+			const match = source.slice(pos).match(rule.pattern);
+			if (match) {
+				const text = match[0];
+				const isWizardKeyword = rule.token === "identifier" && WIZARD_KEYWORDS.has(text);
+				spans.push({ text, token: isWizardKeyword ? "keyword" : rule.token });
+				pos += text.length;
+				matched = true;
+				break;
+			}
+		}
+		if (!matched) {
 			spans.push({ text: source[pos]!, token: "plain" });
 			pos++;
 		}

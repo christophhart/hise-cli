@@ -19,13 +19,6 @@ import type { ObserverEvent } from "../observer/protocol.js";
 export type ClientMsg =
 	| { kind: "submit-input"; id: string; line: string }
 	| { kind: "complete"; id: string; line: string; cursor: number }
-	| {
-		kind: "wizard-step";
-		id: string;
-		wizardId: string;
-		answers: WizardAnswers;
-		action: "next" | "back" | "submit" | "cancel";
-	}
 	| { kind: "open-file"; id: string; path: string }
 	| { kind: "save-file"; id: string; path: string; content: string }
 	| { kind: "run-script"; id: string; path: string; content: string }

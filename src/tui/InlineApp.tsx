@@ -54,7 +54,7 @@ import {
 	WizardInitAbortError,
 } from "../engine/wizard/executor.js";
 import { mergeInitDefaults } from "../engine/wizard/types.js";
-import type { WizardAnswers, WizardDefinition } from "../engine/wizard/types.js";
+import { formatWithClause } from "../engine/commands/slash.js";
 import { listPathCompletions } from "./wizard-files.js";
 
 const ENTER_ACCEPTS_COMPLETION = false;
@@ -191,9 +191,27 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 	const wizardFormRef = useRef<WizardFormState | null>(null);
 	wizardFormRef.current = wizardForm;
 
-	const [wizardProgressLines, setWizardProgressLines] = useState<string[]>([]);
-	const [wizardExecuting, setWizardExecuting] = useState(false);
-	const wizardAbortRef = useRef<AbortController | null>(null);
+	// Re-render the status bar when the active wizard changes (set in
+	// session.setActiveWizard / clearActiveWizard).
+	const [activeWizardTick, setActiveWizardTick] = useState(0);
+	const activeWizard = session.activeWizard ?? null;
+	useEffect(() => {
+		// Poll the session-level tick (cheap) instead of plumbing a subscription.
+		const id = setInterval(() => {
+			if ((session.activeWizardTick ?? 0) !== activeWizardTick) {
+				setActiveWizardTick(session.activeWizardTick ?? 0);
+			}
+		}, 80);
+		return () => clearInterval(id);
+	}, [session, activeWizardTick]);
+
+	// Spinner frame counter — advances while a wizard is active.
+	const [spinnerFrame, setSpinnerFrame] = useState(0);
+	useEffect(() => {
+		if (!activeWizard) return;
+		const id = setInterval(() => setSpinnerFrame(f => (f + 1) % 10), 80);
+		return () => clearInterval(id);
+	}, [activeWizard]);
 
 	const [multilineMode, setMultilineMode] = useState(false);
 	const multilineModeRef = useRef(false);
@@ -221,19 +239,29 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 	}, [multilineMode, columns, editorValueVersion]);
 
 	const currentMode = session.currentMode();
-	const modeLabel = currentMode.name ?? "root";
-	const modeAccent = currentMode.accent || scheme.foreground.muted;
-	const contextLabel = currentMode.contextLabel;
+	const wizardActive = activeWizard !== null;
+	const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+	const modeLabel = wizardActive
+		? `${spinnerFrames[spinnerFrame]} Running ${activeWizard}`
+		: currentMode.name ?? "root";
+	const modeAccent = wizardActive
+		? "#e8a060"
+		: currentMode.accent || scheme.foreground.muted;
+	const contextLabel = wizardActive ? undefined : currentMode.contextLabel;
 
 	const modeTokenizer = currentMode.tokenizeInput
 		? (v: string) => currentMode.tokenizeInput!(v)
 		: undefined;
 
-	const appendBlock = useCallback((block: PrerenderedBlock, indent = true) => {
+	const appendBlock = useCallback((block: PrerenderedBlock, indent = true, compact = false) => {
 		const id = blockIdRef.current++;
 		const prefix = indent ? "  " : "";
 		const padded = block.lines.map(l => prefix + l).join("\n");
-		const text = "\n" + padded + "\n";
+		// Default: surround with blank lines (wide spacing between command outputs).
+		// Compact: no extra padding — Ink's <Text> already terminates each block
+		// with a newline, so adjacent compact blocks stack as consecutive rows
+		// with no blank line between, suitable for streaming progress.
+		const text = compact ? padded : "\n" + padded + "\n";
 		setCommitted(prev => [...prev, { id, text }]);
 	}, []);
 
@@ -459,28 +487,10 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		}
 	}, [completionState, session]);
 
-	const executeWizard = useCallback(async (
-		def: WizardDefinition,
-		answers: WizardAnswers,
-		opts?: { startIndex?: number },
-	) => {
-		const hasHttpTasks = def.tasks.some((t) => t.type === "http");
-		if (hasHttpTasks && !session.connection) {
-			appendBlock(renderError(
-				"No HISE connection — cannot execute HTTP wizard tasks.",
-				undefined, scheme.foreground.muted, innerW,
-			));
-			return;
-		}
-
-		disabledRef.current = true;
-		setDisabled(true);
-		setWizardExecuting(true);
-		setWizardProgressLines([]);
-
-		const controller = new AbortController();
-		wizardAbortRef.current = controller;
-
+	// Wizard progress: render each event as a one-line scrollback block.
+	// Wired once into session.onWizardProgress below — this is the sole sink
+	// for wizard streaming output in the TUI (CLI uses stderr).
+	useEffect(() => {
 		const dim = fgHex(scheme.foreground.muted);
 		const warn = fgHex("#FFBA00");
 		const err = fgHex("#BB3434");
@@ -488,78 +498,29 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		const accent = fgHex(scheme.foreground.default);
 		const bold = "\x1b[1m";
 
-		const collected: string[] = [];
 		const pushLine = (line: string) => {
 			const wrapped = wrapAnsi(line, innerW);
-			collected.push(...wrapped);
-			setWizardProgressLines([...collected]);
+			// compact=true: single newline between progress lines, no leading/trailing
+			// blank that the default block padding inserts.
+			appendBlock({ lines: wrapped, height: wrapped.length }, true, true);
 		};
 
-		try {
-			const executor = new WizardExecutor({
-				connection: session.connection,
-				handlerRegistry: session.handlerRegistry,
-			});
-			let lastPhase = "";
-			const result = await executor.execute(def, answers, (progress) => {
-				if (progress.phase !== lastPhase) lastPhase = progress.phase;
-				if (progress.message?.startsWith("__heading__")) {
-					const heading = progress.message.slice("__heading__".length);
-					pushLine(" ");
-					pushLine(`${bold}${accent}${heading}${RESET}`);
-					return;
-				}
-				if (!progress.message) return;
-				const msg = progress.message;
-				let line: string;
-				if (msg.startsWith("✗ ")) line = `${err}✗ ${msg.slice(2)}${RESET}`;
-				else if (msg.startsWith("⚠ ")) line = `${warn}⚠ ${msg.slice(2)}${RESET}`;
-				else if (msg.startsWith("✓ ")) line = `${ok}✓ ${msg.slice(2)}${RESET}`;
-				else line = `${dim}${msg}${RESET}`;
-				pushLine(line);
-			}, { signal: controller.signal, startIndex: opts?.startIndex });
-
-			if (result.success) {
-				session.clearPendingWizard();
-				const msg = result.message;
-				if (msg.startsWith("✓ ")) {
-					pushLine(" ");
-					pushLine(`${ok}✓ ${msg.slice(2)}${RESET}`);
-				} else {
-					pushLine(`${ok}✓ ${msg}${RESET}`);
-				}
-			} else {
-				const msgLines = result.message.split("\n");
-				pushLine(`${err}✗ ${msgLines[0] ?? ""}${RESET}`);
-				for (let i = 1; i < msgLines.length; i++) {
-					pushLine(`${err}${msgLines[i]}${RESET}`);
-				}
-				if (typeof result.nextTaskIndex === "number") {
-					const failedTask = def.tasks[result.nextTaskIndex];
-					const label = failedTask?.label ?? failedTask?.id ?? "task";
-					session.setPendingWizard({
-						wizardId: def.id,
-						answers,
-						nextTaskIndex: result.nextTaskIndex,
-						failedTaskLabel: label,
-					});
-					pushLine(" ");
-					pushLine(`${dim}Paused at "${label}". Type /resume to retry.${RESET}`);
-				}
+		session.onWizardProgress = (progress) => {
+			if (progress.message?.startsWith("__heading__")) {
+				const heading = progress.message.slice("__heading__".length);
+				pushLine(`${bold}${accent}${heading}${RESET}`);
+				return;
 			}
-		} catch (e) {
-			pushLine(`${fgHex("#BB3434")}✗ ${String(e)}${RESET}`);
-		} finally {
-			// Commit accumulated progress to scrollback as one block
-			if (collected.length > 0) {
-				appendBlock({ lines: collected, height: collected.length });
-			}
-			setWizardProgressLines([]);
-			setWizardExecuting(false);
-			disabledRef.current = false;
-			setDisabled(false);
-			wizardAbortRef.current = null;
-		}
+			if (!progress.message) return;
+			const msg = progress.message;
+			let line: string;
+			if (msg.startsWith("✗ ")) line = `${err}✗ ${msg.slice(2)}${RESET}`;
+			else if (msg.startsWith("⚠ ")) line = `${warn}⚠ ${msg.slice(2)}${RESET}`;
+			else if (msg.startsWith("✓ ")) line = `${ok}✓ ${msg.slice(2)}${RESET}`;
+			else line = `${dim}${msg}${RESET}`;
+			pushLine(line);
+		};
+		return () => { session.onWizardProgress = undefined; };
 	}, [session, scheme, innerW, appendBlock]);
 
 	const handleEditCommand = useCallback(async (raw: string): Promise<boolean> => {
@@ -777,17 +738,12 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				const mergedDef = mergeInitDefaults(result.definition, initDefaults);
 				const formState = createInitialFormState(mergedDef, result.prefill);
 				setWizardForm(formState);
-			} else if (result.type === "resume-wizard") {
-				appendBlock(echoBlock, false);
-				void executeWizard(result.definition, result.answers, {
-					startIndex: result.startIndex,
-				});
 			} else if (result.type === "run-report") {
 				appendBlock(echoBlock, false);
-				appendBlock(renderError(
-					"/run with progress streaming is not yet supported in inline mode.",
-					undefined, scheme.foreground.muted, innerW,
-				));
+				const { formatRunReport } = await import("../engine/run/executor.js");
+				const summary = formatRunReport(result.runResult, result.verbosity);
+				const rendered = renderResult({ type: "text", content: summary }, scheme, innerW);
+				if (rendered) appendBlock(rendered);
 			} else if (result.type === "empty" && input.trim() === "/clear") {
 				setCommitted([]);
 			} else if (result.type !== "empty") {
@@ -836,7 +792,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		// Stable bottom region: capture popup height on Enter, clear on
 		// any other keystroke. Single-line mode only; multiline editor's
 		// Enter inserts newline so it doesn't dismiss popup.
-		if (!multilineModeRef.current && !wizardFormRef.current && !wizardExecuting) {
+		if (!multilineModeRef.current && !wizardFormRef.current && !wizardActive) {
 			if (key.return && completionState) {
 				const itemRows = Math.min(completionState.result.items.length, COMPACT.completionMaxVisible);
 				const headerRows = completionState.result.label ? 1 : 0;
@@ -846,9 +802,9 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			}
 		}
 
-		// Wizard execution: only Esc-Esc aborts
-		if (wizardExecuting) {
-			if (key.escape) wizardAbortRef.current?.abort();
+		// Wizard active: Esc aborts the run via the session-tracked controller.
+		if (session.activeWizard) {
+			if (key.escape) session.activeWizardAbort?.abort();
 			return;
 		}
 
@@ -869,7 +825,17 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				const deactivated = { ...form, active: false };
 				appendBlock(renderWizardBlock(deactivated, scheme, innerW, { flat: true }));
 				setWizardForm(null);
-				void executeWizard(form.definition, result.answers);
+				// Dispatch through the same path as a typed `/wizard run <id> with K=V`
+				// so progress streaming and result handling go through the unified pipe.
+				const withClause = formatWithClause(result.answers);
+				const command = withClause
+					? `/wizard run ${form.definition.id} with ${withClause}`
+					: `/wizard run ${form.definition.id}`;
+				void session.handleInput(command).then((res) => {
+					if (res.type === "empty") return;
+					const rendered = renderResult(res, scheme, innerW);
+					if (rendered) appendBlock(rendered);
+				});
 				return;
 			}
 			let newState = result.state;
@@ -1173,9 +1139,6 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				{(block) => <Text key={block.id}>{block.text}</Text>}
 			</Static>
 			<Box flexDirection="column" width={columns} overflow="hidden">
-				{wizardExecuting && wizardProgressLines.length > 0 && (
-					<Text>{wizardProgressLines.join("\n")}</Text>
-				)}
 				{wizardBlockText && (
 					<Box
 						flexDirection="column"
@@ -1187,13 +1150,13 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 						<Text>{wizardBlockText}</Text>
 					</Box>
 				)}
-				{!wizardForm && !wizardExecuting && treePanelText && (
+				{!wizardForm && !wizardActive && treePanelText && (
 					<>
 						<Text color={scheme.foreground.muted} wrap="truncate-end">{"─".repeat(columns)}</Text>
 						<Text wrap="truncate-end">{treePanelText}</Text>
 					</>
 				)}
-				{!wizardForm && !wizardExecuting && (
+				{!wizardForm && !wizardActive && (
 					<Input
 						modeLabel={multilineMode ? (editorFilePath?.split(/[\\/]/).pop() ?? "scratch") : "root"}
 						modeAccent={modeAccent}
@@ -1218,7 +1181,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 					/>
 				)}
 				{(() => {
-					if (wizardForm || wizardExecuting || multilineMode) return null;
+					if (wizardForm || wizardActive || multilineMode) return null;
 					const popupScheme: ColorScheme = {
 						...scheme,
 						backgrounds: { ...scheme.backgrounds, overlay: undefined as unknown as string },
@@ -1260,7 +1223,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 						</Box>
 					);
 				})()}
-				{!wizardForm && !wizardExecuting && multilineMode && (
+				{!wizardForm && !wizardActive && multilineMode && (
 					<>
 						{completionState && (
 							<CompletionPopup
@@ -1286,7 +1249,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 						/>
 					</>
 				)}
-				{(wizardForm || wizardExecuting) && (
+				{(wizardForm || wizardActive) && (
 					<StatusLine
 						modeLabel={modeLabel}
 						modeAccent={modeAccent}

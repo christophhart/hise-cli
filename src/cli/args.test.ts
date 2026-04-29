@@ -138,9 +138,9 @@ describe("parseCliArgs --run verbosity", () => {
 	});
 });
 
-describe("wizard subcommand", () => {
-	it("parses wizard list", () => {
-		const result = parseCliArgs(["node", "hise-cli", "wizard", "list"], getCliCommands());
+describe("-wizard mode flag", () => {
+	it("parses -wizard list", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-wizard", "list"], getCliCommands());
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
 			expect(result.canonicalCommand).toBe("/wizard list");
@@ -148,101 +148,53 @@ describe("wizard subcommand", () => {
 		}
 	});
 
-	it("defaults bare wizard to list", () => {
-		const result = parseCliArgs(["node", "hise-cli", "wizard"], getCliCommands());
+	it("parses -wizard get <id>", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-wizard", "get", "compile_networks"], getCliCommands());
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toBe("/wizard list");
+			expect(result.canonicalCommand).toBe("/wizard get compile_networks");
 		}
 	});
 
-	it("parses wizard --schema", () => {
-		const result = parseCliArgs(["node", "hise-cli", "wizard", "plugin_export", "--schema"], getCliCommands());
+	it("parses -wizard run <id>", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-wizard", "run", "compile_networks"], getCliCommands());
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toBe("/wizard plugin_export --schema");
+			expect(result.canonicalCommand).toBe("/wizard run compile_networks");
 		}
 	});
 
-	it("parses wizard --answers with JSON", () => {
+	it("parses -wizard run <id> with K=V", () => {
 		const result = parseCliArgs(
-			["node", "hise-cli", "wizard", "plugin_export", "--answers", '{"ExportType":"Plugin","Format":"VST"}'],
+			["node", "hise-cli", "-wizard", "run", "compile_networks", "with", "Configuration=Release"],
 			getCliCommands(),
 		);
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toContain("/wizard plugin_export --run");
-			expect(result.canonicalCommand).toContain("ExportType:Plugin");
-			expect(result.canonicalCommand).toContain("Format:VST");
+			expect(result.canonicalCommand).toBe("/wizard run compile_networks with Configuration=Release");
 		}
 	});
 
-	it("parses wizard --answers with empty JSON", () => {
+	it("parses -wizard run <id> with K=V, K2=V2", () => {
 		const result = parseCliArgs(
-			["node", "hise-cli", "wizard", "recompile", "--answers", "{}"],
+			["node", "hise-cli", "-wizard", "run", "plugin_export", "with", "Format=VST3,", "ExportType=Plugin"],
 			getCliCommands(),
 		);
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toBe("/wizard recompile --run");
-		}
-	});
-
-	it("parses wizard --default as run with definition defaults", () => {
-		const result = parseCliArgs(
-			["node", "hise-cli", "wizard", "compile_networks", "--default"],
-			getCliCommands(),
-		);
-		expect(result.kind).toBe("execute");
-		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toBe("/wizard compile_networks --run");
-		}
-	});
-
-	it("parses project export dll --default as compile_networks run", () => {
-		const result = parseCliArgs(
-			["node", "hise-cli", "-project", "export", "dll", "--default"],
-			getCliCommands(),
-		);
-		expect(result.kind).toBe("execute");
-		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toBe("/wizard compile_networks --run");
-			expect(result.mode).toBe("root");
-		}
-	});
-
-	it("errors on wizard id without --schema, --default, or --answers", () => {
-		const result = parseCliArgs(["node", "hise-cli", "wizard", "plugin_export"], getCliCommands());
-		expect(result).toEqual({
-			kind: "error",
-			message: "wizard subcommand requires --schema, --default, or --answers",
-		});
-	});
-
-	it("errors on --answers without JSON argument", () => {
-		const result = parseCliArgs(["node", "hise-cli", "wizard", "plugin_export", "--answers"], getCliCommands());
-		expect(result).toEqual({
-			kind: "error",
-			message: "--answers requires a JSON string argument",
-		});
-	});
-
-	it("errors on --answers with invalid JSON", () => {
-		const result = parseCliArgs(["node", "hise-cli", "wizard", "plugin_export", "--answers", "not-json"], getCliCommands());
-		expect(result.kind).toBe("error");
-		if (result.kind === "error") {
-			expect(result.message).toContain("invalid JSON");
+			expect(result.canonicalCommand).toBe("/wizard run plugin_export with Format=VST3, ExportType=Plugin");
 		}
 	});
 
 	it("supports --mock flag", () => {
 		const result = parseCliArgs(
-			["node", "hise-cli", "wizard", "recompile", "--mock", "--answers", "{}"],
+			["node", "hise-cli", "-wizard", "run", "recompile", "--mock"],
 			getCliCommands(),
 		);
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
 			expect(result.useMock).toBe(true);
+			expect(result.canonicalCommand).toBe("/wizard run recompile");
 		}
 	});
 });

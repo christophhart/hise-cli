@@ -9,16 +9,15 @@ import type {
 	WizardTab,
 } from "../../../../engine/wizard/types.js";
 import { isOn } from "../../../../engine/wizard/types.js";
-import { request } from "../../ws-client.js";
+import { submitInput } from "../../ws-client.js";
 import { useStore } from "../../state/store.js";
-import type { ServerMsg } from "../../../protocol.js";
+import { formatWithClause } from "../../../../engine/commands/slash.js";
 
-type WizardVariant = Extract<CommandResult, { type: "wizard" | "resume-wizard" }>;
+type WizardVariant = Extract<CommandResult, { type: "wizard" }>;
 
 export function WizardResult({ result }: { result: WizardVariant }) {
-	const isResume = result.type === "resume-wizard";
 	const def = result.definition;
-	const initial = useMemo(() => seedAnswers(def, isResume ? result.answers : result.prefill), [def, result, isResume]);
+	const initial = useMemo(() => seedAnswers(def, result.prefill), [def, result]);
 	const [answers, setAnswers] = useState<WizardAnswers>(initial);
 	const [activeTab, setActiveTab] = useState(0);
 	const [submitted, setSubmitted] = useState(false);
@@ -39,25 +38,26 @@ export function WizardResult({ result }: { result: WizardVariant }) {
 	const submit = async () => {
 		if (!isValid) return;
 		setSubmitted(true);
+		// Dispatch through the same slash-command path as a typed `/wizard run`.
+		// Server runs the wizard inline, streams progress via `wizard-progress`
+		// broadcasts (existing handler), and returns a plain text/error result
+		// that the regular submit-input pipeline logs to the output panel.
+		const withClause = formatWithClause(answers);
+		const command = withClause
+			? `/wizard run ${def.id} with ${withClause}`
+			: `/wizard run ${def.id}`;
 		try {
-			const response = (await request({
-				kind: "wizard-step",
-				id: `wiz-${Date.now()}`,
-				wizardId: def.id,
-				answers,
-				action: "submit",
-			})) as ServerMsg;
-			if (response.kind === "result") {
-				pushUserCommand(`/wizard ${def.id}`, response.result);
-			} else if (response.kind === "error") {
-				pushUserCommand(`/wizard ${def.id}`, {
+			const response = await submitInput(command);
+			if (response.kind === "error") {
+				pushUserCommand(command, {
 					type: "error",
 					message: response.message,
 					detail: response.detail,
 				});
 			}
+			// On success the regular submit-input pipeline already logged the result.
 		} catch (err) {
-			pushUserCommand(`/wizard ${def.id}`, {
+			pushUserCommand(command, {
 				type: "error",
 				message: "Wizard submit failed",
 				detail: String(err),
@@ -119,7 +119,7 @@ export function WizardResult({ result }: { result: WizardVariant }) {
 					disabled={!isValid || submitted}
 					onClick={() => void submit()}
 				>
-					{submitted ? "Running…" : isResume ? "Resume" : def.submitLabel ?? "Run"}
+					{submitted ? "Running…" : def.submitLabel ?? "Run"}
 				</button>
 			</footer>
 		</section>

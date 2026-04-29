@@ -1,6 +1,7 @@
 // ── Spectrogram renderers — braille+color (human) and shades (LLM) ──
 
 import FFT from "fft.js";
+import { fgRgb } from "../ansi.js";
 
 export interface SpectrogramOptions {
 	gamma: number;
@@ -48,7 +49,7 @@ function heatColor(v: number): string {
 	const idx = Math.min(Math.floor(pos), HEAT_STOPS.length - 2);
 	const t = pos - idx;
 	const [r, g, b] = lerpRgb(HEAT_STOPS[idx], HEAT_STOPS[idx + 1], t);
-	return `\x1b[38;2;${r};${g};${b}m`;
+	return fgRgb(r, g, b);
 }
 
 // ── Braille dot map ─────────────────────────────────────────────────
