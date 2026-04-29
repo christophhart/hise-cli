@@ -962,6 +962,17 @@ export function hiseBinaryPath(
 	return `${binDir}/HISE Standalone`;
 }
 
+/** Absolute path of the macOS .app bundle. Used as the `open -a` target
+ *  inside the macOS PATH-wrapper so LaunchServices activates the GUI
+ *  (dock icon, front activation). Direct binary launch bypasses LS. */
+export function hiseAppBundlePath(
+	installPath: string,
+	includeFaust: boolean,
+): string {
+	const binDir = hiseBinDir(installPath, "macOS", includeFaust);
+	return `${binDir}/HISE.app`;
+}
+
 // ── Shared: create a HISE → binary symlink in a writable PATH entry ──
 //
 // Scans process.env.PATH for the first writable dir and drops the symlink
@@ -993,6 +1004,9 @@ export async function createHiseSymlink(
 ): Promise<CreateHiseSymlinkResult> {
 	if (platform === "Windows") {
 		return createWindowsSymlink(executor, binary, phase, onProgress);
+	}
+	if (platform === "macOS") {
+		return createMacOSWrapper(executor, binary, phase, onProgress);
 	}
 	return createPosixSymlink(executor, binary, phase, onProgress);
 }
@@ -1054,6 +1068,162 @@ async function createPosixSymlink(
 		execResult: ok(
 			`✓ ${userBin}/HISE → ${binary} (note: ${userBin} is not on your PATH — add it to invoke HISE by name)`,
 		),
+	};
+}
+
+// ── macOS wrapper script (LaunchServices-routed GUI launch) ──────────
+//
+// Symlinking HISE.app/Contents/MacOS/HISE into PATH bypasses macOS
+// LaunchServices: GUI-mode launches get no dock icon, no front activation,
+// and the window may stay hidden behind other apps. Fix: install a small
+// shell wrapper that branches on argc:
+//   - no args  → `open -a HISE.app`  (LaunchServices; proper GUI launch)
+//   - any args → exec the inner binary directly so verify/test phases
+//                still see stdout and a real exit code.
+
+function shellSingleQuote(s: string): string {
+	return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+function macOSWrapperContent(appPath: string): string {
+	const quoted = shellSingleQuote(appPath);
+	return `#!/bin/bash
+APP=${quoted}
+if [ $# -eq 0 ]; then
+	exec /usr/bin/open -a "$APP"
+else
+	exec "$APP/Contents/MacOS/HISE" "$@"
+fi
+`;
+}
+
+/** Write+chmod the wrapper at `${dir}/HISE`. Removes any stale file or
+ *  symlink first so re-runs over a previous install are clean. */
+async function writeMacOSWrapper(
+	executor: PhaseExecutor,
+	dir: string,
+	content: string,
+): Promise<{ ok: boolean; error?: string }> {
+	const target = `${dir}/HISE`;
+	const rm = await executor.spawn("rm", ["-f", target], {});
+	if (rm.exitCode !== 0) return { ok: false, error: `rm ${target}: ${rm.stderr.trim() || "failed"}` };
+	// Pass wrapper content via argv to printf so we don't have to escape
+	// the script body for the outer shell -c invocation.
+	const write = await executor.spawn(
+		"sh",
+		["-c", 'printf "%s" "$1" > "$2"', "sh", content, target],
+		{},
+	);
+	if (write.exitCode !== 0) return { ok: false, error: `write ${target}: ${write.stderr.trim() || "failed"}` };
+	const chmod = await executor.spawn("chmod", ["+x", target], {});
+	if (chmod.exitCode !== 0) return { ok: false, error: `chmod ${target}: ${chmod.stderr.trim() || "failed"}` };
+	return { ok: true };
+}
+
+/** Append `~/.local/bin` to PATH in the user's shell rc file. Idempotent
+ *  via grep -qF. Only invoked when we fell back to ~/.local/bin and that
+ *  dir isn't already on PATH. Returns the rc file we touched (or null
+ *  when the user's shell isn't bash/zsh — in which case the caller's
+ *  message asks the user to add it manually). */
+async function ensureUserBinOnPath(
+	executor: PhaseExecutor,
+): Promise<{ rc: string | null; appended: boolean; error: string | null }> {
+	const shell = process.env.SHELL ?? "";
+	const home = process.env.HOME ?? "";
+	if (!home) return { rc: null, appended: false, error: "HOME not set" };
+	const rc = shell.endsWith("/zsh")
+		? `${home}/.zshrc`
+		: shell.endsWith("/bash")
+			? `${home}/.bash_profile`
+			: null;
+	if (!rc) return { rc: null, appended: false, error: null };
+	const line = 'export PATH="$HOME/.local/bin:$PATH"';
+	const cmd = `touch "${rc}" && (grep -qF '${line}' "${rc}" || printf '\\n%s\\n' '${line}' >> "${rc}")`;
+	const r = await executor.spawn("sh", ["-c", cmd], {});
+	if (r.exitCode !== 0) {
+		return { rc, appended: false, error: r.stderr.trim() || r.stdout.trim() || "failed" };
+	}
+	return { rc, appended: true, error: null };
+}
+
+async function createMacOSWrapper(
+	executor: PhaseExecutor,
+	binary: string,
+	phase: string,
+	onProgress: (p: import("../../engine/wizard/types.js").WizardProgress) => void,
+): Promise<CreateHiseSymlinkResult> {
+	// Strip the bundle-internal binary suffix to recover the .app path.
+	// Whoever calls us passed `${binDir}/HISE.app/Contents/MacOS/HISE`.
+	const APP_SUFFIX = "/Contents/MacOS/HISE";
+	const appPath = binary.endsWith(APP_SUFFIX)
+		? binary.slice(0, -APP_SUFFIX.length)
+		: binary;
+	const content = macOSWrapperContent(appPath);
+
+	const pathDirs = (process.env.PATH ?? "").split(":").filter((p) => p.length > 0);
+	const errors: string[] = [];
+	for (const dir of pathDirs) {
+		if (POSIX_BLOCKED_RE.test(dir)) continue;
+		const isDir = await executor.spawn("test", ["-d", dir], {});
+		if (isDir.exitCode !== 0) continue;
+		const writable = await executor.spawn("test", ["-w", dir], {});
+		if (writable.exitCode !== 0) continue;
+
+		onProgress({ phase, percent: 50, message: `Installing wrapper at ${dir}/HISE...` });
+		const w = await writeMacOSWrapper(executor, dir, content);
+		if (!w.ok) {
+			errors.push(w.error ?? "unknown");
+			continue;
+		}
+		onProgress({ phase, percent: 100 });
+		return {
+			success: true,
+			dir,
+			execResult: ok(`✓ ${dir}/HISE → ${appPath} (LaunchServices wrapper)`),
+		};
+	}
+
+	// Fallback: ~/.local/bin (handoff §Install location). We always create
+	// the dir, write the wrapper, then ensure the user's rc file has the
+	// PATH export so future shells pick it up.
+	const home = process.env.HOME ?? "";
+	if (!home) {
+		return {
+			success: false,
+			execResult: fail(
+				`No writable directory on PATH. Tried:\n  ${errors.join("\n  ") || "(nothing matched)"}`,
+			),
+		};
+	}
+	const userBin = `${home}/.local/bin`;
+	onProgress({ phase, percent: 60, message: `Nothing writable on PATH; falling back to ${userBin}...` });
+	const mk = await executor.spawn("mkdir", ["-p", userBin], {});
+	if (mk.exitCode !== 0) {
+		return { success: false, execResult: fail(`mkdir ${userBin} failed: ${mk.stderr}`) };
+	}
+	const w = await writeMacOSWrapper(executor, userBin, content);
+	if (!w.ok) {
+		return { success: false, execResult: fail(`Wrapper install at ${userBin} failed: ${w.error}`) };
+	}
+
+	// rc-file PATH append, only if userBin isn't already on PATH.
+	const onPath = pathDirs.includes(userBin);
+	let pathNote = "";
+	if (!onPath) {
+		const r = await ensureUserBinOnPath(executor);
+		if (r.appended && r.rc) {
+			pathNote = ` Added ${userBin} to PATH in ${r.rc} — open a new terminal or \`source ${r.rc}\` to pick it up.`;
+		} else if (r.rc && r.error) {
+			pathNote = ` Wanted to add PATH export to ${r.rc} but failed (${r.error}). Add this line manually: export PATH="$HOME/.local/bin:$PATH"`;
+		} else {
+			pathNote = ` ${userBin} is not on your PATH and your shell isn't bash/zsh — add this line manually to your shell rc: export PATH="$HOME/.local/bin:$PATH"`;
+		}
+	}
+	onProgress({ phase, percent: 100 });
+	return {
+		success: true,
+		dir: userBin,
+		execResult: ok(`✓ ${userBin}/HISE → ${appPath} (LaunchServices wrapper).${pathNote}`),
 	};
 }
 
