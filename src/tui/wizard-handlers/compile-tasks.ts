@@ -44,9 +44,8 @@ export function createCompileProjectHandler(_executor: PhaseExecutor): InternalT
 
 		const executor = withSignal(_executor, signal);
 		const configuration = context?.configuration ?? "Release";
-		const macArchitecture = context?.macArchitecture === "arm64" || context?.macArchitecture === "x86_64"
-			? context.macArchitecture
-			: undefined;
+		// Plugins always built UB on macOS — DAWs may run native or under Rosetta.
+		const macArchitecture = process.platform === "darwin" ? "universal" : undefined;
 		const vsVersion = context?.vsVersion ? normaliseVsVersion(context.vsVersion) : undefined;
 
 		onProgress({ phase: "compile", percent: 0, message: `Compiling (${configuration})...` });
@@ -86,8 +85,9 @@ export function createCompileNetworksHandler(_executor: PhaseExecutor): Internal
 
 		const executor = withSignal(_executor, signal);
 		const configuration = context?.configuration ?? "Release";
-		const macArchitecture = context?.macArchitecture === "arm64" || context?.macArchitecture === "x86_64"
-			? context.macArchitecture
+		// Network DLL must match the running HISE process — host arch only.
+		const macArchitecture = process.platform === "darwin"
+			? (process.arch === "arm64" ? "arm64" : "x86_64")
 			: undefined;
 		const vsVersion = context?.vsVersion ? normaliseVsVersion(context.vsVersion) : undefined;
 

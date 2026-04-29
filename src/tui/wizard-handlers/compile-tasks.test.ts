@@ -22,6 +22,14 @@ function withPlatform<T>(platform: NodeJS.Platform, fn: () => Promise<T>): Promi
 	});
 }
 
+function withArch<T>(arch: NodeJS.Architecture, fn: () => Promise<T>): Promise<T> {
+	const original = process.arch;
+	Object.defineProperty(process, "arch", { value: arch, configurable: true });
+	return fn().finally(() => {
+		Object.defineProperty(process, "arch", { value: original, configurable: true });
+	});
+}
+
 describe("createCompileProjectHandler", () => {
 	it("spawns build script from context", async () => {
 		await withPlatform("linux", async () => {
@@ -59,7 +67,7 @@ describe("createCompileProjectHandler", () => {
 		expect(result.message).toContain("Missing build paths");
 	});
 
-	it("runs make in MacOSXMakefile on darwin", async () => {
+	it("always builds a universal binary on darwin (ignores context arch)", async () => {
 		await withPlatform("darwin", async () => {
 			const spawnCalls: Array<{ cmd: string; args: string[]; cwd?: string; env?: Record<string, string> }> = [];
 			const executor: PhaseExecutor = {
@@ -69,29 +77,17 @@ describe("createCompileProjectHandler", () => {
 				},
 			};
 			const handler = createCompileProjectHandler(executor);
-			const result = await handler({}, () => {}, undefined, fullContext);
+			const result = await handler({}, () => {}, undefined, { ...fullContext, macArchitecture: "arm64" });
 			expect(result.success).toBe(true);
 			const makeCall = spawnCalls.find((c) => c.cmd === "make");
 			expect(makeCall).toBeDefined();
-			expect(makeCall!.args).toEqual(["CONFIG=Release", "-j1"]);
+			expect(makeCall!.args).toEqual([
+				"CONFIG=Release",
+				"-j1",
+				"TARGET_ARCH=-arch x86_64 -arch arm64",
+			]);
 			expect(makeCall!.cwd).toBe("/path/to/Binaries/Builds/MacOSXMakefile");
 			expect(makeCall!.env?.JUCE_JOBS_CAPPED).toBe("1");
-		});
-	});
-
-	it("threads macArchitecture into the make invocation when provided", async () => {
-		await withPlatform("darwin", async () => {
-			const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
-			const executor: PhaseExecutor = {
-				spawn: async (cmd, args) => {
-					spawnCalls.push({ cmd, args });
-					return okResult;
-				},
-			};
-			const handler = createCompileProjectHandler(executor);
-			await handler({}, () => {}, undefined, { ...fullContext, macArchitecture: "arm64" });
-			const makeCall = spawnCalls.find((c) => c.cmd === "make");
-			expect(makeCall!.args).toContain("TARGET_ARCH=-arch arm64");
 		});
 	});
 
@@ -140,5 +136,23 @@ describe("createCompileNetworksHandler", () => {
 		const result = await handler({}, () => {}, undefined, {});
 		expect(result.success).toBe(false);
 		expect(result.message).toContain("Missing build paths");
+	});
+
+	it("forces host arch on darwin (DLL must match running HISE process)", async () => {
+		await withPlatform("darwin", async () => {
+			await withArch("arm64", async () => {
+				const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
+				const executor: PhaseExecutor = {
+					spawn: async (cmd, args, _opts) => {
+						spawnCalls.push({ cmd, args });
+						return okResult;
+					},
+				};
+				const handler = createCompileNetworksHandler(executor);
+				await handler({}, () => {}, undefined, { ...fullContext, macArchitecture: "x86_64" });
+				const makeCall = spawnCalls.find((c) => c.cmd === "make");
+				expect(makeCall!.args).toContain("TARGET_ARCH=-arch arm64");
+			});
+		});
 	});
 });

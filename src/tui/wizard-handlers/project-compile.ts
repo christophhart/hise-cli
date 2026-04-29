@@ -59,9 +59,10 @@ export interface MacCompileSpec {
 	readonly projucerPath?: string;
 	/** RAM-aware parallel job count. Defaults to 1 when omitted. */
 	readonly parallelJobs?: number;
-	/** Single-slice architecture override ("arm64" or "x86_64"). Omit to
-	 *  inherit the Makefile's default universal (x86_64+arm64) build. */
-	readonly architecture?: "arm64" | "x86_64";
+	/** Architecture override. "arm64"/"x86_64" force a single slice;
+	 *  "universal" forces a fat x86_64+arm64 binary regardless of the
+	 *  Makefile's default. Omit to inherit the Makefile's default. */
+	readonly architecture?: "arm64" | "x86_64" | "universal";
 }
 
 export interface LinuxCompileSpec {
@@ -154,9 +155,10 @@ export interface JuceCompileSpec {
 	readonly msbuildPlatform?: string;
 	/** RAM-aware parallel job count for Makefile builds (macOS/Linux). */
 	readonly parallelJobs?: number;
-	/** Single-slice architecture override for macOS ("arm64" or "x86_64").
-	 *  Omit to inherit the Makefile's universal (x86_64+arm64) build. */
-	readonly macArchitecture?: "arm64" | "x86_64";
+	/** Architecture override for macOS. "arm64"/"x86_64" force a single
+	 *  slice; "universal" forces a fat x86_64+arm64 binary. Omit to
+	 *  inherit the Makefile's default. */
+	readonly macArchitecture?: "arm64" | "x86_64" | "universal";
 	/** Visual Studio major year — picks the Projucer exporter folder
 	 *  on Windows. Defaults to "2022" (the year aka.ms/vs/stable installs). */
 	readonly vsVersion?: VsVersion;
@@ -247,7 +249,9 @@ export async function runMacJuceCompile(
 
 	const jobs = Math.max(1, spec.parallelJobs ?? 1);
 	const args = [`CONFIG=${spec.configuration}`, `-j${jobs}`];
-	if (spec.architecture) {
+	if (spec.architecture === "universal") {
+		args.push("TARGET_ARCH=-arch x86_64 -arch arm64");
+	} else if (spec.architecture) {
 		args.push(`TARGET_ARCH=-arch ${spec.architecture}`);
 	}
 	const result = await executor.spawn("make", args, {
