@@ -39,6 +39,7 @@ MODES
   -inspect "<command>"     Runtime monitor           (--help for syntax)
   -undo "<command>"        Undo history & plan groups (--help for syntax)
   -hise "<command>"        Runtime control            (--help for syntax)
+  -publish "<command>"     Build & sign installers    (--help for syntax)
 
   -wizard <subcommand>     Guided workflows          (--help for syntax)
 
@@ -778,4 +779,38 @@ EXAMPLES
   hise-cli -sequence "0ms play C3 127 for 500ms"
   hise-cli -sequence "flush"
   hise-cli -sequence "play test"`,
+
+	publish: `hise-cli -publish — build & sign plugin installers
+
+SYNTAX
+  hise-cli -publish "<command>"
+
+VERBS
+  check system               Run preflight (admin, project_info.xml,
+                             discovered binaries, ISCC/pkgbuild,
+                             optional certs).
+  check binaries <list>      Assert >=1 binary present per CSV target
+                             (VST3,AU,AAX,Standalone). Compares versions
+                             with project_info.xml.
+  build [with K=V, ...]      Run build_installer wizard headlessly with
+                             the given prefilled answers.
+
+EXAMPLES
+  hise-cli -publish "check system"
+  hise-cli -publish "check binaries VST3,AU"
+  hise-cli -publish "build with codesign=1, notarize=1"
+
+EQUIVALENT WIZARD
+  /wizard build_installer    Same wizard, opens the form-based UI.
+
+RELATED
+  /project export project --default     Produces the binaries that /publish
+                                        then packages.
+
+NOTES
+  - On Windows, AAX signing uses a self-signed PACE keyfile auto-generated
+    on first sign (separate from any Authenticode code-signing cert).
+  - On macOS, the developer's Developer ID Application identity is used
+    for both binary signing and AAX wraptool --signid.
+  - HISE_AAX_PASSWORD env var is required when AAX is in the payload.`,
 };

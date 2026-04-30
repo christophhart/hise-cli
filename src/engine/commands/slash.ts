@@ -59,6 +59,7 @@ async function handleModes(
 		["project", "Project settings", MODE_ACCENTS.project],
 		["export", "Build targets", MODE_ACCENTS.compile],
 		["undo", "Undo history & plan groups", MODE_ACCENTS.undo],
+		["publish", "Build & sign installers", MODE_ACCENTS.publish],
 	];
 
 	return tableResult(
@@ -1020,6 +1021,13 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		handler: createModeHandler("analyse"),
 		kind: "mode",
 		embedBlockedReason: "Audio file analysis needs local filesystem access.",
+	});
+
+	registry.register({
+		name: "publish",
+		description: "Enter publish mode (build & sign installers)",
+		handler: createModeHandler("publish"),
+		kind: "mode",
 	});
 
 	registry.register({

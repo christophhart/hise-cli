@@ -33,6 +33,20 @@ import {
 	createUpdateLaunchHandler,
 	createUpdateVerifyHandler,
 } from "./update-tasks.js";
+import {
+	createPublishDetectHandler,
+	type PublishDetectDeps,
+} from "./publish-detect.js";
+import {
+	createAssertReadyHandler,
+	createStagePayloadHandler,
+	createSignBinariesHandler,
+	createEnsureAaxKeyfileHandler,
+	createSignAaxHandler,
+	createBuildInstallerHandler,
+	createSignInstallerHandler,
+	createNotarizeHandler,
+} from "./publish-tasks.js";
 
 /** Register all setup wizard handlers (init + tasks). */
 export function registerSetupHandlers(
@@ -64,6 +78,40 @@ export function registerCompileHandlers(
 ): void {
 	registry.registerTask("compileProject", createCompileProjectHandler(executor));
 	registry.registerTask("compileNetworks", createCompileNetworksHandler(executor));
+}
+
+/** Register publish wizard handlers (build_installer init + tasks). */
+export function registerPublishHandlers(
+	registry: WizardHandlerRegistry,
+	deps: PublishDetectDeps & { issTemplatePath: string },
+): void {
+	registry.registerInit(
+		"publishDetectEnvironment",
+		createPublishDetectHandler(deps),
+	);
+	registry.registerTask("publishAssertReady", createAssertReadyHandler());
+	registry.registerTask("publishStagePayload", createStagePayloadHandler());
+	registry.registerTask(
+		"publishSignBinaries",
+		createSignBinariesHandler(deps.executor),
+	);
+	registry.registerTask(
+		"publishEnsureAaxKeyfile",
+		createEnsureAaxKeyfileHandler(deps.executor),
+	);
+	registry.registerTask("publishSignAax", createSignAaxHandler(deps.executor));
+	registry.registerTask(
+		"publishBuildInstaller",
+		createBuildInstallerHandler({
+			executor: deps.executor,
+			issTemplatePath: deps.issTemplatePath,
+		}),
+	);
+	registry.registerTask(
+		"publishSignInstaller",
+		createSignInstallerHandler(deps.executor),
+	);
+	registry.registerTask("publishNotarize", createNotarizeHandler(deps.executor));
 }
 
 /** Register update wizard handlers. Unlike the setup/compile wizards these

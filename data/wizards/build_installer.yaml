@@ -1,0 +1,200 @@
+id: build_installer
+header: Build Installer
+description: Package & sign existing plugin binaries into installers
+aliases:
+  - build_installer
+body: |
+  Wraps already-compiled binaries (VST3/AU/AAX/Standalone) into a
+  signed, user-runnable installer. Run after `/project export project`
+  has produced binaries under `Binaries/`.
+
+  - **Windows**: Inno Setup (.exe), optional signtool codesign of
+    binaries + installer.
+  - **macOS**: pkgbuild (.pkg), optional Developer-ID codesign +
+    notarize + staple.
+  - **AAX**: optional PACE wraptool sign. On Windows, a self-signed
+    keyfile is auto-generated on first sign and kept under
+    `<project>/.publish/`. The public key portion must be uploaded to
+    Avid via `wraptool dump` once before the first sign succeeds.
+
+  > Macros and signing settings persist in `<project>/.publish/aax.json`
+  > (gitignored). Set `HISE_AAX_PASSWORD` in the environment to avoid
+  > storing the iLok password anywhere on disk.
+
+init:
+  type: internal
+  function: publishDetectEnvironment
+
+tabs:
+  - label: Project
+    fields:
+      - id: version
+        type: text
+        label: Project version
+        help: Read from project_info.xml. Read-only.
+        disabled: true
+        required: true
+      - id: payload
+        type: multiselect
+        label: Payload
+        help: Binary targets to bundle. Pre-filled with what the preflight discovered under Binaries/.
+        required: true
+        items:
+          - VST3
+          - AU
+          - AAX
+          - Standalone
+      - id: target
+        type: choice
+        label: macOS install target
+        help: User domain (~/Library) or global (/Library). pkgbuild defaults to global.
+        items:
+          - user
+          - global
+        defaultValue: global
+      - id: eula
+        type: file
+        label: EULA file (optional)
+        help: Included in the installer when present. Defaults to ./eula.txt — silently omitted if missing.
+        wildcard: "*.txt;*.rtf;*.md"
+        defaultValue: "./eula.txt"
+
+  - label: Signing
+    fields:
+      - id: codesign
+        type: toggle
+        label: Code-sign binaries
+        help: signtool (Windows) / codesign (macOS). Pre-filled true when a cert is detected.
+      - id: signingIdentity
+        type: text
+        label: Signing identity (macOS)
+        help: 'Developer ID Application: <Name> (<TeamID>) — leave blank to use the first one found.'
+        emptyText: "(first Developer ID in keychain)"
+      - id: codesignThumbprint
+        type: text
+        label: Windows cert thumbprint
+        help: Authenticode code-signing cert thumbprint. Leave blank to use the first cert in CurrentUser\My.
+        emptyText: "(first Code Signing cert)"
+      - id: notarize
+        type: toggle
+        label: Notarize (macOS)
+        help: Submit the installer to Apple notarization and staple the ticket.
+      - id: notarizeProfile
+        type: text
+        label: Notary keychain profile
+        help: Profile name created by `xcrun notarytool store-credentials`.
+        defaultValue: "notarize"
+      - id: aaxWraptool
+        type: file
+        label: PACE wraptool path
+        help: Path to wraptool executable. Auto-detected at default install location.
+        emptyText: "(default PACE install)"
+      - id: aaxWcguid
+        type: text
+        label: AAX WCGUID
+        help: Per-plugin Avid-issued identifier. Loaded from .publish/aax.json or HISE_AAX_WCGUID.
+        emptyText: "(loaded from .publish/aax.json)"
+      - id: aaxAccountEmail
+        type: text
+        label: iLok account email
+        help: Loaded from .publish/aax.json or HISE_AAX_ACCOUNT.
+        emptyText: "(loaded from .publish/aax.json)"
+      - id: aaxKeyfile
+        type: file
+        label: AAX keyfile (.pfx/.p12, Windows)
+        help: Leave blank to auto-generate a self-signed keyfile under .publish/aax-selfsigned.pfx.
+        emptyText: "(auto-generate self-signed)"
+      - id: aaxAutoGenerateKeyfile
+        type: toggle
+        label: Auto-generate self-signed AAX keyfile (Windows)
+        help: Generate a 20-year self-signed PFX on first sign if no keyfile is supplied.
+        defaultValue: "1"
+
+  - label: Detected
+    fields:
+      - id: platform
+        type: choice
+        label: Platform
+        disabled: true
+        items:
+          - macOS
+          - Windows
+          - Linux
+      - id: discoveredBinaries
+        type: text
+        label: Discovered binaries
+        help: Targets found under Binaries/ during preflight.
+        disabled: true
+        emptyText: "(none — run /project export first)"
+      - id: hasIscc
+        type: toggle
+        label: ISCC (Inno Setup) available
+        disabled: true
+      - id: hasSigntool
+        type: toggle
+        label: signtool available
+        disabled: true
+      - id: hasWinCert
+        type: toggle
+        label: Windows code-signing cert detected
+        disabled: true
+      - id: hasPkgbuild
+        type: toggle
+        label: pkgbuild available
+        disabled: true
+      - id: hasDevId
+        type: toggle
+        label: Developer ID Application detected
+        disabled: true
+      - id: hasNotaryProfile
+        type: toggle
+        label: Notary keychain profile valid
+        disabled: true
+
+submitLabel: Build & sign installer for the selected payload
+tasks:
+  - id: assertReady
+    function: publishAssertReady
+    type: internal
+    label: Validate payload + version
+  - id: stagePayload
+    function: publishStagePayload
+    type: internal
+    label: Stage binaries
+  - id: signBinaries
+    function: publishSignBinaries
+    type: internal
+    label: Code-sign binaries
+  - id: ensureAaxKeyfile
+    function: publishEnsureAaxKeyfile
+    type: internal
+    label: Ensure AAX keyfile
+  - id: signAax
+    function: publishSignAax
+    type: internal
+    label: Sign AAX (wraptool)
+  - id: buildInstaller
+    function: publishBuildInstaller
+    type: internal
+    label: Build installer
+  - id: signInstaller
+    function: publishSignInstaller
+    type: internal
+    label: Code-sign installer
+  - id: notarize
+    function: publishNotarize
+    type: internal
+    label: Notarize & staple
+
+postActions:
+  - id: openOutputDir
+    label: Open output folder
+    help: Reveal dist/ in the OS file browser.
+
+globalDefaults:
+  payload: ""
+  codesign: "0"
+  notarize: "0"
+  aaxAutoGenerateKeyfile: "1"
+  notarizeProfile: notarize
+  target: global

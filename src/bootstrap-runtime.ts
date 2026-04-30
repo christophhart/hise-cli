@@ -18,7 +18,11 @@ import { createBundledDataLoader } from "./tui/bundledDataLoader.js";
 import {
 	registerSetupHandlers,
 	registerCompileHandlers,
+	registerPublishHandlers,
 } from "./tui/wizard-handlers/index.js";
+import { defaultResolveProjectFolder } from "./tui/wizard-handlers/publish-detect.js";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 export interface NodeRuntime {
 	phaseExecutor: PhaseExecutor;
@@ -32,9 +36,25 @@ export function bootstrapNodeRuntime(): NodeRuntime {
 	const handlerRegistry = new WizardHandlerRegistry();
 	registerSetupHandlers(handlerRegistry, phaseExecutor);
 	registerCompileHandlers(handlerRegistry, phaseExecutor);
+	registerPublishHandlers(handlerRegistry, {
+		executor: phaseExecutor,
+		issTemplatePath: resolveIssTemplatePath(),
+		resolveProjectFolder: defaultResolveProjectFolder(),
+	});
 
 	const hiseLauncher = createNodeHiseLauncher();
 	const dataLoader = createBundledDataLoader();
 
 	return { phaseExecutor, handlerRegistry, hiseLauncher, dataLoader };
+}
+
+/** Resolve `installer/build_installer.iss` relative to the running bundle.
+ *  For `npm run dev` (esbuild → dist/index.js) the file lives at
+ *  `<repo>/installer/build_installer.iss`. For the bun-compiled binary
+ *  the path needs adjustment in a follow-up (embed via DataLoader). */
+function resolveIssTemplatePath(): string {
+	const here = dirname(fileURLToPath(import.meta.url));
+	// dist/index.js (esbuild bundle) → ../installer/build_installer.iss
+	// src/bootstrap-runtime.ts (ts-node / vitest) → ../installer/build_installer.iss
+	return resolve(here, "..", "installer", "build_installer.iss");
 }
