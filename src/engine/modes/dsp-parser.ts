@@ -23,6 +23,10 @@ import {
 	Init,
 	Into,
 	Load,
+	Matched,
+	Max,
+	Mid,
+	Min,
 	Modules,
 	Move,
 	Networks,
@@ -30,11 +34,13 @@ import {
 	Of,
 	Parent,
 	QuotedString,
+	Range,
 	Remove,
 	Reset,
 	Save,
 	Set,
 	Show,
+	Skew,
 	Source,
 	Step,
 	To,
@@ -76,6 +82,7 @@ export interface AddCommand {
 	factoryPath: string;
 	alias?: string;
 	parent?: string;
+	index?: number;
 }
 
 export interface RemoveCommand {
@@ -103,6 +110,11 @@ export interface ConnectCommand {
 	 * property).
 	 */
 	parameter?: string;
+	/**
+	 * `matched` / `normalize` trailing flag — copies target parameter's range
+	 * onto source after wiring (mirrors the IDE normalize button).
+	 */
+	matchRange?: boolean;
 }
 
 export interface DisconnectCommand {
@@ -112,11 +124,36 @@ export interface DisconnectCommand {
 	parameter: string;
 }
 
+/**
+ * Set command — three shapes against the same `set` op:
+ *
+ *   1. Value-write   `set X.p [to] <v>`   → `value` set, range fields absent.
+ *   2. Range-write   `set X.p range <min> <max> [step|mid|skew ...]`
+ *                    → `min`/`max` (and any of stepSize/middlePosition/
+ *                    skewFactor) set, `value` absent.
+ *   3. Single-field  `set X.p.<field> <n>` → `rangeField` set + `value`
+ *                    holds the new field value. Translator merges with
+ *                    existing tree to emit a full range-write payload.
+ *
+ * The translator picks the variant by inspecting which fields are present
+ * (rangeField first, then any of min/max/stepSize/middlePosition/skewFactor,
+ * else value).
+ */
 export interface SetCommand {
 	type: "set";
 	nodeId: string;
 	parameterId: string;
-	value: string | number;
+	// Boolean is accepted so callers can construct network-level root
+	// property writes (AllowPolyphonic, HasTail, ...) directly. The
+	// grammar only emits string|number for value-write; boolean is for
+	// programmatic construction.
+	value?: string | number | boolean;
+	min?: number;
+	max?: number;
+	stepSize?: number;
+	middlePosition?: number;
+	skewFactor?: number;
+	rangeField?: "min" | "max" | "stepSize" | "middlePosition" | "skewFactor";
 }
 
 export type GetCommand =
@@ -143,6 +180,8 @@ export interface CreateParameterCommand {
 	max?: number;
 	defaultValue?: number;
 	stepSize?: number;
+	middlePosition?: number;
+	skewFactor?: number;
 }
 
 export type DspCommand =
@@ -220,6 +259,14 @@ class DspParser extends CstParser {
 			{ ALT: () => this.CONSUME(As) },
 			{ ALT: () => this.CONSUME(At) },
 			{ ALT: () => this.CONSUME(Tree) },
+			// Min/Max/Mid/Skew may appear as parameter names. Range and
+			// Matched are kept out: they're sentinel tokens for the
+			// range-write and connect-normalize subgrammars and would
+			// create first-token ambiguity with those alternatives.
+			{ ALT: () => this.CONSUME(Min) },
+			{ ALT: () => this.CONSUME(Max) },
+			{ ALT: () => this.CONSUME(Mid) },
+			{ ALT: () => this.CONSUME(Skew) },
 		]);
 	});
 
@@ -283,6 +330,10 @@ class DspParser extends CstParser {
 			this.CONSUME(To);
 			this.SUBRULE3(this.propName, { LABEL: "parent" });
 		});
+		this.OPTION3(() => {
+			this.CONSUME(At);
+			this.CONSUME(NumberLiteral, { LABEL: "index" });
+		});
 	});
 
 	// remove <nodeId>
@@ -324,6 +375,9 @@ class DspParser extends CstParser {
 			this.CONSUME2(Dot);
 			this.SUBRULE4(this.propName, { LABEL: "parameter" });
 		});
+		this.OPTION3(() => {
+			this.CONSUME(Matched, { LABEL: "matched" });
+		});
 	});
 
 	// disconnect <source> from <target>.<param>
@@ -336,20 +390,79 @@ class DspParser extends CstParser {
 		this.SUBRULE3(this.propName, { LABEL: "parameter" });
 	});
 
-	// set <node>.<param> [to] <value>
+	// Three shapes share the same head `set <node>.<param>`:
+	//
+	//   set X.p [to] <value>                                  (value-write)
+	//   set X.p range <min> <max> [step|mid|skew ...]          (range-write)
+	//   set X.p.<min|max|step|mid|skew> <number>               (single-field)
+	//
+	// First-token disambiguation: Alt1 starts with Dot, Alt2 with Range,
+	// Alt3 with To|NumberLiteral|HexLiteral|QuotedString|propName. Range
+	// and Matched are kept out of propName for this reason.
 	public setCommand = this.RULE("setCommand", () => {
 		this.CONSUME(Set);
 		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 		this.CONSUME(Dot);
 		this.SUBRULE2(this.propName, { LABEL: "parameterId" });
-		this.OPTION(() => {
-			this.CONSUME(To);
-		});
 		this.OR([
-			{ ALT: () => this.CONSUME(HexLiteral, { LABEL: "hexValue" }) },
-			{ ALT: () => this.CONSUME(NumberLiteral, { LABEL: "numValue" }) },
-			{ ALT: () => this.CONSUME(QuotedString, { LABEL: "strValue" }) },
-			{ ALT: () => this.SUBRULE3(this.propName, { LABEL: "idValue" }) },
+			// Single-field range-write: set X.p.<field> <number>
+			{
+				ALT: () => {
+					this.CONSUME2(Dot);
+					this.OR2([
+						{ ALT: () => this.CONSUME(Min, { LABEL: "fieldMin" }) },
+						{ ALT: () => this.CONSUME(Max, { LABEL: "fieldMax" }) },
+						{ ALT: () => this.CONSUME(Step, { LABEL: "fieldStep" }) },
+						{ ALT: () => this.CONSUME(Mid, { LABEL: "fieldMid" }) },
+						{ ALT: () => this.CONSUME(Skew, { LABEL: "fieldSkew" }) },
+					]);
+					this.CONSUME(NumberLiteral, { LABEL: "fieldValue" });
+				},
+			},
+			// Full range-write: set X.p range <min> <max> [step|mid|skew ...]
+			{
+				ALT: () => {
+					this.CONSUME(Range);
+					this.CONSUME2(NumberLiteral, { LABEL: "rangeMin" });
+					this.CONSUME3(NumberLiteral, { LABEL: "rangeMax" });
+					this.MANY(() => {
+						this.OR3([
+							{
+								ALT: () => {
+									this.CONSUME2(Step);
+									this.CONSUME4(NumberLiteral, { LABEL: "rangeStep" });
+								},
+							},
+							{
+								ALT: () => {
+									this.CONSUME2(Mid);
+									this.CONSUME5(NumberLiteral, { LABEL: "rangeMid" });
+								},
+							},
+							{
+								ALT: () => {
+									this.CONSUME2(Skew);
+									this.CONSUME6(NumberLiteral, { LABEL: "rangeSkew" });
+								},
+							},
+						]);
+					});
+				},
+			},
+			// Value-write: set X.p [to] <value>
+			{
+				ALT: () => {
+					this.OPTION(() => {
+						this.CONSUME(To);
+					});
+					this.OR4([
+						{ ALT: () => this.CONSUME(HexLiteral, { LABEL: "hexValue" }) },
+						{ ALT: () => this.CONSUME7(NumberLiteral, { LABEL: "numValue" }) },
+						{ ALT: () => this.CONSUME(QuotedString, { LABEL: "strValue" }) },
+						{ ALT: () => this.SUBRULE3(this.propName, { LABEL: "idValue" }) },
+					]);
+				},
+			},
 		]);
 	});
 
@@ -389,7 +502,7 @@ class DspParser extends CstParser {
 		this.SUBRULE(this.propName, { LABEL: "nodeId" });
 	});
 
-	// create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>]
+	// create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>] [mid <m>|skew <s>]
 	public createParameterCommand = this.RULE("createParameterCommand", () => {
 		this.CONSUME(CreateParameter);
 		this.SUBRULE(this.propName, { LABEL: "nodeId" });
@@ -408,6 +521,14 @@ class DspParser extends CstParser {
 				{ ALT: () => {
 					this.CONSUME(Step);
 					this.CONSUME4(NumberLiteral, { LABEL: "stepSize" });
+				}},
+				{ ALT: () => {
+					this.CONSUME(Mid);
+					this.CONSUME5(NumberLiteral, { LABEL: "middlePosition" });
+				}},
+				{ ALT: () => {
+					this.CONSUME(Skew);
+					this.CONSUME6(NumberLiteral, { LABEL: "skewFactor" });
 				}},
 			]);
 		});
@@ -519,7 +640,10 @@ function extractAdd(node: CstNode): { command: AddCommand } | { error: string } 
 	const parent = node.children.parent
 		? extractPropName(asNode(node.children.parent[0]))
 		: undefined;
-	return { command: { type: "add", factoryPath, alias, parent } };
+	const index = node.children.index
+		? parseInt(asToken(node.children.index[0]).image, 10)
+		: undefined;
+	return { command: { type: "add", factoryPath, alias, parent, index } };
 }
 
 function extractRemove(node: CstNode): { command: RemoveCommand } {
@@ -548,7 +672,8 @@ function extractConnect(node: CstNode): { command: ConnectCommand } {
 	const parameter = node.children.parameter
 		? extractPropName(asNode(node.children.parameter[0]))
 		: undefined;
-	return { command: { type: "connect", source, sourceOutput, target, parameter } };
+	const matchRange = node.children.matched ? true : undefined;
+	return { command: { type: "connect", source, sourceOutput, target, parameter, matchRange } };
 }
 
 function extractDisconnect(node: CstNode): { command: DisconnectCommand } {
@@ -561,6 +686,44 @@ function extractDisconnect(node: CstNode): { command: DisconnectCommand } {
 function extractSet(node: CstNode): { command: SetCommand } | { error: string } {
 	const nodeId = extractPropName(asNode(node.children.nodeId[0]));
 	const parameterId = extractPropName(asNode(node.children.parameterId[0]));
+
+	// Single-field range-write: set X.p.<field> <number>
+	if (node.children.fieldValue) {
+		const field: SetCommand["rangeField"] = node.children.fieldMin
+			? "min"
+			: node.children.fieldMax
+				? "max"
+				: node.children.fieldStep
+					? "stepSize"
+					: node.children.fieldMid
+						? "middlePosition"
+						: "skewFactor";
+		const value = parseFloat(asToken(node.children.fieldValue[0]).image);
+		return { command: { type: "set", nodeId, parameterId, rangeField: field, value } };
+	}
+
+	// Full range-write: set X.p range <min> <max> [step|mid|skew ...]
+	if (node.children.rangeMin) {
+		const cmd: SetCommand = {
+			type: "set",
+			nodeId,
+			parameterId,
+			min: parseFloat(asToken(node.children.rangeMin[0]).image),
+			max: parseFloat(asToken(node.children.rangeMax[0]).image),
+		};
+		if (node.children.rangeStep) {
+			cmd.stepSize = parseFloat(asToken(node.children.rangeStep[0]).image);
+		}
+		if (node.children.rangeMid) {
+			cmd.middlePosition = parseFloat(asToken(node.children.rangeMid[0]).image);
+		}
+		if (node.children.rangeSkew) {
+			cmd.skewFactor = parseFloat(asToken(node.children.rangeSkew[0]).image);
+		}
+		return { command: cmd };
+	}
+
+	// Value-write: set X.p [to] <value>
 	let value: string | number;
 	if (node.children.hexValue) {
 		value = parseInt(asToken(node.children.hexValue[0]).image.slice(2), 16);
@@ -613,6 +776,12 @@ function extractCreateParameter(node: CstNode): { command: CreateParameterComman
 	const stepSize = node.children.stepSize
 		? parseFloat(asToken(node.children.stepSize[0]).image)
 		: undefined;
+	const middlePosition = node.children.middlePosition
+		? parseFloat(asToken(node.children.middlePosition[0]).image)
+		: undefined;
+	const skewFactor = node.children.skewFactor
+		? parseFloat(asToken(node.children.skewFactor[0]).image)
+		: undefined;
 	return {
 		command: {
 			type: "create_parameter",
@@ -622,6 +791,8 @@ function extractCreateParameter(node: CstNode): { command: CreateParameterComman
 			max,
 			defaultValue,
 			stepSize,
+			middlePosition,
+			skewFactor,
 		},
 	};
 }

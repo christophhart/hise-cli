@@ -749,6 +749,29 @@ describe("dsp contract — normalizeDspTreeResponse", () => {
 			parameters: [{ value: 1 }], children: [],
 		})).toThrow();
 	});
+
+	it("accepts null parameter value (template/container slots without driver) as 0", () => {
+		// Regression: HISE emits `value: null` for container-level slots
+		// like container.split's DryWet before any source connects.
+		// Normalizer must accept this and not throw — otherwise the
+		// silent catch in fetchTree swallows the error and the tree
+		// stays stale forever.
+		const { raw } = normalizeDspTreeResponse({
+			nodeId: "Main", factoryPath: "container.chain", bypassed: false,
+			parameters: [],
+			children: [{
+				nodeId: "split1",
+				factoryPath: "container.split",
+				bypassed: false,
+				parameters: [{ parameterId: "DryWet", value: null }],
+				children: [],
+			}],
+		});
+		expect(raw.children[0]!.parameters[0]).toEqual({
+			parameterId: "DryWet",
+			value: 0,
+		});
+	});
 });
 
 describe("dsp contract — normalizeDspApplyResponse", () => {
@@ -1225,5 +1248,581 @@ describe("DspMode show <nodeId>", () => {
 			c.endpoint.startsWith("/api/dsp/tree") && c.endpoint.includes("verbose=true"),
 		);
 		expect(hit).toBeDefined();
+	});
+});
+
+// ── /api/dsp/apply grammar extensions ─────────────────────────────────
+
+describe("dsp parser — add with index", () => {
+	it("parses bare `add factory.id at <n>`", () => {
+		const cmd = parseOk("add core.gain at 0") as AddCommand;
+		expect(cmd.factoryPath).toBe("core.gain");
+		expect(cmd.index).toBe(0);
+	});
+	it("parses full clauses `add factory.id as Alias to Parent at 2`", () => {
+		const cmd = parseOk("add core.gain as G1 to Main at 2") as AddCommand;
+		expect(cmd).toEqual({
+			type: "add",
+			factoryPath: "core.gain",
+			alias: "G1",
+			parent: "Main",
+			index: 2,
+		});
+	});
+});
+
+describe("dsp parser — connect matched flag", () => {
+	it("parses `matched` trailing flag", () => {
+		const cmd = parseOk("connect LFO1 to Filter1.Frequency matched") as ConnectCommand;
+		expect(cmd.matchRange).toBe(true);
+	});
+	it("parses `normalize` alias", () => {
+		const cmd = parseOk("connect LFO1 to Filter1.Frequency normalize") as ConnectCommand;
+		expect(cmd.matchRange).toBe(true);
+	});
+	it("works without target parameter (routing shorthand) + matched", () => {
+		const cmd = parseOk("connect SEND to RCV matched") as ConnectCommand;
+		expect(cmd.parameter).toBeUndefined();
+		expect(cmd.matchRange).toBe(true);
+	});
+	it("omits matchRange when not present", () => {
+		const cmd = parseOk("connect LFO1 to Filter1.Frequency") as ConnectCommand;
+		expect(cmd.matchRange).toBeUndefined();
+	});
+});
+
+describe("dsp parser — set range-write", () => {
+	it("parses bare `set X.p range <min> <max>`", () => {
+		const cmd = parseOk("set Osc1.Frequency range 20 20000") as SetCommand;
+		expect(cmd).toEqual({
+			type: "set",
+			nodeId: "Osc1",
+			parameterId: "Frequency",
+			min: 20,
+			max: 20000,
+		});
+	});
+	it("parses range with step / mid / skew", () => {
+		const cmd = parseOk("set Osc1.Frequency range 20 20000 step 1 mid 1000") as SetCommand;
+		expect(cmd.min).toBe(20);
+		expect(cmd.max).toBe(20000);
+		expect(cmd.stepSize).toBe(1);
+		expect(cmd.middlePosition).toBe(1000);
+		expect(cmd.skewFactor).toBeUndefined();
+	});
+	it("parses range with skewFactor alias", () => {
+		const cmd = parseOk("set Osc1.Frequency range 0 1 skewFactor 2.5") as SetCommand;
+		expect(cmd.skewFactor).toBe(2.5);
+	});
+	it("parses range with stepSize alias", () => {
+		const cmd = parseOk("set Osc1.Frequency range 0 1 stepSize 0.05") as SetCommand;
+		expect(cmd.stepSize).toBe(0.05);
+	});
+	it("parses range with `interval` alias", () => {
+		const cmd = parseOk("set Osc1.Frequency range 0 1 interval 0.1") as SetCommand;
+		expect(cmd.stepSize).toBe(0.1);
+	});
+	it("parses range with `middlePosition` alias", () => {
+		const cmd = parseOk("set Osc1.Frequency range 0 1 middlePosition 0.3") as SetCommand;
+		expect(cmd.middlePosition).toBe(0.3);
+	});
+});
+
+describe("dsp parser — set single-field range-write (double-dot)", () => {
+	it("parses .step", () => {
+		const cmd = parseOk("set Osc1.Frequency.step 0.1") as SetCommand;
+		expect(cmd).toEqual({
+			type: "set",
+			nodeId: "Osc1",
+			parameterId: "Frequency",
+			rangeField: "stepSize",
+			value: 0.1,
+		});
+	});
+	it("parses .stepSize alias", () => {
+		const cmd = parseOk("set Osc1.Frequency.stepSize 0.5") as SetCommand;
+		expect(cmd.rangeField).toBe("stepSize");
+		expect(cmd.value).toBe(0.5);
+	});
+	it("parses .interval alias", () => {
+		const cmd = parseOk("set Osc1.Frequency.interval 0.25") as SetCommand;
+		expect(cmd.rangeField).toBe("stepSize");
+		expect(cmd.value).toBe(0.25);
+	});
+	it("parses .mid", () => {
+		const cmd = parseOk("set Osc1.Frequency.mid 1000") as SetCommand;
+		expect(cmd.rangeField).toBe("middlePosition");
+		expect(cmd.value).toBe(1000);
+	});
+	it("parses .middlePosition alias", () => {
+		const cmd = parseOk("set Osc1.Frequency.middlePosition 0.5") as SetCommand;
+		expect(cmd.rangeField).toBe("middlePosition");
+	});
+	it("parses .skew", () => {
+		const cmd = parseOk("set Osc1.Frequency.skew 2.5") as SetCommand;
+		expect(cmd.rangeField).toBe("skewFactor");
+		expect(cmd.value).toBe(2.5);
+	});
+	it("parses .skewFactor alias", () => {
+		const cmd = parseOk("set Osc1.Frequency.skewFactor 2.5") as SetCommand;
+		expect(cmd.rangeField).toBe("skewFactor");
+	});
+	it("parses .min", () => {
+		const cmd = parseOk("set Osc1.Frequency.min 50") as SetCommand;
+		expect(cmd.rangeField).toBe("min");
+		expect(cmd.value).toBe(50);
+	});
+	it("parses .max", () => {
+		const cmd = parseOk("set Osc1.Frequency.max 10000") as SetCommand;
+		expect(cmd.rangeField).toBe("max");
+		expect(cmd.value).toBe(10000);
+	});
+});
+
+describe("dsp parser — create_parameter mid/skew", () => {
+	it("parses with mid", () => {
+		const cmd = parseOk("create_parameter Main.X 0 1 mid 0.3") as CreateParameterCommand;
+		expect(cmd.middlePosition).toBe(0.3);
+		expect(cmd.skewFactor).toBeUndefined();
+	});
+	it("parses with skew", () => {
+		const cmd = parseOk("create_parameter Main.X 0 1 skew 2") as CreateParameterCommand;
+		expect(cmd.skewFactor).toBe(2);
+	});
+	it("parses with all clauses", () => {
+		const cmd = parseOk("create_parameter Main.X 0 1 default 0.5 step 0.01 mid 0.3") as CreateParameterCommand;
+		expect(cmd.min).toBe(0);
+		expect(cmd.max).toBe(1);
+		expect(cmd.defaultValue).toBe(0.5);
+		expect(cmd.stepSize).toBe(0.01);
+		expect(cmd.middlePosition).toBe(0.3);
+	});
+});
+
+// ── Translator (commandToDspOps) — new fields ────────────────────────
+
+describe("commandToDspOps — new openapi fields", () => {
+	const emptyTree: RawDspNode = {
+		nodeId: "Main",
+		factoryPath: "container.chain",
+		bypassed: false,
+		parameters: [],
+		connections: [],
+		children: [],
+	};
+
+	it("add includes index when set", () => {
+		const res = commandToDspOps(
+			{ type: "add", factoryPath: "core.gain", alias: "G1", index: 0 },
+			emptyTree,
+			[],
+		);
+		if ("error" in res) throw new Error(res.error);
+		expect(res.ops[0]).toEqual({
+			op: "add",
+			factoryPath: "core.gain",
+			parent: "Main",
+			nodeId: "G1",
+			index: 0,
+		});
+	});
+
+	it("add omits index when undefined", () => {
+		const res = commandToDspOps(
+			{ type: "add", factoryPath: "core.gain", alias: "G1" },
+			emptyTree,
+			[],
+		);
+		if ("error" in res) throw new Error(res.error);
+		expect(res.ops[0]).not.toHaveProperty("index");
+	});
+
+	it("connect includes matchRange when true", () => {
+		const res = commandToDspOps(
+			{
+				type: "connect",
+				source: "LFO1",
+				target: "Filter1",
+				parameter: "Frequency",
+				matchRange: true,
+			},
+			emptyTree,
+			[],
+		);
+		if ("error" in res) throw new Error(res.error);
+		expect(res.ops[0]).toEqual({
+			op: "connect",
+			source: "LFO1",
+			target: "Filter1",
+			parameter: "Frequency",
+			matchRange: true,
+		});
+	});
+
+	it("set range-write emits range fields, no value", () => {
+		const res = commandToDspOps(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				min: 20,
+				max: 20000,
+				stepSize: 1,
+				middlePosition: 1000,
+			},
+			emptyTree,
+			[],
+		);
+		if ("error" in res) throw new Error(res.error);
+		const op = res.ops[0] as Record<string, unknown>;
+		expect(op).toEqual({
+			op: "set",
+			nodeId: "Osc1",
+			parameterId: "Frequency",
+			min: 20,
+			max: 20000,
+			stepSize: 1,
+			middlePosition: 1000,
+		});
+		expect(op).not.toHaveProperty("value");
+	});
+
+	it("set single-field range-write emits only the changed field", () => {
+		const res = commandToDspOps(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				rangeField: "stepSize",
+				value: 0.1,
+			},
+			emptyTree,
+			[],
+		);
+		if ("error" in res) throw new Error(res.error);
+		expect(res.ops[0]).toEqual({
+			op: "set",
+			nodeId: "Osc1",
+			parameterId: "Frequency",
+			stepSize: 0.1,
+		});
+	});
+
+	it("set single-field skew emits only skewFactor (backend handles mid clearing)", () => {
+		const res = commandToDspOps(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				rangeField: "skewFactor",
+				value: 2,
+			},
+			emptyTree,
+			[],
+		);
+		if ("error" in res) throw new Error(res.error);
+		const op = res.ops[0] as Record<string, unknown>;
+		expect(op).toEqual({
+			op: "set",
+			nodeId: "Osc1",
+			parameterId: "Frequency",
+			skewFactor: 2,
+		});
+		expect(op).not.toHaveProperty("middlePosition");
+		expect(op).not.toHaveProperty("min");
+		expect(op).not.toHaveProperty("max");
+	});
+
+	it("set single-field min emits only min", () => {
+		const res = commandToDspOps(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				rangeField: "min",
+				value: 50,
+			},
+			emptyTree,
+			[],
+		);
+		if ("error" in res) throw new Error(res.error);
+		expect(res.ops[0]).toEqual({
+			op: "set",
+			nodeId: "Osc1",
+			parameterId: "Frequency",
+			min: 50,
+		});
+	});
+
+	it("create_parameter passes middlePosition + skewFactor through", () => {
+		const resMid = commandToDspOps(
+			{
+				type: "create_parameter",
+				nodeId: "Main",
+				parameterId: "Cutoff",
+				min: 0,
+				max: 1,
+				middlePosition: 0.3,
+			},
+			emptyTree,
+			[],
+		);
+		if ("error" in resMid) throw new Error(resMid.error);
+		expect(resMid.ops[0]).toEqual({
+			op: "create_parameter",
+			nodeId: "Main",
+			parameterId: "Cutoff",
+			min: 0,
+			max: 1,
+			middlePosition: 0.3,
+		});
+
+		const resSkew = commandToDspOps(
+			{
+				type: "create_parameter",
+				nodeId: "Main",
+				parameterId: "Cutoff",
+				skewFactor: 2,
+			},
+			emptyTree,
+			[],
+		);
+		if ("error" in resSkew) throw new Error(resSkew.error);
+		expect((resSkew.ops[0] as Record<string, unknown>).skewFactor).toBe(2);
+	});
+});
+
+// ── Validate — new variants ───────────────────────────────────────────
+
+describe("dsp-validate — set range-write", () => {
+	it("rejects min >= max", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "Osc1", parameterId: "Frequency", min: 100, max: 100 },
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+		expect(v.errors[0]).toMatch(/must be less than max/);
+	});
+	it("rejects mid + skew together", () => {
+		const v = validateSetCommand(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				min: 0,
+				max: 1,
+				middlePosition: 0.5,
+				skewFactor: 2,
+			},
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+		expect(v.errors[0]).toMatch(/mutually exclusive/);
+	});
+	it("rejects skewFactor <= 0", () => {
+		const v = validateSetCommand(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				min: 0,
+				max: 1,
+				skewFactor: 0,
+			},
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+	});
+	it("rejects middlePosition outside (min, max)", () => {
+		const v = validateSetCommand(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				min: 0,
+				max: 1,
+				middlePosition: 1.5,
+			},
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+		expect(v.errors[0]).toMatch(/must lie strictly between/);
+	});
+	it("accepts well-formed range", () => {
+		const v = validateSetCommand(
+			{
+				type: "set",
+				nodeId: "Osc1",
+				parameterId: "Frequency",
+				min: 20,
+				max: 20000,
+				stepSize: 1,
+				middlePosition: 1000,
+			},
+			"core.oscillator",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(true);
+	});
+});
+
+describe("dsp-validate — set network root properties", () => {
+	const rootTree: RawDspNode = {
+		nodeId: "MyDSP",
+		factoryPath: "container.chain",
+		bypassed: false,
+		parameters: [],
+		connections: [],
+		children: [],
+	};
+	it("accepts AllowPolyphonic boolean", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "AllowPolyphonic", value: true },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("accepts AllowPolyphonic string `false`", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "AllowPolyphonic", value: "false" },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("rejects AllowPolyphonic string `maybe`", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "AllowPolyphonic", value: "maybe" },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(false);
+	});
+	it("accepts ModulationBlockSize=64 (power of two)", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "ModulationBlockSize", value: 64 },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("accepts ModulationBlockSize=0", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "ModulationBlockSize", value: 0 },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("rejects ModulationBlockSize=37 (not pow2)", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "ModulationBlockSize", value: 37 },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(false);
+		expect(v.errors[0]).toMatch(/power-of-two/);
+	});
+	it("accepts CompileChannelAmount integer", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "CompileChannelAmount", value: 8 },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(true);
+	});
+	it("rejects CompileChannelAmount non-integer", () => {
+		const v = validateSetCommand(
+			{ type: "set", nodeId: "MyDSP", parameterId: "CompileChannelAmount", value: 1.5 },
+			"container.chain",
+			scriptnodeFixture,
+			rootTree,
+			"MyDSP",
+		);
+		expect(v.valid).toBe(false);
+	});
+});
+
+describe("dsp-validate — create_parameter mid/skew", () => {
+	it("rejects mid + skew together", () => {
+		const v = validateCreateParameterCommand(
+			{
+				type: "create_parameter",
+				nodeId: "Main",
+				parameterId: "X",
+				min: 0,
+				max: 1,
+				middlePosition: 0.5,
+				skewFactor: 2,
+			},
+			"container.chain",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+		expect(v.errors[0]).toMatch(/mutually exclusive/);
+	});
+	it("rejects mid outside (min, max)", () => {
+		const v = validateCreateParameterCommand(
+			{
+				type: "create_parameter",
+				nodeId: "Main",
+				parameterId: "X",
+				min: 0,
+				max: 1,
+				middlePosition: 1.5,
+			},
+			"container.chain",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+	});
+	it("rejects skew <= 0", () => {
+		const v = validateCreateParameterCommand(
+			{
+				type: "create_parameter",
+				nodeId: "Main",
+				parameterId: "X",
+				min: 0,
+				max: 1,
+				skewFactor: -1,
+			},
+			"container.chain",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(false);
+	});
+	it("accepts mid alone within range", () => {
+		const v = validateCreateParameterCommand(
+			{
+				type: "create_parameter",
+				nodeId: "Main",
+				parameterId: "X",
+				min: 0,
+				max: 1,
+				middlePosition: 0.3,
+			},
+			"container.chain",
+			scriptnodeFixture,
+		);
+		expect(v.valid).toBe(true);
 	});
 });

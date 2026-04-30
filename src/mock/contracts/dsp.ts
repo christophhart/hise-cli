@@ -140,12 +140,21 @@ function validateRawParameter(value: unknown, path: string): RawDspParameter {
 	if (typeof raw.parameterId !== "string") {
 		throw new Error(`DSP parameter at ${path} missing string "parameterId"`);
 	}
-	if (typeof raw.value !== "number") {
-		throw new Error(`DSP parameter "${raw.parameterId}" at ${path} missing number "value"`);
+	// HISE emits `null` for container-level parameters that have no
+	// driving source (e.g. `container.split` DryWet before connection).
+	// Treat null as 0 — this matches the IDE's display of those slots
+	// and avoids throwing on otherwise-valid tree responses.
+	const numericValue = raw.value === null
+		? 0
+		: typeof raw.value === "number"
+			? raw.value
+			: null;
+	if (numericValue === null) {
+		throw new Error(`DSP parameter "${raw.parameterId}" at ${path} "value" must be number or null`);
 	}
 	const out: RawDspParameter = {
 		parameterId: raw.parameterId,
-		value: raw.value,
+		value: numericValue,
 	};
 	if (typeof raw.min === "number") out.min = raw.min;
 	if (typeof raw.max === "number") out.max = raw.max;

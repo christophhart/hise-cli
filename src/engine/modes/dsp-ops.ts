@@ -19,7 +19,7 @@ import type {
 import type { RawDspNode } from "../../mock/contracts/dsp.js";
 import { findDspNode } from "../../mock/contracts/dsp.js";
 import type { ScriptnodeList } from "../data.js";
-import { nodePropertyNames } from "./dsp-properties.js";
+import { nodePropertyNames, ROOT_NETWORK_PROPERTY_NAMES } from "./dsp-properties.js";
 
 export interface DspOp {
 	op: string;
@@ -45,7 +45,7 @@ export function commandToDspOps(
 		case "move": return translateMove(cmd);
 		case "connect": return translateConnect(cmd);
 		case "disconnect": return translateDisconnect(cmd);
-		case "set": return translateSet(cmd);
+		case "set": return translateSet(cmd, rawTree);
 		case "bypass": return translateBypass(cmd, true);
 		case "enable": return translateBypass(cmd as BypassCommand | EnableCommand, false);
 		case "create_parameter": return translateCreateParameter(cmd);
@@ -82,6 +82,7 @@ function translateAdd(
 		parent: parentId,
 	};
 	if (cmd.alias) op.nodeId = cmd.alias;
+	if (cmd.index !== undefined) op.index = cmd.index;
 	return { ops: [op] };
 }
 
@@ -103,6 +104,7 @@ function translateConnect(cmd: ConnectCommand): { ops: DspOp[] } {
 	};
 	if (cmd.parameter !== undefined) op.parameter = cmd.parameter;
 	if (cmd.sourceOutput !== undefined) op.sourceOutput = cmd.sourceOutput;
+	if (cmd.matchRange) op.matchRange = true;
 	return { ops: [op] };
 }
 
@@ -117,7 +119,44 @@ function translateDisconnect(cmd: DisconnectCommand): { ops: DspOp[] } {
 	};
 }
 
-function translateSet(cmd: SetCommand): { ops: DspOp[] } {
+function translateSet(
+	cmd: SetCommand,
+	_rawTree: RawDspNode | null,
+): { ops: DspOp[] } | { error: string } {
+	// Single-field range-write: emit only the changed field. Backend
+	// merges with the parameter's declared range server-side — partial
+	// range-write is supported.
+	if (cmd.rangeField) {
+		const op: DspOp = {
+			op: "set",
+			nodeId: cmd.nodeId,
+			parameterId: cmd.parameterId,
+			[cmd.rangeField]: cmd.value,
+		};
+		return { ops: [op] };
+	}
+
+	// Full range-write: any of min/max/stepSize/middlePosition/skewFactor present.
+	const isRangeWrite = cmd.min !== undefined
+		|| cmd.max !== undefined
+		|| cmd.stepSize !== undefined
+		|| cmd.middlePosition !== undefined
+		|| cmd.skewFactor !== undefined;
+	if (isRangeWrite) {
+		const op: DspOp = {
+			op: "set",
+			nodeId: cmd.nodeId,
+			parameterId: cmd.parameterId,
+		};
+		if (cmd.min !== undefined) op.min = cmd.min;
+		if (cmd.max !== undefined) op.max = cmd.max;
+		if (cmd.stepSize !== undefined) op.stepSize = cmd.stepSize;
+		if (cmd.middlePosition !== undefined) op.middlePosition = cmd.middlePosition;
+		if (cmd.skewFactor !== undefined) op.skewFactor = cmd.skewFactor;
+		return { ops: [op] };
+	}
+
+	// Value-write
 	return {
 		ops: [{
 			op: "set",
@@ -147,6 +186,8 @@ function translateCreateParameter(cmd: CreateParameterCommand): { ops: DspOp[] }
 	if (cmd.max !== undefined) op.max = cmd.max;
 	if (cmd.defaultValue !== undefined) op.defaultValue = cmd.defaultValue;
 	if (cmd.stepSize !== undefined) op.stepSize = cmd.stepSize;
+	if (cmd.middlePosition !== undefined) op.middlePosition = cmd.middlePosition;
+	if (cmd.skewFactor !== undefined) op.skewFactor = cmd.skewFactor;
 	return { ops: [op] };
 }
 
@@ -181,6 +222,8 @@ export function nodeParameters(root: RawDspNode | null, nodeId: string): string[
  * Return the union of parameter IDs and valid property names for a given
  * nodeId. Properties come from the scriptnode metadata (universal NodeBase
  * props + container-only props + factory-specific props from `def.properties`).
+ * For the root network node, network-level properties (AllowCompilation,
+ * AllowPolyphonic, ...) are appended.
  */
 export function nodeParametersAndProperties(
 	root: RawDspNode | null,
@@ -190,7 +233,9 @@ export function nodeParametersAndProperties(
 	const node = findDspNode(root, nodeId);
 	if (!node) return [];
 	const paramIds = node.parameters.map((p) => p.parameterId);
+	const isRoot = root !== null && root.nodeId === nodeId;
+	const rootProps = isRoot ? ROOT_NETWORK_PROPERTY_NAMES : [];
 	const def = list[node.factoryPath];
-	if (!def) return paramIds;
-	return [...paramIds, ...nodePropertyNames(def)];
+	if (!def) return [...paramIds, ...rootProps];
+	return [...paramIds, ...nodePropertyNames(def), ...rootProps];
 }

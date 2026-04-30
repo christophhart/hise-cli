@@ -334,7 +334,46 @@ export const Default = createToken({
 
 export const Step = createToken({
 	name: "Step",
-	pattern: /step/i,
+	// Broadened to accept range-write field aliases. `stepSize` and
+	// `interval` lex as the same token as `step`. Longer alternatives
+	// listed first so they win the regex match.
+	pattern: /(stepSize|interval|step)/i,
+	longer_alt: Identifier,
+});
+
+export const Mid = createToken({
+	name: "Mid",
+	pattern: /(middlePosition|mid)/i,
+	longer_alt: Identifier,
+});
+
+export const Skew = createToken({
+	name: "Skew",
+	pattern: /(skewFactor|skew)/i,
+	longer_alt: Identifier,
+});
+
+export const Min = createToken({
+	name: "Min",
+	pattern: /min/i,
+	longer_alt: Identifier,
+});
+
+export const Max = createToken({
+	name: "Max",
+	pattern: /max/i,
+	longer_alt: Identifier,
+});
+
+export const Range = createToken({
+	name: "Range",
+	pattern: /range/i,
+	longer_alt: Identifier,
+});
+
+export const Matched = createToken({
+	name: "Matched",
+	pattern: /(matched|normalize)/i,
 	longer_alt: Identifier,
 });
 
@@ -370,7 +409,13 @@ export const DSP_TOKENS = [
 	Source,
 	Parent,
 	Default,
+	Range,
+	Matched,
+	Mid,
+	Skew,
 	Step,
+	Min,
+	Max,
 	From,
 	Of,
 	Into,

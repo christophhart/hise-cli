@@ -207,6 +207,11 @@ export class DspMode implements Mode {
 	private rawTree: RawDspNode | null = null;
 	private treeRoot: TreeNode | null = null;
 	private treeFetched = false;
+	/**
+	 * Last normalizer error from fetchTree. Surface in handleLs / handleCd
+	 * so silent normalization failures don't masquerade as "stale tree".
+	 */
+	private lastTreeError: string | null = null;
 
 	constructor(
 		scriptnodeList?: ScriptnodeList,
@@ -278,14 +283,22 @@ export class DspMode implements Mode {
 		}
 		const endpoint = `/api/dsp/tree?moduleId=${encodeURIComponent(this.moduleId)}${inPlan ? "&group=current" : ""}`;
 		const response = await connection.get(endpoint);
-		if (isErrorResponse(response)) return;
-		if (!isEnvelopeResponse(response) || !response.success) return;
+		if (isErrorResponse(response)) {
+			this.lastTreeError = `tree fetch failed: ${response.message}`;
+			return;
+		}
+		if (!isEnvelopeResponse(response) || !response.success) {
+			this.lastTreeError = "tree fetch returned non-success envelope";
+			return;
+		}
 		try {
 			const { raw, tree } = normalizeDspTreeResponse(response.result);
 			this.rawTree = raw;
 			this.treeRoot = tree;
-		} catch {
-			// Normalization failed — keep existing tree
+			this.lastTreeError = null;
+		} catch (e) {
+			// Normalization failed — keep last good tree but surface why.
+			this.lastTreeError = `tree normalization failed: ${String(e)}`;
 		}
 	}
 
@@ -312,7 +325,7 @@ export class DspMode implements Mode {
 			const target = parts.slice(1).join(" ").trim();
 			return this.handleCd(target, session);
 		}
-		if (keyword === "ls" || keyword === "dir") return this.handleLs();
+		if (keyword === "ls" || keyword === "dir") return this.handleLs(session);
 		if (keyword === "pwd") return this.handlePwd();
 		if (keyword === "screenshot") {
 			const rest = trimmed.slice("screenshot".length).trim();
@@ -333,7 +346,7 @@ export class DspMode implements Mode {
 
 	// ── Navigation ──────────────────────────────────────────────
 
-	private handleCd(target: string, session: SessionContext): CommandResult {
+	private async handleCd(target: string, session: SessionContext): Promise<CommandResult> {
 		if (!target || target === "/") {
 			this.currentPath = [];
 			return textResult("/");
@@ -343,6 +356,12 @@ export class DspMode implements Mode {
 			this.currentPath.pop();
 			return textResult(this.currentPath.length > 0 ? this.currentPath.join("/") : "/");
 		}
+		// Refresh tree before navigating. Template-spawning factories
+		// expand their internal subtree server-side after the apply op
+		// returns, so the snapshot fetched at apply time may not yet
+		// include the spawned children. Re-fetching here ensures cd /
+		// ls / get see the live structure.
+		if (session.connection) await this.fetchTree(session.connection);
 		const segments = target.split(/[./]/).filter((s) => s !== "");
 		for (const seg of segments) {
 			if (seg === "..") {
@@ -357,7 +376,10 @@ export class DspMode implements Mode {
 		return textResult(this.currentPath.join("/"));
 	}
 
-	private handleLs(): CommandResult {
+	private async handleLs(session: SessionContext): Promise<CommandResult> {
+		// Refresh before reading — see handleCd for rationale.
+		if (session.connection) await this.fetchTree(session.connection);
+		if (this.lastTreeError) return errorResult(this.lastTreeError);
 		if (!this.rawTree) {
 			return textResult(this.moduleId ? "(tree not loaded — run `init <name>` first)" : "(no module context — enter via /dsp.<moduleId>)");
 		}
@@ -646,7 +668,14 @@ export class DspMode implements Mode {
 			const factoryPath = this.rawTree
 				? findDspNode(this.rawTree, cmd.nodeId)?.factoryPath ?? null
 				: null;
-			const v = validateSetCommand(cmd, factoryPath, this.scriptnodeList);
+			const rootNodeId = this.rawTree?.nodeId ?? null;
+			const v = validateSetCommand(
+				cmd,
+				factoryPath,
+				this.scriptnodeList,
+				this.rawTree,
+				rootNodeId,
+			);
 			if (!v.valid) return errorResult(v.errors.join("\n"));
 		}
 		if (cmd.type === "create_parameter" && this.scriptnodeList) {
@@ -754,14 +783,28 @@ export class DspMode implements Mode {
 			return { items: res.items, from: fromBase + res.from, to: inputLength };
 		}
 
-		// set/get/remove/bypass/enable <nodeId>[.<param>]
+		// set/get/remove/bypass/enable <nodeId>[.<param>[.<rangeField>]]
 		if ((first === "set" || first === "get" || first === "remove"
 				|| first === "bypass" || first === "enable") && tokens.length === 2) {
 			const tail = tokens[1]!;
-			const dotIdx = tail.indexOf(".");
-			if (dotIdx !== -1) {
-				const nodeId = tail.slice(0, dotIdx);
-				const paramPrefix = tail.slice(dotIdx + 1);
+			const firstDot = tail.indexOf(".");
+			if (firstDot !== -1) {
+				const nodeId = tail.slice(0, firstDot);
+				const afterFirst = tail.slice(firstDot + 1);
+				const secondDot = afterFirst.indexOf(".");
+				// Double-dot range field: `set X.param.<field>` — only meaningful for `set`.
+				if (first === "set" && secondDot !== -1) {
+					const fieldPrefix = afterFirst.slice(secondDot + 1).toLowerCase();
+					const fields = ["min", "max", "step", "mid", "skew"]
+						.filter((f) => f.startsWith(fieldPrefix))
+						.map((f) => ({ label: f }));
+					return {
+						items: fields,
+						from: offset + tokens[0]!.length + 1 + firstDot + 1 + secondDot + 1,
+						to: inputLength,
+					};
+				}
+				const paramPrefix = afterFirst;
 				const names = this.scriptnodeList
 					? nodeParametersAndProperties(this.rawTree, this.scriptnodeList, nodeId)
 					: nodeParameters(this.rawTree, nodeId);
@@ -770,7 +813,7 @@ export class DspMode implements Mode {
 					.map((p) => ({ label: p }));
 				return {
 					items: params,
-					from: offset + tokens[0]!.length + 1 + dotIdx + 1,
+					from: offset + tokens[0]!.length + 1 + firstDot + 1,
 					to: inputLength,
 				};
 			}
@@ -778,6 +821,38 @@ export class DspMode implements Mode {
 				.filter((n) => n.nodeId.toLowerCase().startsWith(tail.toLowerCase()))
 				.map((n) => ({ label: n.nodeId, detail: n.factoryPath }));
 			return { items: nodeIds, from: offset + tokens[0]!.length + 1, to: inputLength };
+		}
+
+		// set <node>.<param> <prefix-of-range-keyword>
+		// Suggest `range` and `to` after the `.param` segment is fully typed.
+		if (first === "set" && tokens.length === 3) {
+			const word = tokens[2]!.toLowerCase();
+			const candidates = ["range", "to"]
+				.filter((k) => k.startsWith(word))
+				.map((k) => ({ label: k }));
+			if (candidates.length > 0) {
+				const prevTokens = tokens.slice(0, 2).join(" ");
+				return {
+					items: candidates,
+					from: offset + prevTokens.length + 1,
+					to: inputLength,
+				};
+			}
+		}
+
+		// add <factory.id> [as <id>] [to <p>] — suggest `at` for index.
+		// connect <src> to <tgt>[.<p>] — suggest `matched`.
+		if ((first === "add" || first === "connect") && tokens.length >= 3) {
+			const last = tokens[tokens.length - 1]!;
+			const lastLower = last.toLowerCase();
+			const trailing = first === "add" ? ["as", "to", "at"] : ["matched"];
+			const candidates = trailing
+				.filter((k) => k.startsWith(lastLower))
+				.map((k) => ({ label: k }));
+			if (candidates.length > 0) {
+				const wordFrom = inputLength - last.length;
+				return { items: candidates, from: wordFrom, to: inputLength };
+			}
 		}
 
 		// get source of <node>.<param> | get parent of <node>.<param>
@@ -983,18 +1058,28 @@ const DSP_HELP = [
 	"  init <name>                   load-or-create (catch-all)",
 	"  save                          save the loaded network's .xml file",
 	"  reset                         empty the loaded network",
-	"  add <factory.node> [as <id>] [to <parent>]",
+	"  add <factory.node> [as <id>] [to <parent>] [at <index>]",
 	"  remove <nodeId>",
 	"  move <nodeId> to <parent> [at <index>]",
-	"  connect <src>[.<out>] to <target>[.<param>]  (no .<param> -> routing shorthand, HISE resolves)",
+	"  connect <src>[.<out>] to <target>[.<param>] [matched]",
+	"                                matched/normalize: copy target range onto source",
 	"  disconnect <src> from <target>.<param>",
-	"  set <node>.<param> [to] <value>",
+	"  set <node>.<param> [to] <value>                              value-write",
+	"  set <node>.<param> range <min> <max> [step <s>] [mid <m>|skew <s>]",
+	"                                                                full range-write",
+	"  set <node>.<param>.<min|max|step|mid|skew> <number>           single field",
+	"  set <root>.<NetworkProp> <value>                              network root props",
+	"                                AllowCompilation, AllowPolyphonic, HasTail,",
+	"                                SuspendOnSilence, CompileChannelAmount,",
+	"                                ModulationBlockSize",
 	"  get <nodeId>                 -> factory path",
 	"  get <node>.<param>           -> current value",
 	"  get source of <node>.<param> -> connected source",
 	"  get parent of <node>.<param> -> parent container id",
 	"  bypass <nodeId> | enable <nodeId>",
-	"  create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>]",
+	"  create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>] [mid <m>|skew <s>]",
 	"  screenshot [at <scale>] [to <path>]  render DspNetwork graph to PNG",
 	"  cd / ls / pwd                navigate the graph",
+	"",
+	"Field aliases: stepSize|interval == step, middlePosition == mid, skewFactor == skew",
 ].join("\n");

@@ -6,12 +6,17 @@
 
 import { closest } from "fastest-levenshtein";
 import type { ScriptnodeList, ScriptnodeDefinition } from "../data.js";
+import type { RawDspNode } from "../../mock/contracts/dsp.js";
 import type {
 	AddCommand,
 	SetCommand,
 	CreateParameterCommand,
 } from "./dsp-parser.js";
-import { nodePropertyNames } from "./dsp-properties.js";
+import {
+	nodePropertyNames,
+	ROOT_NETWORK_PROPERTIES,
+	ROOT_NETWORK_PROPERTY_NAMES,
+} from "./dsp-properties.js";
 
 export interface ValidationResult {
 	valid: boolean;
@@ -53,17 +58,32 @@ export function validateAddCommand(
 }
 
 /**
- * Validate `set <nodeId>.<parameterId> <value>` using the factory
- * metadata for the node's type. The caller resolves nodeId → factoryPath
- * by looking up the raw tree and passes it in.
+ * Validate `set <nodeId>.<parameterId> ...` for all three variants:
+ * value-write, full range-write, and single-field range-write. Network-level
+ * root properties are recognized when `cmd.nodeId === rootNodeId`.
+ *
+ * `factoryPath` is the resolved factory for the target node (caller looks up
+ * via the raw tree). `rawTree` is the cached tree root — needed for
+ * single-field range-write merges. `rootNodeId` is the network's root node id.
  */
 export function validateSetCommand(
 	cmd: SetCommand,
 	factoryPath: string | null,
 	list: ScriptnodeList,
+	rawTree: RawDspNode | null = null,
+	rootNodeId: string | null = null,
 ): ValidationResult {
+	// Network-level root property write
+	if (rootNodeId && cmd.nodeId === rootNodeId) {
+		const propDef = ROOT_NETWORK_PROPERTIES[cmd.parameterId];
+		if (propDef) {
+			return validateRootProperty(cmd, propDef);
+		}
+		// Fall through if it's also a real parameter on the root node — in
+		// practice the root is a chain container, so fallthrough is fine.
+	}
+
 	if (!factoryPath) {
-		// Tree not loaded or node not found — skip validation.
 		return { valid: true, errors: [] };
 	}
 	const def = findScriptnode(factoryPath, list);
@@ -75,13 +95,47 @@ export function validateSetCommand(
 		if (propertyNames.includes(cmd.parameterId)) {
 			return { valid: true, errors: [] };
 		}
-		const allNames = [...def.parameters.map((p) => p.id), ...propertyNames];
+		// Surface root-level network props in the suggestion pool when
+		// applicable so typos like `set root.AllowPolyphnic` get hinted.
+		const isRoot = rootNodeId && cmd.nodeId === rootNodeId;
+		const allNames = [
+			...def.parameters.map((p) => p.id),
+			...propertyNames,
+			...(isRoot ? ROOT_NETWORK_PROPERTY_NAMES : []),
+		];
 		const suggestion = allNames.length > 0 ? closest(cmd.parameterId, allNames) : undefined;
 		let msg = `Unknown parameter "${cmd.parameterId}" on ${factoryPath}.`;
 		if (suggestion) msg += ` Did you mean "${suggestion}"?`;
 		return { valid: false, errors: [msg] };
 	}
 
+	// Single-field range-write — backend merges server-side. Validate only
+	// the named field's local constraint; cross-field rules (min<max,
+	// mid-in-range) are deferred to backend since we don't know the other
+	// field's value at command time.
+	if (cmd.rangeField) {
+		const v = cmd.value as number;
+		if (cmd.rangeField === "stepSize" && v < 0) {
+			return { valid: false, errors: [`range: stepSize must be >= 0 (got ${v}).`] };
+		}
+		if (cmd.rangeField === "skewFactor" && v <= 0) {
+			return { valid: false, errors: [`range: skewFactor must be > 0 (got ${v}).`] };
+		}
+		return { valid: true, errors: [] };
+	}
+
+	// Full range-write
+	const isRangeWrite = cmd.min !== undefined
+		|| cmd.max !== undefined
+		|| cmd.stepSize !== undefined
+		|| cmd.middlePosition !== undefined
+		|| cmd.skewFactor !== undefined;
+	if (isRangeWrite) {
+		return validateRange(cmd.min, cmd.max, cmd.stepSize, cmd.middlePosition, cmd.skewFactor);
+	}
+
+	// Value-write — bounds-check numeric values against the parameter's
+	// declared range.
 	if (typeof cmd.value === "number") {
 		if (cmd.value < param.range.min || cmd.value > param.range.max) {
 			return {
@@ -89,6 +143,79 @@ export function validateSetCommand(
 				errors: [
 					`Value ${cmd.value} out of range for ${cmd.nodeId}.${cmd.parameterId} (${param.range.min}-${param.range.max}).`,
 				],
+			};
+		}
+	}
+	return { valid: true, errors: [] };
+}
+
+function validateRange(
+	min: number | undefined,
+	max: number | undefined,
+	stepSize: number | undefined,
+	middlePosition: number | undefined,
+	skewFactor: number | undefined,
+): ValidationResult {
+	const errors: string[] = [];
+	if (min !== undefined && max !== undefined && min >= max) {
+		errors.push(`range: min (${min}) must be less than max (${max}).`);
+	}
+	if (stepSize !== undefined && stepSize < 0) {
+		errors.push(`range: stepSize must be >= 0 (got ${stepSize}).`);
+	}
+	if (middlePosition !== undefined && skewFactor !== undefined) {
+		errors.push("range: middlePosition (mid) and skewFactor (skew) are mutually exclusive.");
+	}
+	if (skewFactor !== undefined && skewFactor <= 0) {
+		errors.push(`range: skewFactor must be > 0 (got ${skewFactor}).`);
+	}
+	if (middlePosition !== undefined && min !== undefined && max !== undefined) {
+		if (middlePosition <= min || middlePosition >= max) {
+			errors.push(`range: middlePosition (${middlePosition}) must lie strictly between min (${min}) and max (${max}).`);
+		}
+	}
+	return errors.length === 0 ? { valid: true, errors: [] } : { valid: false, errors };
+}
+
+function validateRootProperty(
+	cmd: SetCommand,
+	def: import("./dsp-properties.js").RootNetworkPropertyDef,
+): ValidationResult {
+	if (cmd.rangeField || cmd.min !== undefined) {
+		return {
+			valid: false,
+			errors: [`Network property "${cmd.parameterId}" does not support range-write.`],
+		};
+	}
+	const v = cmd.value;
+	if (def.kind === "bool") {
+		if (typeof v === "boolean") return { valid: true, errors: [] };
+		if (typeof v === "string") {
+			const lower = v.toLowerCase();
+			if (lower === "true" || lower === "false") return { valid: true, errors: [] };
+		}
+		if (typeof v === "number" && (v === 0 || v === 1)) return { valid: true, errors: [] };
+		return {
+			valid: false,
+			errors: [`Network property "${cmd.parameterId}" expects a boolean (true/false), got ${JSON.stringify(v)}.`],
+		};
+	}
+	// int
+	let n: number | null = null;
+	if (typeof v === "number") n = v;
+	else if (typeof v === "string" && /^-?\d+$/.test(v)) n = parseInt(v, 10);
+	if (n === null || !Number.isInteger(n)) {
+		return {
+			valid: false,
+			errors: [`Network property "${cmd.parameterId}" expects an integer, got ${JSON.stringify(v)}.`],
+		};
+	}
+	if (def.powerOfTwo) {
+		const ok = (def.allowZero && n === 0) || (n > 0 && (n & (n - 1)) === 0);
+		if (!ok) {
+			return {
+				valid: false,
+				errors: [`Network property "${cmd.parameterId}" expects a power-of-two${def.allowZero ? " (or 0)" : ""}, got ${n}.`],
 			};
 		}
 	}
@@ -119,6 +246,29 @@ export function validateCreateParameterCommand(
 		return {
 			valid: false,
 			errors: [`create_parameter: min (${cmd.min}) must be less than max (${cmd.max}).`],
+		};
+	}
+	if (cmd.middlePosition !== undefined && cmd.skewFactor !== undefined) {
+		return {
+			valid: false,
+			errors: ["create_parameter: middlePosition (mid) and skewFactor (skew) are mutually exclusive."],
+		};
+	}
+	if (cmd.skewFactor !== undefined && cmd.skewFactor <= 0) {
+		return {
+			valid: false,
+			errors: [`create_parameter: skewFactor must be > 0 (got ${cmd.skewFactor}).`],
+		};
+	}
+	if (
+		cmd.middlePosition !== undefined
+		&& cmd.min !== undefined
+		&& cmd.max !== undefined
+		&& (cmd.middlePosition <= cmd.min || cmd.middlePosition >= cmd.max)
+	) {
+		return {
+			valid: false,
+			errors: [`create_parameter: middlePosition (${cmd.middlePosition}) must lie strictly between min (${cmd.min}) and max (${cmd.max}).`],
 		};
 	}
 	return { valid: true, errors: [] };

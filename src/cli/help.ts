@@ -276,22 +276,43 @@ NETWORK LIFECYCLE
   reset                          Empty the loaded network in memory
 
 GRAPH EDITING
-  add <factory.node> [as <id>] [to <parent>]
+  add <factory.node> [as <id>] [to <parent>] [at <index>]
     Add a node. Factory paths use dot notation (core.oscillator,
     filters.svf, control.pma). Without "to", adds to the current cd path.
+    "at <index>" inserts at a specific position within the parent
+    container (default is append).
   remove <nodeId>
   move <nodeId> to <parent> [at <index>]
-  connect <src>[.<output>] to <target>[.<param>]
+  connect <src>[.<output>] to <target>[.<param>] [matched]
     <output> defaults to the first modulation output when omitted.
     <param> may be omitted for routing shorthand (e.g. "connect SEND to RCV");
     HISE resolves the default target server-side.
+    "matched" (alias "normalize") copies the target parameter's range
+    onto the source after wiring (mirrors the IDE normalize button).
   disconnect <src> from <target>.<param>
   set <node>.<param> [to] <value>
-    Sets a parameter. Range is pre-validated against scriptnodeList.json.
+    Value-write. Range is pre-validated against scriptnodeList.json.
+  set <node>.<param> range <min> <max> [step <s>] [mid <m>|skew <s>]
+    Full range-write. Overrides the parameter's declared range without
+    changing its value. mid (middlePosition) and skew (skewFactor) are
+    mutually exclusive.
+  set <node>.<param>.<min|max|step|mid|skew> <number>
+    Single-field range-write. Reads existing range from the cached tree,
+    overrides the named field, and emits a full range-write payload.
+  set <root>.<NetworkProp> <value>
+    Network-level property write (only valid when <root> is the network
+    root node). Recognized props: AllowCompilation, AllowPolyphonic,
+    HasTail, SuspendOnSilence (boolean), CompileChannelAmount (int),
+    ModulationBlockSize (power-of-two int or 0).
   bypass <nodeId> | enable <nodeId>
-  create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>]
-    Creates a dynamic parameter on a container node. Range edits after
-    creation are not yet supported server-side.
+  create_parameter <container>.<name> [<min> <max>] [default <d>] [step <s>] [mid <m>|skew <s>]
+    Creates a dynamic parameter on a container node. mid and skew are
+    mutually exclusive.
+
+FIELD ALIASES
+  step    accepts step | stepSize | interval
+  mid     accepts mid | middlePosition
+  skew    accepts skew | skewFactor
 
 LOCAL QUERIES (no API round-trip)
   get <nodeId>                   -> factory path

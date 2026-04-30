@@ -10,7 +10,10 @@ const DSP_KEYWORDS = new Set([
 	"set", "get", "bypass", "enable",
 	"create_parameter",
 	"source", "parent", "of", "from", "to", "as", "at",
-	"default", "step", "into",
+	"default", "step", "stepsize", "interval",
+	"range", "min", "max", "mid", "middleposition", "skew", "skewfactor",
+	"matched", "normalize",
+	"into",
 	"cd", "ls", "dir", "pwd", "help",
 ]);
 
