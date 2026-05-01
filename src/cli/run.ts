@@ -11,6 +11,7 @@ import { createDefaultMockRuntime } from "../mock/runtime.js";
 import type { WizardHandlerRegistry } from "../engine/wizard/handler-registry.js";
 import { createNodePhaseExecutor } from "../tui/nodePhaseExecutor.js";
 import { registerUpdateHandlers } from "../tui/wizard-handlers/index.js";
+import { isAbsolutePath, isExplicitRelative } from "../engine/session.js";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { watch } from "node:fs";
@@ -28,7 +29,12 @@ async function fetchProjectInfo(
 			if (typeof proj.name === "string") session.projectName = proj.name;
 			if (typeof proj.projectFolder === "string") session.projectFolder = proj.projectFolder;
 		}
-	} catch { /* no connection — resolve against CWD */ }
+	} catch { /* no connection — caller decides how to handle */ }
+}
+
+/** A bare-relative path needs a project folder to resolve. */
+function needsProjectFolder(path: string): boolean {
+	return !isAbsolutePath(path) && !isExplicitRelative(path);
 }
 
 import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
@@ -172,6 +178,19 @@ async function executeRunCommand(
 	await session.refreshScriptFileCache();
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
 
+	// Bare-relative paths require a project folder. Abort with an explicit
+	// error rather than silently falling back to CWD.
+	if (parsed.source.type === "file" && needsProjectFolder(parsed.source.path) && !session.projectFolder) {
+		return {
+			kind: "json",
+			payload: {
+				ok: false,
+				error: `Cannot resolve "${parsed.source.path}": HISE is not running and no project is open. ` +
+					`Open a project in HISE, prefix the path with "./" for CWD-relative, or pass an absolute path.`,
+			},
+		};
+	}
+
 	// Read the script source (after project info, so file paths resolve to project folder)
 	let source: string;
 	try {
@@ -238,7 +257,6 @@ async function runWatchMode(
 	opts: CliCommandOptions,
 ): Promise<void> {
 	if (parsed.source.type !== "file") return;
-	const filePath = resolve(parsed.source.path);
 
 	// Create persistent session
 	const mockRuntime = !opts.connectionOverride && parsed.useMock ? createDefaultMockRuntime() : null;
@@ -266,6 +284,14 @@ async function runWatchMode(
 	await fetchProjectInfo(session, connection);
 	await session.refreshScriptFileCache();
 	datasets = await loadSessionDatasets(dataLoader, completionEngine, session);
+
+	// Resolve watched file path *after* project info — same rule as one-shot --run.
+	if (needsProjectFolder(parsed.source.path) && !session.projectFolder) {
+		console.error(`Cannot resolve "${parsed.source.path}": HISE is not running and no project is open. ` +
+			`Open a project in HISE, prefix the path with "./" for CWD-relative, or pass an absolute path.`);
+		return;
+	}
+	const filePath = resolve(session.resolvePath(parsed.source.path));
 
 	const timestamp = () => {
 		const d = new Date();

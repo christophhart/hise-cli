@@ -559,6 +559,7 @@ async function handleExpect(
 		connection: session.connection,
 		projectName: session.projectName,
 		projectFolder: session.projectFolder,
+		cwd: session.cwd,
 		popMode: () => session.popMode(true),
 		invalidateAllTrees: () => {},
 		resolvePath: (fp: string) => session.resolvePath(fp),

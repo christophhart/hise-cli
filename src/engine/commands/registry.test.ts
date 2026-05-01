@@ -10,6 +10,7 @@ function createMockSession(): CommandSession {
 		connection: null,
 		projectName: null,
 		projectFolder: null,
+		cwd: null,
 		get modeStackDepth() {
 			return modes.length;
 		},

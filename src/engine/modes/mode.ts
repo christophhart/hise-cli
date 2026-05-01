@@ -47,6 +47,9 @@ export interface SessionContext {
 	projectName?: string | null;
 	/** HISE project folder (set on initial connection or after /hise launch). */
 	projectFolder?: string | null;
+	/** Host process working directory. Used by `/project switch ./` and other
+	 *  CWD-relative resolutions in the engine layer. */
+	cwd?: string | null;
 	/** True when the snippet browser (a second HISE instance) is the active backend.
 	 *  Mirrors `/api/status`'s `activeIsSnippetBrowser`. Null until the first probe. */
 	playgroundActive?: boolean | null;

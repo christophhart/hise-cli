@@ -376,6 +376,44 @@ describe("ProjectMode mutations", () => {
 			expect(result.message).toContain('No project file matches "DoesNotExist"');
 		}
 	});
+
+	it("switch ./ resolves against session.cwd and posts absolute path", async () => {
+		const { session, mock } = createMockSession();
+		session.cwd = "/home/user/work";
+		const result = await new ProjectMode().parse("switch ./", session);
+		// Mock won't recognize the resolved path → returns Unknown project, but the
+		// post body shows the engine resolved correctly.
+		const call = mock.calls.find((c) => c.endpoint === "/api/project/switch");
+		expect(call).toBeDefined();
+		expect((call!.body as { project: string }).project).toBe("/home/user/work");
+		expect(result.type).toBeDefined();
+	});
+
+	it("switch ../sibling resolves above cwd", async () => {
+		const { session, mock } = createMockSession();
+		session.cwd = "/home/user/work";
+		await new ProjectMode().parse("switch ../sibling", session);
+		const call = mock.calls.find((c) => c.endpoint === "/api/project/switch");
+		expect(call).toBeDefined();
+		expect((call!.body as { project: string }).project).toBe("/home/user/sibling");
+	});
+
+	it("switch <bare-name> still hits the project list lookup", async () => {
+		const { session, mock } = createMockSession();
+		session.cwd = "/home/user/work";
+		await new ProjectMode().parse("switch Mock Project", session);
+		const call = mock.calls.find((c) => c.endpoint === "/api/project/switch");
+		expect(call).toBeDefined();
+		// The mock list resolves "Mock Project" to its known path /mock/project.
+		expect((call!.body as { project: string }).project).toBe("/mock/project");
+	});
+
+	it("switch errors when CWD is not set and arg is explicit-relative", async () => {
+		const { session } = createMockSession();
+		session.cwd = null;
+		const result = await new ProjectMode().parse("switch ./", session);
+		expect(result.type).toBe("error");
+	});
 });
 
 describe("ProjectMode contract validation against mock runtime", () => {

@@ -489,3 +489,51 @@ describe("Session argument completion from root", () => {
 		expect(result.to).toBe(13);
 	});
 });
+
+// ── resolvePath ──────────────────────────────────────────────────────
+
+describe("Session.resolvePath", () => {
+	it("passes POSIX absolute paths through", () => {
+		const session = createSession();
+		session.projectFolder = "/proj";
+		expect(session.resolvePath("/tmp/foo.hsc")).toBe("/tmp/foo.hsc");
+	});
+
+	it("passes Windows absolute paths through (forward + back slash)", () => {
+		const session = createSession();
+		session.projectFolder = "C:/proj";
+		expect(session.resolvePath("D:/tmp/foo.hsc")).toBe("D:/tmp/foo.hsc");
+		expect(session.resolvePath("D:\\tmp\\foo.hsc")).toBe("D:\\tmp\\foo.hsc");
+	});
+
+	it("returns ./ paths unchanged so the I/O layer resolves against CWD", () => {
+		const session = createSession();
+		session.projectFolder = "/proj";
+		expect(session.resolvePath("./foo.hsc")).toBe("./foo.hsc");
+	});
+
+	it("returns ../ paths unchanged", () => {
+		const session = createSession();
+		session.projectFolder = "/proj";
+		expect(session.resolvePath("../sibling/foo.hsc")).toBe("../sibling/foo.hsc");
+	});
+
+	it("recognises Windows-style explicit-relative .\\ and ..\\", () => {
+		const session = createSession();
+		session.projectFolder = "C:/proj";
+		expect(session.resolvePath(".\\foo.hsc")).toBe(".\\foo.hsc");
+		expect(session.resolvePath("..\\sibling\\foo.hsc")).toBe("..\\sibling\\foo.hsc");
+	});
+
+	it("joins bare-relative paths with projectFolder when set", () => {
+		const session = createSession();
+		session.projectFolder = "/proj";
+		expect(session.resolvePath("Scripts/foo.hsc")).toBe("/proj/Scripts/foo.hsc");
+	});
+
+	it("returns bare-relative paths unchanged when projectFolder is null", () => {
+		const session = createSession();
+		expect(session.projectFolder).toBeNull();
+		expect(session.resolvePath("Scripts/foo.hsc")).toBe("Scripts/foo.hsc");
+	});
+});

@@ -283,7 +283,7 @@ file tree, and HISE snippet I/O.
 | \`show preprocessors [for <target>] [on <os>]\` | Macros grouped by scope |
 | \`show tree\` | Project file tree (referenced files highlighted) |
 | \`describe <key>\` | Full description + options for one setting |
-| \`switch <name\\|path>\` | Switch active project (name resolved client-side) |
+| \`switch <name\\|path\\|./...>\` | Switch active project (./ or ../ resolves against CWD) |
 | \`save xml [as <filename>]\` | Save state as XML preset |
 | \`save hip [as <filename>]\` | Save state as HIP archive |
 | \`load <name\\|relative-path>\` | Load XML or HIP file (bare name resolves to .xml > .hip) |

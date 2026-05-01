@@ -425,3 +425,71 @@ describe("-wizard mode flag", () => {
 		}
 	});
 });
+
+describe("--run path resolution", () => {
+	it("aborts when path is bare-relative and HISE is not running", async () => {
+		mockObserverFetch();
+		// No /api/status handler → fetchProjectInfo leaves projectFolder null.
+		const conn = new MockHiseConnection().setProbeResult(false);
+
+		const result = await executeCliCommand(
+			["node", "hise-cli", "--run", "script.hsc"],
+			getCliCommands(),
+			createDataLoader(),
+			conn,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(false);
+			expect(result.payload).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("HISE is not running"),
+			});
+		}
+	});
+
+	it("attempts CWD-relative read for explicit ./ path even with HISE closed", async () => {
+		mockObserverFetch();
+		const conn = new MockHiseConnection().setProbeResult(false);
+
+		const result = await executeCliCommand(
+			["node", "hise-cli", "--run", "./does-not-exist.hsc"],
+			getCliCommands(),
+			createDataLoader(),
+			conn,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(false);
+			// Reaches readFile and reports a load error — not the abort message.
+			expect(result.payload).toMatchObject({
+				ok: false,
+				error: expect.stringContaining("Failed to load script"),
+			});
+			if ("error" in result.payload) {
+				expect(result.payload.error).not.toContain("HISE is not running");
+			}
+		}
+	});
+
+	it("does not abort when --mock supplies a project folder", async () => {
+		mockObserverFetch();
+		// No connectionOverride → createDefaultMockRuntime() sets projectFolder to /mock/project.
+		const result = await executeCliCommand(
+			["node", "hise-cli", "--run", "missing.hsc", "--mock"],
+			getCliCommands(),
+			createDataLoader(),
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload.ok).toBe(false);
+			if ("error" in result.payload) {
+				expect(result.payload.error).not.toContain("HISE is not running");
+				expect(result.payload.error).toContain("Failed to load script");
+			}
+		}
+	});
+});

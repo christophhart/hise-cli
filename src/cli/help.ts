@@ -382,6 +382,8 @@ QUICK START
   hise-cli -project describe Version              full description + options for one key
   hise-cli -project "switch TestSynth"            switch by name (resolved to path)
   hise-cli -project "switch /Users/foo/HISE Projects/X"  switch by absolute path
+  hise-cli -project "switch ./"                   switch to current working directory
+  hise-cli -project "switch ../sibling"           switch to a sibling folder relative to CWD
   hise-cli -project "save xml as MyPlugin_v2"     save XML preset (renames chain if differs)
   hise-cli -project "save hip"                    save HIP archive with default filename
   hise-cli -project "load MyPlugin"               resolve bare name (.xml > .hip)
@@ -405,6 +407,9 @@ COMMANDS
   show tree                                     File tree (referenced files highlighted)
   describe <key>                                Full description + options for one setting
   switch <name|path>                            Switch active project
+                                                  Accepts: known project name,
+                                                  absolute path, ./ or ../ path
+                                                  resolved against CWD
   save xml [as <filename>]                      Save as XML preset
   save hip [as <filename>]                      Save as HIP archive
   load <name|relative-path>                     Load XML or HIP file
@@ -573,6 +578,20 @@ SCRIPT SOURCES
 
   The --inline flag is designed for LLM tool use where the script is passed
   as a JSON string argument with literal \n newlines — no shell quoting issues.
+
+PATH RESOLUTION
+  Absolute path        Used as-is (e.g. /home/u/test.hsc, C:/proj/test.hsc)
+  ./ or ../ prefix     Resolved against current working directory
+  Bare relative path   Resolved against the HISE project folder
+                       Requires HISE to be running with a project open
+
+  Examples:
+    hise-cli --run ./test.hsc          # ./test.hsc relative to shell CWD
+    hise-cli --run Scripts/test.hsc    # <project>/Scripts/test.hsc
+    hise-cli --run /tmp/test.hsc       # absolute, unchanged
+
+  If HISE is not running and the path is bare-relative, --run aborts with
+  an error rather than silently falling back to CWD.
 
 .HSC SCRIPT FORMAT
   Each line is a command. Lines starting with # are comments.

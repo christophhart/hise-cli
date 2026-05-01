@@ -10,7 +10,8 @@
 // land in PR4.
 
 import { mkdir, rm, copyFile, cp, stat } from "node:fs/promises";
-import { join, basename } from "node:path";
+import { join, basename, resolve } from "node:path";
+import { isAbsolutePath, isExplicitRelative } from "../../engine/session.js";
 import type { InternalTaskHandler } from "../../engine/wizard/handler-registry.js";
 import type { PhaseExecutor } from "../../engine/wizard/phase-executor.js";
 import type {
@@ -282,9 +283,16 @@ async function resolveEulaPath(
 	const raw = answers.eula?.trim() ?? "";
 	if (raw.length === 0) return null;
 	const projectFolder = answers.projectFolder ?? context?.projectFolder ?? null;
-	const path = raw.startsWith(".") && projectFolder
-		? join(projectFolder, raw)
-		: raw;
+	let path: string;
+	if (isAbsolutePath(raw)) {
+		path = raw;
+	} else if (isExplicitRelative(raw)) {
+		path = resolve(raw);
+	} else if (projectFolder) {
+		path = join(projectFolder, raw);
+	} else {
+		path = raw;
+	}
 	return (await pathExists(path)) ? path : null;
 }
 

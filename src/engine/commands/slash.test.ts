@@ -17,6 +17,7 @@ function createMockSession(): CommandSession & { modes: string[]; quitRequested:
 		modes,
 		projectName: null as string | null,
 		projectFolder: null as string | null,
+		cwd: null as string | null,
 		get connection() {
 			return connection;
 		},

@@ -258,7 +258,7 @@ export class ProjectMode implements Mode {
 		if (!arg) return errorResult("switch requires a name or absolute path.");
 		const list = await this.refreshList(session);
 		if ("error" in list) return list.error;
-		const target = resolveSwitchTarget(list.payload, arg);
+		const target = resolveSwitchTarget(list.payload, arg, session.cwd ?? null);
 		if (!target) {
 			return errorResult(`Unknown project: "${arg}". Use \`show projects\` for the list.`);
 		}
@@ -649,6 +649,7 @@ function stripExt(name: string): string {
 function resolveSwitchTarget(
 	payload: ProjectListPayload,
 	arg: string,
+	cwd: string | null,
 ): { name: string; path: string } | null {
 	for (const p of payload.projects) {
 		if (p.path === arg) return p;
@@ -660,7 +661,33 @@ function resolveSwitchTarget(
 	if (arg.startsWith("/") || /^[a-zA-Z]:[/\\]/.test(arg)) {
 		return { name: arg, path: arg };
 	}
+	// Explicit-relative (./ ../ .\ ..\) → resolve against cwd, server validates.
+	if (/^\.\.?[/\\]/.test(arg) && cwd) {
+		const resolved = resolveCwdRelative(cwd, arg);
+		return { name: resolved, path: resolved };
+	}
 	return null;
+}
+
+/** Resolve an explicit-relative path against `cwd` using string operations
+ *  (engine layer cannot import `node:path`). Normalizes `.` and `..` segments
+ *  and converts backslashes to forward slashes for HISE's REST payload. */
+function resolveCwdRelative(cwd: string, rel: string): string {
+	const normCwd = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+	const normRel = rel.replace(/\\/g, "/");
+	const baseSegs = normCwd.split("/").filter(s => s.length > 0);
+	const winRoot = /^[a-zA-Z]:$/.test(baseSegs[0] ?? "");
+	const relSegs = normRel.split("/");
+	for (const seg of relSegs) {
+		if (seg === "" || seg === ".") continue;
+		if (seg === "..") {
+			if (baseSegs.length > (winRoot ? 1 : 0)) baseSegs.pop();
+			continue;
+		}
+		baseSegs.push(seg);
+	}
+	const prefix = normCwd.startsWith("/") ? "/" : "";
+	return prefix + baseSegs.join("/");
 }
 
 function normalizeSettingForSend(

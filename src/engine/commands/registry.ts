@@ -15,6 +15,7 @@ export interface CommandSession {
 	readonly connection: import("../hise.js").HiseConnection | null;
 	readonly projectName: string | null;
 	readonly projectFolder: string | null;
+	readonly cwd: string | null;
 	allCommands(): CommandEntry[];
 	/** Get or create a cached mode instance (for one-shot execution and argument completion) */
 	getOrCreateMode(modeId: string): import("../modes/mode.js").Mode;

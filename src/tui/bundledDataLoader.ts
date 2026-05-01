@@ -14,6 +14,7 @@ import componentPropertiesData from "../../data/ui_component_properties.json";
 import preprocessorData from "../../data/preprocessor.json";
 
 import audioExportYaml from "../../data/wizards/audio_export.yaml";
+import buildInstallerYaml from "../../data/wizards/build_installer.yaml";
 import compileNetworksYaml from "../../data/wizards/compile_networks.yaml";
 import installPackageMakerYaml from "../../data/wizards/install_package_maker.yaml";
 import newProjectYaml from "../../data/wizards/new_project.yaml";
@@ -34,6 +35,7 @@ import type { WizardDefinition } from "../engine/wizard/types.js";
 
 const wizardYamls = [
 	audioExportYaml,
+	buildInstallerYaml,
 	compileNetworksYaml,
 	installPackageMakerYaml,
 	newProjectYaml,

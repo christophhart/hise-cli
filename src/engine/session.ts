@@ -29,6 +29,19 @@ export interface PendingWizard {
 	readonly failedTaskLabel: string;
 }
 
+// ── Path classification helpers ─────────────────────────────────────
+
+/** True when path begins with `/`, drive letter (`C:/`, `C:\`). */
+export function isAbsolutePath(filePath: string): boolean {
+	return filePath.startsWith("/") || /^[a-zA-Z]:[/\\]/.test(filePath);
+}
+
+/** True when path begins with `./`, `../`, `.\`, or `..\` — explicit
+ *  CWD-relative form, mirroring POSIX shell convention. */
+export function isExplicitRelative(filePath: string): boolean {
+	return /^\.\.?[/\\]/.test(filePath);
+}
+
 // ── Mode factory registry ───────────────────────────────────────────
 
 // Maps mode identifiers (e.g. "script", "script:Interface") to factory
@@ -62,6 +75,10 @@ export class Session implements SessionContext, CommandSession {
 	activeWizardTick = 0;
 	projectName: string | null = null;
 	projectFolder: string | null = null;
+	/** Current working directory the host process started in. Set by the
+	 *  platform bootstrap (`process.cwd()`) so the engine can resolve `./`
+	 *  paths without importing `node:`. Falls back to "." when unset. */
+	cwd: string | null = null;
 	playgroundActive: boolean | null = null;
 	loadScriptFile?: (filePath: string) => Promise<string>;
 	saveScriptFile?: (filePath: string, content: string) => Promise<void>;
@@ -122,20 +139,17 @@ export class Session implements SessionContext, CommandSession {
 		} catch { /* ignore — cache stays empty */ }
 	}
 
-	/**
-	 * Resolve a script file path. Absolute paths pass through.
-	 * Relative paths resolve against projectFolder/Scripts/ when HISE
-	 * is connected, or are returned unchanged (for node:path.resolve
-	 * to handle against CWD in the I/O layer).
-	 */
-	/** Resolve a file path against the project folder.
-	 *  Absolute paths pass through unchanged. Relative paths are prefixed
-	 *  with projectFolder when available, or returned unchanged for the
-	 *  I/O layer to resolve against CWD. */
+	/** Resolve a file path.
+	 *
+	 *  - Absolute paths (POSIX `/foo`, Windows `C:/foo` or `C:\foo`) pass through.
+	 *  - Explicit-relative paths starting with `./`, `../`, `.\`, `..\` are
+	 *    returned as-is, signalling CWD-relative resolution to the I/O layer.
+	 *  - Bare-relative paths are joined with `projectFolder` when available;
+	 *    when no project is connected, the path is returned as-is and the
+	 *    caller decides whether to abort or fall through to CWD. */
 	resolvePath(filePath: string): string {
-		if (filePath.startsWith("/") || /^[a-zA-Z]:[/\\]/.test(filePath)) {
-			return filePath;
-		}
+		if (isAbsolutePath(filePath)) return filePath;
+		if (isExplicitRelative(filePath)) return filePath;
 		if (this.projectFolder) {
 			return this.projectFolder + "/" + filePath;
 		}

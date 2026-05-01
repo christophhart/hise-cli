@@ -28,6 +28,9 @@ export interface CreateSessionOptions {
 	getPreprocessorList?: () => PreprocessorList | undefined;
 	handlerRegistry?: WizardHandlerRegistry;
 	launcher?: HiseLauncher;
+	/** Host process working directory. Used by `/project switch ./` etc.
+	 *  Defaults to `process.cwd()` when running on Node. */
+	cwd?: string;
 }
 
 export function createSession({
@@ -39,9 +42,11 @@ export function createSession({
 	getPreprocessorList,
 	handlerRegistry,
 	launcher,
+	cwd,
 }: CreateSessionOptions): { session: Session; completionEngine: CompletionEngine } {
 	const session = new Session(connection, completionEngine);
 	if (handlerRegistry) session.handlerRegistry = handlerRegistry;
+	session.cwd = cwd ?? (typeof process !== "undefined" ? process.cwd() : null);
 	session.registerMode("script", (ctx) => new ScriptMode(ctx, completionEngine));
 	session.registerMode("inspect", () => new InspectMode(completionEngine));
 	session.registerMode(
