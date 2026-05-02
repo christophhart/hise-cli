@@ -159,7 +159,7 @@ describe("publishDetectEnvironment", () => {
 		const project = makeFixtureProject({ withBinaries: true });
 		try {
 			// Mock everything as present so all critical checks pass.
-			const { executor } = makeExecutor((cmd, args) => {
+			const { executor } = makeExecutor((cmd, _args) => {
 				if (cmd === "powershell") {
 					return {
 						exitCode: 0,
@@ -195,6 +195,71 @@ describe("publishDetectEnvironment", () => {
 				expect(defaults.hasPkgbuild).toBe("1");
 				expect(defaults.signingIdentity).toContain("Developer ID Application");
 			}
+		} finally {
+			project.cleanup();
+		}
+	});
+
+	it("aborts on macOS when notary probe fails with a non-setup error (network down)", async () => {
+		if (process.platform !== "darwin") return;
+		const project = makeFixtureProject({ withBinaries: true, binaryPlatform: "macOS" });
+		try {
+			const { executor } = makeExecutor((cmd, args) => {
+				if (cmd === "security") {
+					return {
+						exitCode: 0,
+						stdout:
+							'  1) ABC123 "Developer ID Application: Acme Co. (ABCDE12345)"',
+					};
+				}
+				if (cmd === "xcrun" && args[0] === "notarytool") {
+					return {
+						exitCode: 1,
+						stderr: "Error: Could not connect to Apple's notary service.",
+					};
+				}
+				return { exitCode: 0 };
+			});
+			const handler = createPublishDetectHandler({
+				executor,
+				resolveProjectFolder: async () => project.folder,
+			});
+			await expect(handler("build_installer")).rejects.toThrow(
+				/Could not reach Apple's notary service/,
+			);
+		} finally {
+			project.cleanup();
+		}
+	});
+
+	it("does NOT abort on macOS when notary profile is missing — just disables the toggle", async () => {
+		if (process.platform !== "darwin") return;
+		const project = makeFixtureProject({ withBinaries: true, binaryPlatform: "macOS" });
+		try {
+			const { executor } = makeExecutor((cmd, args) => {
+				if (cmd === "security") {
+					return {
+						exitCode: 0,
+						stdout:
+							'  1) ABC123 "Developer ID Application: Acme Co. (ABCDE12345)"',
+					};
+				}
+				if (cmd === "xcrun" && args[0] === "notarytool") {
+					return {
+						exitCode: 1,
+						stderr:
+							"Error: No Keychain password item found for profile: notarize",
+					};
+				}
+				return { exitCode: 0 };
+			});
+			const handler = createPublishDetectHandler({
+				executor,
+				resolveProjectFolder: async () => project.folder,
+			});
+			const defaults = await handler("build_installer") as Record<string, string>;
+			expect(defaults.hasNotaryProfile).toBe("0");
+			expect(defaults.notarize).toBe("0");
 		} finally {
 			project.cleanup();
 		}

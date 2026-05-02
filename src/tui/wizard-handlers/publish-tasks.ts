@@ -23,6 +23,10 @@ import {
 	parsePayloadList,
 	type PayloadTarget,
 } from "../../engine/modes/publish-parse.js";
+import {
+	detectNotaryProfile,
+	NOTARIZE_SETUP_INSTRUCTIONS,
+} from "./publish-detect.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -371,10 +375,30 @@ export function createSignInstallerHandler(_executor: PhaseExecutor): InternalTa
 
 // ── Task: publishNotarize (PR4) ──────────────────────────────────────
 
-export function createNotarizeHandler(_executor: PhaseExecutor): InternalTaskHandler {
+export function createNotarizeHandler(executor: PhaseExecutor): InternalTaskHandler {
 	return async (answers) => {
 		if (!isOn(answers.notarize)) return skipped("notarize disabled");
 		if (process.platform !== "darwin") return skipped("not macOS");
+
+		// Re-probe at task time. The form gates the notarize toggle on the
+		// init-time `hasNotaryProfile` flag, but `--answers` JSON in CLI
+		// single-shot mode can bypass the gate, and the keychain state may
+		// have changed since init ran.
+		const probe = await detectNotaryProfile(executor, "notarize");
+		if (probe === "network-error") {
+			return fail(
+				"Cannot notarize — could not reach Apple's notary service. " +
+					"Check your internet connection and retry.",
+			);
+		}
+		if (probe === "missing") {
+			return fail(
+				"Cannot notarize — the `notarize` keychain profile is not " +
+					"registered (or its stored credentials are invalid).\n\n" +
+					NOTARIZE_SETUP_INSTRUCTIONS,
+			);
+		}
+
 		// xcrun notarytool submit + stapler staple lands in PR4.
 		return skipped("notarization lands in PR4");
 	};

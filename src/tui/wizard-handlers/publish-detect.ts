@@ -286,9 +286,18 @@ async function detectMacOS(
 	if (identity) defaults.signingIdentity = identity;
 	defaults.codesign = defaults.hasDevId === "1" ? "1" : "0";
 
-	const profile = await detectNotaryProfile(executor, "notarize");
-	defaults.hasNotaryProfile = profile ? "1" : "0";
-	defaults.notarize = profile ? "1" : "0";
+	const probe = await detectNotaryProfile(executor, "notarize");
+	if (probe === "network-error") {
+		throw new WizardInitAbortError(
+			"Could not reach Apple's notary service to verify the `notarize` " +
+				"keychain profile. A network connection is required during preflight " +
+				"so the wizard can decide whether notarization is available.\n\n" +
+				"Check your internet connection and retry.\n\n" +
+				NOTARIZE_SETUP_INSTRUCTIONS,
+		);
+	}
+	defaults.hasNotaryProfile = probe === "ok" ? "1" : "0";
+	defaults.notarize = probe === "ok" ? "1" : "0";
 
 	// Windows-only fields stub out so form has values.
 	defaults.hasIscc = "0";
@@ -309,14 +318,49 @@ async function detectDeveloperIdApplication(
 	return match?.[1] ?? null;
 }
 
-async function detectNotaryProfile(
+/** Exact instructions for registering a notarytool keychain profile. Reused
+ *  by the init handler (network-error abort) and the notarize task (when the
+ *  user opted in but the profile can't be authorized). */
+export const NOTARIZE_SETUP_INSTRUCTIONS =
+	"To register a notarytool keychain profile named `notarize`:\n\n" +
+	"```\n" +
+	"xcrun notarytool store-credentials notarize \\\n" +
+	"  --apple-id \"your.email@example.com\" \\\n" +
+	"  --team-id \"AB12CD34EF\"\n" +
+	"```\n\n" +
+	"You'll be prompted for an app-specific password (NOT your Apple ID password).\n\n" +
+	"  - Generate one: https://account.apple.com → Sign-In and Security → App-Specific Passwords\n" +
+	"  - Find your Team ID: https://developer.apple.com/account → Membership\n\n" +
+	"Verify with:\n\n" +
+	"```\n" +
+	"xcrun notarytool history --keychain-profile notarize\n" +
+	"```";
+
+export type NotaryProbeResult = "ok" | "missing" | "network-error";
+
+export async function detectNotaryProfile(
 	executor: PhaseExecutor,
 	profileName: string,
-): Promise<boolean> {
+): Promise<NotaryProbeResult> {
+	// Modern notarytool (Xcode 13+) stores credentials in the data-protection
+	// keychain, which `security find-generic-password` cannot query. Only
+	// reliable check is invoking notarytool itself. `history` makes a network
+	// round-trip but exits in ~1s on success and is the lightest verb that
+	// validates the keychain profile end-to-end. Note: `--limit` is NOT a
+	// valid history option — passing it returns exit 64 (usage error).
 	const result = await executor.spawn(
 		"xcrun",
-		["notarytool", "history", "--keychain-profile", profileName, "--limit", "1"],
+		["notarytool", "history", "--keychain-profile", profileName],
 		{},
 	);
-	return result.exitCode === 0;
+	if (result.exitCode === 0) return "ok";
+	// Distinguish "profile not registered / auth invalid" from network failure
+	// by inspecting stderr. Apple's error text mentions "Keychain password
+	// item" when the profile is missing and "authenticat" / "credentials"
+	// when stored creds are rejected — both are setup issues.
+	const stderr = result.stderr ?? "";
+	if (/Keychain password item|authenticat|invalid credentials/i.test(stderr)) {
+		return "missing";
+	}
+	return "network-error";
 }

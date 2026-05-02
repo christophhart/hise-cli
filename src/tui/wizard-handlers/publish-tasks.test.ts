@@ -325,4 +325,41 @@ describe("publishNotarize (PR4 stub)", () => {
 		expect(result.success).toBe(true);
 		expect(result.message).toMatch(/skipped/i);
 	});
+
+	it("fails with setup instructions when notarize is on but profile is missing", async () => {
+		if (process.platform !== "darwin") return;
+		const { executor } = makeExecutor((cmd, args) => {
+			if (cmd === "xcrun" && args[0] === "notarytool") {
+				return {
+					exitCode: 1,
+					stderr: "Error: No Keychain password item found for profile: notarize",
+				};
+			}
+			return { exitCode: 0 };
+		});
+		const handler = createNotarizeHandler(executor);
+		const result = await handler({ notarize: "1" }, noProgress);
+		expect(result.success).toBe(false);
+		expect(result.message).toMatch(/notarize.*keychain profile is not.*registered/i);
+		expect(result.message).toMatch(/xcrun notarytool store-credentials notarize/);
+		expect(result.message).toMatch(/--apple-id/);
+		expect(result.message).toMatch(/--team-id/);
+	});
+
+	it("fails with network message when notarize is on but Apple is unreachable", async () => {
+		if (process.platform !== "darwin") return;
+		const { executor } = makeExecutor((cmd, args) => {
+			if (cmd === "xcrun" && args[0] === "notarytool") {
+				return {
+					exitCode: 1,
+					stderr: "Error: Could not connect to Apple's notary service.",
+				};
+			}
+			return { exitCode: 0 };
+		});
+		const handler = createNotarizeHandler(executor);
+		const result = await handler({ notarize: "1" }, noProgress);
+		expect(result.success).toBe(false);
+		expect(result.message).toMatch(/could not reach Apple/i);
+	});
 });
