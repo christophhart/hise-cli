@@ -22,7 +22,8 @@ bun-mac-x64:
 export-highlight:
 	npm run export-highlight
 
-# Bump version in package.json + lockfile, commit, tag v<version>, push tag to trigger CI release
+# Bump version in package.json + lockfile, commit, tag v<version>, push tag (CI builds binaries), publish to npm.
+# Requires `npm login` first. The `prepack` script auto-runs `npm run build` so dist/ is fresh on publish.
 bump version:
 	npm version {{version}} --no-git-tag-version
 	git add package.json package-lock.json
@@ -30,6 +31,7 @@ bump version:
 	git tag v{{version}}
 	git push
 	git push origin v{{version}}
+	npm publish
 
 # Build the docs-site embed bundle and copy into the HISE website's public/embed/
 embed website_root="/Users/christophhart/Development/hise_website_v2":

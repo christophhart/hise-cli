@@ -55,113 +55,58 @@ Ink `<Static>` (no virtualization needed in inline shell — terminal handles sc
 ## Build & Verify
 
 ```bash
-npm run build          # esbuild bundle → dist/index.js
+npm run build          # esbuild → dist/index.js
 npm run typecheck      # tsc --noEmit
-npm run test           # vitest run
+npm run test           # vitest run (single file: npx vitest run <path>; -t "name" by pattern)
 npm run dev            # build + start
 ```
 
-All three gates (build, typecheck, test) must pass.
+Three gates (build, typecheck, test) must pass.
 
-### Running individual tests
+**Live contract tests** in `src/live-contract/**/*.live.test.ts` (require HISE on
+`:1900`): `test:live-contract[:inspect|:script|:dsp|:project]`. **Screencasts**:
+`test:screencasts` (uses `vitest.screencast.config.ts`, requires `npm run build` first).
 
-```bash
-npx vitest run src/engine/modes/builder.test.ts   # single file
-npx vitest run -t "test name pattern"             # by test name
-npm run test:watch                                # watch mode
-```
-
-### Specialized test suites
-
-```bash
-npm run test:live-contract          # requires HISE running on :1900
-npm run test:live-contract:inspect  # just inspect contract tests
-npm run test:live-contract:script   # just script contract tests
-npm run test:screencasts            # requires npm run build first, 60s timeout
-```
-
-Live contract tests live in `src/live-contract/**/*.live.test.ts`. Screencast tests
-use a separate vitest config (`vitest.screencast.config.ts`).
-
-**HISE source reference**: Clone `https://github.com/christoph-hart/HISE` (without
-`--recurse-submodules`) into `hise-source/` for C++ source inspection. This directory
-is gitignored — it is a local reference, not tracked.
+**HISE source reference**: clone `https://github.com/christoph-hart/HISE` (no
+submodules) into `hise-source/` for C++ inspection. Gitignored — local reference only.
 
 ## Release pipeline
 
-Tag-triggered builds via `.github/workflows/release.yml`. Pushing a tag matching
-`v*` runs two parallel jobs on self-hosted runners:
+Tag-triggered (`v*`) via `.github/workflows/release.yml` — parallel macOS +
+Windows jobs on self-hosted runners produce `hise-cli.pkg` (universal2,
+codesigned + notarized) and `hise-cli-setup.exe` (Inno Setup, see
+`installer/hise-cli.iss`). `workflow_dispatch` runs build-only smoke tests
+without publishing. Runner bootstrap: [docs/RUNNER_SETUP.md](docs/RUNNER_SETUP.md).
 
-- **macOS** (`[self-hosted, macOS]`) → universal2 binary (lipo arm64 + x64) →
-  codesign with hardened runtime → `pkgbuild` → notarize + staple →
-  uploads `hise-cli.pkg` to the GitHub Release.
-- **Windows** (`[self-hosted, Windows]`) → bun-compiled `hise-cli.exe` →
-  Inno Setup compile (`installer/hise-cli.iss`) → uploads
-  `hise-cli-setup.exe` to the same release.
-
-`workflow_dispatch` is enabled for build-only smoke tests on a branch — those
-runs upload artifacts but skip the GitHub Release publish step.
-
-`hise-cli update` (in `src/cli/update.ts`) is the in-binary self-updater. It
-resolves the latest tag via the `/releases/latest` redirect (no GitHub API
-auth, no rate limit), downloads the platform installer, and runs it: macOS
-`sudo installer -pkg`, Windows silent installer with the rename trick (rename
-running `.exe` → `.exe.old`, run `setup.exe /VERYSILENT`). Auto-check fires
-2s into TUI launch only — CLI invocations stay silent so LLM agents don't
-make extra network calls.
+`hise-cli update` (`src/cli/update.ts`) resolves the latest tag via
+`/releases/latest` redirect, runs the platform installer (macOS
+`sudo installer -pkg`; Windows rename-trick + `/VERYSILENT`). Auto-check fires
+2s into TUI launch only — CLI stays silent for LLM agents.
 
 ### Web SPA embedding
 
-The bun-compiled binary serves the `--web` SPA from memory, not disk.
-`scripts/embed-web-assets.mjs` walks `dist/web/` after the SPA build and emits
-`src/web/embedded-assets.ts` (gitignored) — a `Map<string, Uint8Array>` of all
-assets, base64-encoded for the JS bundle, decoded once at startup. The build
-chain order is:
-
-```
-build-web.mjs → embed-web-assets.mjs → build-embed.mjs → esbuild
-```
-
-### Self-hosted runner setup
-
-One-time bootstrap per machine — see [docs/RUNNER_SETUP.md](docs/RUNNER_SETUP.md).
-Without it, signing / notarization / Inno Setup steps will fail.
+The bun-compiled binary serves `--web` from memory. Build chain:
+`build-web.mjs → embed-web-assets.mjs → build-embed.mjs → esbuild`. The embed
+step writes `src/web/embedded-assets.ts` (gitignored) — base64 `Map<string,
+Uint8Array>` decoded once at startup.
 
 ## Project Structure
 
-```
-src/
-  index.ts             # Entry point (TUI launcher + one-shot CLI)
-  engine/              # Shared core - zero UI deps, zero node: imports
-    commands/          # Command registry, dispatcher, parsers
-    modes/             # Mode definitions
-    completion/        # Tab completion engine
-    highlight/         # Syntax highlighting: per-mode tokenizers, span splitting
-    screencast/        # .tape parser (isomorphic)
-    session.ts         # Mode stack, history, connection
-    result.ts          # CommandResult + TreeNode types
-    hise.ts            # HiseConnection interface + HttpHiseConnection + Mock
-    data.ts            # DataLoader interface
-  tui/                 # Inline (sticky-bottom) Ink REPL shell
-    InlineApp.tsx      # Main shell: <Static> scrollback + status line + prompt
-    launch.ts          # Boots Session, mounts InlineApp, prints banner
-    banner.ts          # Static ASCII logo + version + update badge
-    Input.tsx, CompletionPopup.tsx, prerender.ts, markdown.ts,
-    script-log.ts, wizard-render.ts, wizard-keys.ts, useWizardState.ts
-    theme.ts           # Hardcoded monokai constants + darken/lighten/lerp helpers
-    observer.ts        # Local HTTP server piping CLI invocations into the shell
-    nodeDataLoader.ts, nodeHiseLauncher.ts, nodePhaseExecutor.ts,
-    bundledDataLoader.ts  # Node platform implementations
-    wizard-handlers/   # Wizard task handler bindings (setup, update, compile, ...)
-    wizard-files.ts    # Path completion for wizard file fields
-    screencast/        # Tape runner, asciicast writer, vitest tester
-  cli/                 # CLI execution, args, help, observer client
-  globals.d.ts         # Build-time constants (__APP_VERSION__)
-data/                  # Static JSON datasets (not in src/)
-  wizards/             # HISE C++ multipage dialog JSONs (conversion source)
-scripts/build.mjs      # esbuild config
-screencasts/           # VHS-derived .tape scripts
-```
+Top-level layout under `src/`:
+
+- `engine/` — shared core (zero UI/`node:` deps). Subdirs: `commands/`, `modes/`,
+  `completion/`, `highlight/`, `screencast/`, `wizard/`, `project/`, `run/`,
+  `audio/`, `assets/`. Key files: `session.ts`, `hise.ts`, `data.ts`, `result.ts`.
+- `tui/` — inline Ink REPL shell. `InlineApp.tsx` is the root. Node platform
+  adapters: `node*.ts` (data loader, HISE launcher, phase executor, asset I/O).
+  Subdirs: `wizard-handlers/`, `screencast/`.
+- `cli/` — JSON-output CLI (`run.ts`, `args.ts`, `help.ts`, `update.ts`, …).
+- `live-contract/` — `*.live.test.ts` against running HISE. `mock/` — mock
+  runtime. `web/` + `web-embed/` — `--web` SPA + bundled assets.
+- `index.ts` — entry point (TUI + one-shot CLI dispatcher).
+
+Outside `src/`: `data/` (shipped JSON datasets + `wizards/` conversion sources),
+`scripts/` (esbuild + binary + web build scripts), `screencasts/` (VHS `.tape`).
 
 New code follows the `engine/` / `tui/` / `cli/` split.
 
@@ -182,31 +127,16 @@ When referencing implementation details, point to the source file location:
 
 ## Conventions
 
-For full code style reference, see [docs/CODE_STYLE.md](docs/CODE_STYLE.md).
+Full reference: [docs/CODE_STYLE.md](docs/CODE_STYLE.md). Highlights:
 
-### Critical formatting rules
-
-- **Tabs** (not spaces), **double quotes**, **semicolons required**, trailing commas in multi-line
-- `camelCase.ts` for files, `PascalCase.tsx` for React components
-- Interfaces over enums; string literal unions; `as const` assertions
-- Error handling: `try/catch`, extract with `String(error)`, return `null`/`false` for "not found"
-
-### TypeScript config
-
-- Target ES2022, module Node16, strict mode enabled
-- `.js` extensions required on local imports (Node16 module resolution)
-
-### Project rules
-
-- **Git commits**: lowercase, terse, no conventional-commits prefix
-- **No default exports** — named exports only
-- **ESM only** — `.js` extensions on local imports, `node:` prefix on builtins
-  (except in `src/engine/` where `node:` imports are forbidden)
-- **Test files**: colocated next to source (`session.test.ts` next to `session.ts`)
-- **Help text sync**: when adding or changing commands, modes, or wizards, update
-  both `src/engine/commands/help.ts` (TUI `/help`) and `src/cli/help.ts` (CLI `--help`).
-  The CLI help is the primary reference for LLM consumers — it must include full
-  syntax, examples, and all available subcommands.
-- **Ink imports**: TUI components import `Box`, `Text`, and hooks directly
-  from `"ink"`.
-- **Key input debugging**: see [docs/CODE_STYLE.md](docs/CODE_STYLE.md) § Debugging
+- Tabs, double quotes, semicolons, trailing commas. `camelCase.ts` /
+  `PascalCase.tsx`. Interfaces over enums; string-literal unions.
+- TypeScript: ES2022, Node16 modules, strict mode. `.js` extension required on
+  local imports. ESM only. `node:` prefix on builtins — **forbidden in
+  `src/engine/`**.
+- No default exports. Tests colocated (`foo.test.ts` next to `foo.ts`).
+- Git commits: lowercase, terse, no conventional-commits prefix.
+- **Help text sync**: when adding/changing commands, modes, or wizards, update
+  both `src/engine/commands/help.ts` (TUI `/help`) and `src/cli/help.ts` (CLI
+  `--help`). CLI help is the primary LLM reference — full syntax + examples +
+  subcommands.

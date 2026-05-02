@@ -6,11 +6,11 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/christoph-hart/hise-cli.git"
+    "url": "git+https://github.com/christophhart/hise-cli.git"
   },
-  "homepage": "https://github.com/christoph-hart/hise-cli#readme",
+  "homepage": "https://github.com/christophhart/hise-cli#readme",
   "bugs": {
-    "url": "https://github.com/christoph-hart/hise-cli/issues"
+    "url": "https://github.com/christophhart/hise-cli/issues"
   },
   "keywords": [
     "hise",
@@ -21,6 +21,9 @@
   ],
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bin": {
     "hise-cli": "dist/index.js"
