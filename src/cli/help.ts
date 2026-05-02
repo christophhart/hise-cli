@@ -40,6 +40,7 @@ MODES
   -undo "<command>"        Undo history & plan groups (--help for syntax)
   -hise "<command>"        Runtime control            (--help for syntax)
   -publish "<command>"     Build & sign installers    (--help for syntax)
+  -assets "<command>"      Package install / uninstall (--help for syntax)
 
   -wizard <subcommand>     Guided workflows          (--help for syntax)
 
@@ -832,4 +833,44 @@ NOTES
   - On macOS, the developer's Developer ID Application identity is used
     for both binary signing and AAX wraptool --signid.
   - HISE_AAX_PASSWORD env var is required when AAX is in the payload.`,
+
+	assets: `hise-cli -assets — package manager (install / uninstall / cleanup)
+
+SYNTAX
+  hise-cli -assets "<command>"
+
+VERBS
+  list [installed|uninstalled|local|store]   List packages by category.
+  info <name>                                Show installation state.
+  install <name> [--version=X.Y.Z] [--dry-run] [--token=<t>] [--local=<path>]
+                                             Install or upgrade a package.
+                                             Local install via --local=<path>.
+  uninstall <name>                           Remove an installed package.
+  cleanup <name>                             Force-remove user-modified files
+                                             from a NeedsCleanup uninstall.
+  local add <path>                           Register a local HISE project as
+                                             a package source.
+  local remove <name|path>                   Unregister a local folder.
+  auth login --token=<t>                     Persist a HISE store token.
+  auth logout                                Clear the persisted token.
+  help                                       Show available commands.
+
+EXAMPLES
+  hise-cli -assets "list installed"
+  hise-cli -assets "info synth_blocks"
+  hise-cli -assets "install synth_blocks --version=1.2.0 --dry-run"
+  hise-cli -assets "install synth_blocks --local=/path/to/source"
+  hise-cli -assets "uninstall synth_blocks"
+  hise-cli -assets "cleanup synth_blocks"
+  hise-cli -assets "local add /path/to/MyLib"
+  hise-cli -assets "auth login --token=abc123"
+
+NOTES
+  - Install resolves <name> against local folders first, then the store.
+  - --dry-run previews changes without writing files or mutating HISE.
+  - Modified files block re-install; run cleanup first.
+  - Token sourcing order: --token flag, then HISE_STORE_TOKEN env var, then
+    persisted storeToken.dat.
+  - HISE must be running for asset commands (settings + preprocessor edits
+    go through HISE's REST API).`,
 };

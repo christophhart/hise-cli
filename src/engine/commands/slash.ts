@@ -60,6 +60,7 @@ async function handleModes(
 		["export", "Build targets", MODE_ACCENTS.compile],
 		["undo", "Undo history & plan groups", MODE_ACCENTS.undo],
 		["publish", "Build & sign installers", MODE_ACCENTS.publish],
+		["assets", "Package install / uninstall", MODE_ACCENTS.assets],
 	];
 
 	return tableResult(
@@ -1029,6 +1030,14 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		description: "Enter publish mode (build & sign installers)",
 		handler: createModeHandler("publish"),
 		kind: "mode",
+	});
+
+	registry.register({
+		name: "assets",
+		description: "Enter assets mode (package install / uninstall / cleanup)",
+		handler: createModeHandler("assets"),
+		kind: "mode",
+		embedBlockedReason: "Asset operations need local filesystem and HTTP access.",
 	});
 
 	registry.register({

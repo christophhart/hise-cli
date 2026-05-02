@@ -500,6 +500,33 @@ export class CompletionEngine {
 	}
 
 	/**
+	 * Complete assets mode subcommands.
+	 */
+	completeAssets(prefix: string): CompletionItem[] {
+		const items: CompletionItem[] = [
+			{ label: "list", detail: "List packages by category" },
+			{ label: "info", detail: "Show installation state for a package" },
+			{ label: "install", detail: "Install or upgrade a package" },
+			{ label: "uninstall", detail: "Remove an installed package" },
+			{ label: "cleanup", detail: "Force-remove modified files post-uninstall" },
+			{ label: "local", detail: "Manage local package source folders" },
+			{ label: "auth", detail: "Manage HISE store credentials" },
+			{ label: "help", detail: "Show assets mode commands" },
+			// list filters
+			{ label: "installed", detail: "Filter: installed packages" },
+			{ label: "uninstalled", detail: "Filter: not yet installed" },
+			{ label: "store", detail: "Filter: store catalog" },
+			// auth verbs
+			{ label: "login", detail: "Persist a token" },
+			{ label: "logout", detail: "Clear the persisted token" },
+			// local verbs
+			{ label: "add", detail: "Register a local folder" },
+			{ label: "remove", detail: "Unregister a local folder" },
+		];
+		return fuzzyFilter(prefix, items);
+	}
+
+	/**
 	 * Complete sequence mode commands and event verbs.
 	 */
 	completeSequence(prefix: string): CompletionItem[] {

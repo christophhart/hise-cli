@@ -69,6 +69,7 @@ Enter a mode to start working, or use /wizard for guided workflows.
 - **/ui** — UI component editor (add, remove, set properties, reparent)
 - **/script** — HiseScript REPL (evaluate expressions live)
 - **/inspect** — Runtime monitor (version, project info)
+- **/assets** — Package manager (install / uninstall / cleanup)
 - **/export** — Build targets and export settings
 - **/undo** — Undo history and plan groups
 - **/hise** — Runtime control (launch, shutdown, screenshot, profile, playground)
@@ -163,6 +164,32 @@ Runtime monitor — query the live HISE status payload.
 | \`version\` | HISE server version and compile timeout |
 | \`project\` | Current project paths and script processors |
 | \`help\` | Show available commands |`,
+
+	assets: `# Assets Mode
+
+Package manager for HISE projects. Mirrors the in-app asset manager but runs
+the install / uninstall / cleanup flow natively in the CLI; only project
+settings and preprocessors go through HISE.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| \`list [installed\\|uninstalled\\|local\\|store]\` | List packages by category |
+| \`info <name>\` | Show installation state for a package |
+| \`install <name> [--version=X.Y.Z] [--dry-run] [--token=<t>] [--local=<path>]\` | Install or upgrade |
+| \`uninstall <name>\` | Remove an installed package |
+| \`cleanup <name>\` | Force-remove modified files left over from uninstall |
+| \`local add <path>\` | Register a local HISE project as a package source |
+| \`local remove <name\\|path>\` | Unregister a local folder |
+| \`auth login --token=<t>\` | Persist a HISE store token |
+| \`auth logout\` | Clear the persisted token |
+
+## Notes
+
+- Install resolves \`<name>\` against local folders first, then the store.
+- \`--dry-run\` previews changes without writing files or mutating HISE state.
+- Modified files block re-install; run \`cleanup\` first.`,
 
 	undo: `# Undo Mode
 

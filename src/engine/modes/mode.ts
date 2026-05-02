@@ -23,7 +23,8 @@ export type ModeId =
 	| "sequence"
 	| "hise"
 	| "analyse"
-	| "publish";
+	| "publish"
+	| "assets";
 
 export interface CompletionItem {
 	label: string;
