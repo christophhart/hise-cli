@@ -81,6 +81,7 @@
     "@byteland/ink-scroll-bar": "^1.0.0",
     "@ink-tools/ink-mouse": "^2.1.0",
     "cli-highlight": "^2.1.11",
+    "fast-xml-parser": "^5.7.2",
     "fft.js": "^4.0.4",
     "highlight.js": "^11.11.1",
     "ink-scroll-view": "^0.3.6",
