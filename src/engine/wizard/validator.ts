@@ -97,11 +97,24 @@ export function isTabComplete(
 
 /**
  * Evaluate a field's `visibleIf` condition against current answers.
- * A field with no condition is always visible.
+ * A field with no condition is always visible. An array is AND of all entries.
  */
 export function isFieldVisible(field: WizardField, answers: WizardAnswers): boolean {
 	if (!field.visibleIf) return true;
-	return answers[field.visibleIf.fieldId] === field.visibleIf.value;
+	const conditions = Array.isArray(field.visibleIf) ? field.visibleIf : [field.visibleIf];
+	return conditions.every((c) => evaluateCondition(c, answers));
+}
+
+function evaluateCondition(
+	condition: { fieldId: string; value: string; match?: "equals" | "contains" },
+	answers: WizardAnswers,
+): boolean {
+	const actual = answers[condition.fieldId] ?? "";
+	if (condition.match === "contains") {
+		const tokens = actual.split(/\s*,\s*/).filter((t) => t.length > 0);
+		return tokens.includes(condition.value);
+	}
+	return actual === condition.value;
 }
 
 /**

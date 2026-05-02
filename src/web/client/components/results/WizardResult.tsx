@@ -237,7 +237,15 @@ function isTabEnabled(tab: WizardTab, answers: WizardAnswers): boolean {
 
 function isFieldVisible(field: WizardField, answers: WizardAnswers): boolean {
 	if (!field.visibleIf) return true;
-	return answers[field.visibleIf.fieldId] === field.visibleIf.value;
+	const conditions = Array.isArray(field.visibleIf) ? field.visibleIf : [field.visibleIf];
+	return conditions.every((c) => {
+		const actual = answers[c.fieldId] ?? "";
+		if (c.match === "contains") {
+			const tokens = actual.split(/\s*,\s*/).filter((t) => t.length > 0);
+			return tokens.includes(c.value);
+		}
+		return actual === c.value;
+	});
 }
 
 function collectErrors(def: WizardDefinition, answers: WizardAnswers): string[] {

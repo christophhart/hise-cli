@@ -47,12 +47,22 @@ export interface WizardField {
 	readonly parseArray?: boolean;
 
 	// ── Visibility ──────────────────────────────────────────────
-	/** Conditional visibility: field is hidden unless answers[fieldId] === value.
+	/** Conditional visibility. A single condition or an array of conditions
+	 *  (treated as AND — field visible only when all conditions match).
 	 *  Hidden fields are skipped during rendering, navigation, and validation. */
-	readonly visibleIf?: {
-		readonly fieldId: string;
-		readonly value: string;
-	};
+	readonly visibleIf?: WizardVisibilityCondition | readonly WizardVisibilityCondition[];
+}
+
+/** One predicate evaluated against the current answers map. */
+export interface WizardVisibilityCondition {
+	/** ID of the field whose value the condition reads. */
+	readonly fieldId: string;
+	/** Value to match against. */
+	readonly value: string;
+	/** Match mode. `equals` (default) does strict string equality; `contains`
+	 *  treats the answer as a `, `-joined CSV (multiselect storage format)
+	 *  and matches when `value` is one of the tokens. */
+	readonly match?: "equals" | "contains";
 }
 
 /** A tab grouping fields in the wizard form. */

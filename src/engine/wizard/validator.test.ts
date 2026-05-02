@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateAnswers, isFieldSatisfied, isTabComplete } from "./validator.js";
+import { validateAnswers, isFieldSatisfied, isTabComplete, isFieldVisible } from "./validator.js";
 import type { WizardDefinition, WizardField, WizardTab } from "./types.js";
 
 function makeDef(tabs: WizardTab[]): WizardDefinition {
@@ -176,5 +176,56 @@ describe("isTabComplete", () => {
 			],
 		};
 		expect(isTabComplete(tab, { a: "filled" })).toBe(false);
+	});
+});
+
+describe("isFieldVisible", () => {
+	it("returns true when no visibleIf is set", () => {
+		const f = makeField({ id: "x" });
+		expect(isFieldVisible(f, {})).toBe(true);
+	});
+
+	it("single condition: equals match (default)", () => {
+		const f = makeField({
+			id: "x",
+			visibleIf: { fieldId: "platform", value: "macOS" },
+		});
+		expect(isFieldVisible(f, { platform: "macOS" })).toBe(true);
+		expect(isFieldVisible(f, { platform: "Windows" })).toBe(false);
+		expect(isFieldVisible(f, {})).toBe(false);
+	});
+
+	it("single condition: contains match against CSV", () => {
+		const f = makeField({
+			id: "x",
+			visibleIf: { fieldId: "payload", value: "AAX", match: "contains" },
+		});
+		expect(isFieldVisible(f, { payload: "VST3, AAX, AU" })).toBe(true);
+		expect(isFieldVisible(f, { payload: "AAX" })).toBe(true);
+		expect(isFieldVisible(f, { payload: "VST3, AU" })).toBe(false);
+		expect(isFieldVisible(f, { payload: "" })).toBe(false);
+		expect(isFieldVisible(f, {})).toBe(false);
+	});
+
+	it("contains does not partial-match within a single token", () => {
+		const f = makeField({
+			id: "x",
+			visibleIf: { fieldId: "payload", value: "AA", match: "contains" },
+		});
+		expect(isFieldVisible(f, { payload: "VST3, AAX" })).toBe(false);
+	});
+
+	it("array of conditions is treated as AND", () => {
+		const f = makeField({
+			id: "x",
+			visibleIf: [
+				{ fieldId: "platform", value: "Windows" },
+				{ fieldId: "payload", value: "AAX", match: "contains" },
+			],
+		});
+		expect(isFieldVisible(f, { platform: "Windows", payload: "AAX, VST3" })).toBe(true);
+		expect(isFieldVisible(f, { platform: "macOS", payload: "AAX, VST3" })).toBe(false);
+		expect(isFieldVisible(f, { platform: "Windows", payload: "VST3" })).toBe(false);
+		expect(isFieldVisible(f, {})).toBe(false);
 	});
 });

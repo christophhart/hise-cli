@@ -14,7 +14,7 @@ jobs:
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
-      - run: npm install --prefer-offline --no-audit --no-fund
+      - run: npm install --prefer-offline --no-audit --no-fund --cache "$RUNNER_TEMP/.npm"
       - run: npm run build
       - run: node scripts/build-binary.mjs --target bun-darwin-arm64
       - run: mv dist/hise-cli dist/hise-cli-bun-darwin-arm64
@@ -57,7 +57,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: echo "$env:LOCALAPPDATA\Programs\Inno Setup 6" >> $env:GITHUB_PATH
-      - run: npm install --prefer-offline --no-audit --no-fund
+      - run: npm install --prefer-offline --no-audit --no-fund --cache "$env:RUNNER_TEMP\.npm"
       - run: npm run build
       - run: node scripts/build-binary.mjs --target bun-windows-x64
       - name: Build x64 installer

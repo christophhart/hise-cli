@@ -46,12 +46,15 @@ tabs:
           - Standalone
       - id: target
         type: choice
-        label: macOS install target
-        help: User domain (~/Library) or global (/Library). pkgbuild defaults to global.
+        label: Install target
+        help: User domain (~/Library/Audio/Plug-Ins/) or global (/Library/Audio/Plug-Ins/). pkgbuild defaults to global.
         items:
           - user
           - global
         defaultValue: global
+        visibleIf:
+          fieldId: platform
+          value: macOS
       - id: eula
         type: file
         label: EULA file (optional)
@@ -67,48 +70,84 @@ tabs:
         help: signtool (Windows) / codesign (macOS). Pre-filled true when a cert is detected.
       - id: signingIdentity
         type: text
-        label: Signing identity (macOS)
+        label: Signing identity
         help: 'Developer ID Application: <Name> (<TeamID>) — leave blank to use the first one found.'
         emptyText: "(first Developer ID in keychain)"
+        visibleIf:
+          fieldId: platform
+          value: macOS
       - id: codesignThumbprint
         type: text
-        label: Windows cert thumbprint
+        label: Cert thumbprint
         help: Authenticode code-signing cert thumbprint. Leave blank to use the first cert in CurrentUser\My.
         emptyText: "(first Code Signing cert)"
+        visibleIf:
+          fieldId: platform
+          value: Windows
       - id: notarize
         type: toggle
-        label: Notarize (macOS)
+        label: Notarize
         help: Submit the installer to Apple notarization and staple the ticket.
+        visibleIf:
+          fieldId: platform
+          value: macOS
       - id: notarizeProfile
         type: text
         label: Notary keychain profile
         help: Profile name created by `xcrun notarytool store-credentials`.
         defaultValue: "notarize"
+        visibleIf:
+          fieldId: platform
+          value: macOS
       - id: aaxWraptool
         type: file
         label: PACE wraptool path
         help: Path to wraptool executable. Auto-detected at default install location.
         emptyText: "(default PACE install)"
+        visibleIf:
+          fieldId: payload
+          value: AAX
+          match: contains
       - id: aaxWcguid
         type: text
         label: AAX WCGUID
         help: Per-plugin Avid-issued identifier. Loaded from .publish/aax.json or HISE_AAX_WCGUID.
         emptyText: "(loaded from .publish/aax.json)"
+        visibleIf:
+          fieldId: payload
+          value: AAX
+          match: contains
       - id: aaxAccountEmail
         type: text
         label: iLok account email
         help: Loaded from .publish/aax.json or HISE_AAX_ACCOUNT.
         emptyText: "(loaded from .publish/aax.json)"
+        visibleIf:
+          fieldId: payload
+          value: AAX
+          match: contains
       - id: aaxKeyfile
         type: file
-        label: AAX keyfile (.pfx/.p12, Windows)
+        label: AAX keyfile (.pfx/.p12)
         help: Leave blank to auto-generate a self-signed keyfile under .publish/aax-selfsigned.pfx.
         emptyText: "(auto-generate self-signed)"
+        visibleIf:
+          - fieldId: platform
+            value: Windows
+          - fieldId: payload
+            value: AAX
+            match: contains
       - id: aaxAutoGenerateKeyfile
         type: toggle
-        label: Auto-generate self-signed AAX keyfile (Windows)
+        label: Auto-generate self-signed AAX keyfile
         help: Generate a 20-year self-signed PFX on first sign if no keyfile is supplied.
         defaultValue: "1"
+        visibleIf:
+          - fieldId: platform
+            value: Windows
+          - fieldId: payload
+            value: AAX
+            match: contains
 
   - label: Detected
     fields:
@@ -130,26 +169,44 @@ tabs:
         type: toggle
         label: ISCC (Inno Setup) available
         disabled: true
+        visibleIf:
+          fieldId: platform
+          value: Windows
       - id: hasSigntool
         type: toggle
         label: signtool available
         disabled: true
+        visibleIf:
+          fieldId: platform
+          value: Windows
       - id: hasWinCert
         type: toggle
         label: Windows code-signing cert detected
         disabled: true
+        visibleIf:
+          fieldId: platform
+          value: Windows
       - id: hasPkgbuild
         type: toggle
         label: pkgbuild available
         disabled: true
+        visibleIf:
+          fieldId: platform
+          value: macOS
       - id: hasDevId
         type: toggle
         label: Developer ID Application detected
         disabled: true
+        visibleIf:
+          fieldId: platform
+          value: macOS
       - id: hasNotaryProfile
         type: toggle
         label: Notary keychain profile valid
         disabled: true
+        visibleIf:
+          fieldId: platform
+          value: macOS
 
 submitLabel: Build & sign installer for the selected payload
 tasks:
