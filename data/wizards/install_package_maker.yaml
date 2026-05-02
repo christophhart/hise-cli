@@ -1,101 +1,102 @@
 id: install_package_maker
 header: Install Package Maker
-description: Create an installer payload for distributing HISE project assets
+description: Set up this project so other HISE users can install it as a package
 body: |
-  Creates an `install_package.json` that defines what files and settings to include when distributing this project as a HISE asset.
+  Turns this project into an installable HISE asset package. Once you've
+  configured what's included, other users can pull it into their projects
+  with `/assets install <name>`.
 
-  - Use **wildcards** to include or exclude specific file patterns
-  - **File type filters** limit the payload to specific asset categories
-  - **Preprocessors** carry over DSP processing settings to the target project
-  - Test your configuration with a **simulation run** before publishing
+  - **File Types** chooses which folders ship with the package.
+  - **Wildcards** narrow the selection further (include / exclude patterns).
+  - **Preprocessors** lets you copy selected preprocessor macros from your
+    project so users get the same DSP setup automatically.
+  - **Info text** and **Clipboard** are shown / copied to the user after
+    they install your package — handy for setup hints and snippets.
 
-  > This is mainly useful if you intend to publish a product on the HISE store.
+  > Run this wizard any time to update the configuration; the previous
+  > settings are loaded automatically.
 
 init:
-  type: http
-  function: initialise
+  type: internal
+  function: installPackageMakerDetect
 
 tabs:
-  - label: Settings
+  - label: Files
     fields:
-      - id: LoadSettings
+      - id: FileTypes
+        type: multiselect
+        label: File Types
+        help: Project subfolders to include in the package.
+        items:
+          - Scripts
+          - AdditionalSourceCode
+          - Samples
+          - Images
+          - AudioFiles
+          - SampleMaps
+          - MidiFiles
+          - DspNetworks
+          - Presets
+        itemDescriptions:
+          - HiseScript files
+          - C++ source files compiled into the project DLL
+          - Audio sample files
+          - UI image assets
+          - Reference / impulse audio files
+          - SampleMap definitions
+          - MIDI sequences
+          - DspNetwork graphs
+          - User preset files
+      - id: PositiveWildcard
+        type: text
+        label: Include Wildcards
+        help: Comma-separated patterns to include (e.g. `*.js, *.png`).
+        emptyText: "*"
+      - id: NegativeWildcard
+        type: text
+        label: Exclude Wildcards
+        help: Comma-separated patterns to exclude (e.g. `*.tmp, scratch/`).
+        emptyText: leave empty for none
+      - id: RegisterAsLocalSource
         type: toggle
-        label: Load existing settings
-        help: Load settings from existing install_package.json if present
+        label: Add to my asset library
+        help: Register this project so you can install it into your other projects with `/assets install <name>`.
         defaultValue: "true"
-  - label: Payload
+  - label: Preprocessors
+    fields:
+      - id: Preprocessors
+        type: multiselect
+        label: Preprocessors
+        help: Preprocessor macros to copy from this project into the user's project on install.
+        items: []
+  - label: Messages
     fields:
       - id: InfoText
         type: text
         label: Info Text
-        help: Markdown message shown to users during installation
-        emptyText: Enter installation instructions...
-      - id: PositiveWildcard
-        type: text
-        label: Include Wildcards
-        help: "Comma-separated wildcards to include (e.g. Scripts/,*.hip)"
-        defaultValue: "*"
-      - id: NegativeWildcard
-        type: text
-        label: Exclude Wildcards
-        help: "Comma-separated wildcards to exclude (e.g. *.txt,Binaries/)"
-        defaultValue: ""
-        emptyText: Add negative wildcards...
-      - id: FileTypeFilter
-        type: multiselect
-        label: File Type Filter
-        help: Select which file types to include in the payload
-        items:
-          - AudioFiles
-          - Images
-          - SampleMaps
-          - MidiFiles
-          - UserPresets
-          - Scripts
-        itemDescriptions:
-          - .wav, .aif audio samples
-          - .png, .jpg UI images
-          - .xml sample map definitions
-          - .mid, .hm MIDI sequences
-          - .preset user preset files
-          - .js HiseScript files
-      - id: Preprocessors
-        type: multiselect
-        label: Preprocessors
-        help: Select preprocessors to include from project_info.xml
-        items:
-          - Raw Processor
-          - Convolution
-          - Impulse Response
-        itemDescriptions:
-          - Unprocessed audio data
-          - Convolution reverb impulse responses
-          - IR files for cabinet simulation
-      - id: UseClipboard
-        type: toggle
-        label: Copy to clipboard
-        help: Copy a string to the system clipboard after installation
+        help: Markdown shown to the user after install (e.g. setup instructions).
+        emptyText: leave empty for none
       - id: ClipboardContent
         type: text
         label: Clipboard Content
-        help: Text to copy to clipboard after installation
-        emptyText: Enter clipboard data...
-  - label: Test
-    fields:
-      - id: ExternalZipSelector
-        type: file
-        label: Test Archive
-        help: Select a .zip file to simulate a test installation run
-        wildcard: "*.zip"
-submitLabel: Writes the install_package.json file to the project
+        help: Text copied to the user's clipboard after install (e.g. an `include(...)` line).
+        emptyText: leave empty for none
+
+submitLabel: Saves the package definition to this project.
+
 tasks:
   - id: writePackageJson
-    function: writePackageJson
-    type: http
-postActions:
-  - id: SimulateTestRun
-    label: Simulate test run
+    type: internal
+    function: installPackageMakerWrite
+    label: Save package definition
+
+postActions: []
+
 globalDefaults:
-  LoadSettings: "true"
+  FileTypes: "Scripts, AdditionalSourceCode, Samples, Images, AudioFiles, SampleMaps, MidiFiles, DspNetworks, Presets"
   PositiveWildcard: "*"
   NegativeWildcard: ""
+  Preprocessors: ""
+  InfoText: ""
+  ClipboardContent: ""
+  RegisterAsLocalSource: "true"

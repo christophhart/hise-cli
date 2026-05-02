@@ -163,13 +163,73 @@ export interface WizardExecResult {
 	readonly data?: Record<string, string>;
 }
 
-/** Merge init-fetched defaults into a wizard definition's globalDefaults. */
+/** Init handler result — accepts both the flat map shape (legacy) and the
+ *  structured shape that adds dynamic per-field items. */
+export type InitDefaultsResult =
+	| Record<string, string>
+	| {
+		defaults: Record<string, string>;
+		items?: Record<string, string[]>;
+		itemDescriptions?: Record<string, string[]>;
+	};
+
+/** Merge init-fetched defaults into a wizard definition's globalDefaults.
+ *  When the structured form is supplied, dynamic `items` / `itemDescriptions`
+ *  are also injected onto the matching fields. */
 export function mergeInitDefaults(
 	def: WizardDefinition,
-	initDefaults: Record<string, string>,
+	initResult: InitDefaultsResult,
 ): WizardDefinition {
-	if (Object.keys(initDefaults).length === 0) return def;
-	return { ...def, globalDefaults: { ...def.globalDefaults, ...initDefaults } };
+	const { defaults, items, itemDescriptions } = normalizeInitResult(initResult);
+	const hasItems = items && Object.keys(items).length > 0;
+	const hasDescs = itemDescriptions && Object.keys(itemDescriptions).length > 0;
+	if (Object.keys(defaults).length === 0 && !hasItems && !hasDescs) return def;
+
+	let nextDef = def;
+	if (hasItems || hasDescs) {
+		nextDef = {
+			...def,
+			tabs: def.tabs.map((tab) => ({
+				...tab,
+				fields: tab.fields.map((f) => {
+					const newItems = items?.[f.id];
+					const newDescs = itemDescriptions?.[f.id];
+					if (!newItems && !newDescs) return f;
+					return {
+						...f,
+						...(newItems ? { items: newItems } : {}),
+						...(newDescs ? { itemDescriptions: newDescs } : {}),
+					};
+				}),
+			})),
+		};
+	}
+
+	return {
+		...nextDef,
+		globalDefaults: { ...nextDef.globalDefaults, ...defaults },
+	};
+}
+
+function normalizeInitResult(r: InitDefaultsResult): {
+	defaults: Record<string, string>;
+	items?: Record<string, string[]>;
+	itemDescriptions?: Record<string, string[]>;
+} {
+	if (
+		typeof r === "object"
+		&& r !== null
+		&& "defaults" in r
+		&& typeof (r as { defaults?: unknown }).defaults === "object"
+	) {
+		const struct = r as {
+			defaults: Record<string, string>;
+			items?: Record<string, string[]>;
+			itemDescriptions?: Record<string, string[]>;
+		};
+		return { defaults: struct.defaults, items: struct.items, itemDescriptions: struct.itemDescriptions };
+	}
+	return { defaults: r as Record<string, string> };
 }
 
 /** True if a toggle-style answer is enabled. Accepts both `"true"`/`"false"`

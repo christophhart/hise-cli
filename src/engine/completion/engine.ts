@@ -526,14 +526,15 @@ export class CompletionEngine {
 		// Top-level verbs at position 0 (or while still typing first token).
 		if (tokenCount <= 1) {
 			return fuzzyFilter(prefix, [
-				{ label: "list", detail: "List packages by category" },
-				{ label: "info", detail: "Show installation state" },
-				{ label: "install", detail: "Install or upgrade a package" },
+				{ label: "list", detail: "Show packages by category" },
+				{ label: "info", detail: "Show details for a package" },
+				{ label: "install", detail: "Install or update a package" },
 				{ label: "uninstall", detail: "Remove an installed package" },
-				{ label: "cleanup", detail: "Force-remove modified files post-uninstall" },
-				{ label: "local", detail: "Manage local package source folders" },
-				{ label: "auth", detail: "Manage HISE store credentials" },
-				{ label: "help", detail: "Show assets mode commands" },
+				{ label: "cleanup", detail: "Finish a previous uninstall" },
+				{ label: "local", detail: "Manage your asset library" },
+				{ label: "auth", detail: "Sign in to / out of the HISE store" },
+				{ label: "create", detail: "Open the package-author wizard" },
+				{ label: "help", detail: "Show assets commands" },
 			]);
 		}
 
@@ -577,29 +578,29 @@ export class CompletionEngine {
 			return fuzzyFilter(tail, candidates);
 		}
 
-		// install <name> — local packages not currently installed
+		// install <name> — packages from your asset library not currently installed
 		if (verb === "install" && tokenCount === 2) {
 			const installed = new Set(dynamic.installedNames);
 			const installable = dynamic.localNames.filter((n) => !installed.has(n));
-			return fuzzyFilter(tail, namedItems(installable, "local"));
+			return fuzzyFilter(tail, namedItems(installable, "in library"));
 		}
 
 		// local <add|remove>
 		if (verb === "local" && tokenCount === 2) {
 			return fuzzyFilter(tail, [
-				{ label: "add", detail: "Register a folder" },
-				{ label: "remove", detail: "Unregister a folder" },
+				{ label: "add", detail: "Add a project to your asset library" },
+				{ label: "remove", detail: "Remove a project from your asset library" },
 			]);
 		}
 		if (verb === "local" && sub === "remove" && tokenCount === 3) {
-			return fuzzyFilter(tail, namedItems(dynamic.localNames, "local"));
+			return fuzzyFilter(tail, namedItems(dynamic.localNames, "in library"));
 		}
 
 		// auth <login|logout>
 		if (verb === "auth" && tokenCount === 2) {
 			return fuzzyFilter(tail, [
-				{ label: "login", detail: "Persist a token" },
-				{ label: "logout", detail: "Clear the persisted token" },
+				{ label: "login", detail: "Sign in to the HISE store" },
+				{ label: "logout", detail: "Sign out" },
 			]);
 		}
 

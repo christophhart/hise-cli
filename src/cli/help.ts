@@ -40,7 +40,7 @@ MODES
   -undo "<command>"        Undo history & plan groups (--help for syntax)
   -hise "<command>"        Runtime control            (--help for syntax)
   -publish "<command>"     Build & sign installers    (--help for syntax)
-  -assets "<command>"      Package install / uninstall (--help for syntax)
+  -assets "<command>"      Install, manage, and publish asset packages (--help for syntax)
 
   -wizard <subcommand>     Guided workflows          (--help for syntax)
 
@@ -834,46 +834,52 @@ NOTES
     for both binary signing and AAX wraptool --signid.
   - HISE_AAX_PASSWORD env var is required when AAX is in the payload.`,
 
-	assets: `hise-cli -assets — package manager (install / uninstall / cleanup)
+	assets: `hise-cli -assets — install, manage, and publish asset packages
 
 SYNTAX
   hise-cli -assets "<command>"
 
 VERBS
-  list [installed|uninstalled|local|store]   List packages by category.
-  info <name>                                Show installation state.
+  list [installed|uninstalled|local|store]   Show packages by category.
+  info <name>                                Show details for a package.
   install <name> [--version=X.Y.Z] [--dry-run]
-                                             Install or upgrade a package.
-                                             <name> resolves against local
-                                             folders first, then the store.
-                                             Register local folders first via
-                                             "local add <path>".
+                                             Install or update a package.
+                                             Looks in your asset library
+                                             first, then the HISE store.
   uninstall <name>                           Remove an installed package.
-  cleanup <name>                             Force-remove user-modified files
-                                             from a NeedsCleanup uninstall.
-  local add <path>                           Register a local HISE project as
-                                             a package source.
-  local remove <name|path>                   Unregister a local folder.
-  auth login --token=<t>                     Persist a HISE store token.
-  auth logout                                Clear the persisted token.
+                                             Files you've modified are kept
+                                             and flagged for cleanup.
+  cleanup <name>                             Finish a previous uninstall by
+                                             deleting the files you'd modified.
+  local add <path>                           Add a HISE project to your asset
+                                             library so you can install it
+                                             into other projects.
+  local remove <name|path>                   Remove an entry from your asset
+                                             library.
+  auth login --token=<t>                     Sign in to the HISE store.
+  auth logout                                Sign out.
+  create                                     Open the package-author wizard
+                                             for the current project.
   help                                       Show available commands.
 
 EXAMPLES
   hise-cli -assets "list installed"
-  hise-cli -assets "info synth_blocks"
-  hise-cli -assets "install synth_blocks --version=1.2.0 --dry-run"
-  hise-cli -assets "install synth_blocks --local=/path/to/source"
-  hise-cli -assets "uninstall synth_blocks"
-  hise-cli -assets "cleanup synth_blocks"
+  hise-cli -assets "info synth_building_blocks"
+  hise-cli -assets "install synth_building_blocks --version=1.2.0 --dry-run"
+  hise-cli -assets "uninstall synth_building_blocks"
+  hise-cli -assets "cleanup synth_building_blocks"
   hise-cli -assets "local add /path/to/MyLib"
   hise-cli -assets "auth login --token=abc123"
+  hise-cli -assets "create"
 
 NOTES
-  - Install resolves <name> against local folders first, then the store.
-  - --dry-run previews changes without writing files or mutating HISE.
-  - Modified files block re-install; run cleanup first.
-  - Store install reads token from HISE_STORE_TOKEN env var, then
-    persisted storeToken.dat. Use \`auth login --token=<t>\` to persist.
-  - HISE must be running for asset commands (settings + preprocessor edits
-    go through HISE's REST API).`,
+  - "install <name>" looks in your asset library first, then the HISE store.
+  - --dry-run previews the changes without writing anything.
+  - If you've modified files installed by a package, uninstall keeps them and
+    flags the package for cleanup. Run "cleanup <name>" when you're ready to
+    delete them too.
+  - Sign in once with "auth login --token=<t>". The HISE_STORE_TOKEN env var
+    can also be used to override the saved sign-in for a single command.
+  - HISE must be running — the asset commands talk to your live project for
+    settings and preprocessor changes.`,
 };

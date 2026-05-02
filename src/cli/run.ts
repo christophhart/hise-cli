@@ -39,6 +39,7 @@ function needsProjectFolder(path: string): boolean {
 
 import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
 import { createNodeAssetEnvironment } from "../tui/nodeAssetIo.js";
+import { registerAssetsWizardHandlers } from "../tui/wizard-handlers/index.js";
 
 export interface CliCommandOptions {
 	connectionOverride?: HiseConnection;
@@ -74,6 +75,10 @@ export async function executeCliCommand(
 			launcher: opts.launcher,
 		});
 	}
+	const assetEnvironment = createNodeAssetEnvironment({ hise: connection });
+	if (opts.handlerRegistry) {
+		registerAssetsWizardHandlers(opts.handlerRegistry, assetEnvironment);
+	}
 	let datasets: import("../session-bootstrap.js").SessionDatasets = {};
 	const { session, completionEngine } = createSession({
 		connection,
@@ -82,7 +87,7 @@ export async function executeCliCommand(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
-		assetEnvironment: createNodeAssetEnvironment({ hise: connection }),
+		assetEnvironment,
 	});
 	// Wire up script file I/O for /run, /parse, and /edit commands
 	session.loadScriptFile = async (filePath: string) => {
@@ -158,6 +163,10 @@ async function executeRunCommand(
 	const connection = new CapturingHiseConnection(
 		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
 	);
+	const assetEnvironment = createNodeAssetEnvironment({ hise: connection });
+	if (opts.handlerRegistry) {
+		registerAssetsWizardHandlers(opts.handlerRegistry, assetEnvironment);
+	}
 	let datasets: import("../session-bootstrap.js").SessionDatasets = {};
 	const { session, completionEngine } = createSession({
 		connection,
@@ -166,7 +175,7 @@ async function executeRunCommand(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
-		assetEnvironment: createNodeAssetEnvironment({ hise: connection }),
+		assetEnvironment,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
@@ -266,6 +275,10 @@ async function runWatchMode(
 	const connection = new CapturingHiseConnection(
 		opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection(),
 	);
+	const assetEnvironment = createNodeAssetEnvironment({ hise: connection });
+	if (opts.handlerRegistry) {
+		registerAssetsWizardHandlers(opts.handlerRegistry, assetEnvironment);
+	}
 	let datasets: import("../session-bootstrap.js").SessionDatasets = {};
 	const { session, completionEngine } = createSession({
 		connection,
@@ -274,7 +287,7 @@ async function runWatchMode(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
-		assetEnvironment: createNodeAssetEnvironment({ hise: connection }),
+		assetEnvironment,
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);

@@ -69,7 +69,7 @@ Enter a mode to start working, or use /wizard for guided workflows.
 - **/ui** — UI component editor (add, remove, set properties, reparent)
 - **/script** — HiseScript REPL (evaluate expressions live)
 - **/inspect** — Runtime monitor (version, project info)
-- **/assets** — Package manager (install / uninstall / cleanup)
+- **/assets** — Install, manage, and publish HISE asset packages
 - **/export** — Build targets and export settings
 - **/undo** — Undo history and plan groups
 - **/hise** — Runtime control (launch, shutdown, screenshot, profile, playground)
@@ -167,29 +167,33 @@ Runtime monitor — query the live HISE status payload.
 
 	assets: `# Assets Mode
 
-Package manager for HISE projects. Mirrors the in-app asset manager but runs
-the install / uninstall / cleanup flow natively in the CLI; only project
-settings and preprocessors go through HISE.
+Install and manage HISE asset packages — the same kind of packages you'd find
+in the HISE store. You can also publish your current project as a package
+that other HISE users can install.
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| \`list [installed\\|uninstalled\\|local\\|store]\` | List packages by category |
-| \`info <name>\` | Show installation state for a package |
-| \`install <name> [--version=X.Y.Z] [--dry-run]\` | Install or upgrade |
+| \`list [installed\\|uninstalled\\|local\\|store]\` | Show packages by category |
+| \`info <name>\` | Show details for a package |
+| \`install <name> [--version=X.Y.Z] [--dry-run]\` | Install or update |
 | \`uninstall <name>\` | Remove an installed package |
-| \`cleanup <name>\` | Force-remove modified files left over from uninstall |
-| \`local add <path>\` | Register a local HISE project as a package source |
-| \`local remove <name\\|path>\` | Unregister a local folder |
-| \`auth login --token=<t>\` | Persist a HISE store token |
-| \`auth logout\` | Clear the persisted token |
+| \`cleanup <name>\` | Finish a previous uninstall (delete files you'd modified) |
+| \`local add <path>\` | Add a HISE project to your asset library |
+| \`local remove <name\\|path>\` | Remove an entry from your asset library |
+| \`auth login --token=<t>\` | Sign in to the HISE store |
+| \`auth logout\` | Sign out |
+| \`create\` | Open the package-author wizard for the current project |
 
 ## Notes
 
-- Install resolves \`<name>\` against local folders first, then the store.
-- \`--dry-run\` previews changes without writing files or mutating HISE state.
-- Modified files block re-install; run \`cleanup\` first.`,
+- \`install <name>\` looks in your asset library first, then the HISE store.
+- \`--dry-run\` previews the changes without writing anything.
+- If you've modified files installed by a package, uninstall keeps them and
+  flags the package for cleanup. Run \`cleanup <name>\` to delete them later.
+- HISE must be running — your project's settings and preprocessors are read
+  and written live.`,
 
 	undo: `# Undo Mode
 

@@ -7,6 +7,7 @@ import type { HiseConnection } from "../hise.js";
 import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
 import type { WizardHandlerRegistry } from "./handler-registry.js";
 import type {
+	InitDefaultsResult,
 	WizardDefinition,
 	WizardTask,
 	WizardAnswers,
@@ -85,7 +86,7 @@ export class WizardExecutor {
 	 * message to the user instead of opening the form. Any other error from
 	 * the handler is swallowed (treated as "no defaults").
 	 */
-	async initialize(def: WizardDefinition): Promise<Record<string, string>> {
+	async initialize(def: WizardDefinition): Promise<InitDefaultsResult> {
 		if (!def.init) return {};
 
 		if (def.init.type === "http") {
@@ -200,9 +201,13 @@ export class WizardExecutor {
 		}
 
 		onProgress?.({ phase: "Complete", percent: 100 });
+		const headerLine = `✓ ${def.header} completed successfully.`;
+		const message = allLogs.length > 0
+			? `${headerLine}\n\n${allLogs.join("\n")}`
+			: headerLine;
 		return {
 			success: true,
-			message: `✓ ${def.header} completed successfully.`,
+			message,
 			postActions: def.postActions.length > 0 ? def.postActions : undefined,
 			logs: allLogs.length > 0 ? allLogs : undefined,
 		};

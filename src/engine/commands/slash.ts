@@ -3,6 +3,7 @@
 import type { CommandResult } from "../result.js";
 import {
 	errorResult,
+	markdownResult,
 	runReportResult,
 	tableResult,
 	textResult,
@@ -60,7 +61,7 @@ async function handleModes(
 		["export", "Build targets", MODE_ACCENTS.compile],
 		["undo", "Undo history & plan groups", MODE_ACCENTS.undo],
 		["publish", "Build & sign installers", MODE_ACCENTS.publish],
-		["assets", "Package install / uninstall", MODE_ACCENTS.assets],
+		["assets", "Install, manage, and publish asset packages", MODE_ACCENTS.assets],
 	];
 
 	return tableResult(
@@ -470,7 +471,10 @@ async function executeWizardInline(
 
 	if (result.success) {
 		session.clearPendingWizard?.();
-		return textResult(result.message);
+		// Render as markdown so handlers can include code blocks / lists in
+		// their per-task logs (e.g. install_package_maker shows the manifest
+		// JSON and a file preview).
+		return markdownResult(result.message);
 	}
 	if (typeof result.nextTaskIndex === "number") {
 		const failedTask = def.tasks[result.nextTaskIndex];
@@ -1034,7 +1038,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 
 	registry.register({
 		name: "assets",
-		description: "Enter assets mode (package install / uninstall / cleanup)",
+		description: "Install, manage, and publish HISE asset packages",
 		handler: createModeHandler("assets"),
 		kind: "mode",
 		embedBlockedReason: "Asset operations need local filesystem and HTTP access.",

@@ -22,6 +22,7 @@ export type AssetDirectoryId = typeof ASSET_DIRECTORY_IDS[number];
 
 export const RESERVED_BASENAMES = new Set<string>([
 	".gitignore",
+	".DS_Store",
 	"expansion_info.xml",
 	"project_info.xml",
 	"user_info.xml",

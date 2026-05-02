@@ -724,7 +724,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 					connection: session.connection,
 					handlerRegistry: session.handlerRegistry,
 				});
-				let initDefaults: Record<string, string>;
+				let initDefaults: import("../engine/wizard/types.js").InitDefaultsResult;
 				try {
 					initDefaults = await executor.initialize(result.definition);
 				} catch (e: unknown) {

@@ -13,10 +13,25 @@ export type InternalTaskHandler = (
 	context?: Record<string, string>,
 ) => Promise<WizardExecResult>;
 
+/** Result returned by an init handler.
+ *
+ *  - The simple form is a flat map of field-id → default value.
+ *  - The structured form additionally lets the handler inject dynamic
+ *    `items` / `itemDescriptions` for multiselect or choice fields whose
+ *    options can only be known at runtime (e.g. preprocessor macros pulled
+ *    from a live HISE project). */
+export type InitHandlerResult =
+	| Record<string, string>
+	| {
+		defaults: Record<string, string>;
+		items?: Record<string, string[]>;
+		itemDescriptions?: Record<string, string[]>;
+	};
+
 /** Signature for internal init handler functions (pre-form default fetching). */
 export type InternalInitHandler = (
 	wizardId: string,
-) => Promise<Record<string, string>>;
+) => Promise<InitHandlerResult>;
 
 /**
  * Registry for internal wizard handler functions.

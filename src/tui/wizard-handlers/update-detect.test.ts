@@ -176,7 +176,7 @@ describe("createUpdateDetectHandler", () => {
 			{ sha: SAME_SHA },
 		);
 		const handler = createUpdateDetectHandler({ executor, connection, fetchImpl });
-		const defaults = await handler("update");
+		const defaults = await handler("update") as Record<string, string>;
 
 		expect(defaults.installPath).toBe("/Users/test/HISE");
 		expect(defaults.currentSha).toBe(SAME_SHA);
@@ -207,7 +207,7 @@ describe("createUpdateDetectHandler", () => {
 			{ sha: LATEST },
 		);
 		const handler = createUpdateDetectHandler({ executor, connection, fetchImpl });
-		const defaults = await handler("update");
+		const defaults = await handler("update") as Record<string, string>;
 
 		expect(defaults.updateAvailable).toBe("1");
 		expect(defaults.targetCommit).toBe(LATEST);
@@ -235,7 +235,7 @@ describe("createUpdateDetectHandler", () => {
 			{ sha: GREEN },
 		);
 		const handler = createUpdateDetectHandler({ executor, connection, fetchImpl });
-		const defaults = await handler("update");
+		const defaults = await handler("update") as Record<string, string>;
 
 		expect(defaults.currentSha).toBe(FILE_SHA);
 		expect(defaults.updateAvailable).toBe("1");
@@ -253,7 +253,7 @@ describe("createUpdateDetectHandler", () => {
 			{ sha: GREEN },
 		);
 		const handler = createUpdateDetectHandler({ executor, connection, fetchImpl });
-		const defaults = await handler("update");
+		const defaults = await handler("update") as Record<string, string>;
 
 		expect(defaults.hiseRunning).toBe("0");
 		expect(defaults.currentSha).toBe(FILE_SHA);
@@ -279,7 +279,7 @@ describe("createUpdateDetectHandler", () => {
 			{ sha: HEAD },
 		);
 		const handler = createUpdateDetectHandler({ executor, connection, fetchImpl });
-		const defaults = await handler("update");
+		const defaults = await handler("update") as Record<string, string>;
 
 		expect(defaults.latestCommitPassedCi).toBe("0");
 		// Wizard still targets the green SHA for checkout, not HEAD.

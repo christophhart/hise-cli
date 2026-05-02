@@ -26,7 +26,7 @@ describe("setupDetectEnvironment", () => {
 		executor.onSpawn("faust", { exitCode: 1, stdout: "", stderr: "not found" });
 
 		const handler = createSetupDetectHandler(executor);
-		const defaults = await handler("setup");
+		const defaults = await handler("setup") as Record<string, string>;
 
 		expect(defaults.platform).toBeDefined();
 		expect(defaults.architecture).toBeDefined();
@@ -41,7 +41,7 @@ describe("setupDetectEnvironment", () => {
 		executor.onSpawn("git", { exitCode: 0, stdout: "git version 2.43.0", stderr: "" });
 
 		const handler = createSetupDetectHandler(executor);
-		const defaults = await handler("setup");
+		const defaults = await handler("setup") as Record<string, string>;
 		expect(defaults.hasGit).toBe("1");
 	});
 
@@ -52,7 +52,7 @@ describe("setupDetectEnvironment", () => {
 		executor.onSpawn("xcode-select", { exitCode: 1, stdout: "", stderr: "no dir" });
 
 		const handler = createSetupDetectHandler(executor);
-		const defaults = await handler("setup");
+		const defaults = await handler("setup") as Record<string, string>;
 		expect(defaults.hasGit).toBe("0");
 	});
 });

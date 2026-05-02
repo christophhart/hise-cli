@@ -38,6 +38,11 @@ import {
 	type PublishDetectDeps,
 } from "./publish-detect.js";
 import {
+	createInstallPackageMakerInitHandler,
+	createInstallPackageMakerWriteHandler,
+} from "./install-package-maker.js";
+import type { AssetEnvironment } from "../../engine/assets/environment.js";
+import {
 	createAssertReadyHandler,
 	createStagePayloadHandler,
 	createSignBinariesHandler,
@@ -112,6 +117,22 @@ export function registerPublishHandlers(
 		createSignInstallerHandler(deps.executor),
 	);
 	registry.registerTask("publishNotarize", createNotarizeHandler(deps.executor));
+}
+
+/** Register install_package_maker wizard handlers. Needs the asset
+ *  environment (HISE connection + filesystem + app-data paths). */
+export function registerAssetsWizardHandlers(
+	registry: WizardHandlerRegistry,
+	assetEnvironment: AssetEnvironment,
+): void {
+	registry.registerInit(
+		"installPackageMakerDetect",
+		createInstallPackageMakerInitHandler(assetEnvironment),
+	);
+	registry.registerTask(
+		"installPackageMakerWrite",
+		createInstallPackageMakerWriteHandler(assetEnvironment),
+	);
 }
 
 /** Register update wizard handlers. Unlike the setup/compile wizards these

@@ -81,6 +81,10 @@ describe("parseAssetsCommand", () => {
 		expect(parseAssetsCommand("auth")).toMatchObject({ type: "error" });
 	});
 
+	it("create verb -> wizard launch command", () => {
+		expect(parseAssetsCommand("create")).toEqual({ type: "create" });
+	});
+
 	it("unknown verb -> error", () => {
 		expect(parseAssetsCommand("explode pkg")).toMatchObject({ type: "error" });
 	});

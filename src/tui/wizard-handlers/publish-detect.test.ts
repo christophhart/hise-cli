@@ -179,7 +179,7 @@ describe("publishDetectEnvironment", () => {
 				executor,
 				resolveProjectFolder: async () => project.folder,
 			});
-			const defaults = await handler("build_installer");
+			const defaults = await handler("build_installer") as Record<string, string>;
 			expect(defaults.version).toBe("1.2.3");
 			expect(defaults.projectName).toBe("MyPlugin");
 			expect(defaults.bundleIdentifier).toBe("com.example.MyPlugin");
@@ -219,7 +219,7 @@ describe("publishDetectEnvironment", () => {
 				executor,
 				resolveProjectFolder: defaultResolveProjectFolder(),
 			});
-			const defaults = await handler("build_installer");
+			const defaults = await handler("build_installer") as Record<string, string>;
 			expect(defaults.projectFolder).toBe(project.folder);
 		} finally {
 			project.cleanup();

@@ -3,6 +3,7 @@
 //
 // Syntax:
 //   help
+//   create
 //   list [installed|uninstalled|local|store]
 //   info <name>
 //   install <name> [--version=X.Y.Z] [--dry-run]
@@ -17,6 +18,7 @@ export type ListFilter = "all" | "installed" | "uninstalled" | "local" | "store"
 
 export type AssetsCommand =
 	| { type: "help" }
+	| { type: "create" }
 	| { type: "list"; filter: ListFilter }
 	| { type: "info"; name: string }
 	| {
@@ -73,6 +75,8 @@ export function parseAssetsCommand(input: string): AssetsCommand {
 	switch (verb) {
 		case "help":
 			return { type: "help" };
+		case "create":
+			return { type: "create" };
 		case "list":
 			return parseList(args);
 		case "info":

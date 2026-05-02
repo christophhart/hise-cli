@@ -405,7 +405,7 @@ describe("-wizard mode flag", () => {
 		if (result.kind === "json") {
 			expect(result.payload.ok).toBe(true);
 			if ("result" in result.payload) {
-				expect(result.payload.result.type).toBe("text");
+				expect(result.payload.result.type).toBe("markdown");
 			}
 		}
 	});

@@ -420,7 +420,7 @@ describe("mode handler one-shot execution", () => {
 			(session as any).onWizardProgress = () => {};
 
 			const result = await registry.dispatch("/resume", session);
-			expect(result.type).toBe("text");
+			expect(result.type).toBe("markdown");
 			expect(calls).toEqual(["two"]);
 			expect((session as any).pendingWizard).toBeNull();
 		});
@@ -629,7 +629,7 @@ describe("/wizard subcommands", () => {
 		const registry = createRegistry();
 		const { session, taskCalls } = await buildSession();
 		const result = await registry.dispatch("/wizard run demo", session);
-		expect(result.type).toBe("text");
+		expect(result.type).toBe("markdown");
 		expect(taskCalls).toHaveLength(1);
 		expect(taskCalls[0]!.answers.Format).toBe("VST2");
 	});
@@ -638,7 +638,7 @@ describe("/wizard subcommands", () => {
 		const registry = createRegistry();
 		const { session, taskCalls } = await buildSession();
 		const result = await registry.dispatch("/wizard run demo with Format=VST3", session);
-		expect(result.type).toBe("text");
+		expect(result.type).toBe("markdown");
 		expect(taskCalls[0]!.answers.Format).toBe("VST3");
 		expect(taskCalls[0]!.answers.ExportType).toBe("Plugin");
 	});
@@ -650,7 +650,7 @@ describe("/wizard subcommands", () => {
 			"/wizard run demo with Format=VST3, ExportType=Effect",
 			session,
 		);
-		expect(result.type).toBe("text");
+		expect(result.type).toBe("markdown");
 		expect(taskCalls[0]!.answers.Format).toBe("VST3");
 		expect(taskCalls[0]!.answers.ExportType).toBe("Effect");
 	});
@@ -662,7 +662,7 @@ describe("/wizard subcommands", () => {
 			'/wizard run demo with Format="some name", ExportType=Plugin',
 			session,
 		);
-		expect(result.type).toBe("text");
+		expect(result.type).toBe("markdown");
 		expect(taskCalls[0]!.answers.Format).toBe("some name");
 	});
 

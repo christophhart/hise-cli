@@ -74,6 +74,11 @@ describe("passesGate3 (reserved basenames)", () => {
 		expect(passesGate3(file("subdir/Readme.md"))).toBe(false);
 		expect(passesGate3(file("install_packages_log.json"))).toBe(false);
 	});
+	it("rejects .DS_Store at any depth", () => {
+		expect(passesGate3(file(".DS_Store"))).toBe(false);
+		expect(passesGate3(file("Scripts/.DS_Store"))).toBe(false);
+		expect(passesGate3(file("Samples/sub/.DS_Store"))).toBe(false);
+	});
 	it("accepts non-reserved files", () => {
 		expect(passesGate3(file("Scripts/main.js"))).toBe(true);
 	});

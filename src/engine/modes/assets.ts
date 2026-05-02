@@ -31,7 +31,7 @@ import type { CompletionEngine } from "../completion/engine.js";
 import { tokenizeAssets } from "../highlight/assets.js";
 import type { TokenSpan } from "../highlight/tokens.js";
 import type { CommandResult } from "../result.js";
-import { errorResult, markdownResult } from "../result.js";
+import { errorResult, markdownResult, wizardResult } from "../result.js";
 import { parseAssetsCommand, type AssetsCommand } from "./assets-parser.js";
 import { MODE_ACCENTS } from "./mode.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
@@ -40,19 +40,21 @@ const HELP_MARKDOWN = `## Assets Commands
 
 | Command | Description |
 |---------|-------------|
-| \`list [installed\\|uninstalled\\|local\\|store]\` | List packages by category |
-| \`info <name>\` | Show installation state for a package |
-| \`install <name> [--version=X.Y.Z] [--dry-run]\` | Install or upgrade a package |
+| \`list [installed\\|uninstalled\\|local\\|store]\` | Show packages by category |
+| \`info <name>\` | Show details for a package |
+| \`install <name> [--version=X.Y.Z] [--dry-run]\` | Install or update a package |
 | \`uninstall <name>\` | Remove an installed package |
-| \`cleanup <name>\` | Force-remove files left over from a NeedsCleanup uninstall |
-| \`local add <path>\` | Register a local HISE project folder as a package source |
-| \`local remove <name\\|path>\` | Unregister a local folder |
-| \`auth login [--token=<t>]\` | Persist a HISE store token |
-| \`auth logout\` | Clear the persisted store token |
+| \`cleanup <name>\` | Finish removing files from a previous uninstall |
+| \`local add <path>\` | Add a HISE project to your asset library |
+| \`local remove <name\\|path>\` | Remove an entry from your asset library |
+| \`auth login [--token=<t>]\` | Sign in to the HISE store |
+| \`auth logout\` | Sign out of the HISE store |
+| \`create\` | Open the package-author wizard for the current project |
 | \`help\` | Show this list |
 
-Install resolves \`<name>\` against local folders first, then the store. Pass
-\`--dry-run\` to preview changes without writing files.`;
+When you run \`install <name>\`, the CLI looks in your asset library first and
+then falls back to the HISE store. Use \`--dry-run\` to preview the changes
+without writing anything.`;
 
 interface CompletionCache {
 	installedNames: string[];
@@ -104,15 +106,26 @@ export class AssetsMode implements Mode {
 		await this.refreshCache();
 	}
 
-	async parse(input: string, _session: SessionContext): Promise<CommandResult> {
+	async parse(input: string, session: SessionContext): Promise<CommandResult> {
 		const command = parseAssetsCommand(input);
 		if (command.type === "help") return markdownResult(HELP_MARKDOWN);
 		if (command.type === "error") return errorResult(command.message);
 
+		if (command.type === "create") {
+			const def = session.wizardRegistry?.get("install_package_maker");
+			if (!def) {
+				return errorResult(
+					"install_package_maker wizard is not registered.",
+					"Wizard definitions failed to load — check the bundled `data/wizards/` directory.",
+				);
+			}
+			return wizardResult(def);
+		}
+
 		if (!this.env) {
 			return errorResult(
-				"Asset operations are unavailable: no asset environment wired in this build.",
-				"This frontend does not yet provide filesystem / HTTP / zip backends for the assets mode.",
+				"The assets mode is not available in this build.",
+				"This frontend doesn't have the local file / network access the asset commands need.",
 			);
 		}
 
@@ -153,6 +166,9 @@ export class AssetsMode implements Mode {
 }
 
 async function dispatch(env: AssetEnvironment, cmd: AssetsCommand): Promise<CommandResult> {
+	if (cmd.type === "help" || cmd.type === "error" || cmd.type === "create") {
+		return errorResult("internal: should be handled before dispatch");
+	}
 	switch (cmd.type) {
 		case "list":              return runList(env, cmd.filter);
 		case "info":              return formatInfo(await info(env, cmd.name));
@@ -165,14 +181,14 @@ async function dispatch(env: AssetEnvironment, cmd: AssetsCommand): Promise<Comm
 			const token = cmd.token;
 			if (!token) {
 				return errorResult(
-					"auth login requires a token (--token=<t>).",
-					"Generate a personal access token at https://store.hise.dev/account/settings/",
+					"auth login needs a token (`--token=<t>`).",
+					"Generate one at https://store.hise.dev/account/settings/ and paste it here.",
 				);
 			}
 			const r = await login(env, token);
 			return formatLogin(r);
 		}
-		case "authLogout":        await logout(env); return markdownResult("Cleared stored token.");
+		case "authLogout":        await logout(env); return markdownResult("Signed out of the HISE store.");
 		default:                  return errorResult("Internal: unhandled command kind");
 	}
 }
@@ -306,8 +322,13 @@ function formatInstall(r: InstallResult): CommandResult {
 			const files = r.entry.steps
 				.filter((s): s is Extract<typeof s, { type: "File" }> => s.type === "File")
 				.map((s) => s.target);
+			const sourceLabel = r.entry.mode === "LocalFolder"
+				? "from your asset library"
+				: r.entry.mode === "StoreDownload"
+					? "from the HISE store"
+					: "";
 			const lines = [
-				`Installed **${r.entry.name}** ${r.entry.version} (${r.entry.mode}).`,
+				`Installed **${r.entry.name}** ${r.entry.version}${sourceLabel ? " " + sourceLabel : ""}.`,
 				"",
 				`### Files (${files.length})`,
 			];
@@ -327,24 +348,27 @@ function formatInstall(r: InstallResult): CommandResult {
 			return markdownResult(`**${r.existingVersion}** is already installed.`);
 		case "fileConflict":
 			return errorResult(
-				"File conflict: target paths exist on disk but are not claimed by an installed package.",
-				r.collisions.map((p) => `- ${p}`).join("\n"),
+				"Cannot install: some files in your project would be overwritten by this package.",
+				`Move or rename these files first, then retry:\n${r.collisions.map((p) => `- ${p}`).join("\n")}`,
 			);
 		case "invalidPackage":
 			return errorResult(`Invalid package: ${r.message}`);
 		case "corruptedLog":
-			return errorResult(`install_packages_log.json is corrupted: ${r.message}`);
+			return errorResult(
+				"The package install record for this project is unreadable.",
+				r.message,
+			);
 		case "transportError":
-			return errorResult(`Transport error: ${r.message}`);
+			return errorResult(`Connection error: ${r.message}`);
 		case "needsCleanupFirst":
 			return errorResult(
-				`${r.package} has user-modified files from a previous uninstall.`,
-				`Run \`cleanup ${r.package}\` first, then retry install.`,
+				`Cannot install: a previous uninstall of **${r.package}** left files behind that you've modified.`,
+				`Run \`cleanup ${r.package}\` to delete those files, then retry.`,
 			);
 		case "missingToken":
 			return errorResult(
-				"Store install requires a token.",
-				"Run `auth login --token=<t>` first, or pass `--token=<t>` to this command.",
+				"You need to be signed in to the HISE store to install this package.",
+				"Run `auth login --token=<t>` first.",
 			);
 		case "dryRun": {
 			const p = r.preview;
@@ -375,48 +399,50 @@ function formatInstall(r: InstallResult): CommandResult {
 function formatUninstall(r: Awaited<ReturnType<typeof uninstall>>): CommandResult {
 	switch (r.kind) {
 		case "ok": {
-			const lines = [`Uninstalled (${r.deleted.length} deleted, ${r.skipped.length} skipped).`];
+			const lines = [`Uninstalled — removed ${r.deleted.length} file(s)${r.skipped.length > 0 ? `, kept ${r.skipped.length} that you've modified` : ""}.`];
 			if (r.needsCleanup) {
-				lines.push("", "⚠ NeedsCleanup state — run `cleanup <name>` to remove the modified files when ready.");
+				lines.push("", "Some files were skipped because you've modified them. Run `cleanup <name>` when you're ready to delete them too.");
 				lines.push(...r.skipped.slice(0, 10).map((p) => `- ${p}`));
 				if (r.skipped.length > 10) lines.push(`- ... ${r.skipped.length - 10} more`);
 			}
 			return markdownResult(lines.join("\n"));
 		}
-		case "notFound":           return errorResult(`Package not installed: ${r.package}`);
-		case "alreadyNeedsCleanup":return errorResult(`${r.package} is already in NeedsCleanup state. Run cleanup instead.`);
-		case "transportError":     return errorResult(`Transport error: ${r.message}`);
+		case "notFound":           return errorResult(`**${r.package}** is not installed.`);
+		case "alreadyNeedsCleanup":return errorResult(`**${r.package}** has a previous uninstall waiting to be cleaned up. Run \`cleanup ${r.package}\` instead.`);
+		case "transportError":     return errorResult(`Connection error: ${r.message}`);
 	}
 }
 
 function formatCleanup(r: Awaited<ReturnType<typeof cleanup>>): CommandResult {
 	switch (r.kind) {
 		case "ok": {
-			const lines = [`Cleanup: ${r.deleted.length} deleted, ${r.remaining.length} remaining.`];
-			if (r.remaining.length > 0) lines.push("", "_Could not delete:_", ...r.remaining.map((p) => `- ${p}`));
+			const lines = [`Cleaned up — deleted ${r.deleted.length} file(s)${r.remaining.length > 0 ? `, ${r.remaining.length} could not be deleted` : ""}.`];
+			if (r.remaining.length > 0) lines.push("", "_These files could not be deleted (try closing them in HISE first):_", ...r.remaining.map((p) => `- ${p}`));
 			return markdownResult(lines.join("\n"));
 		}
-		case "notFound":          return errorResult(`Package not in install log: ${r.package}`);
-		case "notNeedsCleanup":   return errorResult(`${r.package} is not in NeedsCleanup state.`);
+		case "notFound":          return errorResult(`**${r.package}** is not installed in this project.`);
+		case "notNeedsCleanup":   return errorResult(`**${r.package}** has no leftover files to clean up.`);
 	}
 }
 
 function formatLocalAdd(r: Awaited<ReturnType<typeof addLocalFolder>>): CommandResult {
 	if (r.kind === "ok") {
-		return markdownResult(`Registered local folder \`${r.folder}\` (${r.info.name ?? "?"}@${r.info.version ?? "?"}).`);
+		const name = r.info.name ?? "?";
+		const version = r.info.version ?? "?";
+		return markdownResult(`Added **${name}** ${version} to your asset library.\n\n_Source:_ \`${r.folder}\``);
 	}
-	if (r.kind === "duplicate") return errorResult(`Folder already registered: ${r.folder}`);
-	return errorResult(`Folder is missing project_info.xml: ${r.folder}`);
+	if (r.kind === "duplicate") return errorResult(`This project is already in your asset library: ${r.folder}`);
+	return errorResult(`That folder doesn't look like a HISE project (no project_info.xml): ${r.folder}`);
 }
 
 function formatLocalRemove(r: Awaited<ReturnType<typeof removeLocalFolder>>): CommandResult {
-	if (r.kind === "ok") return markdownResult(`Removed \`${r.folder}\` from local folders.`);
-	return errorResult(`No local folder matched: ${r.query}`);
+	if (r.kind === "ok") return markdownResult(`Removed \`${r.folder}\` from your asset library.`);
+	return errorResult(`No entry matched **${r.query}** in your asset library.`);
 }
 
 function formatLogin(r: Awaited<ReturnType<typeof login>>): CommandResult {
-	if (r.kind === "ok") return markdownResult(`Logged in as **${r.user.displayName}**.`);
+	if (r.kind === "ok") return markdownResult(`Signed in as **${r.user.displayName}**.`);
 	if (r.kind === "invalidToken") return errorResult(r.message);
-	return errorResult(`Network error: ${r.message}`);
+	return errorResult(`Could not reach the HISE store: ${r.message}`);
 }
 

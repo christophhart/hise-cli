@@ -91,7 +91,7 @@ describe("AssetsMode.parse", () => {
 		const r = await mode.parse("auth login --token=abc", dummySession);
 		expect(r.type).toBe("markdown");
 		if (r.type !== "markdown") return;
-		expect(r.content).toMatch(/Logged in as/);
+		expect(r.content).toMatch(/Signed in as/);
 	});
 
 	it("info returns markdown with state", async () => {
@@ -253,6 +253,27 @@ describe("AssetsMode install resolution", () => {
 		expect(r.type).not.toBe("error");
 		// File copied to target -> proves local source path was used.
 		expect(await fs.exists("/projects/Demo/Scripts/main.js")).toBe(true);
+	});
+});
+
+describe("AssetsMode create -> wizard", () => {
+	it("returns wizardResult when registry has install_package_maker", async () => {
+		const { env } = makeEnv();
+		const fakeDef = { id: "install_package_maker", header: "X", tabs: [], tasks: [], postActions: [], globalDefaults: {} };
+		const session = {
+			wizardRegistry: { get: (id: string) => id === "install_package_maker" ? fakeDef : undefined },
+		} as unknown as SessionContext;
+		const mode = new AssetsMode(env);
+		const r = await mode.parse("create", session);
+		expect(r.type).toBe("wizard");
+	});
+
+	it("returns error when registry missing", async () => {
+		const { env } = makeEnv();
+		const session = {} as SessionContext;
+		const mode = new AssetsMode(env);
+		const r = await mode.parse("create", session);
+		expect(r.type).toBe("error");
 	});
 });
 
