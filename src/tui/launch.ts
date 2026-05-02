@@ -12,6 +12,7 @@ import { BuilderMode } from "../engine/modes/builder.js";
 import { registerUpdateHandlers } from "./wizard-handlers/index.js";
 import type { NodeRuntime } from "../bootstrap-runtime.js";
 import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
+import { createNodeAssetEnvironment } from "./nodeAssetIo.js";
 import { InlineApp } from "./InlineApp.js";
 import { renderInlineBanner } from "./banner.js";
 
@@ -31,6 +32,15 @@ export async function launchInlineRepl(
 	const componentPropsRef: { current?: import("../engine/modes/ui.js").ComponentPropertyMap } = {};
 	const preprocessorListRef: { current?: import("../engine/data.js").PreprocessorList } = {};
 
+	const copyToClipboard = (text: string) => {
+		process.stdout.write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
+	};
+
+	const assetEnvironment = createNodeAssetEnvironment({
+		hise: connection,
+		clipboard: { write: copyToClipboard },
+	});
+
 	const { session } = createSession({
 		connection,
 		completionEngine,
@@ -40,14 +50,13 @@ export async function launchInlineRepl(
 		getPreprocessorList: () => preprocessorListRef.current,
 		handlerRegistry: runtime.handlerRegistry,
 		launcher: runtime.hiseLauncher,
+		assetEnvironment,
 	});
 
 	wireScriptFileOps(session);
 	wireExtendedFileOps(session);
 
-	session.copyToClipboard = (text: string) => {
-		process.stdout.write(`\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`);
-	};
+	session.copyToClipboard = copyToClipboard;
 	session.resolveHiseProjectFolder = async () => {
 		const { readFile } = await import("node:fs/promises");
 		const { join } = await import("node:path");

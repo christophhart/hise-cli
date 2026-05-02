@@ -74,6 +74,14 @@ export function scoreMatch(
 	return null;
 }
 
+function namedItems(names: string[], detail?: string): CompletionItem[] {
+	return names.map((label) => detail ? { label, detail } : { label });
+}
+
+function unique<T>(values: T[]): T[] {
+	return [...new Set(values)];
+}
+
 /**
  * Filter and sort items by fuzzy match score.
  * Returns items sorted best-first (lowest score), capped at limit.
@@ -500,30 +508,102 @@ export class CompletionEngine {
 	}
 
 	/**
-	 * Complete assets mode subcommands.
+	 * Complete assets mode subcommands. Slot-aware: top-level verbs at
+	 * position 0, then per-verb argument slots (package names, sub-verbs,
+	 * filter keywords, --flags). Dynamic candidates (installed / local
+	 * package names) come from the AssetsMode cache.
 	 */
-	completeAssets(prefix: string): CompletionItem[] {
-		const items: CompletionItem[] = [
-			{ label: "list", detail: "List packages by category" },
-			{ label: "info", detail: "Show installation state for a package" },
-			{ label: "install", detail: "Install or upgrade a package" },
-			{ label: "uninstall", detail: "Remove an installed package" },
-			{ label: "cleanup", detail: "Force-remove modified files post-uninstall" },
-			{ label: "local", detail: "Manage local package source folders" },
-			{ label: "auth", detail: "Manage HISE store credentials" },
-			{ label: "help", detail: "Show assets mode commands" },
-			// list filters
-			{ label: "installed", detail: "Filter: installed packages" },
-			{ label: "uninstalled", detail: "Filter: not yet installed" },
-			{ label: "store", detail: "Filter: store catalog" },
-			// auth verbs
-			{ label: "login", detail: "Persist a token" },
-			{ label: "logout", detail: "Clear the persisted token" },
-			// local verbs
-			{ label: "add", detail: "Register a local folder" },
-			{ label: "remove", detail: "Unregister a local folder" },
-		];
-		return fuzzyFilter(prefix, items);
+	completeAssets(
+		prefix: string,
+		dynamic: { installedNames: string[]; localNames: string[]; needsCleanupNames: string[] },
+	): CompletionItem[] {
+		const tokens = prefix.trimStart().split(/\s+/);
+		const verb = tokens[0]?.toLowerCase() ?? "";
+		const sub = tokens[1]?.toLowerCase() ?? "";
+		const tail = tokens[tokens.length - 1] ?? "";
+		const tokenCount = tokens.length;
+
+		// Top-level verbs at position 0 (or while still typing first token).
+		if (tokenCount <= 1) {
+			return fuzzyFilter(prefix, [
+				{ label: "list", detail: "List packages by category" },
+				{ label: "info", detail: "Show installation state" },
+				{ label: "install", detail: "Install or upgrade a package" },
+				{ label: "uninstall", detail: "Remove an installed package" },
+				{ label: "cleanup", detail: "Force-remove modified files post-uninstall" },
+				{ label: "local", detail: "Manage local package source folders" },
+				{ label: "auth", detail: "Manage HISE store credentials" },
+				{ label: "help", detail: "Show assets mode commands" },
+			]);
+		}
+
+		// `install` flag completion: trigger whenever the trailing token starts with --,
+		// regardless of where it lands among the install args.
+		if (verb === "install" && tail.startsWith("--")) {
+			return fuzzyFilter(tail, [
+				{ label: "--dry-run", detail: "Preview without writing" },
+				{ label: "--version=", detail: "Pin a specific store tag" },
+			]);
+		}
+
+		// list <filter>
+		if (verb === "list" && tokenCount === 2) {
+			return fuzzyFilter(tail, [
+				{ label: "installed" },
+				{ label: "uninstalled" },
+				{ label: "local" },
+				{ label: "store" },
+			]);
+		}
+
+		// info <name> — any known package
+		if (verb === "info" && tokenCount === 2) {
+			return fuzzyFilter(tail, namedItems(unique([
+				...dynamic.installedNames,
+				...dynamic.localNames,
+			])));
+		}
+
+		// uninstall <name> — installed packages only
+		if (verb === "uninstall" && tokenCount === 2) {
+			return fuzzyFilter(tail, namedItems(dynamic.installedNames, "installed"));
+		}
+
+		// cleanup <name> — needs-cleanup entries; fall back to all installed if empty
+		if (verb === "cleanup" && tokenCount === 2) {
+			const candidates = dynamic.needsCleanupNames.length > 0
+				? namedItems(dynamic.needsCleanupNames, "needs cleanup")
+				: namedItems(dynamic.installedNames, "installed");
+			return fuzzyFilter(tail, candidates);
+		}
+
+		// install <name> — local packages not currently installed
+		if (verb === "install" && tokenCount === 2) {
+			const installed = new Set(dynamic.installedNames);
+			const installable = dynamic.localNames.filter((n) => !installed.has(n));
+			return fuzzyFilter(tail, namedItems(installable, "local"));
+		}
+
+		// local <add|remove>
+		if (verb === "local" && tokenCount === 2) {
+			return fuzzyFilter(tail, [
+				{ label: "add", detail: "Register a folder" },
+				{ label: "remove", detail: "Unregister a folder" },
+			]);
+		}
+		if (verb === "local" && sub === "remove" && tokenCount === 3) {
+			return fuzzyFilter(tail, namedItems(dynamic.localNames, "local"));
+		}
+
+		// auth <login|logout>
+		if (verb === "auth" && tokenCount === 2) {
+			return fuzzyFilter(tail, [
+				{ label: "login", detail: "Persist a token" },
+				{ label: "logout", detail: "Clear the persisted token" },
+			]);
+		}
+
+		return [];
 	}
 
 	/**

@@ -842,9 +842,12 @@ SYNTAX
 VERBS
   list [installed|uninstalled|local|store]   List packages by category.
   info <name>                                Show installation state.
-  install <name> [--version=X.Y.Z] [--dry-run] [--token=<t>] [--local=<path>]
+  install <name> [--version=X.Y.Z] [--dry-run]
                                              Install or upgrade a package.
-                                             Local install via --local=<path>.
+                                             <name> resolves against local
+                                             folders first, then the store.
+                                             Register local folders first via
+                                             "local add <path>".
   uninstall <name>                           Remove an installed package.
   cleanup <name>                             Force-remove user-modified files
                                              from a NeedsCleanup uninstall.
@@ -869,8 +872,8 @@ NOTES
   - Install resolves <name> against local folders first, then the store.
   - --dry-run previews changes without writing files or mutating HISE.
   - Modified files block re-install; run cleanup first.
-  - Token sourcing order: --token flag, then HISE_STORE_TOKEN env var, then
-    persisted storeToken.dat.
+  - Store install reads token from HISE_STORE_TOKEN env var, then
+    persisted storeToken.dat. Use \`auth login --token=<t>\` to persist.
   - HISE must be running for asset commands (settings + preprocessor edits
     go through HISE's REST API).`,
 };

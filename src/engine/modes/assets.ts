@@ -8,6 +8,7 @@ import type { AssetEnvironment } from "../assets/environment.js";
 import {
 	addLocalFolder,
 	cleanup,
+	describeLocalFolder,
 	info,
 	install,
 	listInstalled,
@@ -15,6 +16,8 @@ import {
 	listStore,
 	login,
 	logout,
+	readInstallLog,
+	readLocalFolders,
 	removeLocalFolder,
 	uninstall,
 	type InstallResult,
@@ -23,6 +26,7 @@ import {
 	type LocalFolderInfo,
 	type PackageInfo,
 } from "../assets/operations/index.js";
+import { getProjectFolder } from "../assets/hiseAdapter.js";
 import type { CompletionEngine } from "../completion/engine.js";
 import { tokenizeAssets } from "../highlight/assets.js";
 import type { TokenSpan } from "../highlight/tokens.js";
@@ -50,6 +54,22 @@ const HELP_MARKDOWN = `## Assets Commands
 Install resolves \`<name>\` against local folders first, then the store. Pass
 \`--dry-run\` to preview changes without writing files.`;
 
+interface CompletionCache {
+	installedNames: string[];
+	localNames: string[];
+	needsCleanupNames: string[];
+}
+
+const EMPTY_CACHE: CompletionCache = {
+	installedNames: [],
+	localNames: [],
+	needsCleanupNames: [],
+};
+
+const MUTATING_COMMANDS = new Set([
+	"install", "uninstall", "cleanup", "localAdd", "localRemove",
+]);
+
 export class AssetsMode implements Mode {
 	readonly id: Mode["id"] = "assets";
 	readonly name = "Assets";
@@ -58,6 +78,7 @@ export class AssetsMode implements Mode {
 
 	private readonly env: AssetEnvironment | null;
 	private readonly completionEngine: CompletionEngine | null;
+	private cache: CompletionCache = EMPTY_CACHE;
 
 	constructor(env: AssetEnvironment | null, completionEngine?: CompletionEngine) {
 		this.env = env;
@@ -72,8 +93,15 @@ export class AssetsMode implements Mode {
 		if (!this.completionEngine) return { items: [], from: 0, to: input.length };
 		const trimmed = input.trimStart();
 		const leadingSpaces = input.length - trimmed.length;
-		const items = this.completionEngine.completeAssets(trimmed);
-		return { items, from: leadingSpaces, to: input.length, label: "Assets commands" };
+		const items = this.completionEngine.completeAssets(trimmed, this.cache);
+		// Replace only the trailing token, not the whole input.
+		const lastSpace = input.lastIndexOf(" ");
+		const from = lastSpace === -1 ? leadingSpaces : lastSpace + 1;
+		return { items, from, to: input.length, label: "Assets commands" };
+	}
+
+	async onEnter(_session: SessionContext): Promise<void> {
+		await this.refreshCache();
 	}
 
 	async parse(input: string, _session: SessionContext): Promise<CommandResult> {
@@ -89,10 +117,38 @@ export class AssetsMode implements Mode {
 		}
 
 		try {
-			return await dispatch(this.env, command);
+			const result = await dispatch(this.env, command);
+			if (MUTATING_COMMANDS.has(command.type)) {
+				await this.refreshCache();
+			}
+			return result;
 		} catch (err) {
 			return errorResult(`Asset command failed: ${(err as Error).message}`);
 		}
+	}
+
+	private async refreshCache(): Promise<void> {
+		if (!this.env) return;
+		const next: CompletionCache = {
+			installedNames: [],
+			localNames: [],
+			needsCleanupNames: [],
+		};
+		try {
+			const projectFolder = await getProjectFolder(this.env.hise);
+			const log = await readInstallLog(this.env, projectFolder);
+			next.installedNames = log.map((e) => e.name);
+			next.needsCleanupNames = log
+				.filter((e) => e.kind === "needsCleanup")
+				.map((e) => e.name);
+		} catch { /* HISE offline or log corrupt — leave list empty */ }
+		try {
+			const local = await listLocal(this.env);
+			next.localNames = local
+				.map((l) => l.name)
+				.filter((n): n is string => typeof n === "string" && n.length > 0);
+		} catch { /* keep empty */ }
+		this.cache = next;
 	}
 }
 
@@ -122,10 +178,39 @@ async function dispatch(env: AssetEnvironment, cmd: AssetsCommand): Promise<Comm
 }
 
 async function runInstall(env: AssetEnvironment, cmd: Extract<AssetsCommand, { type: "install" }>): Promise<InstallResult> {
-	const source = cmd.local
-		? { kind: "local" as const, folder: cmd.local }
-		: { kind: "store" as const, packageName: cmd.name, version: cmd.version, token: cmd.token };
-	return install(env, { source, dryRun: cmd.dryRun });
+	// Resolve <name> against local folders first; fall through to the store
+	// when no local folder claims that package name. Use `local add <path>`
+	// to register a folder before installing from it.
+	const localFolder = await findLocalFolderByName(env, cmd.name);
+	if (localFolder) {
+		return install(env, {
+			source: { kind: "local", folder: localFolder },
+			dryRun: cmd.dryRun,
+		});
+	}
+	return install(env, {
+		source: { kind: "store", packageName: cmd.name, version: cmd.version },
+		dryRun: cmd.dryRun,
+	});
+}
+
+async function findLocalFolderByName(env: AssetEnvironment, name: string): Promise<string | null> {
+	let folders: string[];
+	try {
+		folders = await readLocalFolders(env);
+	} catch {
+		return null;
+	}
+	for (const folder of folders) {
+		try {
+			const info = await describeLocalFolder(env, folder);
+			if (info.name === name) return folder;
+		} catch {
+			// Skip folders that fail to parse rather than aborting the resolve.
+			continue;
+		}
+	}
+	return null;
 }
 
 // ── Formatters ────────────────────────────────────────────────────
@@ -218,11 +303,19 @@ function formatInfo(p: PackageInfo): CommandResult {
 function formatInstall(r: InstallResult): CommandResult {
 	switch (r.kind) {
 		case "ok": {
-			const fileCount = r.entry.steps.filter((s) => s.type === "File").length;
+			const files = r.entry.steps
+				.filter((s): s is Extract<typeof s, { type: "File" }> => s.type === "File")
+				.map((s) => s.target);
 			const lines = [
 				`Installed **${r.entry.name}** ${r.entry.version} (${r.entry.mode}).`,
-				`- ${fileCount} file(s) copied.`,
+				"",
+				`### Files (${files.length})`,
 			];
+			const FILE_CAP = 50;
+			lines.push(...files.slice(0, FILE_CAP).map((f) => `- \`${f}\``));
+			if (files.length > FILE_CAP) {
+				lines.push(`- _… ${files.length - FILE_CAP} more_`);
+			}
 			if (r.warnings.length > 0) {
 				lines.push("", "_Warnings:_", ...r.warnings.map((w) => `- ${w}`));
 			}

@@ -38,6 +38,7 @@ function needsProjectFolder(path: string): boolean {
 }
 
 import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
+import { createNodeAssetEnvironment } from "../tui/nodeAssetIo.js";
 
 export interface CliCommandOptions {
 	connectionOverride?: HiseConnection;
@@ -81,6 +82,7 @@ export async function executeCliCommand(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
+		assetEnvironment: createNodeAssetEnvironment({ hise: connection }),
 	});
 	// Wire up script file I/O for /run, /parse, and /edit commands
 	session.loadScriptFile = async (filePath: string) => {
@@ -164,6 +166,7 @@ async function executeRunCommand(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
+		assetEnvironment: createNodeAssetEnvironment({ hise: connection }),
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);
@@ -271,6 +274,7 @@ async function runWatchMode(
 		getComponentProperties: () => datasets.componentProperties,
 		handlerRegistry: opts.handlerRegistry,
 		launcher: opts.launcher,
+		assetEnvironment: createNodeAssetEnvironment({ hise: connection }),
 	});
 	session.loadScriptFile = async (fp: string) => readFile(resolve(fp), "utf-8");
 	wireScriptFileOps(session);

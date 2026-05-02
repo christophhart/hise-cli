@@ -127,12 +127,21 @@ function normalizeEntry(value: unknown): InstallLogEntry {
 	};
 }
 
+// Mode is optional in real HISE install logs — `toInstallLog` (HiseAssetInstaller.cpp)
+// writes Name/Company/Version/Date/Steps only. Default to "Undefined" when
+// the field is absent or unknown. Numeric values (rare; legacy paths) are
+// looked up against the enum order in HiseAssetInstaller.h.
+const MODE_BY_INDEX: InstallMode[] = ["Undefined", "UninstallOnly", "StoreDownload", "LocalFolder"];
+
 function normalizeMode(value: unknown): InstallMode {
-	const s = requireString(value, "Mode");
-	if (!VALID_MODES.has(s)) {
-		throw new Error(`Mode must be one of Undefined, UninstallOnly, StoreDownload, LocalFolder (got "${s}")`);
+	if (value === undefined || value === null) return "Undefined";
+	if (typeof value === "string") {
+		return VALID_MODES.has(value) ? (value as InstallMode) : "Undefined";
 	}
-	return s as InstallMode;
+	if (typeof value === "number" && Number.isInteger(value) && value >= 0 && value < MODE_BY_INDEX.length) {
+		return MODE_BY_INDEX[value];
+	}
+	return "Undefined";
 }
 
 function normalizeStep(value: unknown): InstallStep {

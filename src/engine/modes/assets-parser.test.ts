@@ -40,12 +40,19 @@ describe("parseAssetsCommand", () => {
 		});
 	});
 
-	it("install --version=1.2.0 --token=abc --local=/path", () => {
-		expect(parseAssetsCommand("install pkg --version=1.2.0 --token=abc --local=/p"))
+	it("install --version=1.2.0", () => {
+		expect(parseAssetsCommand("install pkg --version=1.2.0"))
 			.toEqual({
 				type: "install", name: "pkg", dryRun: false,
-				version: "1.2.0", token: "abc", local: "/p",
+				version: "1.2.0",
 			});
+	});
+
+	it("install ignores stray --token / --local flags (not in surface)", () => {
+		const r = parseAssetsCommand("install pkg --token=abc --local=/p");
+		expect(r).toMatchObject({ type: "install", name: "pkg" });
+		expect(r as object).not.toHaveProperty("token");
+		expect(r as object).not.toHaveProperty("local");
 	});
 
 	it("install requires name", () => {

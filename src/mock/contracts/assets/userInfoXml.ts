@@ -1,5 +1,5 @@
-// Source-package `user_info.xml` parser. Spec §3.5.
-// Only field consumed by the asset manager is `Company`.
+// Source-package `user_info.xml` parser. Only field consumed by the asset
+// manager is `Company`. Root element is `<UserSettings>`.
 
 import { XMLParser } from "fast-xml-parser";
 import { decodeXmlEntities } from "./xml.js";
@@ -16,9 +16,9 @@ const PARSER = new XMLParser({
 
 export function parseUserInfoXml(xml: string): UserInfo {
 	const parsed = PARSER.parse(xml) as Record<string, unknown>;
-	const root = parsed.UserInfo;
+	const root = parsed.UserSettings;
 	if (!root || typeof root !== "object") {
-		throw new Error("user_info.xml: missing <UserInfo> root");
+		throw new Error("user_info.xml: missing <UserSettings> root");
 	}
 	const data = root as Record<string, unknown>;
 	const company = data.Company;

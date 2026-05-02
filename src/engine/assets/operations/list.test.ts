@@ -65,7 +65,7 @@ describe("listLocal", () => {
   <Version value="2.0"/>
 </ProjectSettings>`);
 		fs.seedText("/local/MyLib/user_info.xml", `<?xml version="1.0"?>
-<UserInfo><Company value="vendor"/></UserInfo>`);
+<UserSettings><Company value="vendor"/></UserSettings>`);
 		await writeLocalFolders(env, ["/local/MyLib"]);
 
 		const r = await listLocal(env);

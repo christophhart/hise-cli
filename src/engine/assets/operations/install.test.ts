@@ -83,7 +83,7 @@ const SOURCE_PROJECT_XML = `<?xml version="1.0"?>
 </ProjectSettings>`;
 
 const SOURCE_USER_XML = `<?xml version="1.0"?>
-<UserInfo><Company value="vendor_username"/></UserInfo>`;
+<UserSettings><Company value="vendor_username"/></UserSettings>`;
 
 function seedLocalSource(fs: MockFilesystem, root: string, manifest: object): string {
 	fs.seedText(`${root}/project_info.xml`, SOURCE_PROJECT_XML);

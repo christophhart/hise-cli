@@ -5,7 +5,7 @@
 //   help
 //   list [installed|uninstalled|local|store]
 //   info <name>
-//   install <name> [--version=X.Y.Z] [--dry-run] [--token=<t>] [--local=<path>]
+//   install <name> [--version=X.Y.Z] [--dry-run]
 //   uninstall <name>
 //   cleanup <name>
 //   local add <path>
@@ -24,8 +24,6 @@ export type AssetsCommand =
 		name: string;
 		version?: string;
 		dryRun: boolean;
-		token?: string;
-		local?: string;
 	}
 	| { type: "uninstall"; name: string }
 	| { type: "cleanup"; name: string }
@@ -112,10 +110,8 @@ function parseInstall(args: string[], flags: Map<string, string | true>): Assets
 		return { type: "error", message: "install requires a package name" };
 	}
 	const version = readStringFlag(flags, "version");
-	const token = readStringFlag(flags, "token");
-	const local = readStringFlag(flags, "local");
 	const dryRun = flags.has("dry-run");
-	return { type: "install", name, version, dryRun, token, local };
+	return { type: "install", name, version, dryRun };
 }
 
 function parseLocal(args: string[]): AssetsCommand {

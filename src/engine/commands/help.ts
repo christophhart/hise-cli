@@ -177,7 +177,7 @@ settings and preprocessors go through HISE.
 |---------|-------------|
 | \`list [installed\\|uninstalled\\|local\\|store]\` | List packages by category |
 | \`info <name>\` | Show installation state for a package |
-| \`install <name> [--version=X.Y.Z] [--dry-run] [--token=<t>] [--local=<path>]\` | Install or upgrade |
+| \`install <name> [--version=X.Y.Z] [--dry-run]\` | Install or upgrade |
 | \`uninstall <name>\` | Remove an installed package |
 | \`cleanup <name>\` | Force-remove modified files left over from uninstall |
 | \`local add <path>\` | Register a local HISE project as a package source |

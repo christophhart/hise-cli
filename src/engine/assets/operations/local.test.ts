@@ -31,9 +31,9 @@ const PROJECT_XML = `<?xml version="1.0"?>
 </ProjectSettings>`;
 
 const USER_XML = `<?xml version="1.0"?>
-<UserInfo>
+<UserSettings>
   <Company value="vendor_username"/>
-</UserInfo>`;
+</UserSettings>`;
 
 describe("readLocalFolders", () => {
 	it("returns empty when file missing", async () => {

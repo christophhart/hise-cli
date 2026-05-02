@@ -111,10 +111,20 @@ describe("normalizeInstallLog", () => {
 		])).toThrow(/unknown step Type/);
 	});
 
-	it("rejects unknown Mode", () => {
-		expect(() => normalizeInstallLog([
-			{ ...sampleActive, Mode: "InvalidMode" },
-		])).toThrow(/Mode must be one of/);
+	it("unknown Mode falls back to 'Undefined'", () => {
+		const got = normalizeInstallLog([{ ...sampleActive, Mode: "InvalidMode" }]);
+		expect(got[0].mode).toBe("Undefined");
+	});
+
+	it("missing Mode (real HISE shape) defaults to 'Undefined'", () => {
+		const { Mode: _ignored, ...without } = sampleActive;
+		const got = normalizeInstallLog([without]);
+		expect(got[0].mode).toBe("Undefined");
+	});
+
+	it("numeric Mode (legacy) is mapped via enum order", () => {
+		const got = normalizeInstallLog([{ ...sampleActive, Mode: 2 }]);
+		expect(got[0].mode).toBe("StoreDownload");
 	});
 
 	it("rejects entry that is neither active (Steps) nor needsCleanup", () => {
@@ -130,7 +140,7 @@ describe("normalizeInstallLog", () => {
 	it("includes index in error path", () => {
 		expect(() => normalizeInstallLog([
 			sampleActive,
-			{ ...sampleActive, Mode: "Bogus" },
+			{ ...sampleActive, Name: 42 }, // wrong type triggers entry-level error
 		])).toThrow(/install_packages_log\.json\[1\]/);
 	});
 
