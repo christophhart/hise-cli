@@ -51,12 +51,15 @@ export interface ScoredItem {
  *   0 — exact match
  *   1 — case-insensitive prefix match
  *   2 — case-insensitive substring match (contains)
- *   3+ — Levenshtein distance (only if ≤ maxDistance)
+ *   3+ — Levenshtein distance (scaled to input length)
+ *
+ * Levenshtein only fires for input length ≥ 3, with maxDistance scaled
+ * to ceil(len/3). Keeps real typos ("Synht" → "Synth", "/hlep" → "/help")
+ * while rejecting unrelated short tokens ("F9" → "FFT").
  */
 export function scoreMatch(
 	input: string,
 	candidate: string,
-	maxDistance = 3,
 ): number | null {
 	const lower = input.toLowerCase();
 	const candidateLower = candidate.toLowerCase();
@@ -65,8 +68,8 @@ export function scoreMatch(
 	if (candidateLower.startsWith(lower)) return 1;
 	if (candidateLower.includes(lower)) return 2;
 
-	// Only compute Levenshtein for short inputs to avoid expensive misses
-	if (input.length >= 2) {
+	if (input.length >= 3) {
+		const maxDistance = Math.ceil(input.length / 3);
 		const dist = levenshteinDistance(lower, candidateLower);
 		if (dist <= maxDistance) return 2 + dist;
 	}

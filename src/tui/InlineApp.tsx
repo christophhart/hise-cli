@@ -57,8 +57,6 @@ import { mergeInitDefaults } from "../engine/wizard/types.js";
 import { formatWithClause } from "../engine/commands/slash.js";
 import { listPathCompletions } from "./wizard-files.js";
 
-const ENTER_ACCEPTS_COMPLETION = false;
-
 interface CommittedBlock {
 	id: number;
 	text: string;
@@ -865,12 +863,13 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		}
 
 		if (completionState) {
-			if (key.return && !ENTER_ACCEPTS_COMPLETION) {
-				setCompletionState(null);
-			} else if (key.tab || (key.return && ENTER_ACCEPTS_COMPLETION)) {
+			if (key.tab || key.return) {
 				const item = completionState.result.items[completionState.selectedIndex];
 				if (item) acceptCompletion(item, completionState.result);
 				return;
+			} else if (input === " " && !key.ctrl && !key.meta) {
+				setCompletionState(null);
+				// Fall through so space inserts as printable char
 			} else if (key.upArrow) {
 				const next = completionState.selectedIndex > 0
 					? completionState.selectedIndex - 1
