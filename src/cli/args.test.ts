@@ -19,10 +19,10 @@ describe("parseCliArgs", () => {
 	});
 
 	it("parses direct builder add commands", () => {
-		const result = parseCliArgs(["node", "hise-cli", "builder", "add", "--type", "LFO", "--id", "Shape", "--parent", "SineGenerator", "--chain", "Gain Modulation"], getCliCommands());
+		const result = parseCliArgs(["node", "hise-cli", "builder", "add", "--type", "LFO", "--id", "Shape", "--parent", "SineGenerator.Gain Modulation"], getCliCommands());
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toBe('/builder add LFO as "Shape" to SineGenerator."Gain Modulation"');
+			expect(result.canonicalCommand).toBe('/builder add LFO as "Shape" to "SineGenerator.Gain Modulation"');
 		}
 	});
 
@@ -347,6 +347,14 @@ describe("parseCliArgs", () => {
 		}
 	});
 
+	it("quotes direct builder enum values so they are strings, not paths", () => {
+		const result = parseCliArgs(["node", "hise-cli", "builder", "set", "--module", "TestWave", "--param", "WaveForm1", "--value", "Saw"], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe('/builder set TestWave.WaveForm1 "Saw"');
+		}
+	});
+
 	it("parses direct UI connect component alias", () => {
 		const result = parseCliArgs(["node", "hise-cli", "ui", "connect", "--component", "Cutoff", "--target", "MainFilter", "--param", "Frequency", "--matched"], getCliCommands());
 		expect(result.kind).toBe("execute");
@@ -375,12 +383,12 @@ describe("parseCliArgs", () => {
 		const parent = parseCliArgs(["node", "hise-cli", "ui", "set", "--component", "Cutoff", "--parent", "ControlsPanel"], getCliCommands());
 		expect(parent.kind).toBe("execute");
 		if (parent.kind === "execute") {
-			expect(parent.canonicalCommand).toBe("/ui set Cutoff.parent ControlsPanel");
+			expect(parent.canonicalCommand).toBe('/ui set Cutoff.parent "ControlsPanel"');
 		}
 		const parentComponent = parseCliArgs(["node", "hise-cli", "ui", "set", "--component", "Cutoff", "--parentComponent", "ControlsPanel"], getCliCommands());
 		expect(parentComponent.kind).toBe("execute");
 		if (parentComponent.kind === "execute") {
-			expect(parentComponent.canonicalCommand).toBe("/ui set Cutoff.parent ControlsPanel");
+			expect(parentComponent.canonicalCommand).toBe('/ui set Cutoff.parent "ControlsPanel"');
 		}
 		const rootParent = parseCliArgs(["node", "hise-cli", "ui", "set", "--component", "Cutoff", "--parentComponent", "Content"], getCliCommands());
 		expect(rootParent.kind).toBe("execute");
@@ -494,9 +502,9 @@ describe("parseCliArgs", () => {
 		const explicit = parseCliArgs(["node", "hise-cli", "dsp", "set", "--module", "Script FX1", "--node", "root", "--param", "ModDepth", "--externalModulation", "Combined"], getCliCommands());
 
 		expect(dotted.kind).toBe("execute");
-		if (dotted.kind === "execute") expect(dotted.canonicalCommand).toBe('/dsp."Script FX1" set root.ModDepth.ExternalModulation Combined');
+		if (dotted.kind === "execute") expect(dotted.canonicalCommand).toBe('/dsp."Script FX1" set root.ModDepth.ExternalModulation "Combined"');
 		expect(explicit.kind).toBe("execute");
-		if (explicit.kind === "execute") expect(explicit.canonicalCommand).toBe('/dsp."Script FX1" set root.ModDepth.ExternalModulation Combined');
+		if (explicit.kind === "execute") expect(explicit.canonicalCommand).toBe('/dsp."Script FX1" set root.ModDepth.ExternalModulation "Combined"');
 	});
 
 	it("parses direct DSP create_parameter ExternalModulation flag", () => {
@@ -504,7 +512,7 @@ describe("parseCliArgs", () => {
 
 		expect(result.kind).toBe("execute");
 		if (result.kind === "execute") {
-			expect(result.canonicalCommand).toBe('/dsp."Script FX1" create_parameter root.ModDepth [0,1] default 0.5 ExternalModulation Combined');
+			expect(result.canonicalCommand).toBe('/dsp."Script FX1" create_parameter root.ModDepth [0,1] default 0.5 ExternalModulation "Combined"');
 		}
 	});
 
@@ -555,7 +563,7 @@ describe("parseCliArgs", () => {
 	it("parses direct builder move clone rename and reset commands", () => {
 		const moveParent = parseCliArgs(["node", "hise-cli", "builder", "move", "--module", "Drive", "--parent", "Master Chain", "--chain", "fx"], getCliCommands());
 		expect(moveParent.kind).toBe("execute");
-		if (moveParent.kind === "execute") expect(moveParent.canonicalCommand).toBe('/builder set Drive.parent "Master Chain".fx');
+		if (moveParent.kind === "execute") expect(moveParent.canonicalCommand).toBe('/builder set Drive.parent "Master Chain.fx"');
 		const moveIndex = parseCliArgs(["node", "hise-cli", "builder", "move", "--module", "Drive", "--index", "0"], getCliCommands());
 		expect(moveIndex.kind).toBe("execute");
 		if (moveIndex.kind === "execute") expect(moveIndex.canonicalCommand).toBe("/builder set Drive.index 0");

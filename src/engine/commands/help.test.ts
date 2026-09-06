@@ -1,7 +1,7 @@
 // ── Help content tests ──────────────────────────────────────────────
 
 import { describe, it, expect } from "vitest";
-import { generateHelp } from "./help.js";
+import { generateAiHelp, generateHelp } from "./help.js";
 import type { CommandEntry } from "./registry.js";
 
 const mockCommands: CommandEntry[] = [
@@ -11,6 +11,14 @@ const mockCommands: CommandEntry[] = [
 ];
 
 describe("generateHelp", () => {
+	it("generates embedded AI help", () => {
+		const help = generateAiHelp();
+		expect(help.title).toContain("Embedded HISE Agent");
+		expect(help.content).toContain("hise-cli's structured tool calls");
+		expect(help.content).toContain("/model");
+		expect(help.content).toContain("/sessions");
+		expect(help.content).toContain("/undo");
+	});
 	it("generates root mode help", () => {
 		const help = generateHelp("root", mockCommands);
 		expect(help.title).toContain("HISE CLI");

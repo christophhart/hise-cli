@@ -240,6 +240,28 @@ describe("BuilderMode — with mock connection", () => {
 		expect(r.type).toBe("markdown");
 	});
 
+	it("show resolves a complete canonical module path before parameter fallback", async () => {
+		const tree = makeTree();
+		const fx = tree.children!.find((node) => node.id === "FX Chain")!;
+		fx.children = [{ id: "Filter1", label: "Filter1", nodeKind: "module", type: "Filter", children: [] }];
+		const mock = new MockHiseConnection();
+		mock.onGet("/api/builder/tree?moduleId=Filter1", () => ({
+			success: true, logs: [], errors: [], result: {
+				id: "Filter",
+				processorId: "Filter1",
+				parameters: [{ id: "Frequency" }],
+			},
+		}));
+		const session: SessionContext = {
+			connection: mock,
+			forLlm: true,
+			popMode: () => ({ type: "text", content: "Exited Builder mode." }),
+		};
+		const mode = new BuilderMode(moduleList, undefined, undefined, tree);
+		const result = await mode.parse('show "Master.FX Chain.Filter1"', session);
+		expect(result).toMatchObject({ type: "json", value: { id: "Filter1", type: "Filter" } });
+	});
+
 	it("show <Module>.<Param> returns parameter detail (forLlm → minimal JSON)", async () => {
 		const tree = makeTree();
 		const mock = new MockHiseConnection();

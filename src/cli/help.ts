@@ -34,6 +34,7 @@ USAGE
   hise-cli agent-context [scope]            Emit structured CLI context for agents
   hise-cli which "<intent>"                  Find the command for an intent
   hise-cli mcp <tool-or-method>             Call the HISE MCP docs server
+  hise-cli -research "<question>"            Research HISE docs and validate examples
   hise-cli update [--check]                 Self-update to latest GitHub release
   hise-cli -version                         Print the CLI version
   hise-cli -status                          Print CLI + HISE status
@@ -474,6 +475,20 @@ EXAMPLES
   hise-cli --run test.hsc --quiet                # single pass/fail line
   hise-cli --run Examples/sn.hsc --verbosity=summary
   hise-cli --run test.hsc --dry-run`,
+
+	research: `hise-cli -research — sourced HISE research with validated examples
+
+USAGE
+  hise-cli -research "<question>" [--json | --agent]
+
+Retrieves bounded HISE documentation and examples, distills them with the configured
+AI model, diagnoses generated HiseScript examples against live HISE, and returns
+Markdown with model, reasoning, token usage, and validation status. Progress is
+written to stderr; the final Markdown is written to stdout. --json and --agent
+return the Markdown plus structured model, reasoning, usage, and validation stats.
+
+EXAMPLE
+  hise-cli -research "What is the best way of controlling a module parameter from the UI?"`,
 
 	diagnose: `hise-cli diagnose — HiseScript shadow parser diagnostics
 

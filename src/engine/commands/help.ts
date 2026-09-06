@@ -13,6 +13,40 @@ export interface HelpContent {
 	content: string;  // markdown formatted
 }
 
+/** Help shown while the persistent embedded Pi agent is active in the TUI. */
+export function generateAiHelp(): HelpContent {
+	return {
+		title: "Embedded HISE Agent",
+		content: `## Embedded HISE Agent
+
+The \`/ai\` mode is a persistent Pi-powered development assistant focused on using hise-cli's structured tool calls. It can inspect HISE state, explain errors, make focused changes, and verify the result.
+
+### Examples
+
+- \`inspect the current builder tree\`
+- \`add a ScriptSlider under Content and verify it\`
+- \`show Interface.onInit, then add a Console.print callback\`
+- \`explain why this DSP connection fails\`
+
+The agent uses canonical hise-cli arguments and stdin for callback source. TUI mutations execute optimistically and remain undoable with \`/undo\`. Press **Escape** or use \`/stop\` to cancel an active run.
+
+### AI commands
+
+| Command | Description |
+| --- | --- |
+| \`/clear\` | Start a fresh AI conversation |
+| \`/login\` | Authenticate a provider or add a custom provider with a wizard |
+| \`/model\` | Open the model and reasoning-level selector |
+| \`/nuke\` | Remove embedded AI credentials, custom models, model defaults, and model cache |
+| \`/sessions [id]\` | List or resume a saved project session |
+| \`/research <query>\` | Research HISE documentation and validated examples |
+| \`/stop\` | Stop the active generation |
+| \`/exit\` | Leave AI mode |
+
+HISE slash commands such as \`/builder\`, \`/dsp\`, and \`/quit\` leave AI mode and retain their normal meaning.`,
+	};
+}
+
 /** Generate help content for the current mode and available commands. */
 export function generateHelp(
 	modeId: ModeId,

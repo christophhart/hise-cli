@@ -149,8 +149,8 @@ export const GENERATED_AGENT_CONTEXT = {
 					"prefer": "Treat DefaultEnvelope* as HISE's automatic voice envelope for sound-producing generators."
 				},
 				{
-					"avoid": "Adding a modulator without an explicit modulation chain.",
-					"prefer": "Use --parent Lead --chain \"Gain Modulation\" or --parent Lead --chain \"Pitch Modulation\"."
+					"avoid": "Splitting a canonical chain path into separately guessed parent and chain values.",
+					"prefer": "Use the exact path returned by builder tree, for example --parent \"Lead.Gain Modulation\"."
 				}
 			],
 			"quickStart": [
@@ -236,8 +236,8 @@ export const GENERATED_AGENT_CONTEXT = {
 						"SoundGenerator types resolve to parent.children.",
 						"Effect types resolve to parent.fx.",
 						"MidiProcessor types resolve to parent.midi.",
-						"Modulator types require an explicit --chain label, for example --chain \"Gain Modulation\" or --chain \"Pitch Modulation\".",
-						"--chain accepts exact live HISE chain labels shown by builder tree.",
+						"Agent tree output includes a canonical path for every module and chain.",
+						"Pass that complete path to --parent, for example --parent \"Master Chain.FX Chain\" or --parent \"Lead.Gain Modulation\".",
 						"Modules are appended to the end of the resolved chain."
 					]
 				},
@@ -572,7 +572,7 @@ export const GENERATED_AGENT_CONTEXT = {
 					"id": "builder.add.module",
 					"title": "Add module",
 					"purpose": "Add a module with an exact explicit ID, optionally under a specific parent or chain.",
-					"syntax": "builder add --type <type> --id <id> [--parent <path>] [--chain <label>]",
+					"syntax": "builder add --type <type> --id <id> [--parent <module-or-chain-path>]",
 					"command": {
 						"argv": [
 							"hise-cli",
@@ -648,19 +648,17 @@ export const GENERATED_AGENT_CONTEXT = {
 								"--id",
 								"LeadGainLFO",
 								"--parent",
-								"Lead",
-								"--chain",
-								"Gain Modulation",
+								"Lead.Gain Modulation",
 								"--agent"
 							],
-							"display": "hise-cli builder add --type LFO --id LeadGainLFO --parent Lead --chain \"Gain Modulation\" --agent"
+							"display": "hise-cli builder add --type LFO --id LeadGainLFO --parent \"Lead.Gain Modulation\" --agent"
 						}
 					],
 					"notes": [
 						"--id is mandatory and exact.",
 						"Duplicate IDs fail before mutation with duplicate_id and candidate paths.",
 						"Sound-producing SoundGenerators get an automatic DefaultEnvelope* child from HISE.",
-						"Modulators require --parent and --chain using the exact chain label from builder tree."
+						"To target a specific chain, copy its complete path from builder tree into --parent."
 					]
 				},
 				{
@@ -972,7 +970,7 @@ export const GENERATED_AGENT_CONTEXT = {
 					"id": "builder.move.parent",
 					"title": "Reparent module",
 					"purpose": "Move a module to another parent or chain.",
-					"syntax": "builder move --module <id-or-path> --parent <path> [--chain <label>]",
+					"syntax": "builder move --module <id-or-path> --parent <module-or-chain-path>",
 					"command": {
 						"argv": [
 							"hise-cli",
@@ -981,12 +979,10 @@ export const GENERATED_AGENT_CONTEXT = {
 							"--module",
 							"Drive",
 							"--parent",
-							"Master Chain",
-							"--chain",
-							"fx",
+							"Master Chain.FX Chain",
 							"--agent"
 						],
-						"display": "hise-cli builder move --module Drive --parent \"Master Chain\" --chain fx --agent"
+						"display": "hise-cli builder move --module Drive --parent \"Master Chain.FX Chain\" --agent"
 					},
 					"tags": [
 						"builder",
@@ -1019,17 +1015,15 @@ export const GENERATED_AGENT_CONTEXT = {
 								"--module",
 								"Drive",
 								"--parent",
-								"Master Chain",
-								"--chain",
-								"fx",
+								"Master Chain.FX Chain",
 								"--agent"
 							],
-							"display": "hise-cli builder move --module Drive --parent \"Master Chain\" --chain fx --agent"
+							"display": "hise-cli builder move --module Drive --parent \"Master Chain.FX Chain\" --agent"
 						}
 					],
 					"notes": [
 						"Emits a move operation with target, parent, and optional chain.",
-						"--chain accepts exact live chain labels or structural chains such as children, fx, and midi."
+						"Copy the destination module or chain path exactly from builder tree."
 					]
 				},
 				{
@@ -4306,7 +4300,7 @@ export const GENERATED_AGENT_CONTEXT = {
 						"cli"
 					],
 					"agentRelevance": "high",
-					"danger": false
+					"danger": true
 				},
 				{
 					"id": "script.add-file",
@@ -4370,7 +4364,7 @@ export const GENERATED_AGENT_CONTEXT = {
 						"cli"
 					],
 					"agentRelevance": "high",
-					"danger": false
+					"danger": true
 				},
 				{
 					"id": "script.set.callback.file",
@@ -4435,7 +4429,7 @@ export const GENERATED_AGENT_CONTEXT = {
 						"cli"
 					],
 					"agentRelevance": "high",
-					"danger": false
+					"danger": true
 				},
 				{
 					"id": "script.set.callbacks-json",
@@ -4495,7 +4489,7 @@ export const GENERATED_AGENT_CONTEXT = {
 						"cli"
 					],
 					"agentRelevance": "high",
-					"danger": false
+					"danger": true
 				},
 				{
 					"id": "script.compile",
@@ -4545,7 +4539,7 @@ export const GENERATED_AGENT_CONTEXT = {
 						"cli"
 					],
 					"agentRelevance": "high",
-					"danger": false
+					"danger": true
 				},
 				{
 					"id": "script.diagnose",

@@ -109,6 +109,7 @@ capabilities:
           Content.makeFrontInterface(600, 600);
           Console.print("ready");
     tags: [script, callback, set, stdin, compile]
+    danger: true
     aliases:
       - edit onInit from stdin
       - update callback from stdin
@@ -129,6 +130,7 @@ capabilities:
       - title: Add a UI namespace file
         argv: [hise-cli, script, add-file, UI/MyFile.js, --module-id, Interface, --agent]
     tags: [script, file, include, namespace, organization]
+    danger: true
     aliases:
       - create external script file
       - add include file
@@ -154,6 +156,7 @@ capabilities:
       - title: Replace onInit from a file
         argv: [hise-cli, script, set, --module-id, Interface, --callback, onInit, --file, ./onInit.js, --agent]
     tags: [script, callback, set, file, compile]
+    danger: true
     aliases:
       - edit onInit from file
       - update callback from file
@@ -174,6 +177,7 @@ capabilities:
       - title: Replace callbacks from JSON
         argv: [hise-cli, script, set, --module-id, Interface, --callbacks-json, ./callbacks.json, --agent]
     tags: [script, callback, set, json, compile]
+    danger: true
     aliases:
       - update multiple callbacks
       - set callbacks json
@@ -193,6 +197,7 @@ capabilities:
       - title: Compile Interface
         argv: [hise-cli, script, compile, --module-id, Interface, --agent]
     tags: [script, compile, recompile]
+    danger: true
     aliases:
       - recompile script
       - compile Interface

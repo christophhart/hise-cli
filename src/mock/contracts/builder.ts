@@ -219,18 +219,24 @@ function applyDiffRecursive(
  *  per-module: id, type, bypassed, plus recursive children/midi/fx/modulation.
  *  Per-modulation chain: id and children. Empty chains and empty arrays are
  *  dropped to keep the payload compact. */
-export function cleanBuilderTreeForLlm(raw: unknown): unknown {
+export function cleanBuilderTreeForLlm(raw: unknown, parentPath = ""): unknown {
 	if (!raw || typeof raw !== "object") return null;
 	const n = raw as Record<string, unknown>;
 	const out: Record<string, unknown> = {};
-	if (typeof n.id === "string") out.id = n.id;
+	const id = typeof n.id === "string" ? n.id : undefined;
+	const path = id ? (parentPath ? `${parentPath}.${id}` : id) : parentPath;
+	if (id) out.id = id;
+	if (path) out.path = path;
 	if (typeof n.type === "string") out.type = n.type;
+	if (n.nodeKind === "module" || n.nodeKind === "chain") out.nodeKind = n.nodeKind;
 	if (typeof n.bypassed === "boolean") out.bypassed = n.bypassed;
 
-	const children = cleanArrayForLlm(n.children, cleanBuilderTreeForLlm);
-	const midi = cleanArrayForLlm(n.midi, cleanBuilderTreeForLlm);
-	const fx = cleanArrayForLlm(n.fx, cleanBuilderTreeForLlm);
-	const modulation = cleanArrayForLlm(n.modulation, cleanBuilderModChainForLlm);
+	const cleanModule = (child: unknown) => cleanBuilderTreeForLlm(child, path);
+	const cleanChain = (child: unknown) => cleanBuilderModChainForLlm(child, path);
+	const children = cleanArrayForLlm(n.children, cleanModule);
+	const midi = cleanArrayForLlm(n.midi, cleanModule);
+	const fx = cleanArrayForLlm(n.fx, cleanModule);
+	const modulation = cleanArrayForLlm(n.modulation, cleanChain);
 
 	if (children) out.children = children;
 	if (midi) out.midi = midi;
@@ -239,13 +245,16 @@ export function cleanBuilderTreeForLlm(raw: unknown): unknown {
 	return out;
 }
 
-function cleanBuilderModChainForLlm(raw: unknown): unknown {
+function cleanBuilderModChainForLlm(raw: unknown, parentPath: string): unknown {
 	if (!raw || typeof raw !== "object") return null;
 	const n = raw as Record<string, unknown>;
-	const children = cleanArrayForLlm(n.children, cleanBuilderTreeForLlm);
+	const id = typeof n.id === "string" ? n.id : undefined;
+	const path = id ? `${parentPath}.${id}` : parentPath;
+	const children = cleanArrayForLlm(n.children, (child) => cleanBuilderTreeForLlm(child, path));
 	if (!children) return null;
 	const out: Record<string, unknown> = {};
-	if (typeof n.id === "string") out.id = n.id;
+	if (id) out.id = id;
+	if (path) out.path = path;
 	out.children = children;
 	return out;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderWizardBlock, createInitialFormState } from "./wizard-render.js";
+import { renderWizardBlock, createInitialFormState, getFilteredChoiceItems } from "./wizard-render.js";
 import { defaultScheme } from "./theme.js";
 import type { WizardDefinition } from "../engine/wizard/types.js";
 
@@ -33,6 +33,14 @@ const DEF: WizardDefinition = {
 	postActions: [],
 	globalDefaults: { useDefault: "true", template: "Empty" },
 };
+
+describe("getFilteredChoiceItems", () => {
+	it("matches case-insensitive substrings, not only prefixes", () => {
+		const field = { id: "model", type: "choice" as const, label: "Model", required: true, items: ["openai/gpt-5", "anthropic/claude-sonnet", "google/gemini"] };
+		expect(getFilteredChoiceItems(field, "SONNET")).toEqual(["anthropic/claude-sonnet"]);
+		expect(getFilteredChoiceItems(field, "ai/")).toEqual(["openai/gpt-5"]);
+	});
+});
 
 function render(overrides: Partial<ReturnType<typeof createInitialFormState>> = {}) {
 	const state = { ...createInitialFormState(DEF, {}), ...overrides };

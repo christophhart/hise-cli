@@ -25,10 +25,14 @@ export interface WizardField {
 	readonly defaultValue?: string;
 	/** Placeholder text shown when the field is empty. */
 	readonly emptyText?: string;
+	/** Mask the value in the TUI (useful for credentials). */
+	readonly secret?: boolean;
 
 	// ── Choice-specific ─────────────────────────────────────────
 	/** Available options for "choice" and "multiselect" fields. */
 	readonly items?: string[];
+	/** Complete option catalog when items are dynamically filtered by a UI. */
+	readonly allItems?: string[];
 	/** Per-item descriptions (parallel array to items). Shown as dimmed tooltip on focused item. */
 	readonly itemDescriptions?: string[];
 	/** How the choice value is stored: "text" (literal) or "index" (numeric). */
@@ -62,7 +66,7 @@ export interface WizardVisibilityCondition {
 	/** Match mode. `equals` (default) does strict string equality; `contains`
 	 *  treats the answer as a `, `-joined CSV (multiselect storage format)
 	 *  and matches when `value` is one of the tokens. */
-	readonly match?: "equals" | "contains";
+	readonly match?: "equals" | "notEquals" | "contains";
 }
 
 /** A tab grouping fields in the wizard form. */

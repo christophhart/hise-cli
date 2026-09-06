@@ -96,6 +96,31 @@ async function main(): Promise<void> {
 		return;
 	}
 
+	// Fast-path: one-shot sourced HISE research.
+	if (process.argv[2] === "-research") {
+		const args = process.argv.slice(3);
+		if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+			console.log('hise-cli -research "<question>" [--json | --agent]');
+			process.exitCode = args.length === 0 ? 2 : 0;
+			return;
+		}
+		const { runResearchCommand } = await import("./cli/research.js");
+		await runResearchCommand(args);
+		return;
+	}
+
+	// Fast-path: ai subcommand (embedded pi agent, spike)
+	if (process.argv[2] === "ai") {
+		const args = process.argv.slice(3);
+		if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+			console.log("hise-cli ai — one-shot HISE agent (spike)\n\nusage: hise-cli ai [--apply] [--json] [--mock] [--agent-dir <path>] [--model provider/id] \"<command>\"");
+			process.exit(0);
+		}
+		const { runAiCommand } = await import("./cli/ai.js");
+		await runAiCommand(args, { dataLoader: runtime.dataLoader });
+		return;
+	}
+
 	const bootstrap = createSession({ connection: null });
 	const cliCommands = listCliCommands(bootstrap.session.allCommands());
 	const cliResult = await executeCliCommand(process.argv, cliCommands, runtime.dataLoader, { handlerRegistry: runtime.handlerRegistry, launcher: runtime.hiseLauncher });

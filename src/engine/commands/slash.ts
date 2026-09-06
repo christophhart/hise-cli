@@ -11,7 +11,7 @@ import {
 } from "../result.js";
 import { MODE_ACCENTS, type ModeId } from "../modes/mode.js";
 import type { CommandHandler, CommandRegistry, CommandSession } from "./registry.js";
-import { generateHelp } from "./help.js";
+import { generateAiHelp, generateHelp } from "./help.js";
 import type { WizardAnswers } from "../wizard/types.js";
 import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
 import { ScriptMode } from "../modes/script.js";
@@ -1369,6 +1369,20 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 		name: "help",
 		description: "Show available commands and help topics",
 		handler: handleHelp,
+		kind: "command",
+	});
+
+	registry.register({
+		name: "ai",
+		description: "Enter the persistent Pi-powered HISE agent",
+		handler: async () => markdownResult(generateAiHelp().content),
+		kind: "command",
+	});
+
+	registry.register({
+		name: "research",
+		description: "Research, distill, and validate HISE documentation and code examples",
+		handler: async () => textResult("/research is available in the TUI and requires a query."),
 		kind: "command",
 	});
 

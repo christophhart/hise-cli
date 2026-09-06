@@ -15,8 +15,8 @@ mode:
   antiPatterns:
     - avoid: Assuming HISE-created DefaultEnvelope modules were added by hise-cli or need manual cleanup.
       prefer: Treat DefaultEnvelope* as HISE's automatic voice envelope for sound-producing generators.
-    - avoid: Adding a modulator without an explicit modulation chain.
-      prefer: Use --parent Lead --chain "Gain Modulation" or --parent Lead --chain "Pitch Modulation".
+    - avoid: Splitting a canonical chain path into separately guessed parent and chain values.
+      prefer: Use the exact path returned by builder tree, for example --parent "Lead.Gain Modulation".
 
 quickStart:
   - title: Inspect the module tree
@@ -51,8 +51,8 @@ concepts:
       - SoundGenerator types resolve to parent.children.
       - Effect types resolve to parent.fx.
       - MidiProcessor types resolve to parent.midi.
-      - Modulator types require an explicit --chain label, for example --chain "Gain Modulation" or --chain "Pitch Modulation".
-      - --chain accepts exact live HISE chain labels shown by builder tree.
+      - Agent tree output includes a canonical path for every module and chain.
+      - Pass that complete path to --parent, for example --parent "Master Chain.FX Chain" or --parent "Lead.Gain Modulation".
       - Modules are appended to the end of the resolved chain.
   - id: automatic-envelope
     title: HISE automatic envelopes
@@ -180,7 +180,7 @@ commands:
       - title: Inspect gain parameter detail
         argv: [hise-cli, builder, show, --module, Drive, --param, Gain, --agent]
   - id: builder.add.module
-    syntax: builder add --type <type> --id <id> [--parent <path>] [--chain <label>]
+    syntax: builder add --type <type> --id <id> [--parent <module-or-chain-path>]
     title: Add module
     purpose: Add a module with an exact explicit ID, optionally under a specific parent or chain.
     command:
@@ -193,7 +193,7 @@ commands:
       - --id is mandatory and exact.
       - Duplicate IDs fail before mutation with duplicate_id and candidate paths.
       - Sound-producing SoundGenerators get an automatic DefaultEnvelope* child from HISE.
-      - Modulators require --parent and --chain using the exact chain label from builder tree.
+      - To target a specific chain, copy its complete path from builder tree into --parent.
     help:
       visibility: common
       order: 50
@@ -203,7 +203,7 @@ commands:
       - title: Add a synth
         argv: [hise-cli, builder, add, --type, SineSynth, --id, Lead, --agent]
       - title: Add a gain LFO to an existing synth
-        argv: [hise-cli, builder, add, --type, LFO, --id, LeadGainLFO, --parent, Lead, --chain, "Gain Modulation", --agent]
+        argv: [hise-cli, builder, add, --type, LFO, --id, LeadGainLFO, --parent, "Lead.Gain Modulation", --agent]
   - id: builder.set.parameter
     syntax: builder set --module <id-or-path> --param <param> --value <value>
     title: Set module parameter
@@ -292,24 +292,24 @@ commands:
       - title: Load an existing DSP network
         argv: [hise-cli, builder, set, --module, "Script FX1", --network, my_dsp.xml, --agent]
   - id: builder.move.parent
-    syntax: builder move --module <id-or-path> --parent <path> [--chain <label>]
+    syntax: builder move --module <id-or-path> --parent <module-or-chain-path>
     title: Reparent module
     purpose: Move a module to another parent or chain.
     command:
-      argv: [hise-cli, builder, move, --module, Drive, --parent, "Master Chain", --chain, fx, --agent]
+      argv: [hise-cli, builder, move, --module, Drive, --parent, "Master Chain.FX Chain", --agent]
     aliases: [move module, reparent module, change parent]
     tags: [builder, move, parent, reparent, mutation]
     contexts: [cli]
     agentRelevance: medium
     notes:
       - Emits a move operation with target, parent, and optional chain.
-      - --chain accepts exact live chain labels or structural chains such as children, fx, and midi.
+      - Copy the destination module or chain path exactly from builder tree.
     help:
       visibility: common
       order: 100
     examples:
       - title: Move effect to the root FX chain
-        argv: [hise-cli, builder, move, --module, Drive, --parent, "Master Chain", --chain, fx, --agent]
+        argv: [hise-cli, builder, move, --module, Drive, --parent, "Master Chain.FX Chain", --agent]
   - id: builder.move.index
     syntax: builder move --module <id-or-path> --index <n>
     title: Reorder module

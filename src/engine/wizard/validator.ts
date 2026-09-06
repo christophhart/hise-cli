@@ -106,7 +106,7 @@ export function isFieldVisible(field: WizardField, answers: WizardAnswers): bool
 }
 
 function evaluateCondition(
-	condition: { fieldId: string; value: string; match?: "equals" | "contains" },
+	condition: { fieldId: string; value: string; match?: "equals" | "notEquals" | "contains" },
 	answers: WizardAnswers,
 ): boolean {
 	const actual = answers[condition.fieldId] ?? "";
@@ -114,6 +114,7 @@ function evaluateCondition(
 		const tokens = actual.split(/\s*,\s*/).filter((t) => t.length > 0);
 		return tokens.includes(condition.value);
 	}
+	if (condition.match === "notEquals") return actual !== condition.value;
 	return actual === condition.value;
 }
 

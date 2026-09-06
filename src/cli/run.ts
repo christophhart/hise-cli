@@ -22,7 +22,7 @@ import { watch } from "node:fs";
 import type { ModeId } from "../engine/modes/mode.js";
 
 /** Fetch project info from HISE so resolvePath uses the project folder. */
-async function fetchProjectInfo(
+export async function fetchProjectInfo(
 	session: import("../engine/session.js").Session,
 	connection: import("../engine/hise.js").HiseConnection,
 ): Promise<void> {

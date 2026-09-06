@@ -109,7 +109,7 @@ export async function launchInlineRepl(
 	process.stdout.write(renderInlineBanner(version, updateLatest));
 
 	const instance = render(
-		React.createElement(InlineApp, { session, connection }),
+		React.createElement(InlineApp, { session, connection, dataLoader: runtime.dataLoader }),
 		{
 			exitOnCtrlC: false,
 			patchConsole: false,

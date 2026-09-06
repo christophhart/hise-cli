@@ -9,6 +9,9 @@ import { Box, Static, Text, useApp, useInput, useStdout } from "ink";
 import { MouseProvider } from "@ink-tools/ink-mouse";
 import type { Session } from "../engine/session.js";
 import type { HiseConnection } from "../engine/hise.js";
+import type { DataLoader } from "../engine/data.js";
+import { TuiAiSession, type AiThinkingLevel, type TuiAiEvent, type TuiAiStats } from "./ai-session.js";
+import { completeAiSlash, type AiSessionChoice } from "./ai-completion.js";
 import type { CommandResult } from "../engine/result.js";
 import type { CompletionItem, CompletionResult } from "../engine/modes/mode.js";
 import { MODE_ACCENTS } from "../engine/modes/mode.js";
@@ -53,8 +56,10 @@ import {
 	WizardExecutor,
 	WizardInitAbortError,
 } from "../engine/wizard/executor.js";
+import type { WizardDefinition } from "../engine/wizard/types.js";
 import { mergeInitDefaults } from "../engine/wizard/types.js";
 import { formatWithClause } from "../engine/commands/slash.js";
+import { generateAiHelp } from "../engine/commands/help.js";
 import { listPathCompletions } from "./wizard-files.js";
 import {
 	getProviderLabel,
@@ -75,9 +80,83 @@ interface AiPreviewState {
 	preludeError?: string;
 }
 
+interface AiActivityState {
+	kind: "thinking" | "tool";
+	startedAt: number;
+	toolName?: string;
+	args?: unknown;
+}
+
+function createLoginWizard(providers: string[]): WizardDefinition {
+	return {
+		id: "ai_provider_login", header: "Configure AI provider", description: "Authenticate a built-in provider or add a custom endpoint",
+		tabs: [{ label: "Authentication", fields: [
+			{ id: "provider", type: "choice", label: "Provider", required: true, items: ["custom", ...providers], valueMode: "text" },
+			{ id: "apiKey", type: "text", label: "API key", required: true, secret: true, emptyText: "Paste your provider key" },
+			{ id: "newId", type: "text", label: "Provider ID", required: true, visibleIf: { fieldId: "provider", value: "custom" } },
+			{ id: "baseUrl", type: "text", label: "Base URL", required: true, visibleIf: { fieldId: "provider", value: "custom" }, emptyText: "https://api.example.com/v1" },
+			{ id: "newModelId", type: "text", label: "Model ID", required: true, visibleIf: { fieldId: "provider", value: "custom" } },
+		] }], tasks: [], postActions: [], globalDefaults: {}, submitLabel: "Stores credentials securely and refreshes available models.",
+	};
+}
+
+export function createModelPicker(models: string[], thinkingLevels: string[], currentModel: string, currentThinkingLevel: string): WizardDefinition {
+	const providers = [...new Set(models.map((model) => model.split("/")[0]).filter((provider): provider is string => Boolean(provider)))];
+	const selectedModel = models.includes(currentModel) ? currentModel : (models[0] ?? "");
+	const selectedProvider = selectedModel.split("/")[0] ?? providers[0] ?? "";
+	const selectedThinkingLevel = thinkingLevels.includes(currentThinkingLevel) ? currentThinkingLevel : (thinkingLevels[0] ?? "off");
+	return {
+		id: "ai_model_select", header: "Select AI model", description: "Choose a provider, then a model",
+		tabs: [{ label: "Available models", fields: [
+			{ id: "provider", type: "choice", label: "Provider", required: true, items: providers, valueMode: "text", defaultValue: selectedProvider },
+			{ id: "modelId", type: "choice", label: "Model", required: true, items: models.filter((model) => model.startsWith(`${selectedProvider}/`)), allItems: models, valueMode: "text", defaultValue: selectedModel, emptyText: "Select a model" },
+			{ id: "thinkingLevel", type: "choice", label: "Reasoning", required: true, items: thinkingLevels, valueMode: "text", defaultValue: selectedThinkingLevel },
+		] }],
+		tasks: [], postActions: [], globalDefaults: {}, submitLabel: "Switches the active AI model and reasoning level.",
+	};
+}
+
+export function refreshWizardModelField(state: WizardFormState, getThinkingLevels: (modelId: string) => string[] = () => ["off"]): WizardFormState {
+	if (state.definition.id !== "ai_model_select" && state.definition.id !== "ai_provider_select") return state;
+	const provider = state.answers.provider ?? "";
+	const providerId = provider.startsWith("provider:") ? provider.slice("provider:".length) : provider;
+	const fields = state.definition.tabs[0]?.fields;
+	if (!fields) return state;
+	const modelField = fields.find((field) => field.id === "modelId");
+	if (!modelField) return state;
+	const allModels = modelField.allItems ?? modelField.items ?? [];
+	// Model IDs are provider/model-id strings in the runtime catalog.
+	const filtered = providerId ? allModels.filter((model) => model.startsWith(`${providerId}/`)) : [];
+	const selected = state.answers.modelId;
+	const validSelected = selected && filtered.includes(selected) ? selected : "";
+	const thinkingLevels = validSelected ? getThinkingLevels(validSelected) : ["off"];
+	const definition: WizardDefinition = {
+		...state.definition,
+		tabs: [{ ...state.definition.tabs[0]!, fields: fields.map((field) => {
+			if (field.id === "modelId") return { ...field, items: filtered };
+			if (field.id === "thinkingLevel") return { ...field, items: thinkingLevels };
+			return field;
+		}) }, ...state.definition.tabs.slice(1)],
+	};
+	const selectedThinking = state.answers.thinkingLevel ?? "off";
+	return {
+		...state,
+		definition,
+		answers: {
+			...state.answers,
+			modelId: validSelected,
+			thinkingLevel: thinkingLevels.includes(selectedThinking) ? selectedThinking : (thinkingLevels[0] ?? "off"),
+		},
+		// Only reset the model list cursor after changing provider. Resetting it
+		// for every keypress makes Up/Down appear not to work in the selector.
+		choiceIndex: state.activeField === 0 && !state.editing ? 0 : state.choiceIndex,
+	};
+}
+
 export interface InlineAppProps {
 	session: Session;
 	connection: HiseConnection | null;
+	dataLoader: DataLoader;
 }
 
 export function InlineApp(props: InlineAppProps): React.ReactElement {
@@ -92,7 +171,7 @@ interface InnerProps extends InlineAppProps {
 	scheme: ColorScheme;
 }
 
-function InlineAppInner({ session, connection, scheme }: InnerProps): React.ReactElement {
+function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps): React.ReactElement {
 	const { exit } = useApp();
 	const { stdout } = useStdout();
 
@@ -201,6 +280,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 	const [wizardForm, setWizardForm] = useState<WizardFormState | null>(null);
 	const wizardFormRef = useRef<WizardFormState | null>(null);
 	wizardFormRef.current = wizardForm;
+	const providerWizardFormRef = useRef<"model" | "login" | false>(false);
 
 	// Re-render the status bar when the active wizard changes (set in
 	// session.setActiveWizard / clearActiveWizard).
@@ -299,6 +379,178 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		const text = compact ? padded : "\n" + padded + "\n";
 		setCommitted(prev => [...prev, { id, text }]);
 	}, []);
+
+	const [aiActive, setAiActive] = useState(false);
+	const [aiRunning, setAiRunning] = useState(false);
+	const [aiActivity, setAiActivity] = useState<AiActivityState | null>(null);
+	const [aiModel, setAiModel] = useState("no model");
+	const [aiModels, setAiModels] = useState<string[]>([]);
+	const [aiSessions, setAiSessions] = useState<AiSessionChoice[]>([]);
+	const [aiStats, setAiStats] = useState<TuiAiStats | undefined>();
+	const aiSessionRef = useRef<TuiAiSession | null>(null);
+	const aiProjectRef = useRef<string | null>(null);
+	useEffect(() => {
+		if (!aiRunning) return;
+		const id = setInterval(() => setSpinnerFrame((frame) => (frame + 1) % 10), 80);
+		return () => clearInterval(id);
+	}, [aiRunning]);
+	const aiEventHandler = useCallback((event: TuiAiEvent) => {
+		if (event.type === "stats") {
+			setAiStats(event.stats);
+		} else if (event.type === "research-progress" && event.progress) {
+			const progress = event.progress;
+			if (progress.type === "diagnostics") {
+				const issues = progress.issues ?? [];
+				const diagnosticsBlock = renderResult({
+					type: "error",
+					message: `${progress.label}${progress.detail ? ` · ${progress.detail}` : ""}\n${issues.map((issue) => `- ${issue}`).join("\n")}`,
+				}, scheme, innerW);
+				if (diagnosticsBlock) appendBlock(diagnosticsBlock);
+			} else if (progress.type === "start") {
+				setAiActivity({ kind: "tool", toolName: `Research · ${progress.label}`, args: progress.detail ? { query: progress.detail } : undefined, startedAt: Date.now() });
+			} else {
+				const detail = progress.detail ? ` · ${progress.detail}` : "";
+				const marker = progress.ok === false ? "✗" : "✓";
+				const progressBlock = renderResult({ type: "text", content: `${marker} ${progress.label}${detail} · ${formatElapsed(progress.elapsedMs ?? 0)}` }, scheme, innerW);
+				if (progressBlock) appendBlock(progressBlock, true, true);
+			}
+		} else if (event.type === "tool-start") {
+			setAiActivity({ kind: "tool", toolName: event.toolName, args: event.args, startedAt: Date.now() });
+			const args = event.args === undefined ? "" : ` ${formatToolArgs(event.args)}`;
+			const block = renderResult({ type: "text", content: `→ ${event.toolName ?? "tool"}${args}` }, scheme, innerW);
+			if (block) appendBlock(block, true, true);
+		} else if (event.type === "tool-end") {
+			setAiActivity({ kind: "thinking", startedAt: Date.now() });
+			if (!event.isError && event.toolName === "hise_research") {
+				const text = extractToolResultText(event.result);
+				if (text) {
+					const resultBlock = renderResult({ type: "markdown", content: `### Documentation research\n\n${text}` }, scheme, innerW);
+					if (resultBlock) appendBlock(resultBlock);
+				}
+			}
+			if (!event.isError && event.toolName === "hise_script") {
+				const details = event.result && typeof event.result === "object" && "details" in event.result
+					? (event.result as { details?: { diff?: string } }).details
+					: undefined;
+				if (details?.diff) {
+					const diffBlock = renderResult({ type: "markdown", content: `\`\`\`diff\n${details.diff}\n\`\`\`` }, scheme, innerW);
+					if (diffBlock) appendBlock(diffBlock);
+				}
+			}
+			const block = event.isError
+				? renderResult({ type: "error", message: formatToolFailure(event.toolName, event.result) }, scheme, innerW)
+				: renderResult({ type: "text", content: `✓ ${event.toolName ?? "tool"}` }, scheme, innerW);
+			if (block) appendBlock(block, true, true);
+		} else if (event.type === "assistant" && event.text) {
+			const block = renderResult({ type: "text", content: event.text }, scheme, innerW);
+			if (block) appendBlock(block);
+		} else if (event.type === "settled") {
+			setAiRunning(false);
+			setAiActivity(null);
+		} else if (event.type === "error") {
+			setAiRunning(false);
+			setAiActivity(null);
+			const block = renderResult({ type: "error", message: event.error ?? "AI request failed" }, scheme, innerW);
+			if (block) appendBlock(block);
+		}
+	}, [appendBlock, innerW, scheme]);
+
+	const ensureAiSession = useCallback(async (): Promise<TuiAiSession | null> => {
+		if (!connection) return null;
+		const projectDir = session.projectFolder ?? process.cwd();
+		if (aiSessionRef.current && aiProjectRef.current === projectDir) return aiSessionRef.current;
+		// Project discovery is asynchronous and may change cwd after the first
+		// /ai entry. Rebuilding the Pi adapter must not reset the user's active
+		// model to the first available provider.
+		const previousModel = aiSessionRef.current?.hasModel ? aiSessionRef.current.modelLabel : undefined;
+		const previousThinkingLevel = aiSessionRef.current?.hasModel
+			? aiSessionRef.current.thinkingLevel as AiThinkingLevel
+			: undefined;
+		aiSessionRef.current?.dispose();
+		const ai = new TuiAiSession({
+			connection,
+			dataLoader,
+			projectDir,
+			model: previousModel,
+			thinkingLevel: previousThinkingLevel,
+			onEvent: aiEventHandler,
+		});
+		await ai.start();
+		aiSessionRef.current = ai;
+		aiProjectRef.current = projectDir;
+		setAiModel(ai.modelDisplayLabel);
+		setAiModels(ai.modelChoices);
+		setAiSessions(await ai.sessionChoices());
+		return ai;
+	}, [aiEventHandler, connection, dataLoader, session]);
+
+	const handleAiPrompt = useCallback(async (prompt: string) => {
+		const ai = await ensureAiSession();
+		if (!ai) {
+			const block = renderResult({ type: "error", message: "AI mode requires an active HISE connection." }, scheme, innerW);
+			if (block) appendBlock(block);
+			return;
+		}
+		if (!ai.hasModel) {
+			setAiRunning(false);
+			providerWizardFormRef.current = "login";
+			setWizardForm(createInitialFormState(createLoginWizard(ai.providerChoices), {}));
+			return;
+		}
+		appendBlock(renderEcho(prompt, brand.signal, scheme.backgrounds.raised, innerW), false);
+		setAiActivity({ kind: "thinking", startedAt: Date.now() });
+		setAiRunning(true);
+		setAiModel(ai.modelDisplayLabel);
+		await ai.prompt(prompt);
+	}, [appendBlock, ensureAiSession, innerW, scheme]);
+
+	const handleResearch = useCallback(async (query: string) => {
+		const ai = await ensureAiSession();
+		if (!ai) {
+			const block = renderResult({ type: "error", message: "Research requires an active HISE connection." }, scheme, innerW);
+			if (block) appendBlock(block);
+			return;
+		}
+		appendBlock(renderEcho(`/research ${query}`, brand.signal, scheme.backgrounds.raised, innerW), false);
+		setAiActivity({ kind: "tool", toolName: "Research", args: { query: "starting" }, startedAt: Date.now() });
+		setAiRunning(true);
+		try {
+			const text = await ai.research(query, (progress) => {
+				const detail = progress.detail ? ` · ${progress.detail}` : "";
+				if (progress.type === "diagnostics") {
+					const issues = progress.issues ?? [];
+					const diagnosticsBlock = renderResult({
+						type: "error",
+						message: `${progress.label}${detail}\n${issues.map((issue) => `- ${issue}`).join("\n")}`,
+					}, scheme, innerW);
+					if (diagnosticsBlock) appendBlock(diagnosticsBlock);
+					return;
+				}
+				if (progress.type === "start") {
+					setAiActivity({
+						kind: "tool",
+						toolName: `Research · ${progress.label}`,
+						args: progress.detail ? { query: progress.detail } : undefined,
+						startedAt: Date.now(),
+					});
+					return;
+				}
+				const marker = progress.ok === false ? "✗" : "✓";
+				const elapsed = formatElapsed(progress.elapsedMs ?? 0);
+				const progressBlock = renderResult({ type: "text", content: `${marker} ${progress.label}${detail} · ${elapsed}` }, scheme, innerW);
+				if (progressBlock) appendBlock(progressBlock, true, true);
+			});
+			const block = renderResult({ type: "text", content: text }, scheme, innerW);
+			if (block) appendBlock(block);
+		} catch (error) {
+			appendBlock(renderError(error instanceof Error ? error.message : String(error), undefined, scheme.foreground.muted, innerW));
+		} finally {
+			setAiRunning(false);
+			setAiActivity(null);
+		}
+	}, [appendBlock, ensureAiSession, innerW, scheme]);
+
+	useEffect(() => () => { aiSessionRef.current?.dispose(); }, []);
 
 	// Observer: HTTP server receives async events from the CLI runner
 	// (LLM-triggered commands) and commits annotated blocks to scrollback.
@@ -480,7 +732,9 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				setCompletionState(null);
 				return;
 			}
-			result = session.complete(value, cursorPos);
+			result = aiActive && value.startsWith("/")
+				? completeAiSlash(value, cursorPos, aiModels, aiSessions)
+				: session.complete(value, cursorPos);
 		}
 
 		if (result.items.length > 0) {
@@ -493,13 +747,15 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		} else {
 			setCompletionState(null);
 		}
-	}, [session]);
+	}, [session, aiActive, aiModels, aiSessions]);
 
 	const handleTab = useCallback(() => {
 		if (!completionState) {
 			const value = inputHandleRef.current?.getValue() ?? "";
 			if (value.length === 0) return;
-			const result = session.complete(value, value.length);
+			const result = aiActive && value.startsWith("/")
+				? completeAiSlash(value, value.length, aiModels, aiSessions)
+				: session.complete(value, value.length);
 			if (result.items.length === 1) {
 				acceptCompletion(result.items[0]!, result);
 			} else if (result.items.length > 1) {
@@ -522,7 +778,9 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		const cursorPos = handle.getCursorPos();
 		const query = (value.length === 0 && session.currentModeId === "root") ? "/" : value;
 		const qCursor = (value.length === 0 && session.currentModeId === "root") ? 1 : cursorPos;
-		const result = session.complete(query, qCursor);
+		const result = aiActive && query.startsWith("/")
+			? completeAiSlash(query, qCursor, aiModels, aiSessions)
+			: session.complete(query, qCursor);
 		if (result.items.length > 0) {
 			setCompletionState({ result, selectedIndex: 0 });
 		}
@@ -772,6 +1030,127 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 		if (input.trim().length === 0) return;
 		setCompletionState(null);
 
+		if (!multilineModeRef.current && input.trim().startsWith("/research ")) {
+			const query = input.trim().slice("/research ".length).trim();
+			if (query) await handleResearch(query);
+			return;
+		}
+		if (!multilineModeRef.current && input.trim() === "/ai") {
+			const ai = await ensureAiSession();
+			if (!ai) {
+				const block = renderResult({ type: "error", message: "AI mode requires an active HISE connection." }, scheme, innerW);
+				if (block) appendBlock(block);
+				return;
+			}
+			setAiActive(true);
+			setAiModel(ai.modelDisplayLabel);
+			setAiStats(ai.stats);
+			if (!ai.hasModel) {
+				providerWizardFormRef.current = "login";
+				setWizardForm(createInitialFormState(createLoginWizard(ai.providerChoices), {}));
+			}
+			return;
+		}
+		if (!multilineModeRef.current && input.trim().startsWith("/ai ")) {
+			setAiActive(true);
+			await handleAiPrompt(input.trim().slice(4).trim());
+			return;
+		}
+		if (!multilineModeRef.current && aiActive) {
+			const aiCommand = input.trim();
+			if (aiCommand === "/login") {
+				const ai = await ensureAiSession();
+				if (!ai) return;
+				providerWizardFormRef.current = "login";
+				setWizardForm(createInitialFormState(createLoginWizard(ai.providerChoices), {}));
+				return;
+			}
+			if (aiCommand === "/stop") {
+				setAiRunning(false);
+				setAiActivity(null);
+				aiSessionRef.current?.abort();
+				return;
+			}
+			if (aiCommand === "/exit") {
+				setAiActive(false);
+				return;
+			}
+			if (aiCommand === "/clear") {
+				const ai = aiSessionRef.current;
+				if (ai) {
+					await ai.clear();
+					setAiStats(ai.stats);
+					setAiModel(ai.modelDisplayLabel);
+					setAiModels(ai.modelChoices);
+					setAiSessions(await ai.sessionChoices());
+				}
+				setCommitted([]);
+				const block = renderResult({ type: "text", content: "New session started" }, scheme, innerW);
+				if (block) appendBlock(block);
+				return;
+			}
+			if (aiCommand === "/nuke") {
+				const ai = aiSessionRef.current;
+				if (ai) {
+					await ai.nukeModelConfig();
+					setAiStats(ai.stats);
+					setAiModel(ai.modelDisplayLabel);
+					setAiModels(ai.modelChoices);
+				}
+				appendBlock(renderResult({
+					type: "text",
+					content: "Removed embedded AI credentials, custom models, model defaults, and catalog cache. Saved conversations were kept.",
+				}, scheme, innerW)!);
+				return;
+			}
+			if (aiCommand === "/model" || aiCommand.startsWith("/model ")) {
+				const modelId = aiCommand.slice("/model".length).trim();
+				if (!modelId) {
+					const ai = await ensureAiSession();
+					const models = ai ? await ai.refreshModels() : [];
+					if (!ai || models.length === 0) {
+						appendBlock(renderResult({ type: "text", content: `Current model: ${aiModel}\n\nNo authenticated models available. Use /login to configure one.` }, scheme, innerW)!);
+					} else {
+						setAiModels(models);
+						providerWizardFormRef.current = "model";
+						const selectedModel = models.includes(ai.modelLabel) ? ai.modelLabel : models[0]!;
+						setWizardForm(createInitialFormState(createModelPicker(models, ai.getAvailableThinkingLevels(selectedModel), selectedModel, ai.thinkingLevel), {}));
+					}
+				} else {
+					appendBlock(renderError("/model does not take arguments; choose a model in the selector.", undefined, scheme.foreground.muted, innerW));
+				}
+				return;
+			}
+			if (aiCommand === "/sessions" || aiCommand.startsWith("/sessions ")) {
+				const sessionId = aiCommand.slice("/sessions".length).trim();
+				try {
+					if (sessionId) {
+						await aiSessionRef.current?.openSession(sessionId);
+						setAiModel(aiSessionRef.current?.modelDisplayLabel ?? aiModel);
+					} else {
+						const sessions = await aiSessionRef.current?.sessionChoices() ?? [];
+						const text = sessions.length === 0 ? "No saved AI sessions." : sessions.map((item) => `${item.id}  ${item.detail ?? item.label}`).join("\\n");
+						appendBlock(renderResult({ type: "text", content: text }, scheme, innerW)!);
+					}
+				} catch (error) {
+					appendBlock(renderError(error instanceof Error ? error.message : String(error), undefined, scheme.foreground.muted, innerW));
+				}
+				return;
+			}
+			if (aiCommand === "/help") {
+				const block = renderResult({ type: "markdown", content: generateAiHelp().content }, scheme, innerW);
+				if (block) appendBlock(block);
+				return;
+			}
+			if (aiCommand.startsWith("/")) {
+				setAiActive(false);
+				// Fall through to the normal HISE slash-command pipeline.
+			} else {
+				await handleAiPrompt(input);
+				return;
+			}
+		}
+
 		// AI prefix `?<request>` — run intent pipeline, show confirmation block
 		if (!multilineModeRef.current && input.trim().startsWith("?")) {
 			const nl = input.trim().slice(1).trim();
@@ -871,7 +1250,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			disabledRef.current = false;
 			setDisabled(false);
 		}
-	}, [session, scheme, innerW, appendBlock, exit, bumpModeRender, treePanelVisible]);
+	}, [session, scheme, innerW, appendBlock, exit, bumpModeRender, treePanelVisible, aiActive, ensureAiSession, handleAiPrompt, handleResearch]);
 
 	useInput((input, key) => {
 		// DECSET 1004 focus reports: terminal emits \x1b[I / \x1b[O.
@@ -898,12 +1277,19 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			if (key.escape) session.activeWizardAbort?.abort();
 			return;
 		}
+		if (aiRunning && key.escape) {
+			setAiRunning(false);
+			setAiActivity(null);
+			aiSessionRef.current?.abort();
+			return;
+		}
 
 		// Wizard form active — route to wizard key handler
 		if (wizardFormRef.current) {
 			const result = handleWizardKey(wizardFormRef.current, input, key);
 			if (!result) return;
 			if (result.action === "cancel") {
+				providerWizardFormRef.current = false;
 				const form = wizardFormRef.current;
 				const deactivated = { ...form, active: false };
 				appendBlock(renderWizardBlock(deactivated, scheme, innerW, { flat: true }));
@@ -913,6 +1299,42 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 			}
 			if (result.action === "submit") {
 				const form = wizardFormRef.current;
+				if (form && providerWizardFormRef.current) {
+					const wizardKind = providerWizardFormRef.current;
+					providerWizardFormRef.current = false;
+					setWizardForm(null);
+					void (async () => {
+						try {
+							const ai = await ensureAiSession();
+							if (!ai) throw new Error("AI mode requires an active HISE connection.");
+							if (wizardKind === "login") {
+								const provider = form.answers.provider;
+								const apiKey = form.answers.apiKey;
+								if (!provider || !apiKey) throw new Error("Provider and API key are required");
+								if (provider === "custom") {
+									await ai.addProvider({ id: form.answers.newId ?? "", baseUrl: form.answers.baseUrl ?? "", apiKey, modelId: form.answers.newModelId ?? "" });
+									setAiModel(ai.modelDisplayLabel);
+									appendBlock(renderResult({ type: "text", content: `Added provider and selected ${ai.modelDisplayLabel}.` }, scheme, innerW)!);
+								} else {
+									await ai.configureApiKey(provider, apiKey);
+									setAiModels(ai.modelChoices);
+									appendBlock(renderResult({ type: "text", content: `Authentication configured for ${provider}. Use /model to select a model.` }, scheme, innerW)!);
+								}
+								return;
+							}
+							if (wizardKind === "model") {
+								const modelId = form.answers.modelId;
+								if (!modelId) throw new Error("Select a model");
+								await ai.selectModel(modelId, (form.answers.thinkingLevel ?? "off") as AiThinkingLevel);
+								setAiModel(ai.modelDisplayLabel);
+								appendBlock(renderResult({ type: "text", content: `Selected ${ai.modelDisplayLabel}.` }, scheme, innerW)!);
+							}
+						} catch (error) {
+							appendBlock(renderError(error instanceof Error ? error.message : String(error), undefined, scheme.foreground.muted, innerW));
+						}
+					})();
+					return;
+				}
 				const deactivated = { ...form, active: false };
 				appendBlock(renderWizardBlock(deactivated, scheme, innerW, { flat: true }));
 				setWizardForm(null);
@@ -929,7 +1351,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				});
 				return;
 			}
-			let newState = result.state;
+			let newState = refreshWizardModelField(result.state, (modelId) => aiSessionRef.current?.getAvailableThinkingLevels(modelId) ?? ["off"]);
 			if (result.recomputeCompletions) {
 				const def = newState.definition;
 				const tab = def.tabs[newState.activeTab];
@@ -1313,13 +1735,20 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 						) : null}
 					</Box>
 				)}
+				{!wizardForm && !wizardActive && aiRunning && aiActivity && (
+					<Box paddingX={2}>
+						<Text color={brand.signal}>{spinnerFrames[spinnerFrame]} </Text>
+						<Text color={scheme.foreground.bright}>{formatAiActivity(aiActivity)}</Text>
+						<Text color={scheme.foreground.muted}>  {formatElapsed(Date.now() - aiActivity.startedAt)} · esc cancel</Text>
+					</Box>
+				)}
 				{!wizardForm && !wizardActive && (
 					<Input
-						modeLabel={multilineMode ? (editorFilePath?.split(/[\\/]/).pop() ?? "scratch") : "root"}
+						modeLabel={multilineMode ? (editorFilePath?.split(/[\\/]/).pop() ?? "scratch") : (aiActive ? "ai" : "root")}
 						modeAccent={modeAccent}
 						contextLabel={multilineMode ? (editorFilePath ?? undefined) : undefined}
 						columns={columns}
-						disabled={disabled}
+						disabled={disabled || aiRunning}
 						focused={terminalFocused && !aiPreview}
 						flat={!multilineMode}
 						multiline={multilineMode}
@@ -1367,7 +1796,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 							) : null}
 							<Text>{" "}</Text>
 							<StatusLine
-								modeLabel={modeLabel}
+								modeLabel={aiActive ? formatAiStatus(aiModel, aiRunning, aiStats) : modeLabel}
 								modeAccent={modeAccent}
 								contextLabel={contextLabel}
 								connectionStatus={connectionStatus}
@@ -1397,7 +1826,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 							/>
 						)}
 						<StatusLine
-							modeLabel={modeLabel}
+							modeLabel={aiActive ? formatAiStatus(aiModel, aiRunning, aiStats) : modeLabel}
 							modeAccent={modeAccent}
 							contextLabel={contextLabel}
 							connectionStatus={connectionStatus}
@@ -1408,7 +1837,7 @@ function InlineAppInner({ session, connection, scheme }: InnerProps): React.Reac
 				)}
 				{(wizardForm || wizardActive) && (
 					<StatusLine
-						modeLabel={modeLabel}
+						modeLabel={aiActive ? formatAiStatus(aiModel, aiRunning, aiStats) : modeLabel}
 						modeAccent={modeAccent}
 						contextLabel={contextLabel}
 						connectionStatus={connectionStatus}
@@ -1432,6 +1861,66 @@ interface StatusLineProps {
 	scheme: ColorScheme;
 	projectName?: string | null;
 	projectFolder?: string | null;
+}
+
+export function formatAiStatus(model: string, running: boolean, stats?: TuiAiStats): string {
+	const context = stats?.contextTokens !== undefined && stats.contextWindow
+		? ` · ctx ${formatCount(stats.contextTokens)}/${formatCount(stats.contextWindow)}`
+		: "";
+	const tokens = stats && stats.total > 0 ? ` · ↑${formatCount(stats.input)} ↓${formatCount(stats.output)}` : "";
+	const tools = stats && stats.toolCalls > 0 ? ` · ${stats.toolCalls} tools` : "";
+	return `ai · ${model}${running ? " · working" : ""}${context}${tokens}${tools}`;
+}
+
+function formatCount(value: number): string {
+	return value >= 1000 ? `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k` : String(value);
+}
+
+export function formatAiActivity(activity: Pick<AiActivityState, "kind" | "toolName" | "args">): string {
+	if (activity.kind === "thinking") return "Thinking…";
+	const name = activity.toolName ?? "tool";
+	const args = activity.args && typeof activity.args === "object" ? activity.args as Record<string, unknown> : undefined;
+	const detail = Array.isArray(args?.argv)
+		? args.argv.map(String).join(" ")
+		: typeof args?.query === "string"
+			? args.query
+			: "";
+	const suffix = detail ? `: ${detail}` : "";
+	const text = `Running ${name}${suffix}`;
+	return text.length > 100 ? `${text.slice(0, 97)}...` : text;
+}
+
+export function formatElapsed(durationMs: number): string {
+	return `${(Math.max(0, durationMs) / 1000).toFixed(1)}s`;
+}
+
+export function extractToolResultText(result: unknown): string | null {
+	if (!result || typeof result !== "object" || !("content" in result)) return null;
+	const content = (result as { content?: unknown }).content;
+	if (!Array.isArray(content)) return null;
+	const text = content
+		.filter((part): part is { type: "text"; text: string } => Boolean(
+			part
+			&& typeof part === "object"
+			&& "type" in part
+			&& part.type === "text"
+			&& "text" in part
+			&& typeof part.text === "string",
+		))
+		.map((part) => part.text)
+		.join("\n");
+	return text || null;
+}
+
+export function formatToolFailure(toolName: string | undefined, result: unknown): string {
+	const detail = extractToolResultText(result);
+	return `✗ ${toolName ?? "tool"} failed${detail ? `: ${detail}` : ""}`;
+}
+
+function formatToolArgs(args: unknown): string {
+	const text = JSON.stringify(args);
+	if (!text) return "";
+	return text.length > 120 ? `${text.slice(0, 117)}...` : text;
 }
 
 function StatusLine({ modeLabel, modeAccent, contextLabel, connectionStatus, columns, scheme, projectName, projectFolder }: StatusLineProps): React.ReactElement {

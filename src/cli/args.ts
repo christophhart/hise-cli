@@ -183,11 +183,14 @@ function formatDslSegment(value: string): string {
 
 function formatDslValue(value: string): string {
 	if (value === "") return quoteDslString(value);
+	if (value.startsWith('"') && value.endsWith('"')) return value;
 	if (value.startsWith("[") && value.endsWith("]")) return value;
 	if (/^-?\d+(?:\.\d+)?%?$/.test(value)) return value;
 	if (/^0x[0-9a-fA-F]{8}$/.test(value)) return value;
 	if (value === "true" || value === "false") return value;
-	return /[\s]/.test(value) ? quoteDslString(value) : value;
+	// Bare identifiers are parsed as path values by the modal grammar. Direct
+	// CLI scalar values are strings unless they matched a literal form above.
+	return quoteDslString(value);
 }
 
 function isUiRootParent(value: string | undefined): boolean {
@@ -309,7 +312,8 @@ function formatBuilderSetValue(flag: string, value: string): string {
 }
 
 function renderAdd(type: string, id: string, parent?: string, chain?: string): string {
-	const target = parent ? ` to ${formatDslSegment(parent)}${chain ? `.${formatDslSegment(chain)}` : ""}` : "";
+	const destination = parent && chain ? `${parent}.${chain}` : parent;
+	const target = destination ? ` to ${formatDslSegment(destination)}` : "";
 	return `add ${type} as ${quoteDslString(id)}${target}`;
 }
 
@@ -379,7 +383,7 @@ function renderBuilderDirectCommand(args: string[]): string | { error: string } 
 		if (parent && index) return directUsage("builder move accepts --parent or --index, not both");
 		if (parent) {
 			const chain = readRepeatedFlag(rest, "--chain")[0];
-			return `set ${joinTargetParam(module, "parent")} ${formatDslSegment(parent)}${chain ? `.${formatDslSegment(chain)}` : ""}`;
+			return `set ${joinTargetParam(module, "parent")} ${formatDslSegment(chain ? `${parent}.${chain}` : parent)}`;
 		}
 		if (index !== undefined) return `set ${joinTargetParam(module, "index")} ${index}`;
 		return directUsage("builder move requires --parent or --index");

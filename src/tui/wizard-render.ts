@@ -26,6 +26,7 @@ export interface WizardFormState {
 	selectionAnchor: number | null;
 	// Choice/multiselect edit
 	choiceIndex: number;
+	choiceFilter: string;
 	checkedIndices: Set<number>;
 	// File completion
 	completions: string[];
@@ -58,6 +59,7 @@ export function createInitialFormState(def: WizardDefinition, prefill: WizardAns
 		completionIndex: 0,
 		selectionAnchor: null,
 		choiceIndex: 0,
+		choiceFilter: "",
 		checkedIndices: new Set(),
 		escTimestamp: 0,
 	};
@@ -70,6 +72,13 @@ export function isTabEnabled(tab: WizardTab, answers: WizardAnswers): boolean {
 
 export function getVisibleTabIndices(def: WizardDefinition, answers: WizardAnswers): number[] {
 	return def.tabs.map((_, i) => i).filter((i) => isTabEnabled(def.tabs[i]!, answers));
+}
+
+/** Return choice options containing the typed filter, case-insensitively. */
+export function getFilteredChoiceItems(field: WizardField, filter: string): string[] {
+	const items = field.items ?? [];
+	const query = filter.trim().toLowerCase();
+	return query.length === 0 ? items : items.filter((item) => item.toLowerCase().includes(query));
 }
 
 // ── Renderer ────────────────────────────────────────────────────────
@@ -184,9 +193,10 @@ export function renderWizardBlock(
 
 		if (isEditing && (field.type === "choice" || field.type === "multiselect")) {
 			// Expanded options with tooltip on focused item
-			const items = field.items ?? [];
+			const items = getFilteredChoiceItems(field, state.choiceFilter);
 			const descs = field.itemDescriptions ?? [];
 			const valuePad = " ".repeat(valueCol);
+			if (state.choiceFilter) lines.push(line(`${valuePad}${c.muted(`filter: ${state.choiceFilter}`)}`));
 
 			for (let j = 0; j < items.length; j++) {
 				const item = items[j]!;
@@ -312,6 +322,11 @@ function renderValue(
 
 	// Text / File
 	const isEmpty = !value || value.length === 0;
+	if (field.secret) {
+		if (isEmpty) return c.muted(field.emptyText ?? "");
+		const masked = "•".repeat(value.length);
+		return editing ? c.accent(masked) + c.cursorBg(" ") : color(masked);
+	}
 
 	if (!editing) {
 		if (isEmpty) return c.muted(field.emptyText ?? "");

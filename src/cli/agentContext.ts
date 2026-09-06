@@ -81,6 +81,26 @@ export function getAgentContextMode(modeId: string): AgentContextMode | undefine
 	return GENERATED_AGENT_CONTEXT.modes.find((mode) => mode.id === modeId);
 }
 
+export type AgentCommandSafety = "read-only" | "mutation" | "unknown";
+
+/** Classify a canonical direct-CLI argv using the generated command metadata. */
+export function classifyAgentCommand(argv: string[]): AgentCommandSafety {
+	const args = argv[0] === "hise-cli" ? argv.slice(1) : argv;
+	if (args.includes("--dry-run")) return "read-only";
+	if (["-status", "--status", "-version", "--version", "which", "agent-context"].includes(args[0] ?? "")) return "read-only";
+	const commands = GENERATED_AGENT_CONTEXT.modes.flatMap((mode) => [...mode.commands]) as unknown as AgentCommand[];
+	const candidates = commands.filter((command) => {
+			const expected = command.command.argv.filter((arg) => arg !== "hise-cli" && arg !== "--agent");
+			return expected[0] === args[0] && expected[1] === args[1];
+		});
+	if (candidates.length === 0) return "unknown";
+	const actualFlags = new Set(args.filter((arg) => arg.startsWith("--")));
+	const best = candidates
+		.map((command) => ({ command, score: command.command.argv.filter((arg) => actualFlags.has(arg)).length }))
+		.sort((a, b) => b.score - a.score)[0]!.command;
+	return best.danger || best.tags.includes("mutation") ? "mutation" : "read-only";
+}
+
 export function getAgentCommand(id: string): AgentCommand | undefined {
 	for (const mode of GENERATED_AGENT_CONTEXT.modes) {
 		const command = mode.commands.find((entry) => entry.id === id);

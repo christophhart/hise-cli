@@ -357,7 +357,7 @@ describe("executeCliCommand", () => {
 
 		expect(result.kind).toBe("json");
 		if (result.kind === "json") {
-			expect(result.payload).toEqual({ ok: true, value: { id: "Master Chain", type: "SynthChain" } });
+			expect(result.payload).toEqual({ ok: true, value: { id: "Master Chain", path: "Master Chain", type: "SynthChain", nodeKind: "module" } });
 		}
 	});
 

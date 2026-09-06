@@ -4,7 +4,7 @@
 // No React, no Ink, no side effects.
 
 import type { WizardFormState } from "./wizard-render.js";
-import { isTabEnabled, getVisibleTabIndices } from "./wizard-render.js";
+import { isTabEnabled, getVisibleTabIndices, getFilteredChoiceItems } from "./wizard-render.js";
 import { isTabComplete, getVisibleFields } from "../engine/wizard/validator.js";
 import { wordBoundaryLeft, wordBoundaryRight } from "./Input.js";
 
@@ -63,7 +63,16 @@ export function handleWizardKey(
 
 	// ── Edit mode: choice ───────────────────────────────────
 	if (s.editing && field?.type === "choice") {
-		const items = field.items ?? [];
+		const items = getFilteredChoiceItems(field, s.choiceFilter);
+		if (key.backspace || key.delete) {
+			if (s.choiceFilter.length === 0) return { action: "update", state: s };
+			return { action: "update", state: { ...s, choiceFilter: s.choiceFilter.slice(0, -1), choiceIndex: 0 } };
+		}
+		if (input.length > 0 && !key.ctrl && !key.meta && !key.upArrow && !key.downArrow && !key.leftArrow && !key.rightArrow && !key.return) {
+			const filter = s.choiceFilter + input.replace(/[\r\n]/g, "");
+			return { action: "update", state: { ...s, choiceFilter: filter, choiceIndex: 0 } };
+		}
+		if (items.length === 0) return { action: "update", state: s };
 		if (key.upArrow) {
 			const next = (s.choiceIndex - 1 + items.length) % items.length;
 			return { action: "update", state: { ...s, choiceIndex: next } };
@@ -80,6 +89,7 @@ export function handleWizardKey(
 				...s,
 				answers: { ...s.answers, [field.id]: newValue },
 				editing: false,
+				choiceFilter: "",
 			}};
 		}
 		return { action: "update", state: s }; // consume key
@@ -182,16 +192,19 @@ export function handleWizardKey(
 			return { action: "update", state: { ...s, selectionAnchor: 0, cursor: value.length } };
 		}
 
-		// Printable character
-		if (input.length === 1 && !key.ctrl && !key.meta) {
+		// Printable character(s). Bracketed paste arrives as one multi-character
+		// input event; accepting the whole chunk makes API keys practical to paste.
+		if (input.length > 0 && !key.ctrl && !key.meta) {
+			const pasted = input.replace(/[\r\n]/g, "");
+			if (pasted.length === 0) return { action: "update", state: s };
 			if (s.selectionAnchor !== null) {
 				const start = Math.min(s.selectionAnchor, s.cursor);
 				const end = Math.max(s.selectionAnchor, s.cursor);
-				const newVal = value.slice(0, start) + input + value.slice(end);
-				return { action: "update", state: { ...s, answers: { ...s.answers, [field.id]: newVal }, cursor: start + 1, selectionAnchor: null }, recomputeCompletions: isFile };
+				const newVal = value.slice(0, start) + pasted + value.slice(end);
+				return { action: "update", state: { ...s, answers: { ...s.answers, [field.id]: newVal }, cursor: start + pasted.length, selectionAnchor: null }, recomputeCompletions: isFile };
 			}
-			const newVal = value.slice(0, s.cursor) + input + value.slice(s.cursor);
-			return { action: "update", state: { ...s, answers: { ...s.answers, [field.id]: newVal }, cursor: s.cursor + 1, selectionAnchor: null }, recomputeCompletions: isFile };
+			const newVal = value.slice(0, s.cursor) + pasted + value.slice(s.cursor);
+			return { action: "update", state: { ...s, answers: { ...s.answers, [field.id]: newVal }, cursor: s.cursor + pasted.length, selectionAnchor: null }, recomputeCompletions: isFile };
 		}
 
 		return { action: "update", state: s };
@@ -251,7 +264,7 @@ export function handleWizardKey(
 			const idx = field.valueMode === "index"
 				? parseInt(value, 10) || 0
 				: Math.max(0, items.indexOf(value));
-			return { action: "update", state: { ...s, editing: true, choiceIndex: idx } };
+			return { action: "update", state: { ...s, editing: true, choiceIndex: idx, choiceFilter: "" } };
 		}
 
 		// Multiselect: enter edit with current selections

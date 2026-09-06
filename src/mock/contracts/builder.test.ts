@@ -1,5 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { cleanBuilderShowForLlm, cleanBuilderParameterForLlm } from "./builder.js";
+import { cleanBuilderShowForLlm, cleanBuilderParameterForLlm, cleanBuilderTreeForLlm } from "./builder.js";
+
+describe("cleanBuilderTreeForLlm", () => {
+	it("returns canonical paths for modules and chains", () => {
+		const cleaned = cleanBuilderTreeForLlm({
+			id: "Master Chain",
+			type: "SynthChain",
+			nodeKind: "module",
+			children: [{
+				id: "FX Chain",
+				nodeKind: "chain",
+				children: [{ id: "Saturation", type: "Saturator", nodeKind: "module" }],
+			}],
+		}) as Record<string, unknown>;
+		expect(cleaned).toMatchObject({
+			path: "Master Chain",
+			children: [{
+				path: "Master Chain.FX Chain",
+				children: [{ path: "Master Chain.FX Chain.Saturation" }],
+			}],
+		});
+	});
+});
 
 describe("cleanBuilderShowForLlm", () => {
 	it("strips parameter metadata to id-only list", () => {

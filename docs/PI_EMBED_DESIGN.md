@@ -161,14 +161,15 @@ This has two big consequences:
 
 ### Tools
 
-- **`hise_cli`** — executes a hise-cli session command in-process through
-  the live session (same mode parsers, same tree state, same HISE connection
-  the TUI is using). No process spawn, no JSON round-trip; results come back
-  as the same `CommandResult` the REPL renders (ASCII trees, pretty
-  output) so the model reads what a human would see.
-- **`hise_context`** — in-process access to the discovery surface: intent
-  resolution (`which`) and per-mode / per-command context (the same data
-  behind `agent-context`). This is the agent's documentation lookup.
+- **`hise_command`** — executes canonical direct CLI arguments in-process through
+  the existing CLI dispatcher. The tool accepts `argv: string[]` (without the
+  executable) and optional `stdin`; it does not accept REPL syntax or a
+  separate mode field. This keeps the embedded agent on the same flag-style
+  command contract as external agents and avoids CLI/REPL translation drift.
+- **`hise_help`** — retrieves authoritative hise-cli documentation in-process.
+  Pass a mode for its syntax and commands, or omit the mode for the generated
+  command context. This describes how to use HISE; it does not inspect live
+  project state.
 - **`hise_setup`** — drives the existing setup wizard machinery (see
   Extensions).
 - **`hise_verify`** — the verification-ladder meta-tool (see Feedback Loop).
@@ -190,9 +191,11 @@ Two regimes, matched to the two frontends:
   back. No per-write confirmation prompts — that would turn multi-step
   workflows into a "yes, really?" interrogation.
 - **CLI one-shot: gated.** `hise-cli ai` is **read-only by default**: it can
-  inspect, diagnose, research, and propose. Any HISE write requires an
-  explicit apply flag. Rationale: one-shot invocations are often scripted;
-  the blast radius of an unattended agent editing a plugin must be opt-in.
+  inspect, diagnose, research, and propose. Any command classified as dangerous
+  by the shared `AgentCommand.danger` metadata requires `--apply`; unknown
+  commands fail closed. `--dry-run` remains allowed for commands that support
+  it. Rationale: one-shot invocations are often scripted; the blast radius of
+  an unattended agent editing a plugin must be opt-in.
 
 Abort semantics follow the SDK's session abort: it cancels in-flight model
 and tool work, leaving the session resumable.
@@ -222,7 +225,7 @@ output committed to scrollback.
 Print-mode semantics: the prompt streams markdown to stdout and the process
 exits when the run completes. A JSON output form exposes the full transcript
 for scripting; a resume flag continues a saved session. Writes require the
-explicit apply flag (see Safety model). This mode is also the natural
+explicit `--apply` flag (see Safety model). This mode is also the natural
 entry point for *external* automation that wants the full agent loop rather
 than individual commands.
 
@@ -337,10 +340,7 @@ heuristic, the ambient hooks are a function of the *current mode*.
   inside the interaction loop and must not stall it. The expensive rungs
   (stimulus trace, sequence playback, screenshots) run batched at the end
   of a change burst, automatically or on `hise_verify`.
-- The system preamble is assembled from the **per-mode agent-context
-  files** (the same curated knowledge the `agent-context` command serves),
-  so each mode both *selects* its hooks and *describes* its discipline to
-  the model — one source of truth again, shared with the CLI.
+- The system preamble includes a build-generated compact syntax contract assembled from the **per-mode agent-context files**. It carries the complete routine command surface and essential path/tool rules without embedding verbose help, examples, or catalogs. Detailed notes remain behind `hise_help`, while unfamiliar HISE semantics remain behind `hise_research`. The generated contract and `agent-context` therefore share one source of truth with the CLI.
 
 ### Script mode: shadow parser on edits
 
@@ -509,7 +509,7 @@ hise-cli self-update. This is the setting where the optimistic safety model
 shines most: the user explicitly asked, every shell phase streams visibly,
 and abort is one keystroke away.
 
-### Explore: the research sub-agent
+### Research sub-agent
 
 Research in this system is a **four-tier escalation ladder**, ordered by
 authority and cost — the mirror image of the verification ladder:
@@ -517,16 +517,16 @@ authority and cost — the mirror image of the verification ladder:
 1. **Local datasets** — the main agent, directly, zero latency. API
    signatures, module and component vocabularies. Answers mechanism
    questions.
-2. **Docs** — explore sub-agent over the docs backend the `/mcp` mode uses.
-3. **Forum** — explore sub-agent over the forum tool; anecdotal authority,
+2. **Docs** — research sub-agent over the docs backend the `/mcp` mode uses.
+3. **Forum** — research sub-agent over the forum tool; anecdotal authority,
    real-world coverage.
-4. **C++ source** — explore sub-agent reading the HISE source tree. The
+4. **C++ source** — research sub-agent reading the HISE source tree. The
    ground truth for framework behavior when docs are silent, wrong, or
    version-stale: it answers "what does the engine *actually* do here" with
    `file:line` evidence, e.g. for crash diagnosis (logs give the *where*,
    source gives the *mechanism*, the agent translates to a script-level fix).
 
-The explore capability is one tool with a domain parameter
+The research capability is one tool with a domain parameter
 (`docs` | `forum` | `source`): one sub-agent mechanism, the prompt and
 toolset vary by domain. It has two entry points:
 
@@ -540,7 +540,7 @@ The sub-agent is deliberately constrained:
 - **Domain-scoped tools.** Docs/forum: the research backends only. Source:
   `read`/`grep`/`find` only, with the sub-session's working directory set to
   the HISE source root instead of the project — file scope is *per session*,
-  so the main agent's project world and the source explore's install-tree
+  so the main agent's project world and the source research install-tree
   world never mix. No project-mutation tools in any domain: a research
   sub-agent *cannot* touch the project by construction, not by prompt.
 - **Source domain: version-pinned.** The sub-prompt carries the running
@@ -556,7 +556,7 @@ The sub-agent is deliberately constrained:
   Findings carry `file:line` citations, which the main agent quotes and the
   user can open to verify.
 - **The main agent never pokes the tree itself.** If the distilled answer
-  needs more depth, it fires a second, narrower explore call — the main
+  needs more depth, it fires a second, narrower research call — the main
   conversation's context never absorbs a single line of C++ churn.
 - **Distilled output**: exact API signatures plus citations (doc page,
   example, forum thread, source file:line).
@@ -578,7 +578,26 @@ degrading the working context (the DSP refactor you are actually in the
 middle of). The sub-agent quarantines the churn; the main session absorbs a
 few distilled paragraphs.
 
-Scope decision: explore ships inside the agent (tool + command) in 1.0.
+Before retrieval, a compact query-expansion turn translates the literal
+question into a few alternative searches that preserve its relationships while
+adding HISE terminology. Results are merged by reciprocal-rank fusion. Before
+full documents are fetched, a dedicated reranking turn receives this larger set
+of shallow documentation and example matches and selects a small, bounded
+evidence set for synthesis. Selection values are validated against
+the retrieved candidates, with a retrieval-order fallback if the reranker
+returns malformed output. This improves precision without trusting an
+intermediate model to paraphrase or discard source facts. Immediately before
+synthesis, a deterministic cleaner removes machine-facing C++ signatures,
+source and dispatch sections, preprocessor guard names, and raw thread-safety
+labels while preserving the user-facing API text and source identifiers.
+
+Generated examples are diagnosed as standalone code against live HISE. API
+validation errors that only report a referenced module missing from the current
+project are ignored for research examples: they describe a different project
+context, not invalid HiseScript. Syntax errors and other API diagnostics remain
+actionable and can trigger correction.
+
+Scope decision: research ships inside the agent (tool + command) in 1.0.
 A standalone `hise-cli explore` command outside the agent is a candidate
 follow-up — it would serve non-agent users and external agents, but it pulls
 the SDK into a non-agent code path and eventually needs a non-pi fallback
@@ -611,7 +630,7 @@ credentials. First-run design:
 - Embedded session: separate state directory, HISE project as working
   directory, pre-flight launch, TUI `/ai` mode + CLI one-shot with gated
   writes, persistent resumable sessions.
-- `hise_cli` + `hise_context` tools; built-in file tools without shell.
+- `hise_command` + `hise_help` tools; built-in file tools without shell.
 - Mode-driven ambient feedback: per-mode per-edit hooks (filtered tree
   views, shadow parse, compile checks) plus the batched rich rungs (trace,
   sequence, screenshot) at the end of change bursts.
@@ -785,7 +804,7 @@ the embedded edge is zero-handoff follow-through.
 
 - [DESIGN.md](DESIGN.md) — the three-layer architecture this design plugs
   into.
-- [CLI_GRAMMAR.md](CLI_GRAMMAR.md) — the command grammar `hise_cli`
+- [CLI_GRAMMAR.md](CLI_GRAMMAR.md) — the command grammar used by `hise_command`
   executes; any grammar change changes the agent surface automatically, by
   construction.
 - [MODE_DEVELOPMENT.md](../MODE_DEVELOPMENT.md) — HISE REST development
@@ -793,6 +812,6 @@ the embedded edge is zero-handoff follow-through.
 - [WIZARD_CONVERSION.md](WIZARD_CONVERSION.md) — the wizard machinery
   `hise_setup` drives.
 - [docs/agent-context/](agent-context/) — the curated per-mode knowledge
-  behind `hise_context`.
+  behind `hise_help`.
 - [WORKFLOW_GUIDE.md](WORKFLOW_GUIDE.md) and [DSP_DEVELOPMENT_WORKFLOW.md](DSP_DEVELOPMENT_WORKFLOW.md) —
   the human workflows the verification ladder automates.

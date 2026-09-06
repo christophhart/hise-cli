@@ -1,0 +1,21 @@
+/** Compact language/context guardrail shared by the main and research agents. */
+export const HISESCRIPT_CHEAT_SHEET = `HiseScript correctness:
+- HiseScript is HISE's JavaScript-like language, not standard JavaScript, Python, or C++.
+- Script callback slots contain callback bodies; do not wrap an onInit body in an onInit() declaration.
+- Use const var for stable references, local inside inline functions, var at top level or inside regular functions, and reg only for performance-critical realtime state.
+- Control and realtime callbacks should be named inline functions. Paint routines and LAF callbacks use plain function.
+- HiseScript does not support let, standard const, ===, !==, template literals, default parameters, spread syntax, classes, or new-based class construction.
+- Do not pass undefined as a function argument. Use the documented clearing value, commonly false, 0, or "".
+- Use SyncNotification, AsyncNotification, or AsyncHiPriorityNotification instead of boolean notification arguments.
+- Avoid arrow functions, map, and filter in realtime callbacks. Prefer for...in when the index is not needed.
+- Anonymous callbacks capture outer values with function [value](args) { ... }. Inner anonymous functions cannot otherwise access outer function parameters.
+- Inline functions cannot be nested. Declare them at file or namespace scope.
+- ComboBox callback values are floats. Use parseInt(value) before indexing or building identifiers.
+- Parenthesise numeric arithmetic inside string concatenation, for example "Button" + (i + 1).
+- Arrays and Objects are assigned by reference. Use clone() when an independent copy is required. Array.concat() mutates the original array in HiseScript.
+- Use Console.print(), Engine timer objects, == and !=, and isDefined() instead of their standard JavaScript equivalents.
+- Colours use 0xAARRGGBB. Prefer Colours constants for common colours.
+- Prefer named API constants over magic numbers.
+- Never guess API names, callback signatures, JSON fields, enum labels, notification behaviour, or LAF function names. Retrieve the exact contract when unfamiliar.
+- Create UI controls through Content factories and declare every referenced component or module handle.
+- Prefer retrieved HISE examples over invented code, then validate generated code with HISE.`;

@@ -53,7 +53,7 @@ describe("builder-ops — add", () => {
 				},
 			],
 		};
-		const cmd = parseOk('add LFO as "L" to Lead."Gain Modulation"');
+		const cmd = parseOk('add LFO as "L" to "Lead.Gain Modulation"');
 		const result = commandToOps(cmd, tree, NULL_MODULES, []);
 
 		if ("error" in result) throw new Error(result.error);

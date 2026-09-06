@@ -309,7 +309,7 @@ function extractPathSegmentImage(node: CstNode): string {
 	throw new Error("pathSegment: no Identifier or QuotedString");
 }
 
-function extractPathExpr(node: CstNode): { ref: PathRef } | { error: string } {
+function extractPathExpr(node: CstNode, allowQuotedDottedPath = true): { ref: PathRef } | { error: string } {
 	const c = node.children;
 	if (c.DoubleDot) return { ref: { kind: "parent" } };
 	const segments: string[] = [];
@@ -317,6 +317,18 @@ function extractPathExpr(node: CstNode): { ref: PathRef } | { error: string } {
 	if (c.rest) {
 		for (const seg of c.rest as import("chevrotain").CstElement[]) {
 			segments.push(extractPathSegmentImage(seg as CstNode));
+		}
+	}
+	// A complete dotted path may be quoted as one argument. This is the
+	// canonical external form for paths containing spaces, eg.
+	// "Master Chain.FX Chain". Internally each segment remains quoted.
+	if (allowQuotedDottedPath && segments.length === 1 && segments[0]!.startsWith('"')) {
+		const parsed = parseQuotedString(segments[0]!);
+		if (!parsed.ok || parsed.value.kind !== "string") return { error: parsed.ok ? "invalid quoted path" : parsed.error };
+		if (parsed.value.s.includes(".")) {
+			const pathSegments = parsed.value.s.split(".");
+			if (pathSegments.some((segment) => segment.length === 0)) return { error: `invalid dotted path "${parsed.value.s}"` };
+			segments.splice(0, 1, ...pathSegments.map((segment) => JSON.stringify(segment)));
 		}
 	}
 	const r = buildPathFromSegments(segments);
@@ -359,7 +371,7 @@ function extractValue(node: CstNode): ValueResult {
 	if (c.NumberLiteral) return parseNumberLiteral((c.NumberLiteral[0] as IToken).image);
 	if (c.BooleanLiteral) return parseBooleanLiteral((c.BooleanLiteral[0] as IToken).image);
 	if (c.pathExpr) {
-		const r = extractPathExpr(c.pathExpr[0] as CstNode);
+		const r = extractPathExpr(c.pathExpr[0] as CstNode, false);
 		if ("error" in r) return { ok: false, error: r.error };
 		// A solo quoted segment is a string value, not a path.
 		if (r.ref.kind === "bare" && r.ref.segment.quoted) {

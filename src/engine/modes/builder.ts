@@ -937,18 +937,23 @@ export class BuilderMode implements Mode {
 	): Promise<CommandResult> {
 		const connection = session.connection ?? null;
 		const segs = pathRefSegments(target);
-		// First segment resolves to the module; ≥2 segs = parameter detail.
-		const moduleRef: PathRef = segs.length === 0
-			? target
-			: { kind: "bare", segment: segs[0] };
-		const r = this.resolveRefForRead(moduleRef);
-		if ("error" in r) return errorResult(r.error);
-
-		const wantsParam = segs.length >= 2;
-		const paramName = wantsParam ? segs[1].id : null;
-		if (segs.length > 2) {
-			return errorResult("show: parameter detail does not support sub-fields (use `set` for range subfields)");
+		// Resolve the complete path as a module first. Only interpret the final
+		// segment as a parameter when the complete module path does not exist.
+		// This keeps canonical tree paths such as Master.FX.Filter1 usable.
+		let moduleRef = target;
+		let r = this.resolveRefForRead(moduleRef);
+		let paramName: string | null = null;
+		if ("error" in r) {
+			if (segs.length < 2) return errorResult(r.error);
+			const moduleSegments = segs.slice(0, -1);
+			moduleRef = moduleSegments.length === 1
+				? { kind: "bare", segment: moduleSegments[0]! }
+				: { kind: "dotted", segments: moduleSegments };
+			r = this.resolveRefForRead(moduleRef);
+			if ("error" in r) return errorResult(r.error);
+			paramName = segs[segs.length - 1]!.id;
 		}
+		const wantsParam = paramName !== null;
 
 		// Live fetch when connected.
 		if (connection) {

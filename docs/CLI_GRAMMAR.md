@@ -31,6 +31,14 @@ Identifier matching (paths, fields, type names) is **case-insensitive**. Storage
 
 Static documentation lookup uses `docs` and is backed by MCP. Live inspection uses `show` and is backed by HISE.
 
+## Research entry points
+
+- TUI: `/research <question>`
+- One-shot CLI: `hise-cli -research "<question>" [--json | --agent]`
+- Embedded agent tool: `hise_research { query }`
+
+Research performs bounded documentation and example retrieval, model synthesis, and live headless diagnosis with correction passes for generated HiseScript examples. The old `explore` names are not aliases.
+
 ## CLI invocation layer
 
 The shell CLI uses direct flag-style namespaces for builder, UI, and DSP automation:
@@ -130,6 +138,8 @@ Two path forms only — no slash absolute syntax:
 
 - **Bare ID** (`Compressor`) — unique-instance project lookup. Errors if missing or ambiguous.
 - **Dotted path** (`SineSynth.Pitch.VelMod`) — anchored path used to disambiguate shared chain ids or to be explicit about location. Resolves left-to-right from project root.
+
+A complete dotted path containing spaces may be supplied as one quoted argument, for example `"Master Chain.FX Chain"`. This is the canonical external form; agent-facing tree output returns the same string in each node's `path` field. Segment-by-segment quoting is an internal parser detail and must not be emitted by CLI frontends.
 
 ### Navigation (`cd`/`ls`/`pwd`)
 
@@ -232,7 +242,7 @@ Lands at `Master`. Type names are HISE module classes (`SineSynth`, `Filter`, `S
 
 | Verb | Syntax |
 |------|--------|
-| `add` | `add <type> as "<name>" [to <parent>]` |
+| `add` | `add <type> as "<name>" [to <module-or-chain-path>]` |
 | `clone` | `clone <target> <count>` (count required; clones placed as siblings; ids derived by bumping trailing integer of source name, or appending `1` if none. Auto-skips already-taken ids: `clone Lead 3` when `Lead1` exists → `Lead2`, `Lead3`, `Lead4`) |
 | `remove` | `remove <target>` (containers remove children recursively; removing cwd jumps to root; removing root is an error) |
 | `rename` | `rename <target> as "<name>"` |
@@ -242,6 +252,8 @@ Lands at `Master`. Type names are HISE module classes (`SineSynth`, `Filter`, `S
 | `docs` | `docs` \| `docs <moduleType>` \| `docs <moduleType>.<param>` (static MCP documentation) |
 | `cd` / `ls` / `pwd` | navigation |
 | `reset` | `reset` (clears project to empty Master) |
+
+`show <path>` resolves the complete path as a module first. Only when no complete module path exists is the final segment interpreted as a parameter name. This ensures canonical paths returned by `builder tree`, such as `"Master Chain.FX Chain.Filter1"`, can be passed back unchanged.
 
 Asset reference fields (write only quoted names; no path resolution):
 - `samplemap` — looks up named samplemap in project assets (`set Sampler1.samplemap "My Piano"`).
@@ -502,7 +514,7 @@ trace root inject param Root.Value 0.5 probe changed_parameters
 - Reserved word in path position (after `.`): bare. `add math.add as "x"`, `set X.range [...]`, `set X.min 0` — all fine.
 - Reserved word in identifier-start position (where it could be parsed as a verb or role keyword): quotes required. Both verb-keywords and role-keywords work quoted: `add Synth as "to"`, `add Synth as "as"`, `add Filter as "set"` — all create nodes named literally `to`, `as`, `set`.
 - Quoted identifier always wins over keyword recognition. `show "tree"` queries a node named `tree`, not the tree listing.
-- Quoted segments inside dotted paths bypass keyword recognition for that segment. After `add Synth as "to"`, the node is referenced via `set "to".bypassed 1` or `cd "to"` — the quoted segment is one identifier in the path.
+- A quoted string containing dots is a complete canonical path (`"Master Chain.FX Chain"`). Quoted segments inside an otherwise dotted expression still bypass keyword recognition for that segment. After `add Synth as "to"`, the node is referenced via `set "to".bypassed 1` or `cd "to"`.
 - `trace` forces quoted node IDs in boundary clauses (`before "gain"`, `after "delay"`) so they cannot be confused with trace keywords. Trace parameter paths stay dotted and normally unquoted (`probe param gain.Gain`).
 
 ## Comma chaining
@@ -599,8 +611,9 @@ UiShowNoun           := 'tree'
 DspShowNoun          := 'networks' | 'modules' | 'connections' | 'status' | 'tree'
 Filter               := QuotedString | BareWord
 
-PathExpr             := DottedPath | BarePath | '..'
+PathExpr             := DottedPath | QuotedDottedPath | BarePath | '..'
 DottedPath           := Identifier ('.' Identifier)+         ; ≥2 segments, dot-separated
+QuotedDottedPath     := QuotedString                          ; value contains ≥1 dot; split after unquoting
 BarePath             := Identifier                            ; single segment
 
 Value                := QuotedString | Number | Percent | Boolean | HexLiteral | ArrayValue | PathExpr

@@ -68,7 +68,7 @@ export function renderInlineBanner(version: string, updateLatest?: string | null
 		lines.push(dim + `  Run \`hise-cli update\` to install.` + RESET);
 	}
 	lines.push("");
-	lines.push(dim + "  Type /help to get started" + RESET);
+	lines.push(dim + "  Type /help to get started · /ai for the embedded agent" + RESET);
 	lines.push("");
 
 	return lines.join("\n") + "\n";
