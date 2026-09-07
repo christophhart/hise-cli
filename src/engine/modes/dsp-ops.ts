@@ -217,7 +217,7 @@ function translateRename(
 ): { ops: DspOp[] } | { error: string } {
 	const r = resolveRefToId(treeRoot, currentPath, cmd.target);
 	if ("error" in r) return r;
-	return { ops: [{ op: "set_id", nodeId: r.id, newId: cmd.name }] };
+	return { ops: [{ op: "set_id", target: r.id, name: cmd.name }] };
 }
 
 // ── Set ───────────────────────────────────────────────────────────

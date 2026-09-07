@@ -215,6 +215,15 @@ function joinTargetParam(target: string, param: string): string {
 	return `${formatDslSegment(target)}.${formatDslSegment(param)}`;
 }
 
+// Disconnect accepts the public `node.param` endpoint form as one flag value.
+// Split it before quoting so a parameter ID containing spaces remains the
+// second path segment instead of turning the whole endpoint into one segment.
+function formatDspDisconnectTarget(target: string): string {
+	const separator = target.lastIndexOf(".");
+	if (separator <= 0 || separator === target.length - 1) return formatDslSegment(target);
+	return joinTargetParam(target.slice(0, separator), target.slice(separator + 1));
+}
+
 function readRepeatedFlag(args: string[], flag: string): string[] {
 	const values: string[] = [];
 	for (let i = 0; i < args.length; i++) {
@@ -655,7 +664,7 @@ function renderDspDirectCommand(args: string[]): string | { error: string } {
 	if (command === "disconnect") {
 		const targets = readRepeatedFlag(rest, "--target");
 		if (targets.length === 0) return directUsage("dsp disconnect requires --target");
-		return `${prefix}disconnect ${targets.map(formatDslSegment).join(", ")}`;
+		return `${prefix}disconnect ${targets.map(formatDspDisconnectTarget).join(", ")}`;
 	}
 	if (command === "create_parameter") {
 		const container = readRequiredFlag(rest, "--container");

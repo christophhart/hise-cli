@@ -89,7 +89,7 @@ describe("dsp-ops — remove / rename", () => {
 
 	it("rename emits set_id op", () => {
 		const ops = opsOk('rename g1 as "Gain1"');
-		expect(ops[0]).toMatchObject({ op: "set_id", nodeId: "g1", newId: "Gain1" });
+		expect(ops[0]).toMatchObject({ op: "set_id", target: "g1", name: "Gain1" });
 	});
 });
 

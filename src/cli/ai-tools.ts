@@ -492,13 +492,13 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		name: "hise_docs",
 		label: "HISE docs MCP",
 		promptSnippet: "Search and retrieve HISE documentation and examples.",
-		description: "Call a HISE documentation MCP tool. Allowed tools include explore_hise, search_hise, get_doc_content, search_examples, and get_example. This tool is read-only.",
+		description: "Call a HISE documentation MCP tool. Allowed tools include explore_hise, search_hise, query_scriptnode, get_doc_content, search_examples, and get_example. This tool is read-only.",
 		parameters: Type.Object({
 			tool: Type.String(),
 			arguments: Type.Optional(Type.Any()),
 		}),
 		async execute(_toolCallId, params) {
-			const allowed = new Set(["explore_hise", "search_hise", "get_doc_content", "search_examples", "get_example"]);
+			const allowed = new Set(["explore_hise", "search_hise", "query_scriptnode", "get_doc_content", "search_examples", "get_example"]);
 			if (!allowed.has(params.tool)) throw new Error(`MCP research tool not allowed: ${params.tool}`);
 			const result = await options.mcpClient.callTool({ name: params.tool, arguments: (params.arguments ?? {}) as McpJsonValue });
 			return { content: [{ type: "text", text: JSON.stringify(result) }], details: { tool: params.tool } };
@@ -733,11 +733,16 @@ interface ResearchCandidates {
 	examples: McpJsonValue;
 	documentKeys: string[];
 	exampleIds: string[];
+	domain?: "scriptnode";
 }
 
 interface ResearchSelection {
 	documentKeys: string[];
 	exampleIds: string[];
+}
+
+export function inferResearchDomain(query: string): "scriptnode" | undefined {
+	return /\bscript\s*node\b|\bdsp\s*network\b|\bdsp\s+node\b/i.test(query) ? "scriptnode" : undefined;
 }
 
 async function collectResearchCandidates(queries: string[], options: HiseResearchOptions): Promise<ResearchCandidates> {
@@ -750,23 +755,31 @@ async function collectResearchCandidates(queries: string[], options: HiseResearc
 	const exampleLists: string[][] = [];
 	for (let index = 0; index < queries.length; index++) {
 		const query = queries[index]!;
+		const domain = inferResearchDomain(query);
+		const exploreArguments: McpJsonValue = { query, ...(domain ? { domain, source: "docs" } : {}) };
+		const searchArguments: McpJsonValue = { query, limit: 20, ...(domain ? { domain } : {}) };
+		const exampleArguments: McpJsonValue = { query, limit: 20, ...(domain ? { source: "scriptnode" } : {}) };
 		// The literal query is mandatory. Expanded variants improve recall but may
 		// fail independently without discarding otherwise useful evidence.
 		const primary = index === 0
 			? await runResearchStep(options, "Documentation search", `explore_hise · ${index + 1}/${queries.length}`, () =>
-				mcpClient.callTool({ name: "explore_hise", arguments: { query } }))
+				mcpClient.callTool({ name: "explore_hise", arguments: exploreArguments }))
 			: await runOptionalResearchStep(options, "Expanded documentation search", `explore_hise · ${index + 1}/${queries.length}`, () =>
-				mcpClient.callTool({ name: "explore_hise", arguments: { query } }));
+				mcpClient.callTool({ name: "explore_hise", arguments: exploreArguments }));
 		const broad = await runOptionalResearchStep(options, "Broad candidate search", `search_hise · ${index + 1}/${queries.length}`, () =>
-			mcpClient.callTool({ name: "search_hise", arguments: { query, limit: 20 } }));
+			mcpClient.callTool({ name: "search_hise", arguments: searchArguments }));
 		const examples = await runOptionalResearchStep(options, "Example search", `search_examples · ${index + 1}/${queries.length}`, () =>
-			mcpClient.callTool({ name: "search_examples", arguments: { query, limit: 20 } }));
+			mcpClient.callTool({ name: "search_examples", arguments: exampleArguments }));
 		primaryResults.push(primary);
 		const broadItems = extractSearchResults(broad);
 		const exampleItems = extractSearchResults(examples);
 		broadResults.push(...broadItems);
 		exampleResults.push(...exampleItems);
-		const urls = [...new Set(mcpResultText(primary).match(/\/v2\/scripting-api\/[^"\\\s]+/g) ?? [])];
+		// explore_hise returns ScriptNode reference pages under /v2/reference as
+		// well as scripting-api pages. Restricting this to scripting-api silently
+		// discarded the most relevant ScriptNode evidence.
+		const urls = [...new Set((mcpResultText(primary).match(/\/v2\/[^"\\\s]+/g) ?? [])
+			.map((url) => url.replace(/[),.;]+$/, "")))];
 		semanticDocumentLists.push(urls);
 		broadDocumentLists.push(broadItems.map((item) => `id:${item.id}`));
 		exampleLists.push(exampleItems.map((item) => item.id));
@@ -780,6 +793,7 @@ async function collectResearchCandidates(queries: string[], options: HiseResearc
 		examples: textMcpResult(JSON.stringify({ results: dedupeSearchResults(exampleResults) })),
 		documentKeys: [...semanticDocuments, ...broadDocuments],
 		exampleIds: fuseRankedCandidates(exampleLists, 40),
+		domain: inferResearchDomain(queries[0] ?? ""),
 	};
 }
 
@@ -912,8 +926,10 @@ async function fetchResearchEvidence(
 	const fullDocs: Array<{ key: string; result: McpJsonValue }> = [];
 	for (const key of selection.documentKeys) {
 		const args: McpJsonValue = key.startsWith("id:") ? { id: key.slice(3) } : { url: key };
+		const lookupTool = candidates.domain === "scriptnode" && key.startsWith("id:") ? "query_scriptnode" : "get_doc_content";
+		const lookupArgs = lookupTool === "query_scriptnode" ? { query: key.slice(3) } : args;
 		const result = await runOptionalResearchStep(options, "Document lookup", key, () =>
-			options.mcpClient.callTool({ name: "get_doc_content", arguments: args }));
+			options.mcpClient.callTool({ name: lookupTool, arguments: lookupArgs }));
 		if (!isMcpFailure(result)) fullDocs.push({ key, result });
 	}
 	const fullExamples: Array<{ id: string; result: McpJsonValue }> = [];
@@ -969,7 +985,7 @@ function isMcpFailure(value: McpJsonValue): boolean {
 	return Boolean(value && typeof value === "object" && !Array.isArray(value) && "error" in value);
 }
 
-const HISE_RESEARCH_EXPANSION_PROMPT = `You rewrite HISE documentation questions for semantic retrieval. Do not answer the question. Return exactly one JSON object with a queries array containing two or three short alternative searches. Preserve explicit identifiers. Add precise HISE vocabulary, expand ambiguous user terms, and describe both acquisition and follow-up operations when the task is a workflow. Preserve every relationship constraint from the original question in each rewrite, such as one processor owning an object that another script must access. Include plausible alternative interpretations rather than committing to an uncertain one. In HISE, "module" usually means a processor; "node" may mean a ScriptNode Node in a DspNetwork, a child processor in the module tree, or a UI child component; and the Interface script accessing another module is a cross-processor operation. Cover these distinct meanings when the wording is ambiguous. Do not include the original query; the caller preserves it automatically.
+const HISE_RESEARCH_EXPANSION_PROMPT = `You rewrite HISE documentation questions for semantic retrieval. Do not answer the question. Return exactly one JSON object with a queries array containing two or three short alternative searches. Preserve explicit identifiers. Add precise HISE vocabulary, expand ambiguous user terms, and describe both acquisition and follow-up operations when the task is a workflow. Preserve every relationship constraint from the original question in each rewrite, such as one processor owning an object that another script must access. Include plausible alternative interpretations rather than committing to an uncertain one. In HISE, "module" usually means a processor; "node" may mean a ScriptNode Node in a DspNetwork, a child processor in the module tree, or a UI child component; and the Interface script accessing another module is a cross-processor operation. Cover these distinct meanings when the wording is ambiguous. If the original question explicitly names ScriptNode, scriptnode, DspNetwork, or DSP nodes, repeat that vocabulary in every rewrite and do not turn the question into a HiseScript API question. Do not include the original query; the caller preserves it automatically.
 
 Example output:
 {"queries":["cross-processor ScriptNode DspNetwork access from an Interface script","retrieve an existing DSP network owned by another script processor then get a Node by ID","reference a child HISE processor from the Interface script"]}`;

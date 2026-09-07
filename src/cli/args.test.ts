@@ -100,6 +100,18 @@ describe("parseCliArgs", () => {
 		if (types.kind === "execute") expect(types.canonicalCommand).toBe("/dsp docs");
 	});
 
+	it("preserves spaces in DSP disconnect parameter IDs", () => {
+		const result = parseCliArgs([
+			"node", "hise-cli", "dsp", "disconnect",
+			"--module", "EventRasterVibrato",
+			"--target", "AudibleTone.Freq Ratio",
+		], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe('/dsp.EventRasterVibrato disconnect AudibleTone."Freq Ratio"');
+		}
+	});
+
 	it("parses leading DSP module flag before command", () => {
 		const result = parseCliArgs(["node", "hise-cli", "dsp", "--module", "Interface", "docs", "filters.svf"], getCliCommands());
 		expect(result.kind).toBe("execute");

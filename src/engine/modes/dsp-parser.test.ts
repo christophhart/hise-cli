@@ -275,6 +275,11 @@ describe("dsp parser — disconnect", () => {
 		expect(parseErr("disconnect lfo from g1.Gain")).toMatch(/Parse error/);
 	});
 
+	it("parses a quoted parameter ID containing spaces", () => {
+		const cmd = parseOk<DisconnectCommand>('disconnect AudibleTone."Freq Ratio"');
+		expect(pathRefSegments(cmd.targets[0]!).map((segment) => segment.id)).toEqual(["AudibleTone", "Freq Ratio"]);
+	});
+
 	it("parses chained disconnect", () => {
 		const cmd = parseOk<DisconnectCommand>("disconnect g1.Gain, g2.Pan");
 		expect(cmd.targets).toHaveLength(2);

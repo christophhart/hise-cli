@@ -314,6 +314,7 @@ function serializeDspCommand(command: DspCommand, ctx: TranslationContext): stri
 			...(command.stepSize !== undefined ? ["--stepSize", String(command.stepSize)] : []),
 			...(command.middlePosition !== undefined ? ["--middlePosition", String(command.middlePosition)] : []),
 			...(command.skewFactor !== undefined ? ["--skewFactor", String(command.skewFactor)] : []),
+			...(command.externalModulation !== undefined ? ["--externalModulation", command.externalModulation] : []),
 		]];
 		case "screenshot": return [["dsp", "screenshot", ...moduleFlag, "--scale", String(command.scale), "--output", command.file]];
 		case "trace": return [[

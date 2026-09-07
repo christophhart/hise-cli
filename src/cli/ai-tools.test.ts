@@ -5,7 +5,7 @@ import { MockHiseConnection } from "../engine/hise.js";
 import { createDefaultMockRuntime } from "../mock/runtime.js";
 import { createSession } from "../session-bootstrap.js";
 import { listCliCommands } from "./commands.js";
-import { assertHiseMcpReachable, cleanResearchEvidence, createHiseCommandTool, createHiseHelpTool, extractResearchReferences, extractHiseScriptBlocks, filterResearchDiagnostics, parseResearchQueries, parseResearchSelection } from "./ai-tools.js";
+import { assertHiseMcpReachable, cleanResearchEvidence, createHiseCommandTool, createHiseHelpTool, extractResearchReferences, extractHiseScriptBlocks, filterResearchDiagnostics, inferResearchDomain, parseResearchQueries, parseResearchSelection } from "./ai-tools.js";
 import { isMutatingCliCommand, runCanonical } from "./ai.js";
 
 const dataLoader: DataLoader = {
@@ -92,6 +92,12 @@ describe("embedded HISE agent contract", () => {
 			urls: ["/v2/scripting-api/engine#setkeycolour"],
 			ids: ["example:Engine.setKeyColour:colour-coded-keyboard-zones"],
 		});
+	});
+
+	it("keeps ScriptNode research scoped to the ScriptNode documentation domain", () => {
+		expect(inferResearchDomain("How do I make a channel splitter in scriptnode?")).toBe("scriptnode");
+		expect(inferResearchDomain("How do I access a DspNetwork node?")).toBe("scriptnode");
+		expect(inferResearchDomain("How do I set a slider callback?")).toBeUndefined();
 	});
 
 	it("keeps the literal query and bounds validated expansion variants", () => {
