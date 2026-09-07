@@ -89,6 +89,12 @@ Signal path:
 hise-cli dsp trace --module FX --container my_network --inject dirac --probe-recursive --agent
 ```
 
+Polyphonic networks require a note trigger:
+
+```bash
+hise-cli dsp trace --module PolyFX --container my_network --trigger-note 60 --trigger-predelay-ms 10 --inject dirac --probe-recursive --agent
+```
+
 Mixed signal-to-parameter trace:
 
 ```bash

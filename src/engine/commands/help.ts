@@ -381,13 +381,16 @@ accepts percentage (\`50%\`) or decimal (\`0.5\`); valid values are \`0.5\`,
 \`\`\`
 trace root inject dirac gain 0.25 before "gain" probe after "delay"
 trace root inject dirac probe recursive compact
+trace root trigger note number 60 velocity 1 channel 1 predelay 10 inject dirac
 trace root inject param Root.Value 0.5 probe param add.Value probe param mul.Value
 trace root inject param Root.Value 0.5 probe changed_parameters
 \`\`\`
 
 Boundary node IDs after \`before\` / \`after\` are quoted to avoid keyword
 ambiguity. Parameter paths use normal dotted syntax. \`probe recursive\` includes
-the recursive topology tree automatically. \`compact\` changes the trace payload;
+the recursive topology tree automatically. Polyphonic networks require a
+\`trigger note\` clause. Its optional \`number\`, \`velocity\`, \`channel\`, and
+\`predelay\` values default in HISE; predelay occurs before injection. \`compact\` changes the trace payload;
 global CLI \`--compact\` only changes output envelope formatting.
 
 ## Runtime Status

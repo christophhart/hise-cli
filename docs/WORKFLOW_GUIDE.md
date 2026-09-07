@@ -437,13 +437,15 @@ event ID tracking and `noteOffByEventId()`, notes will hang indefinitely.
 The sequence mode handles note-on, note-off, and timing automatically:
 
 ```bash
-# Define a sequence
-hise-cli -sequence "create \"test\""
-hise-cli -sequence "0ms play C3 127 for 500ms"
-hise-cli -sequence "flush"
-
-# Play it
-hise-cli -sequence "play \"test\""
+# Sequence definitions are stateful, so keep all commands in one process.
+hise-cli --run - <<'EOF'
+/sequence
+create "test"
+0ms play C3 127 for 500ms
+flush
+play "test"
+/exit
+EOF
 ```
 
 Or in a .hsc script:

@@ -1005,6 +1005,13 @@ function buildTraceRequest(moduleId: string, parent: string, cmd: TraceCommand):
 	if (cmd.gain !== undefined) body.gain = cmd.gain;
 	if (cmd.seed !== undefined) body.seed = cmd.seed;
 	if (cmd.delayMs !== undefined) body.delayMs = cmd.delayMs;
+	if (cmd.trigger) body.trigger = {
+		type: cmd.trigger.type,
+		...(cmd.trigger.noteNumber !== undefined ? { noteNumber: cmd.trigger.noteNumber } : {}),
+		...(cmd.trigger.velocity !== undefined ? { velocity: cmd.trigger.velocity } : {}),
+		...(cmd.trigger.channel !== undefined ? { channel: cmd.trigger.channel } : {}),
+		...(cmd.trigger.predelayMs !== undefined ? { predelayMs: cmd.trigger.predelayMs } : {}),
+	};
 	if (cmd.injectBefore) body.injectId = cmd.injectBefore;
 	if (cmd.probeAfter) body.probeId = cmd.probeAfter;
 	if (cmd.recursive) body.recursive = true;

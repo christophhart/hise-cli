@@ -1675,6 +1675,7 @@ export const GENERATED_AGENT_CONTEXT = {
 						"dsp trace combines a temporary runtime stimulus with signal and parameter probes.",
 						"Use --inject for signal stimuli and --inject-param for temporary parameter values.",
 						"Use --probe-recursive for recursive signal tracing; it includes the topology tree automatically.",
+						"Use --trigger-note for polyphonic networks hosted by Polyphonic Script FX (PolyScriptFX) and Scriptnode Synthesiser modules so a voice processes the probe.",
 						"Use --probe-changed-parameters to report changed runtime parameters and touched edges.",
 						"Use repeated --probe-param flags when suspected parameter targets are known.",
 						"--trace-compact changes the trace payload shape; global --compact only compacts the CLI output envelope."
@@ -2184,7 +2185,7 @@ export const GENERATED_AGENT_CONTEXT = {
 					"id": "dsp.trace",
 					"title": "Trace DSP runtime behavior",
 					"purpose": "Inject a temporary signal or parameter value and capture signal or parameter effects at runtime.",
-					"syntax": "dsp trace --module <module> [--container <container>] [--inject <silence|dirac|noise|dc>] [--gain <n>] [--seed <n>] [--inject-before <node>] [--inject-param <node.param=value>...] [--probe-recursive] [--probe-changed-parameters] [--probe-param <node.param>...] [--probe-after <node>] [--delay-ms <n>] [--trace-compact] [--no-specs] [--no-signal]",
+					"syntax": "dsp trace --module <module> [--container <container>] [--inject <silence|dirac|noise|dc>] [--gain <n>] [--seed <n>] [--inject-before <node>] [--inject-param <node.param=value>...] [--probe-recursive] [--probe-changed-parameters] [--probe-param <node.param>...] [--probe-after <node>] [--trigger-note <0-127>] [--trigger-velocity <0-1>] [--trigger-channel <1-16>] [--trigger-predelay-ms <n>] [--delay-ms <n>] [--trace-compact] [--no-specs] [--no-signal]",
 					"command": {
 						"argv": [
 							"hise-cli",
@@ -2268,6 +2269,30 @@ export const GENERATED_AGENT_CONTEXT = {
 							"display": "hise-cli dsp trace --module \"Script FX1\" --container root --inject dirac --gain 0.25 --inject-before gain --probe-after delay --agent"
 						},
 						{
+							"title": "Trace a polyphonic voice",
+							"argv": [
+								"hise-cli",
+								"dsp",
+								"trace",
+								"--module",
+								"PolyFX",
+								"--container",
+								"root",
+								"--trigger-note",
+								"60",
+								"--trigger-velocity",
+								"1",
+								"--trigger-channel",
+								"1",
+								"--trigger-predelay-ms",
+								"10",
+								"--inject",
+								"dirac",
+								"--agent"
+							],
+							"display": "hise-cli dsp trace --module PolyFX --container root --trigger-note 60 --trigger-velocity 1 --trigger-channel 1 --trigger-predelay-ms 10 --inject dirac --agent"
+						},
+						{
 							"title": "Trace explicit parameters",
 							"argv": [
 								"hise-cli",
@@ -2335,6 +2360,8 @@ export const GENERATED_AGENT_CONTEXT = {
 						"--probe-changed-parameters reports changed runtime parameters and touched edges; it is not a complete dependency graph.",
 						"--probe-changed-parameters and --probe-param are mutually exclusive.",
 						"--probe-recursive includes recursive topology automatically.",
+						"Polyphonic networks require --trigger-note. Trigger velocity, channel, and predelay flags require it.",
+						"--trigger-predelay-ms waits in processed audio time after note-on and before injection; --delay-ms waits after injection and before capture.",
 						"--trace-compact is trace payload compaction. Global --compact is output-envelope compaction only.",
 						"Agent JSON returns a computed summary plus the preserved HISE trace payload under trace."
 					]
@@ -3532,6 +3559,10 @@ export const GENERATED_AGENT_CONTEXT = {
 					"--probe-changed-parameters",
 					"--probe-param",
 					"--probe-after",
+					"--trigger-note",
+					"--trigger-velocity",
+					"--trigger-channel",
+					"--trigger-predelay-ms",
 					"--delay-ms",
 					"--trace-compact",
 					"--no-specs",

@@ -269,7 +269,7 @@ describe("DspMode — integration", () => {
 		const mode = new DspMode(scriptnodeFixture, undefined, "ScriptFX1");
 		const ctx: SessionContext = { connection: conn, popMode: () => ({ type: "empty" }) };
 
-		const out = await mode.parse('trace root inject dirac gain 0.25 before "gain" probe recursive probe after "delay" compact', ctx);
+		const out = await mode.parse('trace root inject dirac gain 0.25 before "gain" trigger note number 64 velocity 0.75 channel 2 predelay 20 probe recursive probe after "delay" compact', ctx);
 
 		expect(out.type).toBe("json");
 		const call = conn.calls.find((c) => c.method === "POST" && c.endpoint === "/api/dsp/probe");
@@ -279,6 +279,7 @@ describe("DspMode — integration", () => {
 			signalType: "dirac",
 			gain: 0.25,
 			injectId: "gain",
+			trigger: { type: "note", noteNumber: 64, velocity: 0.75, channel: 2, predelayMs: 20 },
 			probeId: "delay",
 			recursive: true,
 			filter: { compact: true, tree: true },

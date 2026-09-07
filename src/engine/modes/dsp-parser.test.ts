@@ -435,6 +435,25 @@ describe("dsp parser — trace", () => {
 		expect(cmd.changedParameters).toBe(true);
 	});
 
+	it("parses a polyphonic note trigger", () => {
+		const cmd = parseOk<TraceCommand>("trace root trigger note number 64 velocity 0.75 channel 2 predelay 20 inject dirac");
+		expect(cmd.trigger).toEqual({
+			type: "note",
+			noteNumber: 64,
+			velocity: 0.75,
+			channel: 2,
+			predelayMs: 20,
+		});
+	});
+
+	it("supports the default note trigger and validates trigger ranges", () => {
+		expect(parseOk<TraceCommand>("trace root trigger note").trigger).toEqual({ type: "note" });
+		expect(parseErr("trace root trigger note number 128")).toMatch(/0 to 127/);
+		expect(parseErr("trace root trigger note velocity 1.1")).toMatch(/0 to 1/);
+		expect(parseErr("trace root trigger note channel 0")).toMatch(/1 to 16/);
+		expect(parseErr("trace root trigger note predelay -1")).toMatch(/zero or greater/);
+	});
+
 	it("rejects unquoted boundary ids", () => {
 		expect(parseErr("trace root inject dirac before gain")).toMatch(/quoted node id/);
 		expect(parseErr("trace root probe after delay")).toMatch(/quoted node id/);

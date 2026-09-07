@@ -13,6 +13,7 @@ const DSP_KEYWORDS = new Set([
 	"default", "stepsize", "middleposition", "skewfactor", "matched",
 	"scale", "file", "inject", "probe", "silence", "dirac", "noise", "dc",
 	"gain", "seed", "before", "after", "recursive", "changed_parameters",
+	"trigger", "note", "number", "velocity", "channel", "predelay",
 	"delay", "compact", "no_specs", "no_signal", "param",
 	"cd", "ls", "pwd", "help",
 ]);

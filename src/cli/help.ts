@@ -623,10 +623,18 @@ UNITS
   Signals:     sine, saw, sweep, dirac, noise, silence
 
 EXAMPLES
-  hise-cli -sequence "create test"
-  hise-cli -sequence "0ms play C3 127 for 500ms"
-  hise-cli -sequence "flush"
-  hise-cli -sequence "play test"`,
+  # A single event or management command
+  hise-cli -sequence "stop"
+
+  # Definitions are stateful; run the complete workflow in one process
+  hise-cli --run - <<'EOF'
+  /sequence
+  create "test"
+  0ms play C3 127 for 500ms
+  flush
+  play "test"
+  /exit
+  EOF`,
 
 	publish: `hise-cli -publish — build & sign plugin installers
 

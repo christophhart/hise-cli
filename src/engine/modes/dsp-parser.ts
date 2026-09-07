@@ -155,6 +155,13 @@ export interface TraceCommand {
 	injectBefore?: string;
 	probeAfter?: string;
 	delayMs?: number;
+	trigger?: {
+		type: "note";
+		noteNumber?: number;
+		velocity?: number;
+		channel?: number;
+		predelayMs?: number;
+	};
 	recursive: boolean;
 	changedParameters: boolean;
 	compact: boolean;
@@ -885,7 +892,7 @@ function extractTraceTokenImages(node: CstNode): string[] {
 	return out;
 }
 
-const TRACE_CLAUSE_START = new globalThis.Set(["inject", "probe", "delay", "compact", "no_specs", "no_signal"]);
+const TRACE_CLAUSE_START = new globalThis.Set(["inject", "probe", "trigger", "delay", "compact", "no_specs", "no_signal"]);
 const TRACE_SIGNALS = new globalThis.Set(["silence", "dirac", "noise", "dc"]);
 
 function isTraceClauseStart(image: string | undefined): boolean {
@@ -979,6 +986,34 @@ function extractTraceCommand(node: CstNode): { command: TraceCommand } | { error
 			if ("error" in delay) return delay;
 			cmd.delayMs = delay.value;
 			i += 2;
+			continue;
+		}
+		if (clause === "trigger") {
+			if (tokens[i + 1]?.toLowerCase() !== "note") return { error: "trace: trigger requires note" };
+			const trigger: NonNullable<TraceCommand["trigger"]> = { type: "note" };
+			i += 2;
+			while (i < tokens.length && !isTraceClauseStart(tokens[i])) {
+				const option = tokens[i]?.toLowerCase();
+				const value = parseTraceNumber(tokens[i + 1], `trigger ${option ?? "option"}`);
+				if ("error" in value) return value;
+				if (option === "number") {
+					if (!Number.isInteger(value.value) || value.value < 0 || value.value > 127) return { error: "trace: trigger note number must be an integer from 0 to 127" };
+					trigger.noteNumber = value.value;
+				} else if (option === "velocity") {
+					if (value.value < 0 || value.value > 1) return { error: "trace: trigger velocity must be from 0 to 1" };
+					trigger.velocity = value.value;
+				} else if (option === "channel") {
+					if (!Number.isInteger(value.value) || value.value < 1 || value.value > 16) return { error: "trace: trigger channel must be an integer from 1 to 16" };
+					trigger.channel = value.value;
+				} else if (option === "predelay") {
+					if (value.value < 0) return { error: "trace: trigger predelay must be zero or greater" };
+					trigger.predelayMs = value.value;
+				} else {
+					return { error: `trace: unexpected trigger option "${tokens[i]}"` };
+				}
+				i += 2;
+			}
+			cmd.trigger = trigger;
 			continue;
 		}
 		if (clause === "compact") { cmd.compact = true; i++; continue; }

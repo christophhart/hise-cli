@@ -589,6 +589,24 @@ function renderDspDirectCommand(args: string[]): string | { error: string } {
 		const after = readOptionalFlag(rest, "--probe-after");
 		if (typeof after !== "string" && after !== undefined) return after;
 		if (after !== undefined) clauses.push(`probe after ${quoteDslString(after)}`);
+		const triggerNote = readOptionalFlag(rest, "--trigger-note");
+		if (typeof triggerNote !== "string" && triggerNote !== undefined) return triggerNote;
+		const triggerVelocity = readOptionalFlag(rest, "--trigger-velocity");
+		if (typeof triggerVelocity !== "string" && triggerVelocity !== undefined) return triggerVelocity;
+		const triggerChannel = readOptionalFlag(rest, "--trigger-channel");
+		if (typeof triggerChannel !== "string" && triggerChannel !== undefined) return triggerChannel;
+		const triggerPredelayMs = readOptionalFlag(rest, "--trigger-predelay-ms");
+		if (typeof triggerPredelayMs !== "string" && triggerPredelayMs !== undefined) return triggerPredelayMs;
+		if (triggerNote === undefined && (triggerVelocity !== undefined || triggerChannel !== undefined || triggerPredelayMs !== undefined)) {
+			return directUsage("dsp trace trigger options require --trigger-note");
+		}
+		if (triggerNote !== undefined) {
+			const parts = ["trigger", "note", "number", triggerNote];
+			if (triggerVelocity !== undefined) parts.push("velocity", triggerVelocity);
+			if (triggerChannel !== undefined) parts.push("channel", triggerChannel);
+			if (triggerPredelayMs !== undefined) parts.push("predelay", triggerPredelayMs);
+			clauses.push(parts.join(" "));
+		}
 		const delayMs = readOptionalFlag(rest, "--delay-ms");
 		if (typeof delayMs !== "string" && delayMs !== undefined) return delayMs;
 		if (delayMs !== undefined) clauses.push(`delay ${delayMs}`);

@@ -403,7 +403,8 @@ Trace clauses:
 | `probe recursive` | Probe child containers recursively; includes topology tree automatically |
 | `probe changed_parameters` | Report changed runtime parameters and touched edges (`parameters.probe = "*"`) |
 | `probe param <node>.<param>` | Capture an explicit parameter value |
-| `delay <ms>` | Wait before capturing the result |
+| `trigger note [number <0-127>] [velocity <0-1>] [channel <1-16>] [predelay <ms>]` | Start a polyphonic voice before injection; omitted options use HISE defaults |
+| `delay <ms>` | Wait after injection before capturing the result |
 | `compact` | Request compact trace payload from HISE |
 | `no_specs` | Omit processing specs from trace reports |
 | `no_signal` | Omit signal measurements from trace reports |
@@ -419,7 +420,9 @@ hise-cli dsp trace --module <module> [--container <container>]
   [--inject <silence|dirac|noise|dc>] [--gain <n>] [--seed <n>]
   [--inject-before <nodeId>] [--inject-param <node.Param=value>]...
   [--probe-recursive] [--probe-changed-parameters] [--probe-param <node.Param>]...
-  [--probe-after <nodeId>] [--delay-ms <n>] [--trace-compact]
+  [--probe-after <nodeId>] [--trigger-note <0-127>]
+  [--trigger-velocity <0-1>] [--trigger-channel <1-16>]
+  [--trigger-predelay-ms <n>] [--delay-ms <n>] [--trace-compact]
   [--no-specs] [--no-signal] [--agent]
 ```
 
@@ -427,7 +430,9 @@ hise-cli dsp trace --module <module> [--container <container>]
 envelope compaction only and does not alter trace semantics. `--probe-recursive`
 sets recursive probing and includes the recursive topology tree automatically.
 `--probe-changed-parameters` and explicit `--probe-param` flags are mutually
-exclusive.
+exclusive. Polyphonic networks require `--trigger-note`; the other trigger flags
+require it. Trigger predelay is processed audio time between note-on and injection,
+while `--delay-ms` is processed audio time between injection and capture.
 
 Agent/JSON trace output is a hise-cli object with a small computed `summary` and
 the preserved HISE trace payload under `trace`. Human output is a concise report
@@ -503,6 +508,7 @@ set_complex_data Env.Table index 3
 set_complex_data Lfo.SliderPack.1 index -1
 trace root inject dirac gain 0.25 before "gain" probe after "delay"
 trace root inject dirac probe recursive compact
+trace root trigger note number 60 velocity 1 channel 1 predelay 10 inject dirac
 trace root inject param Root.Value 0.5 probe param add.Value probe param mul.Value
 trace root inject param Root.Value 0.5 probe changed_parameters
 ```
@@ -561,7 +567,7 @@ Statement            := AddStmt | RemoveStmt | RenameStmt | CloneStmt
                      |  SetStmt | SetComplexDataStmt | GetStmt | ShowStmt
                      |  CdStmt | LsStmt | PwdStmt
                      |  ResetStmt | SaveStmt
-                     |  ConnectStmt | DisconnectStmt
+                     |  ConnectStmt | DisconnectStmt | TraceStmt
                      |  ScreenshotStmt | CreateParameterStmt
 
 AddStmt              := SingleAdd | ChainedAdd
@@ -604,6 +610,19 @@ CreateParameterStmt  := 'create_parameter' DottedPath Array2
                         ['default' Number] ['stepSize' Number]
                         ['middlePosition' Number] ['skewFactor' Number]
                         ['ExternalModulation' (Identifier | QuotedString)]
+
+TraceStmt            := 'trace' [PathExpr] TraceClause*
+TraceClause          := InjectClause | ProbeClause | TriggerClause | 'delay' Number
+                     |  'compact' | 'no_specs' | 'no_signal'
+InjectClause         := 'inject' (SignalInject | ParameterInject)
+SignalInject         := ('silence' | 'dirac' | 'noise' | 'dc') SignalInjectOption*
+SignalInjectOption   := 'gain' Number | 'seed' IntLit | 'before' QuotedString
+ParameterInject      := 'param' DottedPath Value
+ProbeClause          := 'probe' ('recursive' | 'changed_parameters'
+                     |  'after' QuotedString | 'param' DottedPath)
+TriggerClause        := 'trigger' 'note' TriggerOption*
+TriggerOption        := 'number' IntLit | 'velocity' Number
+                     |  'channel' IntLit | 'predelay' Number
 
 TypeRef              := Identifier ['.' Identifier]          ; 2-segment for DSP factory.node
 BuilderShowNoun      := 'types' | 'tree'

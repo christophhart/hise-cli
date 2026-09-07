@@ -459,6 +459,19 @@ describe("parseCliArgs", () => {
 		}
 	});
 
+	it("parses direct DSP trace note triggers", () => {
+		const result = parseCliArgs(["node", "hise-cli", "dsp", "trace", "--module", "PolyFX", "--container", "root", "--trigger-note", "64", "--trigger-velocity", "0.75", "--trigger-channel", "2", "--trigger-predelay-ms", "20", "--inject", "dirac"], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe("/dsp.PolyFX trace root inject dirac trigger note number 64 velocity 0.75 channel 2 predelay 20");
+		}
+	});
+
+	it("requires a note for direct DSP trace trigger options", () => {
+		const result = parseCliArgs(["node", "hise-cli", "dsp", "trace", "--module", "PolyFX", "--trigger-channel", "2"], getCliCommands());
+		expect(result).toEqual({ kind: "error", message: "dsp trace trigger options require --trigger-note" });
+	});
+
 	it("parses direct DSP trace parameter probes", () => {
 		const result = parseCliArgs(["node", "hise-cli", "dsp", "trace", "--module", "Script FX1", "--inject-param", "Root.Value=0.5", "--probe-param", "add.Value", "--probe-param", "mul.Value", "--trace-compact", "--no-specs"], getCliCommands());
 		expect(result.kind).toBe("execute");
