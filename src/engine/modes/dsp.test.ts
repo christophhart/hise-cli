@@ -286,6 +286,66 @@ describe("DspMode — integration", () => {
 		});
 	});
 
+	it("layout optimize measures combinations, undoes trials, and applies the winner as one group", async () => {
+		const conn = new MockHiseConnection();
+		let orientations = { root: true, child: true };
+		let beforeGroup = { ...orientations };
+		let pending: Array<{ nodeId: "root" | "child"; value: boolean }> = [];
+		const history: Array<typeof orientations> = [];
+		const tree = () => {
+			const width = !orientations.root && !orientations.child ? 70
+				: !orientations.child ? 80
+					: !orientations.root ? 120 : 100;
+			return {
+				nodeId: "root", factoryPath: "container.chain", bypassed: false,
+				bounds: { x: 0, y: 0, width, height: 100 }, parameters: [],
+				properties: [{ propertyId: "IsVertical", value: orientations.root }],
+				children: [{
+					nodeId: "child", factoryPath: "container.chain", bypassed: false,
+					bounds: { x: 0, y: 0, width: 50, height: orientations.child ? 200 : 80 }, parameters: [],
+					properties: [{ propertyId: "IsVertical", value: orientations.child }], children: [],
+				}],
+			};
+		};
+		const ok = (extra: Record<string, unknown> = {}) => ({ success: true, logs: [], errors: [], ...extra });
+		conn.onGet("/api/undo/diff", () => ok({ groupName: "root" }));
+		conn.onGet("/api/dsp/tree", () => ok({ result: tree() }));
+		conn.onPost("/api/undo/push_group", () => {
+			beforeGroup = { ...orientations };
+			pending = [];
+			return ok();
+		});
+		conn.onPost("/api/dsp/apply", (body) => {
+			pending = ((body as { operations: Array<{ nodeId: "root" | "child"; value: boolean }> }).operations);
+			return ok();
+		});
+		conn.onPost("/api/undo/pop_group", (body) => {
+			if (!(body as { cancel: boolean }).cancel) {
+				history.push({ ...beforeGroup });
+				for (const op of pending) orientations[op.nodeId] = op.value;
+			}
+			return ok();
+		});
+		conn.onPost("/api/undo/back", () => {
+			orientations = history.pop()!;
+			return ok();
+		});
+		const mode = new DspMode(scriptnodeFixture, undefined, "ScriptFX1");
+		const ctx: SessionContext = { connection: conn, popMode: () => ({ type: "empty" }) };
+		await mode.onEnter(ctx);
+
+		const result = await mode.parse("layout optimize", ctx);
+
+		expect(result.type).toBe("json");
+		if (result.type !== "json") throw new Error("expected json result");
+		expect(result.value).toMatchObject({
+			before: [0, 0, 100, 100], after: [0, 0, 70, 100], evaluations: 3,
+			changes: [["root", false], ["child", false]], applied: true,
+		});
+		expect(orientations).toEqual({ root: false, child: false });
+		expect(history).toHaveLength(1);
+	});
+
 	it("show status queries DSP runtime status", async () => {
 		const { mode, ctx } = makeSession();
 		await bootstrapNetwork(ctx, "StatusDSP");

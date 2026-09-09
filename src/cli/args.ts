@@ -528,6 +528,31 @@ function renderDspDirectCommand(args: string[]): string | { error: string } {
 	if (typeof module !== "string") return module;
 	const prefix = `${formatTargetSuffix(module)} `;
 	if (command === "tree") return `${prefix}show tree`;
+	if (command === "layout") {
+		const threshold = readOptionalFlag(rest, "--vertical-threshold");
+		if (typeof threshold !== "string" && threshold !== undefined) return threshold;
+		const cableWeight = readOptionalFlag(rest, "--cable-weight");
+		if (typeof cableWeight !== "string" && cableWeight !== undefined) return cableWeight;
+		const positional = rest.filter((arg, index) => {
+			if (arg.startsWith("--") || arg === module) return false;
+			const previous = rest[index - 1];
+			return previous !== "--module"
+				&& previous !== "--vertical-threshold"
+				&& previous !== "--cable-weight";
+		});
+		if (positional.length > 1 || (positional[0] !== undefined && positional[0] !== "optimize")) {
+			return directUsage("dsp layout accepts only the optional `optimize` argument");
+		}
+		const optimize = positional[0] === "optimize";
+		if ((threshold !== undefined || cableWeight !== undefined) && !optimize) {
+			return directUsage("dsp layout preference flags require the `optimize` argument");
+		}
+		const options = [
+			...(threshold !== undefined ? ["threshold", threshold] : []),
+			...(cableWeight !== undefined ? ["cable_weight", cableWeight] : []),
+		];
+		return `${prefix}layout${optimize ? ` optimize${options.length > 0 ? ` ${options.join(" ")}` : ""}` : ""}`;
+	}
 	if (command === "networks" || command === "modules" || command === "connections") return `${prefix}show ${command}`;
 	if (command === "status") return `${prefix}show status${hasFlag(rest, "--autofix") ? " autofix" : ""}`;
 	if (command === "show") {

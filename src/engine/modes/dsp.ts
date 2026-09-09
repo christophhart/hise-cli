@@ -17,8 +17,8 @@ import { tokenizeDsp } from "../highlight/dsp.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 import { isEnvelopeResponse, isErrorResponse } from "../hise.js";
-import type { HiseConnection } from "../hise.js";
-import type { RawDspNode } from "../../mock/contracts/dsp.js";
+import type { HiseConnection, HiseEnvelopeResponse, HiseResponse } from "../hise.js";
+import type { RawDspBounds, RawDspNode } from "../../mock/contracts/dsp.js";
 import {
 	cleanDspTreeForLlm,
 	cleanDspParameterForLlm,
@@ -36,6 +36,7 @@ import type {
 	CdCommand,
 	DspCommand,
 	GetCommand,
+	LayoutCommand,
 	ScreenshotCommand,
 	ShowCommand,
 	TraceCommand,
@@ -64,6 +65,21 @@ import {
 import type { Value } from "../grammar/value-parser.js";
 import { duplicateAliasesInRequest } from "./duplicate-id.js";
 import { callMcpReference, listMcpReference } from "../reference/mcpReference.js";
+import {
+	autoCableWeight,
+	boundsTuple,
+	collectCablePressures,
+	collectLayoutCandidates,
+	compactDspLayout,
+	compareLayoutScores,
+	layoutImpact,
+	layoutScore,
+	orientationMetrics,
+	selectImpactCandidates,
+	selectWeightedLayout,
+	visibleCableStats,
+	type LayoutCandidate,
+} from "./dsp-layout.js";
 
 function parseDocsInput(input: string): { query?: string } | null {
 	const trimmed = input.trim();
@@ -87,6 +103,7 @@ export type {
 	GetCommand,
 	CreateParameterCommand,
 	ScreenshotCommand,
+	LayoutCommand,
 	ShowCommand,
 	CdCommand,
 	LsCommand,
@@ -301,6 +318,7 @@ export class DspMode implements Mode {
 			case "show": return this.handleShow(cmd, session);
 			case "get": return this.handleGet(cmd);
 			case "screenshot": return this.handleScreenshot(cmd, session);
+			case "layout": return this.handleLayout(cmd, session);
 			case "trace": return this.handleTrace(cmd, session);
 			default:
 				return this.handleMutation(cmd, session);
@@ -468,6 +486,233 @@ export class DspMode implements Mode {
 		if (this.currentPath.length > 0) return { id: this.currentPath[this.currentPath.length - 1]! };
 		if (this.rawTree?.nodeId) return { id: this.rawTree.nodeId };
 		return { id: "root" };
+	}
+
+	// ── Layout ──────────────────────────────────────────────────
+
+	private async handleLayout(cmd: LayoutCommand, session: SessionContext): Promise<CommandResult> {
+		if (!this.moduleId) return errorResult("layout: no module context.");
+		if (!session.connection) return errorResult("layout requires a HISE connection");
+
+		try {
+			const baseline = await this.fetchLayoutTree(session.connection);
+			if (!cmd.optimize) {
+				return jsonResult(
+					{ tree: compactDspLayout(baseline) },
+					`DSP layout: ${baseline.bounds!.width} × ${baseline.bounds!.height}`,
+				);
+			}
+			return await this.optimizeLayout(
+				baseline,
+				session,
+				cmd.verticalThreshold ?? 0.1,
+				cmd.cableWeight ?? "auto",
+			);
+		} catch (error) {
+			return errorResult(`layout: ${errorMessage(error)}`);
+		}
+	}
+
+	private async optimizeLayout(
+		baseline: RawDspNode,
+		session: SessionContext,
+		verticalThreshold: number,
+		cableWeight: number | "auto",
+	): Promise<CommandResult> {
+		const connection = session.connection!;
+		await this.assertNoActiveUndoGroup(connection);
+		const baselineBounds = baseline.bounds!;
+		const allCandidates = collectLayoutCandidates(baseline);
+		if (allCandidates.length === 0) {
+			return errorResult("layout optimize: no nodes expose a usable IsVertical property");
+		}
+
+		type Measurement = { root: RawDspNode; bounds: RawDspBounds };
+		const cache = new Map<string, Measurement>();
+		cache.set("", { root: baseline, bounds: baselineBounds });
+		let evaluations = 0;
+		const candidateKey = (ids: ReadonlySet<string>): string => [...ids].sort().join("\u0000");
+		const evaluate = async (ids: ReadonlySet<string>): Promise<Measurement> => {
+			const key = candidateKey(ids);
+			const cached = cache.get(key);
+			if (cached) return cached;
+			const measured = await this.evaluateLayoutCandidate(ids, allCandidates, baselineBounds, connection);
+			cache.set(key, measured);
+			evaluations++;
+			return measured;
+		};
+
+		const cableStats = visibleCableStats(baseline);
+		const resolvedCableWeight = cableWeight === "auto" ? autoCableWeight(cableStats) : cableWeight;
+		const cablePressures = collectCablePressures(baseline);
+		const maxCablePressure = Math.max(0, ...[...cablePressures.values()]
+			.map((pressure) => pressure.horizontal + pressure.vertical));
+		const probed: Array<{ candidate: LayoutCandidate; geometricImpact: number }> = [];
+		for (const candidate of allCandidates) {
+			const measured = await evaluate(new Set([candidate.id]));
+			probed.push({ candidate, geometricImpact: layoutImpact(baselineBounds, measured.bounds) });
+		}
+		const maxGeometricImpact = Math.max(0, ...probed.map((entry) => entry.geometricImpact));
+		const ranked: Array<LayoutCandidate & { impact: number }> = probed.map(({ candidate, geometricImpact }) => {
+			const pressure = cablePressures.get(candidate.id);
+			const normalizedCablePressure = maxCablePressure === 0
+				? 0
+				: ((pressure?.horizontal ?? 0) + (pressure?.vertical ?? 0)) / maxCablePressure;
+			const normalizedGeometricImpact = maxGeometricImpact === 0 ? 0 : geometricImpact / maxGeometricImpact;
+			return {
+				...candidate,
+				impact: (1 - resolvedCableWeight) * normalizedGeometricImpact
+					+ resolvedCableWeight * normalizedCablePressure,
+			};
+		});
+		const selected = selectImpactCandidates(ranked, 5);
+
+		const combinations: Array<{ toggled: Set<string>; measurement: Measurement }> = [
+			{ toggled: new Set(), measurement: cache.get("")! },
+		];
+		const combinationCount = 1 << selected.length;
+		for (let mask = 1; mask < combinationCount; mask++) {
+			const toggled = new Set<string>();
+			for (let bit = 0; bit < selected.length; bit++) {
+				if ((mask & (1 << bit)) !== 0) toggled.add(selected[bit]!.id);
+			}
+			combinations.push({ toggled, measurement: await evaluate(toggled) });
+		}
+
+		let minimum = combinations[0]!;
+		for (const combination of combinations.slice(1)) {
+			if (compareLayoutScores(layoutScore(combination.measurement.bounds), layoutScore(minimum.measurement.bounds)) < 0) {
+				minimum = combination;
+			}
+		}
+		const weightedOptions = combinations.map((combination) => ({
+			...combination,
+			bounds: combination.measurement.bounds,
+			...orientationMetrics(combination.toggled, selected, cablePressures),
+		}));
+		const winner = selectWeightedLayout(weightedOptions, verticalThreshold, resolvedCableWeight);
+		const winningIds = winner.toggled;
+		const winningMeasurement = winner.measurement;
+		const winningScore = layoutScore(winningMeasurement.bounds);
+
+		let finalRoot = baseline;
+		if (winningIds.size > 0) {
+			await this.applyOrientationGroup(winningIds, allCandidates, "Optimize DSP layout", connection);
+			finalRoot = await this.fetchLayoutTree(connection);
+			if (compareLayoutScores(layoutScore(finalRoot.bounds!), winningScore) !== 0) {
+				throw new Error("final layout bounds differ from the measured winning combination");
+			}
+			session.markProjectTreeDirty?.();
+			this.rawTree = finalRoot;
+			this.treeRoot = normalizeDspTreeResponse(finalRoot).tree;
+			this.lastTreeResult = finalRoot;
+			this.treeFetched = true;
+		}
+
+		const beforeArea = baselineBounds.width * baselineBounds.height;
+		const afterBounds = finalRoot.bounds ?? winningMeasurement.bounds;
+		const afterArea = afterBounds.width * afterBounds.height;
+		const changes = allCandidates
+			.filter((candidate) => winningIds.has(candidate.id))
+			.map((candidate) => [candidate.id, !candidate.vertical] as const);
+		const output = {
+			before: boundsTuple(baselineBounds),
+			after: boundsTuple(afterBounds),
+			areaReduction: beforeArea === 0 ? 0 : roundMetric((beforeArea - afterArea) / beforeArea),
+			verticalThreshold,
+			cableWeight: roundMetric(resolvedCableWeight),
+			cableWeightMode: cableWeight === "auto" ? "auto" : "explicit",
+			visibleNodes: cableStats.visibleNodes,
+			visibleConnections: cableStats.visibleConnections,
+			minimumAreaBounds: boundsTuple(minimum.measurement.bounds),
+			cablePressure: selected
+				.filter((candidate) => cablePressures.has(candidate.id))
+				.map((candidate) => {
+					const pressure = cablePressures.get(candidate.id)!;
+					return [candidate.id, pressure.horizontal, pressure.vertical];
+				}),
+			evaluations,
+			eligibleContainers: allCandidates.length,
+			selected: selected.map((candidate) => candidate.id),
+			changes,
+			applied: changes.length > 0,
+		};
+		const fallback = changes.length === 0
+			? `DSP layout already optimal at ${baselineBounds.width} × ${baselineBounds.height}.`
+			: `Optimized DSP layout from ${baselineBounds.width} × ${baselineBounds.height} to ${afterBounds.width} × ${afterBounds.height} (${changes.length} orientation change${changes.length === 1 ? "" : "s"}).`;
+		return jsonResult(output, fallback);
+	}
+
+	private async fetchLayoutTree(connection: HiseConnection): Promise<RawDspNode> {
+		const endpoint = `/api/dsp/tree?moduleId=${encodeURIComponent(this.moduleId!)}&verbose=true&includeBounds=true`;
+		const response = await connection.get(endpoint);
+		assertSuccessfulResponse(response, "fetch DSP layout");
+		const root = normalizeDspTreeResponse(response.result).raw;
+		compactDspLayout(root); // validates that every instantiated node has bounds
+		return root;
+	}
+
+	private async assertNoActiveUndoGroup(connection: HiseConnection): Promise<void> {
+		const response = await connection.get("/api/undo/diff?scope=group");
+		assertSuccessfulResponse(response, "inspect undo group");
+		const groupName = typeof response.groupName === "string" ? response.groupName : "root";
+		if (groupName !== "" && groupName !== "root") {
+			throw new Error(`cannot optimize while undo group "${groupName}" is active`);
+		}
+	}
+
+	private async evaluateLayoutCandidate(
+		toggledIds: ReadonlySet<string>,
+		allCandidates: readonly LayoutCandidate[],
+		baselineBounds: RawDspBounds,
+		connection: HiseConnection,
+	): Promise<{ root: RawDspNode; bounds: RawDspBounds }> {
+		let committed = false;
+		try {
+			await this.applyOrientationGroup(toggledIds, allCandidates, "DSP layout trial", connection);
+			committed = true;
+			const root = await this.fetchLayoutTree(connection);
+			return { root, bounds: root.bounds! };
+		} finally {
+			if (committed) {
+				const undo = await connection.post("/api/undo/back", {});
+				assertSuccessfulResponse(undo, "undo DSP layout trial");
+				const restored = await this.fetchLayoutTree(connection);
+				verifyLayoutRestored(restored, allCandidates, baselineBounds);
+			}
+		}
+	}
+
+	private async applyOrientationGroup(
+		toggledIds: ReadonlySet<string>,
+		allCandidates: readonly LayoutCandidate[],
+		name: string,
+		connection: HiseConnection,
+	): Promise<void> {
+		const changes = allCandidates.filter((candidate) => toggledIds.has(candidate.id));
+		if (changes.length === 0) return;
+		const pushed = await connection.post("/api/undo/push_group", { name });
+		assertSuccessfulResponse(pushed, `start ${name}`);
+		let groupOpen = true;
+		try {
+			const applied = await connection.post("/api/dsp/apply", {
+				moduleId: this.moduleId,
+				operations: changes.map((candidate) => ({
+					op: "set",
+					nodeId: candidate.id,
+					parameterId: "IsVertical",
+					value: !candidate.vertical,
+				})),
+			});
+			assertSuccessfulResponse(applied, `apply ${name}`);
+			const popped = await connection.post("/api/undo/pop_group", { cancel: false });
+			assertSuccessfulResponse(popped, `commit ${name}`);
+			groupOpen = false;
+		} finally {
+			if (groupOpen) {
+				await connection.post("/api/undo/pop_group", { cancel: true }).catch(() => {});
+			}
+		}
 	}
 
 	// ── Show ────────────────────────────────────────────────────
@@ -1246,6 +1491,47 @@ function renderDspNodeShow(
 	return lines.join("\n");
 }
 
+function assertSuccessfulResponse(
+	response: HiseResponse,
+	action: string,
+): asserts response is HiseEnvelopeResponse {
+	if (isErrorResponse(response)) throw new Error(`${action}: ${response.message}`);
+	if (!isEnvelopeResponse(response) || !response.success) {
+		const message = isEnvelopeResponse(response)
+			? response.errors[0]?.errorMessage
+			: undefined;
+		throw new Error(message ? `${action}: ${message}` : `${action} failed`);
+	}
+}
+
+function verifyLayoutRestored(
+	root: RawDspNode,
+	baselineCandidates: readonly LayoutCandidate[],
+	baselineBounds: RawDspBounds,
+): void {
+	if (!root.bounds
+		|| root.bounds.x !== baselineBounds.x
+		|| root.bounds.y !== baselineBounds.y
+		|| root.bounds.width !== baselineBounds.width
+		|| root.bounds.height !== baselineBounds.height) {
+		throw new Error("DSP layout trial did not restore the baseline bounds");
+	}
+	const restored = new Map(collectLayoutCandidates(root).map((candidate) => [candidate.id, candidate.vertical]));
+	for (const candidate of baselineCandidates) {
+		if (restored.get(candidate.id) !== candidate.vertical) {
+			throw new Error(`DSP layout trial did not restore ${candidate.id}.IsVertical`);
+		}
+	}
+}
+
+function roundMetric(value: number): number {
+	return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
 // ── Completion keyword tables ───────────────────────────────────
 
 const DSP_KEYWORDS = [
@@ -1263,6 +1549,7 @@ const DSP_KEYWORDS = [
 	{ label: "create_parameter", detail: "Create a dynamic parameter on a container" },
 	{ label: "screenshot", detail: "screenshot scale <s> file \"<path>\"" },
 	{ label: "trace", detail: "Runtime signal / parameter probe" },
+	{ label: "layout", detail: "layout [optimize] — inspect or compact canvas bounds" },
 	{ label: "cd", detail: "Navigate into a container" },
 	{ label: "ls", detail: "List children at current path" },
 	{ label: "pwd", detail: "Print current path" },

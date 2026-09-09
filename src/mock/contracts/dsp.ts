@@ -45,10 +45,19 @@ export interface RawDspComplexData {
 	dataIndex: number;
 }
 
+export interface RawDspBounds {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
 export interface RawDspNode {
 	nodeId: string;
 	factoryPath: string;
 	bypassed: boolean;
+	/** Present when GET /api/dsp/tree is called with includeBounds=true. */
+	bounds?: RawDspBounds;
 	parameters: RawDspParameter[];
 	/** Node-level properties (Name, NodeColour, Comment, factory-specific). */
 	properties?: RawDspProperty[];
@@ -101,6 +110,9 @@ export function validateRawDspNode(value: unknown, path = "root"): RawDspNode {
 		throw new Error(`DSP tree node "${raw.nodeId}" missing required array "children"`);
 	}
 
+	const bounds = raw.bounds !== undefined
+		? validateBounds(raw.bounds, raw.nodeId as string)
+		: undefined;
 	const parameters = raw.parameters.map((p, i) => validateRawParameter(p, `${raw.nodeId}.parameters[${i}]`));
 	const properties = raw.properties !== undefined
 		? validateProperties(raw.properties, raw.nodeId as string)
@@ -117,12 +129,33 @@ export function validateRawDspNode(value: unknown, path = "root"): RawDspNode {
 		nodeId: raw.nodeId,
 		factoryPath: raw.factoryPath,
 		bypassed: raw.bypassed,
+		bounds,
 		parameters,
 		properties,
 		complexData,
 		connections,
 		children,
 	};
+}
+
+function validateBounds(value: unknown, nodeId: string): RawDspBounds {
+	if (!value || typeof value !== "object") {
+		throw new Error(`DSP bounds on "${nodeId}" must be an object`);
+	}
+	const raw = value as Record<string, unknown>;
+	const fields = ["x", "y", "width", "height"] as const;
+	const out = {} as RawDspBounds;
+	for (const field of fields) {
+		const numeric = numericOptional(raw[field]);
+		if (numeric === undefined || !Number.isInteger(numeric)) {
+			throw new Error(`DSP bounds on "${nodeId}" "${field}" must be an integer`);
+		}
+		out[field] = numeric;
+	}
+	if (out.width < 0 || out.height < 0) {
+		throw new Error(`DSP bounds on "${nodeId}" width and height must be non-negative`);
+	}
+	return out;
 }
 
 function validateProperties(value: unknown, nodeId: string): RawDspProperty[] {

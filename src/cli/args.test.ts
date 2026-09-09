@@ -64,6 +64,22 @@ describe("parseCliArgs", () => {
 		}
 	});
 
+	it("parses direct DSP layout commands", () => {
+		const inspect = parseCliArgs(["node", "hise-cli", "dsp", "layout", "--module", "Script FX1"], getCliCommands());
+		expect(inspect.kind).toBe("execute");
+		if (inspect.kind === "execute") expect(inspect.canonicalCommand).toBe('/dsp."Script FX1" layout');
+
+		const optimize = parseCliArgs(["node", "hise-cli", "dsp", "layout", "optimize", "--module", "Script FX1"], getCliCommands());
+		expect(optimize.kind).toBe("execute");
+		if (optimize.kind === "execute") expect(optimize.canonicalCommand).toBe('/dsp."Script FX1" layout optimize');
+
+		const threshold = parseCliArgs(["node", "hise-cli", "dsp", "layout", "optimize", "--module", "Script FX1", "--vertical-threshold", "15%", "--cable-weight", "100%"], getCliCommands());
+		expect(threshold.kind).toBe("execute");
+		if (threshold.kind === "execute") {
+			expect(threshold.canonicalCommand).toBe('/dsp."Script FX1" layout optimize threshold 15% cable_weight 100%');
+		}
+	});
+
 	it("parses direct DSP runtime status commands", () => {
 		const result = parseCliArgs(["node", "hise-cli", "dsp", "status", "--module", "Script FX1"], getCliCommands());
 		expect(result.kind).toBe("execute");

@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { cleanDspParameterForLlm, normalizeDspTreeResponse } from "./dsp.js";
 
 describe("normalizeDspTreeResponse", () => {
+	it("preserves optional calculated bounds", () => {
+		const { raw } = normalizeDspTreeResponse({
+			nodeId: "network",
+			factoryPath: "container.chain",
+			bypassed: false,
+			bounds: { x: 0, y: 0, width: 640, height: 480 },
+			parameters: [],
+			children: [],
+		});
+		expect(raw.bounds).toEqual({ x: 0, y: 0, width: 640, height: 480 });
+	});
+
 	it("preserves complex-data assignments", () => {
 		const { raw } = normalizeDspTreeResponse({
 			nodeId: "network",

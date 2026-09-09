@@ -317,6 +317,11 @@ function serializeDspCommand(command: DspCommand, ctx: TranslationContext): stri
 			...(command.externalModulation !== undefined ? ["--externalModulation", command.externalModulation] : []),
 		]];
 		case "screenshot": return [["dsp", "screenshot", ...moduleFlag, "--scale", String(command.scale), "--output", command.file]];
+		case "layout": return [[
+			"dsp", "layout", ...(command.optimize ? ["optimize"] : []), ...moduleFlag,
+			...(command.verticalThreshold !== undefined ? ["--vertical-threshold", String(command.verticalThreshold)] : []),
+			...(command.cableWeight !== undefined ? ["--cable-weight", String(command.cableWeight)] : []),
+		]];
 		case "trace": return [[
 			"dsp", "trace", ...moduleFlag,
 			...(command.container ? ["--container", pathToArg(command.container)] : []),

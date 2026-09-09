@@ -75,6 +75,8 @@ The retired shell mode routes are not part of the public CLI grammar. Use direct
 hise-cli builder tree --agent
 hise-cli ui tree --agent
 hise-cli dsp tree --module "Script FX1" --agent
+hise-cli dsp layout --module "Script FX1" --agent
+hise-cli dsp layout optimize --module "Script FX1" --agent
 ```
 
 Direct script subcommands avoid quoting callback bodies on the command line:
@@ -380,6 +382,7 @@ Inversion: scaled DSP connections use the target parameter range as the output m
 | `reset` | `reset` (clears network to empty `root`) |
 | `screenshot` | `screenshot scale <N> file "<path>"` |
 | `trace` | `trace [<container>] <trace-clause>...` |
+| `layout` | `layout [optimize [threshold <0..1|percent>] [cable_weight <auto|0..1|percent>]]` (inspect bounds or optimize up to five container orientations; defaults: threshold 10%, cable weight auto) |
 | `show` | `show tree` \| `show networks [<filter>]` \| `show modules [<filter>]` \| `show connections [<filter>]` \| `show status [autofix]` \| `show <nodeId>` \| `show <nodeId>.<param>` (live HISE state only) |
 | `docs` | `docs` \| `docs <factory>` \| `docs <factory.node>` \| `docs <factory.node>.<param>` (static MCP documentation) |
 | `create_parameter` | `create_parameter <container>.<paramName> [<min>, <max>] [default <d>] [stepSize <s>] [middlePosition <m>] [skewFactor <k>] [ExternalModulation <mode>]` (`<paramName>` is the new parameter's id, e.g. `Cutoff`, `Drive`) |
@@ -612,6 +615,9 @@ CreateParameterStmt  := 'create_parameter' DottedPath Array2
                         ['ExternalModulation' (Identifier | QuotedString)]
 
 TraceStmt            := 'trace' [PathExpr] TraceClause*
+LayoutCommand        := 'layout' ['optimize' LayoutOption*]
+LayoutOption         := 'threshold' (Number | Percent)
+                     |  'cable_weight' ('auto' | Number | Percent)
 TraceClause          := InjectClause | ProbeClause | TriggerClause | 'delay' Number
                      |  'compact' | 'no_specs' | 'no_signal'
 InjectClause         := 'inject' (SignalInject | ParameterInject)

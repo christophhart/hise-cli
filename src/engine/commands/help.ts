@@ -330,6 +330,8 @@ Once a network is loaded on a host, use \`/dsp\` then \`cd <moduleId>\` and run:
 | \`show modules\` | List \`DspNetwork\`-capable script processors |
 | \`show connections\` | Modulation edges in the network |
 | \`show status\` | Runtime graph validity health check |
+| \`layout\` | Calculated canvas bounds and container orientations |
+| \`layout optimize [threshold <N|N%>] [cable_weight <auto|N|N%>]\` | Compact up to five impactful container orientations as one undoable group |
 | \`docs [<factory>[.<node>[.<param>]]]\` | Static scriptnode catalog, factory list, node docs, or parameter docs from MCP |
 | \`trace [<container>] <clauses...>\` | Runtime signal / parameter probe |
 | \`show <nodeId>\` | Header, properties, parameters, modulation edges |
@@ -366,6 +368,23 @@ Long-form HISE property IDs are canonical:
   (eg. \`set AddNode.Value.range [1, 0]\`) to map source \`0.1\` to target \`0.9\`.
 - Network-root: \`AllowCompilation\`, \`AllowPolyphonic\`, \`HasTail\`,
   \`SuspendOnSilence\`, \`CompileChannelAmount\`, \`ModulationBlockSize\`
+
+## Layout optimization
+
+\`layout\` requests live calculated bounds and returns only node IDs, bounds,
+container orientation, and hierarchy. \`layout optimize\` probes every eligible
+container individually, selects at most five candidates, then evaluates all
+orientation combinations. Cable analysis distinguishes distributed boundary
+connections, which favour horizontal children, from connections between child
+branches, which favour vertical top-to-bottom flow. Connections whose source or
+target is folded (or hidden inside a folded ancestor) are excluded because HISE
+does not draw those cables. Cable weight interpolates between geometry-only at
+0% and cable-only at 100%. It defaults to \`auto\`, calculated as visible cables
+divided by visible cables plus visible nodes. The geometry score uses a 10%
+vertical preference by default. Use \`layout optimize threshold 5% cable_weight
+50%\` for a balanced custom mix. Trial groups are immediately undone; the winning \`IsVertical\`
+values are applied as one undoable group. Optimization cannot run while another
+undo group is active.
 
 ## Screenshot
 

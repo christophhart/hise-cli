@@ -1751,6 +1751,92 @@ export const GENERATED_AGENT_CONTEXT = {
 					]
 				},
 				{
+					"id": "dsp.layout.inspect",
+					"title": "Inspect DSP layout",
+					"purpose": "Return compact calculated bounds, hierarchy, and container orientations.",
+					"syntax": "dsp layout --module <module>",
+					"command": {
+						"argv": [
+							"hise-cli",
+							"dsp",
+							"layout",
+							"--module",
+							"Script FX1",
+							"--agent"
+						],
+						"display": "hise-cli dsp layout --module \"Script FX1\" --agent"
+					},
+					"tags": [
+						"dsp",
+						"layout",
+						"bounds",
+						"scriptnode",
+						"inspect",
+						"read-only"
+					],
+					"aliases": [
+						"show dsp bounds",
+						"inspect scriptnode layout",
+						"network canvas size"
+					],
+					"contexts": [
+						"cli"
+					],
+					"agentRelevance": "medium",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 11
+					}
+				},
+				{
+					"id": "dsp.layout.optimize",
+					"title": "Optimize DSP layout",
+					"purpose": "Minimize network canvas area by changing up to five impactful container orientations in one undoable group.",
+					"syntax": "dsp layout optimize --module <module> [--vertical-threshold <0..1|percent>] [--cable-weight <auto|0..1|percent>]",
+					"command": {
+						"argv": [
+							"hise-cli",
+							"dsp",
+							"layout",
+							"optimize",
+							"--module",
+							"Script FX1",
+							"--agent"
+						],
+						"display": "hise-cli dsp layout optimize --module \"Script FX1\" --agent"
+					},
+					"tags": [
+						"dsp",
+						"layout",
+						"optimize",
+						"bounds",
+						"scriptnode",
+						"mutation"
+					],
+					"aliases": [
+						"compact dsp layout",
+						"optimize scriptnode canvas",
+						"toggle IsVertical"
+					],
+					"contexts": [
+						"cli"
+					],
+					"agentRelevance": "medium",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 12
+					},
+					"notes": [
+						"The optimizer temporarily applies and undoes trial groups, then applies only the winning orientation combination as one undoable group.",
+						"At most five containers are exhaustively combined; larger networks select candidates by measured root-layout impact.",
+						"Cable analysis distinguishes distributed boundary connections, which favour horizontal children, from cross-child connections, which favour vertical top-to-bottom flow.",
+						"[object Object]",
+						"Connections to folded nodes or nodes hidden inside folded ancestors are excluded because HISE does not draw those cables."
+					]
+				},
+				{
 					"id": "dsp.show.node",
 					"title": "Show DSP node",
 					"purpose": "Inspect one scriptnode node with parameters and metadata.",

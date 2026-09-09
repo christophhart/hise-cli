@@ -10,6 +10,7 @@ import {
 	type DisconnectCommand,
 	type DspCommand,
 	type GetCommand,
+	type LayoutCommand,
 	type RemoveCommand,
 	type RenameCommand,
 	type ScreenshotCommand,
@@ -72,6 +73,22 @@ describe("dsp parser — add", () => {
 
 	it("rejects old `at <index>` clause", () => {
 		expect(parseErr('add core.gain as "g1" at 2')).toMatch(/Parse error/);
+	});
+});
+
+describe("dsp parser — layout", () => {
+	it("parses layout inspection and optimization", () => {
+		expect(parseOk<LayoutCommand>("layout")).toEqual({ type: "layout", optimize: false });
+		expect(parseOk<LayoutCommand>("layout optimize")).toEqual({ type: "layout", optimize: true });
+		expect(parseOk<LayoutCommand>("layout optimize cable_weight auto")).toEqual({
+			type: "layout", optimize: true, cableWeight: "auto",
+		});
+		expect(parseOk<LayoutCommand>("layout optimize threshold 15% cable_weight 100%")).toEqual({
+			type: "layout", optimize: true, verticalThreshold: 0.15, cableWeight: 1,
+		});
+		expect(parseErr("layout optimize threshold 101%")).toMatch(/between 0 and 1/);
+		expect(parseErr("layout optimize cable_weight 1000%")).toMatch(/between 0 and 1/);
+		expect(parseErr("layout optimize cable_weight -1")).toMatch(/between 0 and 1/);
 	});
 });
 

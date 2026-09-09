@@ -56,6 +56,8 @@ export const commandSurface: readonly CommandSurfaceEntry[] = [
 
 	// DSP direct command surface.
 	{ mode: "dsp", id: "dsp.show.tree", verb: "show", variant: "tree", parserExample: "show tree", directCli: { argv: ["dsp", "tree", "--module", "Script FX1"], canonical: "/dsp.\"Script FX1\" show tree" }, yamlId: "dsp.show.tree" },
+	{ mode: "dsp", id: "dsp.layout.inspect", verb: "layout", variant: "inspect", parserExample: "layout", directCli: { argv: ["dsp", "layout", "--module", "Script FX1"], canonical: "/dsp.\"Script FX1\" layout" }, yamlId: "dsp.layout.inspect" },
+	{ mode: "dsp", id: "dsp.layout.optimize", verb: "layout", variant: "optimize", parserExample: "layout optimize", directCli: { argv: ["dsp", "layout", "optimize", "--module", "Script FX1"], canonical: "/dsp.\"Script FX1\" layout optimize" }, yamlId: "dsp.layout.optimize" },
 	{ mode: "dsp", id: "dsp.show.node", verb: "show", variant: "node", parserExample: "show g1", directCli: { argv: ["dsp", "show", "--module", "Script FX1", "--node", "g1"], canonical: "/dsp.\"Script FX1\" show g1" }, yamlId: "dsp.show.node" },
 	{ mode: "dsp", id: "dsp.show.networks", verb: "show", variant: "networks", parserExample: "show networks", directCli: { argv: ["dsp", "networks", "--module", "Script FX1"], canonical: "/dsp.\"Script FX1\" show networks" }, yamlId: "dsp.show.networks" },
 	{ mode: "dsp", id: "dsp.show.modules", verb: "show", variant: "modules", parserExample: "show modules", directCli: { argv: ["dsp", "modules", "--module", "Script FX1"], canonical: "/dsp.\"Script FX1\" show modules" }, yamlId: "dsp.show.modules" },

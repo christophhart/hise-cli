@@ -109,6 +109,38 @@ commands:
     examples:
       - title: Inspect network nodes
         argv: [hise-cli, dsp, tree, --module, "Script FX1", --agent]
+  - id: dsp.layout.inspect
+    syntax: dsp layout --module <module>
+    title: Inspect DSP layout
+    purpose: Return compact calculated bounds, hierarchy, and container orientations.
+    command:
+      argv: [hise-cli, dsp, layout, --module, "Script FX1", --agent]
+    aliases: [show dsp bounds, inspect scriptnode layout, network canvas size]
+    tags: [dsp, layout, bounds, scriptnode, inspect, read-only]
+    contexts: [cli]
+    agentRelevance: medium
+    help:
+      visibility: common
+      order: 11
+  - id: dsp.layout.optimize
+    syntax: dsp layout optimize --module <module> [--vertical-threshold <0..1|percent>] [--cable-weight <auto|0..1|percent>]
+    title: Optimize DSP layout
+    purpose: Minimize network canvas area by changing up to five impactful container orientations in one undoable group.
+    command:
+      argv: [hise-cli, dsp, layout, optimize, --module, "Script FX1", --agent]
+    aliases: [compact dsp layout, optimize scriptnode canvas, toggle IsVertical]
+    tags: [dsp, layout, optimize, bounds, scriptnode, mutation]
+    contexts: [cli]
+    agentRelevance: medium
+    help:
+      visibility: common
+      order: 12
+    notes:
+      - The optimizer temporarily applies and undoes trial groups, then applies only the winning orientation combination as one undoable group.
+      - At most five containers are exhaustively combined; larger networks select candidates by measured root-layout impact.
+      - Cable analysis distinguishes distributed boundary connections, which favour horizontal children, from cross-child connections, which favour vertical top-to-bottom flow.
+      - Cable weight interpolates between geometry-only at 0% and cable-only at 100%. It defaults to auto: visible connections divided by visible connections plus visible nodes. The geometry score uses a 10% vertical preference by default.
+      - Connections to folded nodes or nodes hidden inside folded ancestors are excluded because HISE does not draw those cables.
   - id: dsp.show.node
     syntax: dsp show --module <module> --node <id-or-path>
     title: Show DSP node

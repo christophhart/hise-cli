@@ -22,10 +22,12 @@ import {
 	HexLiteral,
 	Identifier,
 	LBracket,
+	Layout,
 	Ls,
 	Modules,
 	Networks,
 	NumberLiteral,
+	Optimize,
 	PercentLiteral,
 	Pwd,
 	QuotedString,
@@ -146,6 +148,13 @@ export interface ScreenshotCommand {
 	file: string;
 }
 
+export interface LayoutCommand {
+	type: "layout";
+	optimize: boolean;
+	verticalThreshold?: number;
+	cableWeight?: number | "auto";
+}
+
 export interface TraceCommand {
 	type: "trace";
 	container?: PathRef;
@@ -194,6 +203,7 @@ export type DspCommand =
 	| DisconnectCommand
 	| CreateParameterCommand
 	| ScreenshotCommand
+	| LayoutCommand
 	| TraceCommand
 	| ShowCommand
 	| CdCommand
@@ -235,6 +245,8 @@ class DspParser extends CstParser {
 			{ ALT: () => this.CONSUME(Modules) },
 			{ ALT: () => this.CONSUME(Screenshot) },
 			{ ALT: () => this.CONSUME(Trace) },
+			{ ALT: () => this.CONSUME(Layout) },
+			{ ALT: () => this.CONSUME(Optimize) },
 			{ ALT: () => this.CONSUME(Add) },
 			{ ALT: () => this.CONSUME(Remove) },
 			{ ALT: () => this.CONSUME(Rename) },
@@ -441,6 +453,8 @@ class DspParser extends CstParser {
 			{ ALT: () => this.CONSUME(SetComplexData) },
 			{ ALT: () => this.CONSUME(Screenshot) },
 			{ ALT: () => this.CONSUME(Trace) },
+			{ ALT: () => this.CONSUME(Layout) },
+			{ ALT: () => this.CONSUME(Optimize) },
 			{ ALT: () => this.CONSUME(Cd) },
 			{ ALT: () => this.CONSUME(Ls) },
 			{ ALT: () => this.CONSUME(Pwd) },
@@ -460,6 +474,23 @@ class DspParser extends CstParser {
 			{ ALT: () => this.CONSUME(DoubleDot) },
 			{ ALT: () => this.CONSUME(Dot) },
 		]);
+	});
+
+	public layoutOption = this.RULE("layoutOption", () => {
+		this.CONSUME(Identifier, { LABEL: "name" });
+		this.OR([
+			{ ALT: () => this.CONSUME(PercentLiteral, { LABEL: "percent" }) },
+			{ ALT: () => this.CONSUME(NumberLiteral, { LABEL: "number" }) },
+			{ ALT: () => this.CONSUME2(Identifier, { LABEL: "identifier" }) },
+		]);
+	});
+
+	public layoutCommand = this.RULE("layoutCommand", () => {
+		this.CONSUME(Layout);
+		this.OPTION(() => {
+			this.CONSUME(Optimize);
+			this.MANY(() => this.SUBRULE(this.layoutOption, { LABEL: "option" }));
+		});
 	});
 
 	public traceCommand = this.RULE("traceCommand", () => {
@@ -517,6 +548,7 @@ class DspParser extends CstParser {
 			{ ALT: () => this.SUBRULE(this.disconnectCommand) },
 			{ ALT: () => this.SUBRULE(this.createParameterCommand) },
 			{ ALT: () => this.SUBRULE(this.screenshotCommand) },
+			{ ALT: () => this.SUBRULE(this.layoutCommand) },
 			{ ALT: () => this.SUBRULE(this.traceCommand) },
 			{ ALT: () => this.SUBRULE(this.showCommand) },
 			{ ALT: () => this.SUBRULE(this.cdCommand) },
@@ -1090,6 +1122,42 @@ function extractTraceCommand(node: CstNode): { command: TraceCommand } | { error
 	return { command: cmd };
 }
 
+function extractLayoutCommand(node: CstNode): { command: LayoutCommand } | { error: string } {
+	const optimize = node.children.Optimize !== undefined;
+	const command: LayoutCommand = { type: "layout", optimize };
+	const seen = new globalThis.Set<string>();
+	for (const optionNode of (node.children.option ?? []) as CstNode[]) {
+		const children = optionNode.children;
+		const name = (children.name![0] as IToken).image.toLowerCase();
+		if (seen.has(name)) return { error: `layout optimize: duplicate option "${name}"` };
+		seen.add(name);
+		const token = (children.percent?.[0] ?? children.number?.[0] ?? children.identifier?.[0]) as IToken;
+		if (children.identifier) {
+			if (name === "cable_weight" && token.image.toLowerCase() === "auto") {
+				command.cableWeight = "auto";
+				continue;
+			}
+			return { error: `layout optimize: invalid ${name} value "${token.image}"` };
+		}
+		const parsed = children.percent ? parsePercentLiteral(token.image) : parseNumberLiteral(token.image);
+		if (!parsed.ok || parsed.value.kind !== "number") return { error: `layout optimize: invalid ${name} value` };
+		if (name === "threshold") {
+			if (parsed.value.n < 0 || parsed.value.n > 1) {
+				return { error: "layout optimize: threshold must be between 0 and 1 (0% to 100%)" };
+			}
+			command.verticalThreshold = parsed.value.n;
+		} else if (name === "cable_weight") {
+			if (parsed.value.n < 0 || parsed.value.n > 1) {
+				return { error: "layout optimize: cable_weight must be between 0 and 1 (0% to 100%)" };
+			}
+			command.cableWeight = parsed.value.n;
+		} else {
+			return { error: `layout optimize: unknown option "${name}" (expected threshold or cable_weight)` };
+		}
+	}
+	return { command };
+}
+
 function extractShowCommand(node: CstNode): { command: ShowCommand } | { error: string } {
 	const c = node.children;
 	const kind = c.noun_networks
@@ -1141,6 +1209,7 @@ function extractCommand(cst: CstNode): { command: DspCommand } | { error: string
 	if (c.disconnectCommand) return extractDisconnectCommand(c.disconnectCommand[0] as CstNode);
 	if (c.createParameterCommand) return extractCreateParameterCommand(c.createParameterCommand[0] as CstNode);
 	if (c.screenshotCommand) return extractScreenshotCommand(c.screenshotCommand[0] as CstNode);
+	if (c.layoutCommand) return extractLayoutCommand(c.layoutCommand[0] as CstNode);
 	if (c.traceCommand) return extractTraceCommand(c.traceCommand[0] as CstNode);
 	if (c.showCommand) return extractShowCommand(c.showCommand[0] as CstNode);
 	if (c.cdCommand) return extractCdCommand(c.cdCommand[0] as CstNode);

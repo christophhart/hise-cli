@@ -153,6 +153,24 @@ describe("live contract parity — DSP endpoints", () => {
 		expect(tree.label).toBe(raw.nodeId);
 	});
 
+	it("GET /api/dsp/tree includeBounds returns calculated bounds", async () => {
+		const resp = await connection.get(
+			`/api/dsp/tree?moduleId=${encodeURIComponent(HOST_MODULE_ID)}&includeBounds=true`,
+		);
+		expectEnvelopeSuccess(resp, "tree bounds");
+		if (!isEnvelopeResponse(resp)) throw new Error("unreachable");
+		const { raw } = normalizeDspTreeResponse(resp.result);
+		const visit = (node: typeof raw): void => {
+			expect(node.bounds).toBeDefined();
+			expect(Number.isInteger(node.bounds?.x)).toBe(true);
+			expect(Number.isInteger(node.bounds?.y)).toBe(true);
+			expect(node.bounds?.width).toBeGreaterThanOrEqual(0);
+			expect(node.bounds?.height).toBeGreaterThanOrEqual(0);
+			for (const child of node.children) visit(child);
+		};
+		visit(raw);
+	});
+
 	it("GET /api/dsp/runtime_status returns graph runtime validity", async () => {
 		const resp = await connection.get(
 			`/api/dsp/runtime_status?moduleId=${encodeURIComponent(HOST_MODULE_ID)}`,
