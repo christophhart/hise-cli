@@ -496,6 +496,14 @@ describe("parseCliArgs", () => {
 		}
 	});
 
+	it("quotes whitespace in direct DSP trace parameter paths", () => {
+		const result = parseCliArgs(["node", "hise-cli", "dsp", "trace", "--module", "CentrePreservingVibrato", "--container", "centre_preserving_vibrato", "--probe-param", "SawTone.Freq Ratio", "--agent"], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe('/dsp.CentrePreservingVibrato trace centre_preserving_vibrato probe param SawTone."Freq Ratio"');
+		}
+	});
+
 	it("rejects mutually exclusive direct DSP trace parameter probes", () => {
 		const result = parseCliArgs(["node", "hise-cli", "dsp", "trace", "--module", "Script FX1", "--probe-changed-parameters", "--probe-param", "add.Value"], getCliCommands());
 		expect(result).toEqual({ kind: "error", message: "dsp trace accepts --probe-changed-parameters or --probe-param, not both" });
@@ -528,6 +536,17 @@ describe("parseCliArgs", () => {
 	it("rejects invalid direct DSP complex data indexes", () => {
 		const result = parseCliArgs(["node", "hise-cli", "dsp", "set-complex-data", "--module", "Script FX1", "--node", "Env", "--type", "Table", "--index", "-2"], getCliCommands());
 		expect(result).toEqual({ kind: "error", message: "dsp set-complex-data --index must be -1 or greater" });
+	});
+
+	it("keeps commas inside direct DSP quoted scalar values", () => {
+		const result = parseCliArgs([
+			"node", "hise-cli", "dsp", "set", "--module", "Script FX1", "--node", "A",
+			"--param", "Comment", "--value", '"one, two"',
+		], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe('/dsp."Script FX1" set A.Comment "one, two"');
+		}
 	});
 
 	it("parses combined direct DSP parameter metadata flags", () => {

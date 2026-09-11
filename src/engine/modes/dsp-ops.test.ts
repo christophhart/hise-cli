@@ -94,6 +94,16 @@ describe("dsp-ops — remove / rename", () => {
 });
 
 describe("dsp-ops — set parameter value", () => {
+	it("emits a string-valued set for Comment", () => {
+		const ops = opsOk('set A.Comment "Inspection comment."');
+		expect(ops[0]).toMatchObject({
+			op: "set",
+			nodeId: "A",
+			parameterId: "Comment",
+			value: "Inspection comment.",
+		});
+	});
+
 	it("emits set with value", () => {
 		const ops = opsOk("set g1.Gain 0.5");
 		expect(ops[0]).toMatchObject({ op: "set", nodeId: "g1", parameterId: "Gain", value: 0.5 });

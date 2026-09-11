@@ -286,6 +286,25 @@ describe("DspMode — integration", () => {
 		});
 	});
 
+	it("sends whitespace-containing trace parameter IDs without DSL quotes", async () => {
+		const conn = new MockHiseConnection();
+		conn.onPost("/api/dsp/probe", (body) => ({
+			success: true,
+			logs: [],
+			errors: [],
+			parameters: { injected: {}, probed: {}, touchedEdges: {} },
+			request: body,
+		}));
+		const mode = new DspMode(scriptnodeFixture, undefined, "CentrePreservingVibrato");
+		const ctx: SessionContext = { connection: conn, popMode: () => ({ type: "empty" }) };
+
+		await mode.parse('trace centre_preserving_vibrato probe param SawTone."Freq Ratio"', ctx);
+
+		const call = conn.calls.find((c) => c.method === "POST" && c.endpoint === "/api/dsp/probe");
+		expect(call?.body).toMatchObject({
+			parameters: { probe: ["SawTone.Freq Ratio"] },
+		});
+	});
 	it("layout optimize measures combinations, undoes trials, and applies the winner as one group", async () => {
 		const conn = new MockHiseConnection();
 		let orientations = { root: true, child: true };

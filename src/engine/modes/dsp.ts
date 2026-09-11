@@ -1243,6 +1243,9 @@ function normalizeScreenshotPath(raw: string): string {
 	if (hasDriveLetter) return forward;
 	return forward.replace(/^\/+/, "");
 }
+function pathRefToRuntimeString(ref: PathRef): string {
+	return pathRefSegments(ref).map((segment) => segment.id).join(".");
+}
 
 function buildTraceRequest(moduleId: string, parent: string, cmd: TraceCommand): Record<string, unknown> {
 	const body: Record<string, unknown> = { moduleId, parent };
@@ -1263,12 +1266,12 @@ function buildTraceRequest(moduleId: string, parent: string, cmd: TraceCommand):
 
 	const parameters: Record<string, unknown> = {};
 	if (cmd.injectParams.length > 0) {
-		parameters.inject = Object.fromEntries(cmd.injectParams.map((p) => [pathRefToString(p.path), valueToJson(p.value)]));
+		parameters.inject = Object.fromEntries(cmd.injectParams.map((p) => [pathRefToRuntimeString(p.path), valueToJson(p.value)]));
 	}
 	if (cmd.changedParameters) {
 		parameters.probe = "*";
 	} else if (cmd.probeParams.length > 0) {
-		parameters.probe = cmd.probeParams.map(pathRefToString);
+		parameters.probe = cmd.probeParams.map(pathRefToRuntimeString);
 	}
 	if (Object.keys(parameters).length > 0) body.parameters = parameters;
 

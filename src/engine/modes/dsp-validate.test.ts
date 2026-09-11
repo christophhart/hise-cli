@@ -71,6 +71,12 @@ describe("dsp validation — set", () => {
 		expect(result.errors[0]).toContain('Unknown parameter "Nope" on container.split.');
 	});
 
+	it("accepts universal Comment as a string property", () => {
+		const result = validateSetCommand(parseSet('set D.Comment "Inspection comment."'), scriptnodeFixture, expandedDryWetTree);
+
+		expect(result).toEqual({ valid: true, errors: [] });
+	});
+
 	it("accepts ExternalModulation string sub-field writes", () => {
 		const result = validateSetCommand(parseSet("set D.DryWet.ExternalModulation Combined"), scriptnodeFixture, expandedDryWetTree);
 

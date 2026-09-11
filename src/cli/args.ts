@@ -208,6 +208,9 @@ function normalizeUiSetPair(pair: { flag: string; value: string }): { flag: stri
 
 function formatArrayShorthand(value: string): string {
 	if (value.startsWith("[") && value.endsWith("]")) return value;
+	// Quoted scalar strings may legitimately contain commas. They must stay
+	// strings rather than being rewritten as numeric array shorthand.
+	if (value.startsWith("\"") && value.endsWith("\"")) return value;
 	return value.includes(",") ? `[${value}]` : value;
 }
 
@@ -602,7 +605,7 @@ function renderDspDirectCommand(args: string[]): string | { error: string } {
 			const path = pair.slice(0, eq);
 			const value = pair.slice(eq + 1);
 			if (value.length === 0) return directUsage("dsp trace --inject-param requires node.Param=value");
-			clauses.push(`inject param ${path} ${formatDslValue(value)}`);
+			clauses.push(`inject param ${formatDspDisconnectTarget(path)} ${formatDslValue(value)}`);
 		}
 		const probeParams = readRepeatedFlag(rest, "--probe-param");
 		if (hasFlag(rest, "--probe-changed-parameters") && probeParams.length > 0) {
@@ -610,7 +613,7 @@ function renderDspDirectCommand(args: string[]): string | { error: string } {
 		}
 		if (hasFlag(rest, "--probe-recursive")) clauses.push("probe recursive");
 		if (hasFlag(rest, "--probe-changed-parameters")) clauses.push("probe changed_parameters");
-		for (const path of probeParams) clauses.push(`probe param ${path}`);
+		for (const path of probeParams) clauses.push(`probe param ${formatDspDisconnectTarget(path)}`);
 		const after = readOptionalFlag(rest, "--probe-after");
 		if (typeof after !== "string" && after !== undefined) return after;
 		if (after !== undefined) clauses.push(`probe after ${quoteDslString(after)}`);

@@ -331,11 +331,35 @@ function applyDisconnect(tree: RawDspNode, op: DspOp, diff: DiffEntry[]): string
 
 function applySet(tree: RawDspNode, op: DspOp, diff: DiffEntry[]): string | null {
 	const nodeId = typeof op.nodeId === "string" ? op.nodeId : "";
-	const parameterId = typeof op.parameterId === "string" ? op.parameterId : "";
 	if (!nodeId) return "set: missing nodeId";
-	if (!parameterId) return "set: missing parameterId";
 	const node = findDspNode(tree, nodeId);
 	if (!node) return `set: node "${nodeId}" not found`;
+
+	const requestedPropertyId = typeof op.propertyId === "string" ? op.propertyId : "";
+	const requestedParameterId = typeof op.parameterId === "string" ? op.parameterId : "";
+	const propertyId = requestedPropertyId || (
+		(requestedParameterId === "Comment" || requestedParameterId === "Folded" || requestedParameterId === "NodeColour" || requestedParameterId === "Name"
+			|| node.properties?.some((p) => p.propertyId === requestedParameterId))
+			? requestedParameterId
+			: ""
+	);
+	if (propertyId) {
+		if (op.value !== undefined && (typeof op.value !== "string" && typeof op.value !== "number" && typeof op.value !== "boolean")) {
+			return `set: property "${propertyId}" value must be scalar`;
+		}
+		const value = op.value as string | number | boolean | undefined;
+		const property = node.properties?.find((p) => p.propertyId === propertyId);
+		if (property) {
+			if (value !== undefined) property.value = value;
+		} else {
+			(node.properties ??= []).push({ propertyId, value: value ?? "" });
+		}
+		diff.push({ domain: "dsp", action: "*", target: nodeId });
+		return null;
+	}
+
+	const parameterId = requestedParameterId;
+	if (!parameterId) return "set: missing parameterId";
 	let param = node.parameters.find((p) => p.parameterId === parameterId);
 	if (!param) {
 		const value = coerceNumeric(op.value, 0);

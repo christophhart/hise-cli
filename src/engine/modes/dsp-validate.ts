@@ -164,11 +164,16 @@ function validateSetClause(
 	const factoryDef = findScriptnode(node.factoryPath, list);
 	if (!factoryDef) return { valid: true, errors: [] };
 
+	const propertyNames = nodePropertyNames(factoryDef);
+	const liveProperty = node.properties?.find((p) => p.propertyId === fieldName);
+	// Properties take precedence over parameters. Some expanded node
+	// definitions expose a property name alongside numeric parameter metadata;
+	// Comment must never be range-checked as a parameter in that case.
+	if (liveProperty || propertyNames.includes(fieldName)) return { valid: true, errors: [] };
+
 	const liveParam = node.parameters.find((p) => p.parameterId === fieldName);
 	const param = factoryDef.parameters.find((p) => p.id === fieldName);
 	if (!liveParam && !param) {
-		const propertyNames = nodePropertyNames(factoryDef);
-		if (propertyNames.includes(fieldName)) return { valid: true, errors: [] };
 		const isRoot = rawTree?.nodeId === nodeId;
 		const allNames = [
 			...node.parameters.map((p) => p.parameterId),

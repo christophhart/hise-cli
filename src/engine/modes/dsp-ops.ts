@@ -15,7 +15,11 @@ import type {
 import type { RawDspNode } from "../../mock/contracts/dsp.js";
 import { findDspNode, findDspParent } from "../../mock/contracts/dsp.js";
 import type { ScriptnodeList } from "../data.js";
-import { nodePropertyNames, ROOT_NETWORK_PROPERTY_NAMES } from "./dsp-properties.js";
+import {
+	UNIVERSAL_NODE_PROPERTIES,
+	nodePropertyNames,
+	ROOT_NETWORK_PROPERTY_NAMES,
+} from "./dsp-properties.js";
 import { resolvePath } from "../grammar/path-resolver.js";
 import type { TreeNode } from "../result.js";
 import {
@@ -252,6 +256,15 @@ function translateSetClause(
 	const fieldLower = fieldName.toLowerCase();
 
 	if (segs.length === 2) {
+		// Node properties use a distinct API field from numeric parameters.
+		// In particular, sending Comment as parameterId makes HISE try to
+		// parse the string through the parameter path.
+		if (isNodeProperty(fieldName, nodeId, rawTree)) {
+			const v = coerceParameterValue(clause.value);
+			if ("error" in v) return v;
+			return { ops: [{ op: "set", nodeId, parameterId: fieldName, value: v.out }] };
+		}
+
 		// Universal/property/parameter writes on the node itself.
 		switch (fieldLower) {
 			case "bypassed": {
@@ -340,6 +353,12 @@ function translateSetClause(
 	}
 
 	return { error: `set: path too deep (got ${segs.length} segments)` };
+}
+
+function isNodeProperty(fieldName: string, nodeId: string, rawTree: RawDspNode | null): boolean {
+	if (UNIVERSAL_NODE_PROPERTIES.includes(fieldName as typeof UNIVERSAL_NODE_PROPERTIES[number])) return true;
+	const node = rawTree ? findDspNode(rawTree, nodeId) : null;
+	return node?.properties?.some((property) => property.propertyId === fieldName) ?? false;
 }
 
 function canonicalStringFieldName(name: string): string {
