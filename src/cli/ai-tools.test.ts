@@ -5,7 +5,7 @@ import { MockHiseConnection } from "../engine/hise.js";
 import { createDefaultMockRuntime } from "../mock/runtime.js";
 import { createSession } from "../session-bootstrap.js";
 import { listCliCommands } from "./commands.js";
-import { assertHiseMcpReachable, cleanResearchEvidence, createHiseCommandTool, createHiseHelpTool, extractResearchReferences, extractHiseScriptBlocks, filterResearchDiagnostics, inferResearchDomain, parseResearchQueries, parseResearchSelection } from "./ai-tools.js";
+import { assertHiseMcpReachable, cleanResearchEvidence, createHiseCommandTool, createHiseHelpTool, createHiseWhichTool, extractResearchReferences, extractHiseScriptBlocks, filterResearchDiagnostics, inferResearchDomain, parseResearchQueries, parseResearchSelection, splitResearchDiagnostics } from "./ai-tools.js";
 import { isMutatingCliCommand, runCanonical } from "./ai.js";
 
 const dataLoader: DataLoader = {
@@ -83,6 +83,24 @@ describe("embedded HISE agent contract", () => {
 		]);
 	});
 
+	it("lets best-practice warnings through without treating them as validation failures", () => {
+		const diagnostic = (severity: string, message: string) => ({
+			line: 1,
+			column: 1,
+			severity,
+			source: "api-validation",
+			message,
+			suggestions: [],
+		});
+		expect(splitResearchDiagnostics([
+			diagnostic("warning", "Best practice: omit initial coordinates"),
+			diagnostic("error", "Function / constant not found: Content.makeButton"),
+		])).toEqual({
+			errors: [diagnostic("error", "Function / constant not found: Content.makeButton")],
+			warnings: [diagnostic("warning", "Best practice: omit initial coordinates")],
+		});
+	});
+
 	it("extracts decoded MCP references without JSON escape backslashes", () => {
 		const references = extractResearchReferences(
 			{ content: [{ type: "text", text: '{"url":"/v2/scripting-api/engine#setkeycolour"}' }] },
@@ -92,6 +110,14 @@ describe("embedded HISE agent contract", () => {
 			urls: ["/v2/scripting-api/engine#setkeycolour"],
 			ids: ["example:Engine.setKeyColour:colour-coded-keyboard-zones"],
 		});
+	});
+
+	it("routes internal engine questions to C++ source research", () => {
+		expect(inferResearchDomain("How does the threading model for loading user presets work?")).toBe("source");
+		expect(inferResearchDomain("Why does the engine crash when loading a preset?")).toBe("source");
+		expect(inferResearchDomain("Explain the C++ implementation of tempo sync")).toBe("source");
+		expect(inferResearchDomain("How does cpp tempo syncing work internally?")).toBe("source");
+		expect(inferResearchDomain("How does C++ scriptnode tempo sync work?")).toBe("source");
 	});
 
 	it("keeps ScriptNode research scoped to the ScriptNode documentation domain", () => {
@@ -185,6 +211,38 @@ describe("embedded HISE agent contract", () => {
 		const result = await tool.execute("test", { mode: "ui" }, undefined, undefined, {} as never);
 		expect(text(result)).toContain("hise-cli ui");
 		expect(text(result)).toContain("ui add --type");
+	});
+
+	it("returns modal TUI syntax for how-to guidance", async () => {
+		const tool = createHiseHelpTool({ surface: "tui" });
+		const result = await tool.execute("test", { mode: "ui" }, undefined, undefined, {} as never);
+		expect(text(result)).toContain("# UI Mode");
+		expect(text(result)).toContain("set <target>.<prop> <value>");
+		expect(text(result)).not.toContain("--component");
+	});
+
+	it("rejects non-canonical TUI topic aliases", async () => {
+		const tool = createHiseHelpTool({ surface: "tui" });
+		await expect(tool.execute("test", { mode: "interface" }, undefined, undefined, {} as never)).rejects.toThrow("Available: root, builder, ui, dsp");
+	});
+
+	it("returns which matches as supporting evidence", async () => {
+		const tool = createHiseWhichTool();
+		const result = await tool.execute("test", { query: "make a screenshot of the ui" }, undefined, undefined, {} as never);
+		expect(text(result)).toContain("ui.screenshot");
+	});
+
+	it("returns an empty match list instead of failing", async () => {
+		const tool = createHiseWhichTool();
+		const result = await tool.execute("test", { query: "flurb blarg nonsense" }, undefined, undefined, {} as never);
+		expect(JSON.parse(text(result))).toEqual({ matches: [] });
+	});
+
+	it("translates wizard help to its TUI entry point", async () => {
+		const tool = createHiseHelpTool({ surface: "tui" });
+		const result = await tool.execute("test", { mode: "wizard" }, undefined, undefined, {} as never);
+		expect(text(result)).toContain("/wizard run plugin_export");
+		expect(text(result)).not.toContain("hise-cli -wizard");
 	});
 
 	it("executes script get through canonical argv", async () => {

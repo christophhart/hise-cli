@@ -1216,6 +1216,10 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		return parseAgentContextArgs(args, output);
 	}
 
+	if (first === "-which" || first === "--which") {
+		return { kind: "error", message: `Unknown option ${first}. Use: hise-cli which "<intent>"` };
+	}
+
 	if (first === "which") {
 		const rest = args.slice(1);
 		let limit = 3;

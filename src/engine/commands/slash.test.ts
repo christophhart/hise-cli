@@ -136,6 +136,7 @@ describe("built-in slash commands", () => {
 
 		expect(names).toContain("exit");
 		expect(names).toContain("help");
+		expect(names).toContain("how");
 		expect(names).toContain("modes");
 		expect(names).toContain("builder");
 		expect(names).toContain("script");

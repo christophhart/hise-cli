@@ -97,7 +97,7 @@ const MODE_HELP: Partial<Record<ModeId, string>> = {
 	root: `# HISE CLI
 
 Interactive shell for the HISE audio plugin framework.
-Enter a mode to start working, or use /wizard for guided workflows.
+Enter a mode to start working, use /wizard for guided workflows, or ask /how <question> for concise TUI instructions.
 
 - **/builder** — Module tree editor (add, remove, configure modules)
 - **/ui** — UI component editor (add, remove, set properties, reparent)

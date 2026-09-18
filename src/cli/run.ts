@@ -45,8 +45,7 @@ function needsProjectFolder(path: string): boolean {
 import { wireScriptFileOps, wireExtendedFileOps } from "../node-io.js";
 import { createNodeAssetEnvironment } from "../tui/nodeAssetIo.js";
 import { registerAssetsWizardHandlers } from "../tui/wizard-handlers/index.js";
-import { readFile as fsReadFile } from "node:fs/promises";
-import { compilerSettingsPath, parseHisePath } from "../tui/nodeHiseLauncher.js";
+import { detectHisePath } from "../tui/nodeHiseLauncher.js";
 import { extractStatusPayload } from "../engine/modes/inspect.js";
 import { isEnvelopeResponse, isErrorResponse, isSuccessResponse } from "../engine/hise.js";
 import { executeScriptShow } from "../engine/modes/script-symbols.js";
@@ -608,15 +607,6 @@ async function collectStatus(opts: CliCommandOptions): Promise<StatusReport> {
 	}
 
 	return report;
-}
-
-async function detectHisePath(): Promise<string | null> {
-	try {
-		const xml = await fsReadFile(compilerSettingsPath(process.platform), "utf8");
-		return parseHisePath(xml);
-	} catch {
-		return null;
-	}
 }
 
 function readStdin(): Promise<string> {

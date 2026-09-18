@@ -244,6 +244,11 @@ describe("parseCliArgs", () => {
 		expect(result).toEqual({ kind: "error", message: "agent-context --full requires a mode" });
 	});
 
+	it("rejects dashed which without launching the TUI", () => {
+		const result = parseCliArgs(["node", "hise-cli", "-which", "network dll export", "--agent"], getCliCommands());
+		expect(result).toEqual({ kind: "error", message: 'Unknown option -which. Use: hise-cli which "<intent>"' });
+	});
+
 	it("parses which queries as JSON output", () => {
 		const result = parseCliArgs(["node", "hise-cli", "which", "edit", "onInit", "from", "file", "--limit", "1"], getCliCommands());
 		expect(result.kind).toBe("which");

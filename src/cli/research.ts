@@ -17,11 +17,16 @@ export async function runResearchCommand(argv: string[]): Promise<void> {
 	try {
 		const status = await connection.get("/api/status") as unknown as { project?: { projectFolder?: string } };
 		if (status.project?.projectFolder) projectDir = status.project.projectFolder;
+		const agentDir = join(homedir(), ".hise", "agent");
+		const roles = await loadResearchModels(projectDir, agentDir);
 		const markdown = await runHiseResearch(query, {
 			connection,
 			mcpClient: new RestMcpClient({ defaultUrl: process.env.HISE_DOCS_API_URL ?? process.env.HISE_MCP_URL }),
 			cwd: projectDir,
-			agentDir: join(homedir(), ".hise", "agent"),
+			agentDir,
+			model: roles.thinker,
+			thinkerModel: roles.thinker,
+			workerModel: roles.worker,
 			onProgress: json ? undefined : renderResearchProgress,
 		});
 		process.stdout.write(json ? `${JSON.stringify({ ok: true, value: { markdown, stats: extractResearchStats(markdown) } })}\n` : `${markdown}\n`);
@@ -53,6 +58,30 @@ export function extractResearchStats(markdown: string): Record<string, unknown> 
 function parseTokenCount(value: string | undefined): number | undefined {
 	if (!value) return undefined;
 	return Math.round(Number.parseFloat(value) * (value.endsWith("k") ? 1000 : 1));
+}
+
+async function loadResearchModels(projectDir: string, agentDir: string): Promise<{ thinker?: import("@earendil-works/pi-ai").Model<import("@earendil-works/pi-ai").Api>; worker?: import("@earendil-works/pi-ai").Model<import("@earendil-works/pi-ai").Api> }> {
+	const pi = await import("@earendil-works/pi-coding-agent");
+	const settings = pi.SettingsManager.create(projectDir, agentDir).getGlobalSettings() as Record<string, unknown>;
+	const runtime = await pi.ModelRuntime.create({
+		authPath: join(agentDir, "auth.json"),
+		modelsPath: join(agentDir, "models.json"),
+		modelsStorePath: join(agentDir, "models-store.json"),
+		refreshOnCreate: false,
+	});
+	// Match /model autocomplete, which refreshes the provider catalogue before
+	// presenting choices. This is needed for newly added or renamed models.
+	try { await runtime.refresh({ allowNetwork: true }); } catch { /* use the cached catalogue */ }
+	const provider = typeof settings.defaultProvider === "string" ? settings.defaultProvider : undefined;
+	const thinkerId = typeof settings.defaultModel === "string" && provider ? `${provider}/${settings.defaultModel}` : undefined;
+	const workerId = typeof settings.workerModel === "string" ? settings.workerModel : thinkerId;
+	const resolve = (value: string | undefined) => {
+		if (!value) return undefined;
+		const slash = value.indexOf("/");
+		if (slash <= 0) return undefined;
+		return runtime.getModel(value.slice(0, slash), value.slice(slash + 1));
+	};
+	return { thinker: resolve(thinkerId), worker: resolve(workerId) };
 }
 
 function renderResearchProgress(progress: HiseResearchProgress): void {

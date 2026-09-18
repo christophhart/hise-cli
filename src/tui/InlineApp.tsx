@@ -100,19 +100,21 @@ function createLoginWizard(providers: string[]): WizardDefinition {
 	};
 }
 
-export function createModelPicker(models: string[], thinkingLevels: string[], currentModel: string, currentThinkingLevel: string): WizardDefinition {
+export function createModelPicker(models: string[], thinkingLevels: string[], currentModel: string, currentThinkingLevel: string, currentWorkerModel = currentModel): WizardDefinition {
 	const providers = [...new Set(models.map((model) => model.split("/")[0]).filter((provider): provider is string => Boolean(provider)))];
 	const selectedModel = models.includes(currentModel) ? currentModel : (models[0] ?? "");
 	const selectedProvider = selectedModel.split("/")[0] ?? providers[0] ?? "";
 	const selectedThinkingLevel = thinkingLevels.includes(currentThinkingLevel) ? currentThinkingLevel : (thinkingLevels[0] ?? "off");
+	const selectedWorkerModel = models.includes(currentWorkerModel) && currentWorkerModel.startsWith(`${selectedProvider}/`) ? currentWorkerModel : selectedModel;
 	return {
 		id: "ai_model_select", header: "Select AI model", description: "Choose a provider, then a model",
 		tabs: [{ label: "Available models", fields: [
 			{ id: "provider", type: "choice", label: "Provider", required: true, items: providers, valueMode: "text", defaultValue: selectedProvider },
-			{ id: "modelId", type: "choice", label: "Model", required: true, items: models.filter((model) => model.startsWith(`${selectedProvider}/`)), allItems: models, valueMode: "text", defaultValue: selectedModel, emptyText: "Select a model" },
+			{ id: "modelId", type: "choice", label: "Thinker model", required: true, items: models.filter((model) => model.startsWith(`${selectedProvider}/`)), allItems: models, valueMode: "text", defaultValue: selectedModel, emptyText: "Select a model" },
+			{ id: "workerModelId", type: "choice", label: "Worker model", required: true, items: models.filter((model) => model.startsWith(`${selectedProvider}/`)), allItems: models, valueMode: "text", defaultValue: selectedWorkerModel, emptyText: "Select a model" },
 			{ id: "thinkingLevel", type: "choice", label: "Reasoning", required: true, items: thinkingLevels, valueMode: "text", defaultValue: selectedThinkingLevel },
 		] }],
-		tasks: [], postActions: [], globalDefaults: {}, submitLabel: "Switches the active AI model and reasoning level.",
+		tasks: [], postActions: [], globalDefaults: {}, submitLabel: "Stores thinker and worker model selections.",
 	};
 }
 
@@ -123,17 +125,20 @@ export function refreshWizardModelField(state: WizardFormState, getThinkingLevel
 	const fields = state.definition.tabs[0]?.fields;
 	if (!fields) return state;
 	const modelField = fields.find((field) => field.id === "modelId");
+	const workerField = fields.find((field) => field.id === "workerModelId");
 	if (!modelField) return state;
 	const allModels = modelField.allItems ?? modelField.items ?? [];
 	// Model IDs are provider/model-id strings in the runtime catalog.
 	const filtered = providerId ? allModels.filter((model) => model.startsWith(`${providerId}/`)) : [];
 	const selected = state.answers.modelId;
 	const validSelected = selected && filtered.includes(selected) ? selected : "";
+	const selectedWorker = state.answers.workerModelId;
+	const validWorker = selectedWorker && filtered.includes(selectedWorker) ? selectedWorker : validSelected;
 	const thinkingLevels = validSelected ? getThinkingLevels(validSelected) : ["off"];
 	const definition: WizardDefinition = {
 		...state.definition,
 		tabs: [{ ...state.definition.tabs[0]!, fields: fields.map((field) => {
-			if (field.id === "modelId") return { ...field, items: filtered };
+			if (field.id === "modelId" || field.id === "workerModelId") return { ...field, items: filtered };
 			if (field.id === "thinkingLevel") return { ...field, items: thinkingLevels };
 			return field;
 		}) }, ...state.definition.tabs.slice(1)],
@@ -145,6 +150,7 @@ export function refreshWizardModelField(state: WizardFormState, getThinkingLevel
 		answers: {
 			...state.answers,
 			modelId: validSelected,
+			workerModelId: validWorker,
 			thinkingLevel: thinkingLevels.includes(selectedThinking) ? selectedThinking : (thinkingLevels[0] ?? "off"),
 		},
 		// Only reset the model list cursor after changing provider. Resetting it
@@ -502,6 +508,33 @@ function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps)
 		setAiRunning(true);
 		setAiModel(ai.modelDisplayLabel);
 		await ai.prompt(prompt);
+	}, [appendBlock, ensureAiSession, innerW, scheme]);
+
+	const handleHow = useCallback(async (query: string) => {
+		const ai = await ensureAiSession();
+		if (!ai) {
+			const block = renderResult({ type: "error", message: "How-to help requires an active HISE connection." }, scheme, innerW);
+			if (block) appendBlock(block);
+			return;
+		}
+		if (!ai.hasModel) {
+			providerWizardFormRef.current = "login";
+			setWizardForm(createInitialFormState(createLoginWizard(ai.providerChoices), {}));
+			return;
+		}
+		appendBlock(renderEcho(`/how ${query}`, brand.signal, scheme.backgrounds.raised, innerW), false);
+		setAiActivity({ kind: "thinking", startedAt: Date.now() });
+		setAiRunning(true);
+		try {
+			const text = await ai.how(query);
+			const block = renderResult({ type: "markdown", content: text }, scheme, innerW);
+			if (block) appendBlock(block);
+		} catch (error) {
+			appendBlock(renderError(error instanceof Error ? error.message : String(error), undefined, scheme.foreground.muted, innerW));
+		} finally {
+			setAiRunning(false);
+			setAiActivity(null);
+		}
 	}, [appendBlock, ensureAiSession, innerW, scheme]);
 
 	const handleResearch = useCallback(async (query: string) => {
@@ -1030,6 +1063,12 @@ function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps)
 		if (input.trim().length === 0) return;
 		setCompletionState(null);
 
+		if (!multilineModeRef.current && (input.trim() === "/how" || input.trim().startsWith("/how "))) {
+			const query = input.trim().slice("/how".length).trim();
+			if (query) await handleHow(query);
+			else appendBlock(renderError("Usage: /how <question>", undefined, scheme.foreground.muted, innerW));
+			return;
+		}
 		if (!multilineModeRef.current && input.trim().startsWith("/research ")) {
 			const query = input.trim().slice("/research ".length).trim();
 			if (query) await handleResearch(query);
@@ -1114,7 +1153,7 @@ function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps)
 						setAiModels(models);
 						providerWizardFormRef.current = "model";
 						const selectedModel = models.includes(ai.modelLabel) ? ai.modelLabel : models[0]!;
-						setWizardForm(createInitialFormState(createModelPicker(models, ai.getAvailableThinkingLevels(selectedModel), selectedModel, ai.thinkingLevel), {}));
+						setWizardForm(createInitialFormState(createModelPicker(models, ai.getAvailableThinkingLevels(selectedModel), selectedModel, ai.thinkingLevel, ai.workerModelLabel), {}));
 					}
 				} else {
 					appendBlock(renderError("/model does not take arguments; choose a model in the selector.", undefined, scheme.foreground.muted, innerW));
@@ -1250,7 +1289,7 @@ function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps)
 			disabledRef.current = false;
 			setDisabled(false);
 		}
-	}, [session, scheme, innerW, appendBlock, exit, bumpModeRender, treePanelVisible, aiActive, ensureAiSession, handleAiPrompt, handleResearch]);
+	}, [session, scheme, innerW, appendBlock, exit, bumpModeRender, treePanelVisible, aiActive, ensureAiSession, handleAiPrompt, handleHow, handleResearch]);
 
 	useInput((input, key) => {
 		// DECSET 1004 focus reports: terminal emits \x1b[I / \x1b[O.
@@ -1324,10 +1363,11 @@ function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps)
 							}
 							if (wizardKind === "model") {
 								const modelId = form.answers.modelId;
-								if (!modelId) throw new Error("Select a model");
-								await ai.selectModel(modelId, (form.answers.thinkingLevel ?? "off") as AiThinkingLevel);
+								const workerModelId = form.answers.workerModelId;
+								if (!modelId || !workerModelId) throw new Error("Select thinker and worker models");
+								await ai.selectModels(modelId, workerModelId, (form.answers.thinkingLevel ?? "off") as AiThinkingLevel);
 								setAiModel(ai.modelDisplayLabel);
-								appendBlock(renderResult({ type: "text", content: `Selected ${ai.modelDisplayLabel}.` }, scheme, innerW)!);
+								appendBlock(renderResult({ type: "text", content: `Selected thinker ${ai.modelDisplayLabel}; worker ${ai.workerModelLabel}.` }, scheme, innerW)!);
 							}
 						} catch (error) {
 							appendBlock(renderError(error instanceof Error ? error.message : String(error), undefined, scheme.foreground.muted, innerW));

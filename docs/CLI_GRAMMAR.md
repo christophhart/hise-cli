@@ -31,9 +31,10 @@ Identifier matching (paths, fields, type names) is **case-insensitive**. Storage
 
 Static documentation lookup uses `docs` and is backed by MCP. Live inspection uses `show` and is backed by HISE.
 
-## Research entry points
+## Guided help and research entry points
 
-- TUI: `/research <question>`
+- TUI usage guidance: `/how <question>` (worker-model lookup over embedded hise-cli help; returns TUI syntax)
+- TUI documentation research: `/research <question>`
 - One-shot CLI: `hise-cli -research "<question>" [--json | --agent]`
 - Embedded agent tool: `hise_research { query }`
 

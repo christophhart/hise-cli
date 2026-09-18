@@ -2,9 +2,11 @@ import { Type } from "typebox";
 import { createTwoFilesPatch } from "diff";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { renderDiff } from "@earendil-works/pi-coding-agent";
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { execFile as execFileCallback } from "node:child_process";
+import { appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { promisify } from "node:util";
+import { extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import * as vm from "node:vm";
 import type { HiseConnection } from "../engine/hise.js";
@@ -12,18 +14,33 @@ import { diagnoseHiseScriptCode, type HiseScriptDiagnostic } from "../engine/his
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { buildAgentContext } from "./agentContext.js";
 import { renderCliHelp } from "./help.js";
+import { generateHelp } from "../engine/commands/help.js";
+import type { ModeId } from "../engine/modes/mode.js";
 import type { McpClient, McpJsonValue } from "../engine/mcp/types.js";
 import { HISESCRIPT_CHEAT_SHEET } from "./ai-guidance.js";
 import { registerPiOAuthFlows } from "./pi-runtime.js";
+import { executeWhich } from "./which.js";
+import { detectHisePath } from "../tui/nodeHiseLauncher.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
 
 const MAX_RESULT_CHARS = 24_000;
 const JS_DEFAULT_TIMEOUT_MS = 10_000;
+const execFile = promisify(execFileCallback);
 
 function truncate(text: string): string {
 	return text.length <= MAX_RESULT_CHARS
 		? text
 		: `${text.slice(0, MAX_RESULT_CHARS)}\n… [truncated ${text.length - MAX_RESULT_CHARS} chars]`;
+}
+
+async function logResearchStage(options: HiseResearchOptions, stage: string, kind: "INPUT" | "OUTPUT", text: string): Promise<void> {
+	try {
+		await mkdir(options.agentDir, { recursive: true });
+		const logPath = join(options.agentDir, "research.log");
+		await appendFile(logPath, `\n===== ${new Date().toISOString()} · ${stage} · ${kind} =====\n${text}\n`, { mode: 0o600 });
+	} catch {
+		// Research logging must never make an otherwise successful research run fail.
+	}
 }
 
 export interface HiseCliResult {
@@ -401,6 +418,11 @@ export interface HiseResearchOptions {
 	/** Resolve the parent agent model at invocation time. */
 	model?: Model<Api>;
 	getModel?: () => Model<Api> | undefined;
+	/** Optional role-specific models. Worker is used for source exploration; thinker for synthesis. */
+	workerModel?: Model<Api>;
+	getWorkerModel?: () => Model<Api> | undefined;
+	thinkerModel?: Model<Api>;
+	getThinkerModel?: () => Model<Api> | undefined;
 	thinkingLevel?: string;
 	getThinkingLevel?: () => string | undefined;
 	onProgress?: (progress: HiseResearchProgress) => void;
@@ -476,6 +498,17 @@ export function filterResearchDiagnostics(diagnostics: HiseScriptDiagnostic[]): 
 	));
 }
 
+export function splitResearchDiagnostics(diagnostics: HiseScriptDiagnostic[]): {
+	errors: HiseScriptDiagnostic[];
+	warnings: HiseScriptDiagnostic[];
+} {
+	const relevant = filterResearchDiagnostics(diagnostics);
+	return {
+		errors: relevant.filter((diagnostic) => !["warning", "hint"].includes(diagnostic.severity.toLowerCase())),
+		warnings: relevant.filter((diagnostic) => ["warning", "hint"].includes(diagnostic.severity.toLowerCase())),
+	};
+}
+
 function formatDiagnostics(blockIndex: number, diagnostics: HiseScriptDiagnostic[]): string {
 	return diagnostics.map((diagnostic) => {
 		const suggestions = diagnostic.suggestions.length > 0 ? ` Suggestions: ${diagnostic.suggestions.join(", ")}.` : "";
@@ -483,8 +516,435 @@ function formatDiagnostics(blockIndex: number, diagnostics: HiseScriptDiagnostic
 	}).join("\n");
 }
 
+const SOURCE_EXTENSIONS = new Set([".c", ".cc", ".cpp", ".h", ".hpp", ".mm"]);
+const sourceFilesCache = new Map<string, Promise<string[]>>();
+
+function safeSourcePath(sourceRoot: string, input: string): string {
+	const path = resolve(sourceRoot, input || ".");
+	const rel = relative(resolve(sourceRoot), path);
+	if (rel.startsWith("..") || isAbsolute(rel)) throw new Error(`Source path escapes HisePath: ${input}`);
+	return path;
+}
+
+async function listNativeSourceFiles(sourceRoot: string): Promise<string[]> {
+	const cached = sourceFilesCache.get(sourceRoot);
+	if (cached) return cached;
+	const scan = (async () => {
+		const files: string[] = [];
+		const walk = async (directory: string): Promise<void> => {
+			for (const entry of await readdir(directory, { withFileTypes: true })) {
+				if ([".git", "node_modules", "build", "Build"].includes(entry.name)) continue;
+				const path = join(directory, entry.name);
+				if (entry.isDirectory()) await walk(path);
+				else if (SOURCE_EXTENSIONS.has(extname(entry.name).toLowerCase())) files.push(path);
+			}
+		};
+		await walk(sourceRoot);
+		return files;
+	})();
+	sourceFilesCache.set(sourceRoot, scan);
+	return scan;
+}
+
+function sourceGlobMatches(sourceRoot: string, path: string, glob: string | undefined): boolean {
+	if (!glob) return true;
+	const brace = glob.match(/^(.*)\{([^}]+)\}(.*)$/);
+	if (brace) return brace[2]!.split(",").some((part) => sourceGlobMatches(sourceRoot, path, `${brace[1]}${part}${brace[3]}`));
+	const value = relative(sourceRoot, path).replaceAll(sep, "/");
+	const suffix = glob.replace(/^\*\*\//, "").replace(/^\*\./, ".");
+	return glob === "**/*" || value === glob || value.endsWith(suffix);
+}
+
+function createSourceResearchTools(sourceRoot: string, logTool: (name: string, input: unknown, output: string) => Promise<void> = async () => {}) {
+	let toolCalls = 0;
+	const consumeToolCall = (): void => {
+		toolCalls++;
+		if (toolCalls > 16) throw new Error("Source research tool budget exhausted. Synthesize the answer from the evidence already collected.");
+	};
+	const readTool = defineTool({
+		name: "source_read",
+		label: "source read",
+		promptSnippet: "Read a small numbered window from the HISE source tree.",
+		description: "Read a focused, numbered source window. Paths are relative to the HISE source root. Limit is capped at 60 lines.",
+		parameters: Type.Object({
+			path: Type.String(),
+			offset: Type.Optional(Type.Number()),
+			limit: Type.Optional(Type.Number()),
+		}),
+		async execute(_toolCallId, params) {
+			consumeToolCall();
+			const path = safeSourcePath(sourceRoot, params.path);
+			const offset = Math.max(1, Math.floor(params.offset ?? 1));
+			const limit = Math.min(60, Math.max(1, Math.floor(params.limit ?? 50)));
+			const content = await readFile(path, "utf8");
+			const lines = content.split(/\r?\n/);
+			const selected = lines.slice(offset - 1, offset - 1 + limit);
+			const numbered = selected.map((line, index) => `${offset + index}: ${line}`).join("\n");
+			const output = `${relative(sourceRoot, path)}:${offset}-${offset + selected.length - 1}\n${numbered}`;
+			await logTool("source_read", params, output);
+			return { content: [{ type: "text", text: output }], details: {} };
+		},
+	});
+	const grepTool = defineTool({
+		name: "source_grep",
+		label: "source grep",
+		promptSnippet: "Search the HISE source tree with bounded results.",
+		description: "Search source contents. Results include line numbers and are bounded to 8 matches with at most 1 context line.",
+		parameters: Type.Object({
+			pattern: Type.String(),
+			path: Type.Optional(Type.String()),
+			glob: Type.Optional(Type.String()),
+			ignoreCase: Type.Optional(Type.Boolean()),
+			literal: Type.Optional(Type.Boolean()),
+			context: Type.Optional(Type.Number()),
+			limit: Type.Optional(Type.Number()),
+		}),
+		async execute(_toolCallId, params) {
+			consumeToolCall();
+			const searchPath = safeSourcePath(sourceRoot, params.path ?? ".");
+			const limit = Math.min(8, Math.max(1, Math.floor(params.limit ?? 6)));
+			const context = Math.min(1, Math.max(0, Math.floor(params.context ?? 0)));
+			const expression = params.literal ? undefined : new RegExp(params.pattern, params.ignoreCase ? "i" : "");
+			const literal = params.ignoreCase ? params.pattern.toLowerCase() : params.pattern;
+			const matches: string[] = [];
+			for (const file of await listNativeSourceFiles(sourceRoot)) {
+				if (file !== searchPath && !file.startsWith(searchPath + sep)) continue;
+				if (!sourceGlobMatches(sourceRoot, file, params.glob)) continue;
+				const lines = (await readFile(file, "utf8")).split(/\r?\n/);
+				let fileMatches = 0;
+				for (let index = 0; index < lines.length && fileMatches < limit; index++) {
+					const haystack = params.ignoreCase ? lines[index]!.toLowerCase() : lines[index]!;
+					if (!(expression ? expression.test(lines[index]!) : haystack.includes(literal))) continue;
+					fileMatches++;
+					for (let line = Math.max(0, index - context); line <= Math.min(lines.length - 1, index + context); line++) {
+						matches.push(`${relative(sourceRoot, file)}${line === index ? ":" : "-"}${line + 1}-${lines[line]}`);
+					}
+				}
+				if (matches.join("\n").length >= 6_000) break;
+			}
+			const output = matches.join("\n").slice(0, 6_000) || "No matches.";
+			await logTool("source_grep", params, output);
+			return { content: [{ type: "text", text: output }], details: {} };
+		},
+	});
+	const findTool = defineTool({
+		name: "source_find",
+		label: "source find",
+		promptSnippet: "Find a bounded set of files in the HISE source tree.",
+		description: "Find source files by glob. Results are relative to the HISE source root and capped at 15 paths.",
+		parameters: Type.Object({ pattern: Type.String(), path: Type.Optional(Type.String()), limit: Type.Optional(Type.Number()) }),
+		async execute(_toolCallId, params) {
+			consumeToolCall();
+			const searchPath = safeSourcePath(sourceRoot, params.path ?? ".");
+			const limit = Math.min(15, Math.max(1, Math.floor(params.limit ?? 10)));
+			const paths = (await listNativeSourceFiles(sourceRoot))
+				.filter((file) => (file === searchPath || file.startsWith(searchPath + sep)) && sourceGlobMatches(sourceRoot, file, params.pattern))
+				.slice(0, limit)
+				.map((file) => relative(sourceRoot, file));
+			const output = paths.join("\n") || "No files found.";
+			await logTool("source_find", params, output);
+			return { content: [{ type: "text", text: output }], details: {} };
+		},
+	});
+	return [readTool, grepTool, findTool];
+}
+
+const HISE_SOURCE_RESEARCH_PROMPT = `You are a HISE C++ source-code research specialist.
+
+Investigate the user's question using only the HISE source tree provided as your working directory. Treat this source tree as the source of truth for HISE framework behaviour. Do not inspect, modify, or make claims about the user's project.
+
+Research discipline:
+- Your first action must be a source_grep search for the most specific terms in the question. Do not answer from general knowledge.
+- Before writing the answer, make at least one source_grep call and one source_read call, unless the source tree is inaccessible.
+- Read focused windows with source_read around matches instead of wandering through unrelated files.
+- Follow only the call paths needed to answer the question, but do not stop at the first plausible call site: collect each distinct relevant definition, property-resolution path, dispatch path, and downstream callee needed to test the user's claim.
+- For verification questions, read both the code that establishes the condition and the code that performs the claimed behaviour; include competing call paths when the same symbol is invoked from more than one place.
+- Use no more than 16 source_grep/source_read/source_find calls unless a direct call path genuinely requires more.
+- Keep source_grep results narrow: use small 'limit' and 'context' values; avoid repository-wide searches for generic words.
+- Keep source_read windows focused: request at most 100 lines around a relevant match. Use source_find with a small result limit.
+- Always finish with a Markdown answer, even if the available evidence is incomplete.
+- Distinguish directly observed behaviour from reasonable inference.
+- Cite important claims with 'file:startLine-endLine' references so a follow-up agent can read the exact window directly.
+- For every cited location, add a one-line description of what that range contains and why it matters.
+- Never state a symbol, API, callback, or behaviour unless it was found in the source you inspected.
+- Never cite a file or line range that was not returned by source_grep or source_read.
+- Do not invent APIs, control flow, thread guarantees, or lifecycle behaviour.
+
+Source prioritisation:
+- Prefer code compiled into or directly affecting the exported plugin: hi_core, hi_frontend, hi_scripting, hi_dsp, hi_streaming, and related shared modules.
+- Treat IDE-only and backend tooling code as secondary evidence. Inspect it only when it is part of the call path or provides necessary context.
+- When the execution path reaches the scripting layer, identify the relevant HiseScript API object, method, callback, or lifecycle hook and explain how the C++ behaviour appears to the script developer. Make useful follow-up documentation research questions obvious.
+- For every cited file and line range, include a one-line description of what it contains and why it matters.
+- End with a compact 'Relevant locations' list using exact 'path:startLine-endLine' references and one-line descriptions.
+
+Answer style:
+- Write a concise Markdown report for HISE developers.
+- Lead with the practical conclusion and recommended usage pattern.
+- Explain the relevant execution sequence, ownership, lifecycle, and thread transitions.
+- C++ identifiers, class names, method names, structs, enums, and source locations may be shown when they clarify the mechanism.
+- Include a short "Practical implications" section when the findings affect scripting or plugin code.
+- Use British English and ASCII punctuation.
+- Avoid filler, marketing language, and unrelated source-code details.
+- Do not mention research infrastructure, prompt rules, token usage, repository housekeeping, or modified files.
+
+Honesty boundary:
+- Report what the HISE framework does according to the source.
+- Do not diagnose a user's specific bug without reproduction evidence.
+- Do not treat a source-level possibility as proof of the user's runtime failure.
+
+Final output contract: after inspecting the source, write the final concise Markdown answer to the user's question. Base claims only on source evidence, include exact file:startLine-endLine citations, and clearly mark anything that could not be verified. Do not mention research infrastructure, prompt rules, token usage, or modified files. `;
+
+const HISE_SOURCE_EXPANSION_PROMPT = `Expand the user's terse HISE C++ source-research request into up to four concrete search queries. Preserve the original request as the first item. Add specific C++ symbols, subsystem names, and implementation concepts that are likely to appear in the HISE source. Return only a JSON object of the form {"queries":["..."]}; do not answer the question.`;
+
+const HISE_SOURCE_SYNTHESIS_PROMPT = `You are the senior HISE documentation editor. Write the final answer to the user's question using only the source exploration report supplied in the user message.
+
+Do not perform more research and do not invent or correct source facts from general knowledge. Treat the raw source excerpts as the primary evidence and the worker evidence index as navigation only. Preserve exact C++ identifiers when useful. Prefer claims that have precise file:startLine-endLine citations and omit unsupported claims. If the evidence is incomplete or contradictory, say so clearly.
+
+Return a concise Markdown report for HISE developers. Lead with the practical conclusion, explain the relevant call flow and thread transitions, and include practical implications for HiseScript or plugin code when relevant. Include a final 'Relevant locations' list where every entry has an exact source path and line range plus a one-line description. Use British English and ASCII punctuation. Do not mention this editing step, model roles, token usage, or repository housekeeping.`;
+
+async function runSingleSourceResearch(query: string, options: HiseResearchOptions, sourceRoot: string): Promise<string> {
+	registerPiOAuthFlows();
+	const pi = await import("@earendil-works/pi-coding-agent");
+	const settingsManager = pi.SettingsManager.create(options.cwd, options.agentDir);
+	const resourceLoader = new pi.DefaultResourceLoader({ cwd: sourceRoot, agentDir: options.agentDir, settingsManager, systemPrompt: `${HISE_SOURCE_RESEARCH_PROMPT}\n\nThe resolved HISE source root is: ${sourceRoot}. Use the source tools directly, then write the final answer.` });
+	await resourceLoader.reload();
+	const created = await pi.createAgentSession({
+		cwd: sourceRoot, agentDir: options.agentDir, resourceLoader, settingsManager,
+		sessionManager: pi.SessionManager.inMemory(sourceRoot),
+		model: options.thinkerModel ?? options.getThinkerModel?.() ?? options.model ?? options.getModel?.(),
+		thinkingLevel: (options.thinkingLevel ?? options.getThinkingLevel?.()) as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined,
+		noTools: "builtin",
+		customTools: createSourceResearchTools(sourceRoot, async (name, input, output) => {
+			await logResearchStage(options, `C++ ${name}`, "INPUT", JSON.stringify(input));
+			await logResearchStage(options, `C++ ${name}`, "OUTPUT", output);
+		}),
+	});
+	const session = created.session;
+	try {
+		if (!session.model || session.model.provider === "unknown") throw new Error("No model available for HISE source research.");
+		const modelLabel = `${session.model.provider}/${session.model.id} (${session.thinkingLevel})`;
+		await runResearchStep(options, "C++ source exploration", modelLabel, async () => {
+			let resolveSettled!: () => void;
+			const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+			const unsubscribe = session.subscribe((event) => { if (event.type === "agent_settled") resolveSettled(); });
+			try {
+				await logResearchStage(options, "C++ source exploration", "INPUT", query);
+				await session.prompt(query);
+				await settled;
+				await logResearchStage(options, "C++ source exploration", "OUTPUT", assistantText(session.messages));
+			} finally { unsubscribe(); }
+		});
+		const answer = assistantText(session.messages) || "The HISE source researcher returned no summary.";
+		const stats = session.getSessionStats();
+		const tokens = stats.tokens;
+		const usageLine = `Research model: ${modelLabel}\n\n| Role | Input | Cache-read | Output | Total |\n| --- | ---: | ---: | ---: | ---: |\n| Thinker | ${formatTokenCount(tokens.input)} | ${formatTokenCount(tokens.cacheRead)} | ${formatTokenCount(tokens.output)} | ${formatTokenCount(tokens.total)} tokens ($${stats.cost.toFixed(3)}) |`;
+		return truncate(`${answer}\n\n---\n${usageLine}`);
+	} finally { session.dispose(); }
+}
+
+async function runHiseSourceResearch(query: string, options: HiseResearchOptions): Promise<string> {
+	const sourceRoot = await detectHisePath();
+	if (!sourceRoot) throw new Error("HISE source research unavailable: HisePath is not configured in compilerSettings.xml.");
+	try {
+		const sourceStat = await stat(sourceRoot);
+		if (!sourceStat.isDirectory()) throw new Error("configured HisePath is not a directory");
+	} catch (error) {
+		throw new Error(`HISE source research unavailable: cannot access HisePath "${sourceRoot}": ${error instanceof Error ? error.message : String(error)}`);
+	}
+	return runSingleSourceResearch(query, options, sourceRoot);
+	/* Former multi-stage source pipeline retained temporarily for reference.
+	registerPiOAuthFlows();
+	const pi = await import("@earendil-works/pi-coding-agent");
+	const settingsManager = pi.SettingsManager.create(options.cwd, options.agentDir);
+	const resourceLoader = new pi.DefaultResourceLoader({
+		cwd: sourceRoot,
+		agentDir: options.agentDir,
+		settingsManager,
+		systemPrompt: `${HISE_SOURCE_RESEARCH_PROMPT}\n\nThe resolved HISE source root is: ${sourceRoot}. Use the source tools immediately; do not claim the tree is inaccessible unless a source tool actually returns an error.`,
+	});
+	await resourceLoader.reload();
+	let sourceReadCalls = 0;
+	const sourceEvidence: string[] = [];
+	const workerCreated = await pi.createAgentSession({
+		cwd: sourceRoot,
+		agentDir: options.agentDir,
+		resourceLoader,
+		settingsManager,
+		sessionManager: pi.SessionManager.inMemory(sourceRoot),
+		model: options.workerModel ?? options.getWorkerModel?.() ?? options.model ?? options.getModel?.(),
+		thinkingLevel: (options.thinkingLevel ?? options.getThinkingLevel?.()) as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined,
+		noTools: "builtin",
+		customTools: createSourceResearchTools(sourceRoot, async (name, input, output) => {
+			if (name === "source_read") {
+				sourceReadCalls++;
+				sourceEvidence.push(output);
+			}
+			await logResearchStage(options, `C++ ${name}`, "INPUT", JSON.stringify(input));
+			await logResearchStage(options, `C++ ${name}`, "OUTPUT", output);
+		}),
+	});
+	const workerSession = workerCreated.session;
+	try {
+		if (!workerSession.model || workerSession.model.provider === "unknown") throw new Error("No worker model available for HISE source research.");
+		const workerLabel = `${workerSession.model.provider}/${workerSession.model.id} (${workerSession.thinkingLevel})`;
+		const thinkerModel = options.thinkerModel ?? options.getThinkerModel?.() ?? options.model ?? options.getModel?.() ?? workerSession.model;
+		const thinkerLabel = thinkerModel ? `${thinkerModel.provider}/${thinkerModel.id} (${workerSession.thinkingLevel})` : workerLabel;
+		let expansionStats = { tokens: { input: 0, output: 0, cacheRead: 0, total: 0 }, cost: 0 };
+		let expandedQueries = [query];
+		const expansionLoader = new pi.DefaultResourceLoader({
+			cwd: sourceRoot,
+			agentDir: options.agentDir,
+			settingsManager,
+			systemPrompt: HISE_SOURCE_EXPANSION_PROMPT,
+		});
+		await expansionLoader.reload();
+		const expansionCreated = await pi.createAgentSession({
+			cwd: sourceRoot,
+			agentDir: options.agentDir,
+			resourceLoader: expansionLoader,
+			settingsManager,
+			sessionManager: pi.SessionManager.inMemory(sourceRoot),
+			model: thinkerModel,
+			thinkingLevel: workerSession.thinkingLevel,
+			noTools: "all",
+		});
+		try {
+			await runResearchStep(options, "C++ query expansion", thinkerLabel, async () => {
+				let resolveSettled!: () => void;
+				const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+				const unsubscribe = expansionCreated.session.subscribe((event) => { if (event.type === "agent_settled") resolveSettled(); });
+				try {
+					await logResearchStage(options, "C++ query expansion", "INPUT", query);
+					await expansionCreated.session.prompt(query);
+					await settled;
+					await logResearchStage(options, "C++ query expansion", "OUTPUT", assistantText(expansionCreated.session.messages));
+				} finally { unsubscribe(); }
+			});
+			expandedQueries = parseResearchQueries(assistantText(expansionCreated.session.messages), query);
+			expansionStats = expansionCreated.session.getSessionStats();
+		} finally {
+			expansionCreated.session.dispose();
+		}
+		await runResearchStep(options, "C++ source exploration", workerLabel, async () => {
+			let resolveSettled!: () => void;
+			const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+			const unsubscribe = workerSession.subscribe((event) => {
+				if (event.type === "agent_settled") resolveSettled();
+			});
+			try {
+				const sourcePrompt = `${query}\n\nExpanded source-search queries:\n${expandedQueries.map((item) => `- ${item}`).join("\n")}\n\nUse these queries to guide source_grep, then source_read the best matches.`;
+				await logResearchStage(options, "C++ source exploration", "INPUT", sourcePrompt);
+				await workerSession.prompt(sourcePrompt);
+				await settled;
+				await logResearchStage(options, "C++ source exploration", "OUTPUT", assistantText(workerSession.messages));
+			} finally {
+				unsubscribe();
+			}
+		});
+		let exploration = assistantText(workerSession.messages);
+		// Some worker models can settle after an initial tool-only turn when the
+		// query is a terse keyword list. Give the same session one explicit retry
+		// rather than sending an empty evidence report to the thinker.
+		if (!exploration || sourceReadCalls === 0) {
+			await runResearchStep(options, "C++ source exploration retry", workerLabel, async () => {
+				let resolveSettled!: () => void;
+				const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+				const unsubscribe = workerSession.subscribe((event) => {
+					if (event.type === "agent_settled") resolveSettled();
+				});
+				try {
+					const retryPrompt = `The previous exploration did not perform source_read on a focused code window. Research this question now: ${query}\n\nUse the existing grep matches, then call source_read on the relevant HISE implementation files before writing the report. You must finish with a Markdown report containing only observed findings and exact file:startLine-endLine citations.`;
+					await logResearchStage(options, "C++ source exploration retry", "INPUT", retryPrompt);
+					await workerSession.prompt(retryPrompt);
+					await settled;
+					await logResearchStage(options, "C++ source exploration retry", "OUTPUT", assistantText(workerSession.messages));
+				} finally {
+					unsubscribe();
+				}
+			});
+			exploration = assistantText(workerSession.messages);
+		}
+		if (!exploration) {
+			await runResearchStep(options, "C++ source report completion", workerLabel, async () => {
+				let resolveSettled!: () => void;
+				const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+				const unsubscribe = workerSession.subscribe((event) => { if (event.type === "agent_settled") resolveSettled(); });
+				try {
+					const completionPrompt = "You have finished reading the source evidence. Do not call any more tools. Write the final concise Markdown source report now, using only the evidence in this conversation and exact file:startLine-endLine citations.";
+					await logResearchStage(options, "C++ source report completion", "INPUT", completionPrompt);
+					await workerSession.prompt(completionPrompt);
+					await settled;
+					await logResearchStage(options, "C++ source report completion", "OUTPUT", assistantText(workerSession.messages));
+				} finally { unsubscribe(); }
+			});
+			exploration = assistantText(workerSession.messages);
+		}
+		exploration ||= "The HISE source researcher returned no summary.";
+		const workerStats = workerSession.getSessionStats();
+		const workerTokens = workerStats.tokens;
+		const workerCost = workerStats.cost;
+		const synthesisLoader = new pi.DefaultResourceLoader({
+			cwd: sourceRoot,
+			agentDir: options.agentDir,
+			settingsManager,
+			systemPrompt: HISE_SOURCE_SYNTHESIS_PROMPT,
+		});
+		await synthesisLoader.reload();
+		const thinkerCreated = await pi.createAgentSession({
+			cwd: sourceRoot,
+			agentDir: options.agentDir,
+			resourceLoader: synthesisLoader,
+			settingsManager,
+			sessionManager: pi.SessionManager.inMemory(sourceRoot),
+			model: thinkerModel,
+			thinkingLevel: (options.thinkingLevel ?? options.getThinkingLevel?.()) as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined,
+			noTools: "all",
+		});
+		const thinkerSession = thinkerCreated.session;
+		try {
+			if (!thinkerSession.model || thinkerSession.model.provider === "unknown") throw new Error("No thinker model available for HISE source synthesis.");
+			const synthesisLabel = `${thinkerSession.model.provider}/${thinkerSession.model.id} (${thinkerSession.thinkingLevel})`;
+			await runResearchStep(options, "C++ report synthesis", synthesisLabel, async () => {
+				let resolveSettled!: () => void;
+				const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
+				const unsubscribe = thinkerSession.subscribe((event) => {
+					if (event.type === "agent_settled") resolveSettled();
+				});
+				try {
+					const synthesisPrompt = `${query}\n\nRAW SOURCE EXCERPTS\n${sourceEvidence.join("\n\n---\n\n") || "No raw source excerpts were captured."}\n\nWORKER EVIDENCE INDEX\n${exploration}`;
+					await logResearchStage(options, "C++ report synthesis", "INPUT", synthesisPrompt);
+					await thinkerSession.prompt(synthesisPrompt);
+					await settled;
+					await logResearchStage(options, "C++ report synthesis", "OUTPUT", assistantText(thinkerSession.messages));
+				} finally {
+					unsubscribe();
+				}
+			});
+			const answer = assistantText(thinkerSession.messages) || exploration;
+			const thinkerStats = thinkerSession.getSessionStats();
+			const thinkerTokens = {
+				input: thinkerStats.tokens.input + expansionStats.tokens.input,
+				output: thinkerStats.tokens.output + expansionStats.tokens.output,
+				cacheRead: thinkerStats.tokens.cacheRead + expansionStats.tokens.cacheRead,
+				total: thinkerStats.tokens.total + expansionStats.tokens.total,
+			};
+			const thinkerCost = thinkerStats.cost + expansionStats.cost;
+			const usageLine = `Research model: ${synthesisLabel}\n\n| Role | Input | Cache-read | Output | Total |\n| --- | ---: | ---: | ---: | ---: |\n| Worker | ${formatTokenCount(workerTokens.input)} | ${formatTokenCount(workerTokens.cacheRead)} | ${formatTokenCount(workerTokens.output)} | ${formatTokenCount(workerTokens.total)} tokens ($${workerCost.toFixed(3)}) |\n| Thinker | ${formatTokenCount(thinkerTokens.input)} | ${formatTokenCount(thinkerTokens.cacheRead)} | ${formatTokenCount(thinkerTokens.output)} | ${formatTokenCount(thinkerTokens.total)} tokens ($${thinkerCost.toFixed(3)}) |\n| Total | ${formatTokenCount(workerTokens.input + thinkerTokens.input)} | ${formatTokenCount(workerTokens.cacheRead + thinkerTokens.cacheRead)} | ${formatTokenCount(workerTokens.output + thinkerTokens.output)} | ${formatTokenCount(workerTokens.total + thinkerTokens.total)} tokens ($${(workerCost + thinkerCost).toFixed(3)}) |`; 
+			return truncate(`${answer}\n\n---\n${usageLine}`);
+		} finally {
+			thinkerSession.dispose();
+		}
+	} finally {
+		workerSession.dispose();
+	}
+}
+
+	*/
+}
+
 /** Run an isolated, documentation-only Pi research session. */
 export async function runHiseResearch(query: string, options: HiseResearchOptions): Promise<string> {
+	if (inferResearchDomain(query) === "source") return runHiseSourceResearch(query, options);
 	await runResearchStep(options, "MCP readiness", "tools/list", () => assertHiseMcpReachable(options.mcpClient));
 	registerPiOAuthFlows();
 	const pi = await import("@earendil-works/pi-coding-agent");
@@ -520,12 +980,13 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		sessionManager: pi.SessionManager.inMemory(options.cwd),
 		// The parent has already performed bounded MCP retrieval. Keeping the
 		// child synthesis-only prevents repeated searches from consuming context.
-		model: options.model ?? options.getModel?.(),
+		model: options.thinkerModel ?? options.getThinkerModel?.() ?? options.model ?? options.getModel?.(),
 		thinkingLevel: (options.thinkingLevel ?? options.getThinkingLevel?.()) as "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | undefined,
 		tools: [],
 		customTools: [docsTool],
 	});
 	const session = created.session;
+	const workerModel = options.workerModel ?? options.getWorkerModel?.() ?? session.model;
 	const promptChild = async (target: typeof session, prompt: string): Promise<void> => {
 		let resolveSettled!: () => void;
 		const settled = new Promise<void>((resolve) => { resolveSettled = resolve; });
@@ -533,16 +994,19 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 			if (event.type === "agent_settled") resolveSettled();
 		});
 		try {
+			await logResearchStage(options, "documentation agent stage", "INPUT", prompt);
 			await target.prompt(prompt);
 			await settled;
+			await logResearchStage(options, "documentation agent stage", "OUTPUT", assistantText(target.messages));
 		} finally {
 			unsubscribe();
 		}
 	};
-	let preparationUsage = { input: 0, output: 0, total: 0 };
+	let preparationUsage = { input: 0, output: 0, cacheRead: 0, total: 0, cost: 0 }; 
 	try {
 		if (!session.model || session.model.provider === "unknown") throw new Error("No model available for HISE documentation research.");
 		const modelLabel = `${session.model.provider}/${session.model.id} (${session.thinkingLevel})`;
+		const workerLabel = workerModel ? `${workerModel.provider}/${workerModel.id} (${session.thinkingLevel})` : modelLabel;
 		const expansionLoader = new pi.DefaultResourceLoader({
 			cwd: options.cwd,
 			agentDir: options.agentDir,
@@ -556,14 +1020,14 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 			resourceLoader: expansionLoader,
 			settingsManager,
 			sessionManager: pi.SessionManager.inMemory(options.cwd),
-			model: session.model,
+			model: workerModel,
 			thinkingLevel: session.thinkingLevel,
 			tools: [],
 			customTools: [],
 		});
 		let expandedQueries: string[];
 		try {
-			await runResearchStep(options, "Query expansion", modelLabel, () =>
+			await runResearchStep(options, "Query expansion", workerLabel, () =>
 				promptChild(expansionCreated.session, query));
 			expandedQueries = parseResearchQueries(assistantText(expansionCreated.session.messages), query);
 			options.onProgress?.({
@@ -574,7 +1038,7 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 				ok: true,
 			});
 			const tokens = expansionCreated.session.getSessionStats().tokens;
-			preparationUsage = { input: tokens.input, output: tokens.output, total: tokens.total };
+			preparationUsage = { input: tokens.input, output: tokens.output, cacheRead: tokens.cacheRead, total: tokens.total, cost: expansionCreated.session.getSessionStats().cost };
 		} finally {
 			expansionCreated.session.dispose();
 		}
@@ -592,14 +1056,14 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 			resourceLoader: rerankerLoader,
 			settingsManager,
 			sessionManager: pi.SessionManager.inMemory(options.cwd),
-			model: session.model,
+			model: workerModel,
 			thinkingLevel: session.thinkingLevel,
 			tools: [],
 			customTools: [],
 		});
 		let selection: ResearchSelection;
 		try {
-			await runResearchStep(options, "Evidence reranking", `${candidates.documentKeys.length} docs · ${candidates.exampleIds.length} examples`, () =>
+			await runResearchStep(options, "Evidence reranking", `${workerLabel} · ${candidates.documentKeys.length} docs · ${candidates.exampleIds.length} examples`, () =>
 				promptChild(rerankerCreated.session, buildRerankPrompt(query, candidates)));
 			selection = parseResearchSelection(
 				assistantText(rerankerCreated.session.messages),
@@ -609,7 +1073,9 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 			const tokens = rerankerCreated.session.getSessionStats().tokens;
 			preparationUsage.input += tokens.input;
 			preparationUsage.output += tokens.output;
+			preparationUsage.cacheRead += tokens.cacheRead;
 			preparationUsage.total += tokens.total;
+			preparationUsage.cost += rerankerCreated.session.getSessionStats().cost;
 		} finally {
 			rerankerCreated.session.dispose();
 		}
@@ -625,6 +1091,7 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		let repairPasses = 0;
 		let lastValidationIssues: string[] = [];
 		let unverifiedIssues: string[] = [];
+		const validationWarnings: string[] = [];
 		const maxAttempts = 3;
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			const blocks = extractHiseScriptBlocks(answer);
@@ -642,10 +1109,13 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 				await runResearchStep(options, "Script validation", `attempt ${attempt}/${maxAttempts} · ${blocks.length} block${blocks.length === 1 ? "" : "s"}`, async () => {
 					const issues: string[] = [];
 					for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
-						const result = filterResearchDiagnostics(
+						const result = splitResearchDiagnostics(
 							await diagnoseHiseScriptCode(options.connection, blocks[blockIndex]!),
 						);
-						if (result.length > 0) issues.push(formatDiagnostics(blockIndex, result));
+						if (result.warnings.length > 0) {
+							validationWarnings.push(formatDiagnostics(blockIndex, result.warnings));
+						}
+						if (result.errors.length > 0) issues.push(formatDiagnostics(blockIndex, result.errors));
 					}
 					if (issues.length > 0) throw new HiseScriptValidationIssues(issues);
 				});
@@ -674,19 +1144,25 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 				promptChild(session, `The HISE headless diagnose endpoint rejected code in your previous answer. Return a complete replacement answer, preserving sourced facts and citations, but fix every listed issue. Do not remove the code example and do not explain the correction process.\n\n${diagnostics.join("\n")}`));
 			answer = assistantText(session.messages) || answer;
 		}
-		const synthesisUsage = session.getSessionStats().tokens;
+		const synthesisStats = session.getSessionStats();
+		const synthesisUsage = synthesisStats.tokens;
 		const usage = {
 			input: synthesisUsage.input + preparationUsage.input,
 			output: synthesisUsage.output + preparationUsage.output,
+			cacheRead: synthesisUsage.cacheRead + preparationUsage.cacheRead,
 			total: synthesisUsage.total + preparationUsage.total,
+			cost: synthesisStats.cost + preparationUsage.cost,
 		};
 		const validation = validatedBlocks > 0
 			? `Script validation: passed (${validatedBlocks} block${validatedBlocks === 1 ? "" : "s"}, ${repairPasses} repair pass${repairPasses === 1 ? "" : "es"})`
 			: unverifiedIssues.length > 0
 				? `Script validation: example could not be verified.\n${unverifiedIssues.map((issue) => `- ${issue}`).join("\n")}`
 				: "";
-		const usageLine = `Research model: ${modelLabel}\nResearch usage: ${formatTokenCount(usage.input)} input · ${formatTokenCount(usage.output)} output · ${formatTokenCount(usage.total)} total tokens`;
-		return truncate(`${answer}\n\n---\n${usageLine}${validation ? `\n${validation}` : ""}`);
+		const usageLine = `Research model: ${modelLabel}\n\n| Role | Input | Cache-read | Output | Total |\n| --- | ---: | ---: | ---: | ---: |\n| Worker | ${formatTokenCount(preparationUsage.input)} | ${formatTokenCount(preparationUsage.cacheRead)} | ${formatTokenCount(preparationUsage.output)} | ${formatTokenCount(preparationUsage.total)} tokens ($${preparationUsage.cost.toFixed(3)}) |\n| Thinker | ${formatTokenCount(synthesisUsage.input)} | ${formatTokenCount(synthesisUsage.cacheRead)} | ${formatTokenCount(synthesisUsage.output)} | ${formatTokenCount(synthesisUsage.total)} tokens ($${synthesisStats.cost.toFixed(3)}) |\n| Total | ${formatTokenCount(usage.input)} | ${formatTokenCount(usage.cacheRead)} | ${formatTokenCount(usage.output)} | ${formatTokenCount(usage.total)} tokens ($${usage.cost.toFixed(3)}) |`;
+		const warningNotes = [...new Set(validationWarnings)].length > 0
+			? `\n\n> **Hint:** HISE reported the following best-practice note for the example. This is advisory and was not used as a correction failure.\n> ${[...new Set(validationWarnings)].join("\n> ")}`
+			: "";
+		return truncate(`${answer}${warningNotes}\n\n---\n${usageLine}${validation ? `\n${validation}` : ""}`);
 	} finally {
 		session.dispose();
 	}
@@ -741,7 +1217,12 @@ interface ResearchSelection {
 	exampleIds: string[];
 }
 
-export function inferResearchDomain(query: string): "scriptnode" | undefined {
+export function inferResearchDomain(query: string): "scriptnode" | "source" | undefined {
+	// An explicit C++ marker is an intentional request to inspect the HISE
+	// implementation, even when the rest of the wording looks like a scripting
+	// or ScriptNode question.
+	if (/(?:^|[^a-z])c\+\+(?:$|[^a-z])|\bcpp\b/i.test(query)) return "source";
+	if (/\b(?:bug|crash|deadlock|race\s+condition|thread(?:ing|\s+model|\s+safety)|internal\s+engine|engine\s+internals?|source\s+code|under\s+the\s+hood)\b/i.test(query)) return "source";
 	return /\bscript\s*node\b|\bdsp\s*network\b|\bdsp\s+node\b/i.test(query) ? "scriptnode" : undefined;
 }
 
@@ -793,7 +1274,7 @@ async function collectResearchCandidates(queries: string[], options: HiseResearc
 		examples: textMcpResult(JSON.stringify({ results: dedupeSearchResults(exampleResults) })),
 		documentKeys: [...semanticDocuments, ...broadDocuments],
 		exampleIds: fuseRankedCandidates(exampleLists, 40),
-		domain: inferResearchDomain(queries[0] ?? ""),
+		domain: inferResearchDomain(queries[0] ?? "") === "scriptnode" ? "scriptnode" : undefined,
 	};
 }
 
@@ -1011,26 +1492,59 @@ Output style:
 
 ${HISESCRIPT_CHEAT_SHEET}`;
 
-export function createHiseHelpTool() {
+export const TUI_HELP_TOPICS: readonly ModeId[] = [
+	"root", "builder", "ui", "dsp", "script", "sampler", "inspect", "project", "compile", "undo", "wizard", "sequence", "hise", "analyse", "publish", "assets", "api", "mcp",
+];
+
+function renderTuiHelp(topic?: string): string {
+	const normalized = topic?.trim().toLowerCase() || "root";
+	if (normalized === "wizard") return renderCliHelp([], "wizard").replaceAll("hise-cli -wizard", "/wizard");
+	if (TUI_HELP_TOPICS.includes(normalized as ModeId)) return generateHelp(normalized as ModeId, []).content;
+	return `Unknown TUI help topic: "${topic}". Available: ${TUI_HELP_TOPICS.join(", ")}`;
+}
+
+export function createHiseWhichTool() {
+	return defineTool({
+		name: "hise_which",
+		label: "hise which",
+		promptSnippet: "Find concrete hise-cli commands related to the user's intent.",
+		description: "Search the generated hise-cli command index by intent. Results are supporting evidence and may be empty; always consult hise_help as well.",
+		parameters: Type.Object({
+			query: Type.String({ description: "The user's complete how-to question" }),
+		}),
+		async execute(_toolCallId, params) {
+			const result = executeWhich(params.query, 3);
+			const matches = result.ok ? result.value : [];
+			return {
+				content: [{ type: "text", text: JSON.stringify({ matches }, null, 1) }],
+				details: { matchCount: matches.length },
+			};
+		},
+	});
+}
+
+export function createHiseHelpTool(options: { surface?: "cli" | "tui" } = {}) {
+	const tui = options.surface === "tui";
 	return defineTool({
 		name: "hise_help",
 		label: "hise help",
-		promptSnippet: "Retrieve authoritative hise-cli help before acting.",
-		description:
-			"Retrieve authoritative hise-cli help. Pass mode to get that mode's help text, or omit mode " +
-			"for the full command context. This describes how to use hise-cli; it does not inspect live HISE state. " +
-			"Use this before constructing command argv.",
+		promptSnippet: tui ? "Retrieve authoritative TUI syntax before answering." : "Retrieve authoritative hise-cli help before acting.",
+		description: tui
+			? `Retrieve authoritative interactive TUI help for one canonical mode: ${TUI_HELP_TOPICS.join(", ")}. Returned commands use modal TUI syntax, not shell flags.`
+			: "Retrieve authoritative hise-cli help. Pass mode to get that mode's help text, or omit mode for the full command context. This describes how to use hise-cli; it does not inspect live HISE state. Use this before constructing command argv.",
 		parameters: Type.Object({
-			mode: Type.Optional(Type.String({ description: "Mode whose canonical CLI help should be returned" })),
+			mode: Type.Optional(Type.String({ description: tui ? "Exact TUI mode or topic" : "Mode whose canonical CLI help should be returned" })),
 		}),
 		async execute(_toolCallId, params) {
-			const text = params.mode
-				? renderCliHelp([], params.mode)
-				: JSON.stringify(buildAgentContext(), null, 1);
-			if (text.startsWith("Unknown help topic:")) throw new Error(text);
+			const text = tui
+				? renderTuiHelp(params.mode)
+				: params.mode
+					? renderCliHelp([], params.mode)
+					: JSON.stringify(buildAgentContext(), null, 1);
+			if (text.startsWith("Unknown help topic:") || text.startsWith("Unknown TUI help topic:")) throw new Error(text);
 			return {
 				content: [{ type: "text", text: truncate(text) }],
-				details: { mode: params.mode ?? null },
+				details: { mode: params.mode ?? null, surface: tui ? "tui" : "cli" },
 			};
 		},
 	});

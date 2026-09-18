@@ -2,16 +2,32 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { removeAiModelConfig, TuiAiSession } from "./ai-session.js";
+import { HOW_AGENT_PROMPT, removeAiModelConfig, TuiAiSession } from "./ai-session.js";
 
 function createAdapter(): TuiAiSession {
 	return new TuiAiSession({
 		connection: {} as never,
 		dataLoader: {} as never,
 		projectDir: "/project",
+		agentDir: join(tmpdir(), "hise-cli-ai-session-test"),
 		onEvent: () => {},
 	});
 }
+
+describe("how agent", () => {
+	it("is constrained to embedded help and TUI syntax", () => {
+		expect(HOW_AGENT_PROMPT).toContain("always call both tools exactly once");
+		expect(HOW_AGENT_PROMPT).toContain("hise_which");
+		expect(HOW_AGENT_PROMPT).toContain("hise_help");
+		expect(HOW_AGENT_PROMPT).toContain("may return no matches");
+		expect(HOW_AGENT_PROMPT).toContain("interactive TUI commands");
+		expect(HOW_AGENT_PROMPT).toContain("A slash is used only to enter a mode");
+		expect(HOW_AGENT_PROMPT).toContain("never prefix it with a slash, dot, or mode name");
+		expect(HOW_AGENT_PROMPT).toContain("set Button.text");
+		expect(HOW_AGENT_PROMPT).toContain("/ui set --component");
+		expect(HOW_AGENT_PROMPT).toContain("do not inspect or modify HISE");
+	});
+});
 
 describe("TuiAiSession model settings", () => {
 	it("includes the reasoning level in the display label", () => {
@@ -41,7 +57,7 @@ describe("TuiAiSession model settings", () => {
 				expect(fakeSession.model).toBe(model);
 				calls.push(`thinking:${String(options.persist)}`);
 			}),
-			settingsManager: { flush, drainErrors: () => [] },
+			settingsManager: { flush, drainErrors: () => [], setDefaultModelAndProvider: vi.fn(), setDefaultThinkingLevel: vi.fn() },
 		};
 		(adapter as unknown as { piSession: typeof fakeSession }).piSession = fakeSession;
 

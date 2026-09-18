@@ -2,13 +2,13 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
 
 export type AiThinkingLevel = Parameters<AgentSession["setThinkingLevel"]>[0];
 import type { DataLoader } from "../engine/data.js";
 import type { HiseConnection } from "../engine/hise.js";
 import { CapturingHiseConnection } from "../cli/capture.js";
-import { createHiseCommandTool, createHiseResearchTool, createHiseHelpTool, createHiseScriptTool, createJsTool, runHiseResearch, type HiseCliRunner, type HiseResearchProgress } from "../cli/ai-tools.js";
+import { createHiseCommandTool, createHiseResearchTool, createHiseHelpTool, createHiseScriptTool, createHiseWhichTool, createJsTool, runHiseResearch, TUI_HELP_TOPICS, type HiseCliRunner, type HiseResearchProgress } from "../cli/ai-tools.js";
 import { executeCliCommand } from "../cli/run.js";
 import { listCliCommands } from "../cli/commands.js";
 import { classifyAgentCommand } from "../cli/agentContext.js";
@@ -18,7 +18,7 @@ import { HISESCRIPT_CHEAT_SHEET } from "../cli/ai-guidance.js";
 import { COMPACT_CLI_CONTRACT } from "../cli/generated-ai-contract.js";
 import { registerPiOAuthFlows } from "../cli/pi-runtime.js";
 
-const MODEL_SETTING_KEYS = ["defaultProvider", "defaultModel", "defaultThinkingLevel", "modelThinkingLevels", "enabledModels"] as const;
+const MODEL_SETTING_KEYS = ["defaultProvider", "defaultModel", "defaultThinkingLevel", "modelThinkingLevels", "enabledModels", "workerModel"] as const;
 
 /** Remove embedded-agent credentials, custom providers, caches, and model defaults. */
 export async function removeAiModelConfig(agentDir: string): Promise<void> {
@@ -77,6 +77,7 @@ export interface TuiAiOptions {
 export class TuiAiSession {
 	private readonly options: TuiAiOptions;
 	private piSession: AgentSession | null = null;
+	private workerModel: Model<Api> | undefined;
 	private unsubscribe: (() => void) | null = null;
 	private running = false;
 	private freshSession = false;
@@ -106,6 +107,47 @@ export class TuiAiSession {
 		return Boolean(model && model.provider !== "unknown");
 	}
 
+	async how(query: string): Promise<string> {
+		if (!this.piSession) await this.start();
+		if (!this.piSession || !this.hasModel) throw new Error("No model available. Use /ai, then /login to configure one.");
+		const pi = await import("@earendil-works/pi-coding-agent");
+		const agentDir = this.options.agentDir ?? join(homedir(), ".hise", "agent");
+		const settingsManager = pi.SettingsManager.create(this.options.projectDir, agentDir);
+		const resourceLoader = new pi.DefaultResourceLoader({
+			cwd: this.options.projectDir,
+			agentDir,
+			settingsManager,
+			systemPromptOverride: () => HOW_AGENT_PROMPT,
+			appendSystemPromptOverride: () => [],
+		});
+		await resourceLoader.reload();
+		const created = await pi.createAgentSession({
+			cwd: this.options.projectDir,
+			agentDir,
+			resourceLoader,
+			settingsManager,
+			sessionManager: pi.SessionManager.inMemory(this.options.projectDir),
+			model: this.workerModel ?? this.piSession.model,
+			thinkingLevel: "off",
+			noTools: "builtin",
+			tools: ["hise_which", "hise_help"],
+			customTools: [createHiseWhichTool(), createHiseHelpTool({ surface: "tui" })],
+		});
+		const session = created.session;
+		const unsubscribe = session.subscribe((event) => {
+			if (event.type === "tool_execution_start") this.options.onEvent({ type: "tool-start", toolName: event.toolName, args: event.args });
+			else if (event.type === "tool_execution_end") this.options.onEvent({ type: "tool-end", toolName: event.toolName, isError: event.isError, result: event.result });
+		});
+		try {
+			if (!session.model || session.model.provider === "unknown") throw new Error("No worker model available. Use /model to configure one.");
+			await session.prompt(query);
+			return lastAssistantText(session.messages) || "No explanation was returned.";
+		} finally {
+			unsubscribe();
+			session.dispose();
+		}
+	}
+
 	async research(query: string, onProgress?: (progress: HiseResearchProgress) => void): Promise<string> {
 		return runHiseResearch(query, {
 			mcpClient: new RestMcpClient({ defaultUrl: process.env.HISE_DOCS_API_URL ?? process.env.HISE_MCP_URL }),
@@ -113,6 +155,9 @@ export class TuiAiSession {
 			cwd: this.options.projectDir,
 			agentDir: this.options.agentDir ?? join(homedir(), ".hise", "agent"),
 			model: this.piSession?.model,
+			workerModel: this.workerModel,
+			thinkerModel: this.piSession?.model,
+			getModel: () => this.piSession?.model,
 			thinkingLevel: this.piSession?.thinkingLevel,
 			onProgress,
 		});
@@ -122,6 +167,9 @@ export class TuiAiSession {
 		// Match pi's selector: don't offer models whose provider has no credentials.
 		return this.piSession?.modelRuntime.getAvailableSnapshot().map((model) => `${model.provider}/${model.id}`) ?? [];
 	}
+
+	get thinkerModelLabel(): string { return this.modelLabel; }
+	get workerModelLabel(): string { return this.workerModel ? `${this.workerModel.provider}/${this.workerModel.id}` : this.modelLabel; }
 
 	get providerChoices(): string[] {
 		return this.piSession?.modelRuntime.getProviders().map((provider) => provider.id) ?? [];
@@ -244,11 +292,22 @@ export class TuiAiSession {
 				cwd: this.options.projectDir,
 				agentDir,
 				getModel: () => this.piSession?.model,
+				getWorkerModel: () => this.workerModel,
+				getThinkerModel: () => this.piSession?.model,
 				getThinkingLevel: () => this.piSession?.thinkingLevel,
 				onProgress: (progress) => this.options.onEvent({ type: "research-progress", progress }),
 			}), createHiseScriptTool({ connection, projectDir: this.options.projectDir }), createJsTool({ projectDir: this.options.projectDir, allowWrites: true })],
 		});
 		this.piSession = created.session;
+		const settingsPath = join(agentDir, "settings.json");
+		try {
+			const settings = JSON.parse(await readFile(settingsPath, "utf8")) as { workerModel?: unknown };
+			if (typeof settings.workerModel === "string") {
+				const slash = settings.workerModel.indexOf("/");
+				if (slash > 0) this.workerModel = this.piSession.modelRuntime.getModel(settings.workerModel.slice(0, slash), settings.workerModel.slice(slash + 1));
+			}
+		} catch { /* use thinker as the worker by default */ }
+		this.workerModel ??= this.piSession.model;
 		if (this.options.model) {
 			await this.applyModel(this.options.model, false);
 			if (this.options.thinkingLevel) this.piSession.setThinkingLevel(this.options.thinkingLevel);
@@ -334,10 +393,28 @@ export class TuiAiSession {
 
 	/** Select and durably persist model and reasoning defaults for future sessions. */
 	async selectModel(modelId: string, thinkingLevel: AiThinkingLevel): Promise<void> {
-		await this.applyModel(modelId, true);
+		await this.selectModels(modelId, this.workerModel ? this.workerModelLabel : modelId, thinkingLevel);
+	}
+
+	async selectModels(thinkerModelId: string, workerModelId: string, thinkingLevel: AiThinkingLevel): Promise<void> {
 		if (!this.piSession) return;
+		const thinkerProvider = thinkerModelId.split("/")[0];
+		const workerProvider = workerModelId.split("/")[0];
+		if (thinkerProvider !== workerProvider) throw new Error("Thinker and worker models must use the same provider");
+		await this.applyModel(thinkerModelId, true);
+		this.piSession.settingsManager.setDefaultModelAndProvider(thinkerProvider, thinkerModelId.slice(thinkerProvider.length + 1));
+		this.piSession.settingsManager.setDefaultThinkingLevel(thinkingLevel);
+		const worker = this.piSession.modelRuntime.getModel(workerProvider, workerModelId.slice(workerProvider.length + 1));
+		if (!worker) throw new Error(`Unknown worker model "${workerModelId}"`);
+		this.workerModel = worker;
 		this.piSession.setThinkingLevel(thinkingLevel, { persist: true });
 		await this.piSession.settingsManager.flush();
+		const settingsPath = join(this.options.agentDir ?? join(homedir(), ".hise", "agent"), "settings.json");
+		let settings: Record<string, unknown> = {};
+		try { settings = JSON.parse(await readFile(settingsPath, "utf8")) as Record<string, unknown>; } catch { /* first save */ }
+		settings.workerModel = workerModelId;
+		await mkdir(join(this.options.agentDir ?? join(homedir(), ".hise", "agent")), { recursive: true });
+		await writeFile(settingsPath, JSON.stringify(settings, null, 2) + "\n", { mode: 0o600 });
 		const errors = this.piSession.settingsManager.drainErrors();
 		if (errors.length > 0) throw errors[0]!.error;
 	}
@@ -356,6 +433,7 @@ export class TuiAiSession {
 		this.unsubscribe = null;
 		this.piSession?.dispose();
 		this.piSession = null;
+		this.workerModel = undefined;
 		this.running = false;
 	}
 
@@ -381,6 +459,10 @@ export class TuiAiSession {
 	}
 }
 
+export const HOW_AGENT_PROMPT = `Explain only how to perform the requested task in hise-cli. This is a small documentation lookup, not a development task.
+Before answering, always call both tools exactly once: call hise_which with the user's complete request, and call hise_help for the high-level mode you infer from the request. Available help modes: ${TUI_HELP_TOPICS.join(", ")}. Neither call depends on the other; hise_which may return no matches. Synthesise only their combined results; do not inspect or modify HISE, browse files, or invent commands.
+Return concise Markdown: a short explanation followed by exact interactive TUI commands in execution order. A slash is used only to enter a mode, eg. /ui or /hise. Each following line starts directly with the documented command verb, eg. set Button.text "OK", launch, or shutdown; never prefix it with a slash, dot, or mode name. Dots are only part of documented operand paths such as Button.text. Copy command forms from the retrieved help verbatim. Never emit shell-style flags such as /ui set --component or invocations beginning with hise-cli. Mention choices or required values only when documented. If the docs do not support the task, say so.`;
+
 const HISE_AGENT_PROMPT = `You are the HISE development assistant inside the persistent TUI. Running HISE is the source of truth; this is not a repository exploration task.
 For routine builder, UI, DSP, project, and script operations: call hise_help for the relevant mode first, inspect only the minimum live HISE state with hise_command, then mutate and verify with hise_command. Use canonical argv arrays without the executable or --agent. Never search project files to discover HISE state or CLI syntax.
 Use hise_research only when hise_help and live inspection cannot answer an unfamiliar HISE API or semantic question, or when the user explicitly asks for documentation or examples. Do not use it for ordinary command syntax, node/component discovery, or routine add/set/connect operations.
@@ -389,6 +471,19 @@ Use hise_script only for callback and included external-file edits. Use js only 
 ${HISESCRIPT_CHEAT_SHEET}
 
 ${COMPACT_CLI_CONTRACT}`;
+
+function lastAssistantText(messages: readonly unknown[]): string {
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		if (!message || typeof message !== "object" || !("role" in message) || message.role !== "assistant" || !("content" in message) || !Array.isArray(message.content)) continue;
+		const text = message.content
+			.filter((part): part is { type: "text"; text: string } => Boolean(part && typeof part === "object" && "type" in part && part.type === "text" && "text" in part && typeof part.text === "string"))
+			.map((part) => part.text)
+			.join("\n");
+		if (text) return text;
+	}
+	return "";
+}
 
 async function executeEmbeddedCli(
 	argv: string[],

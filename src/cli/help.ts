@@ -21,7 +21,7 @@ const GENERATED_MODE_HELP_SCOPES = new Set(["builder", "ui", "dsp", "script"]);
 const GLOBAL_HELP = `hise-cli — automation frontend for HISE audio plugin framework (connects to HISE at http://127.0.0.1:1900).
 
 USAGE
-  hise-cli                                  Open the interactive TUI
+  hise-cli                                  Open the interactive TUI (/how <question> for usage guidance)
   hise-cli builder <command> [flags]         Builder module tree commands
   hise-cli ui <command> [flags]              UI component commands
   hise-cli dsp <command> [flags]             DSP network commands

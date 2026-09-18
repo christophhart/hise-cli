@@ -96,10 +96,7 @@ export async function resolveHiseBinaryFromCompilerSettings(
 ): Promise<string | null> {
 	if (command !== "HISE" && command !== "HISE Debug") return null;
 
-	const xml = await readCompilerSettings(platform);
-	if (!xml) return null;
-
-	const hisePath = parseHisePath(xml);
+	const hisePath = await detectHisePath(platform);
 	if (!hisePath) return null;
 
 	for (const candidate of hiseBinaryCandidates(hisePath, command, platform)) {
@@ -115,6 +112,12 @@ async function readCompilerSettings(platform: NodeJS.Platform): Promise<string |
 	} catch {
 		return null;
 	}
+}
+
+/** Resolve the HISE source/install path configured by HISE itself. */
+export async function detectHisePath(platform: NodeJS.Platform = process.platform): Promise<string | null> {
+	const xml = await readCompilerSettings(platform);
+	return xml ? parseHisePath(xml) : null;
 }
 
 export function compilerSettingsPath(platform: NodeJS.Platform): string {
