@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: api
+  title: Api mode
+  summary: Interactive api operations.
+commands: []

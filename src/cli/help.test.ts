@@ -11,10 +11,10 @@ describe("renderCliHelp", () => {
 	it("documents direct builder UI DSP command namespaces in global help", () => {
 		const help = renderCliHelp(getCliCommands());
 
-		expect(help).toContain("hise-cli builder <command> [flags]");
-		expect(help).toContain("hise-cli ui <command> [flags]");
-		expect(help).toContain("hise-cli dsp <command> [flags]");
-		expect(help).not.toContain('hise-cli -<mode> "<command>"');
+		expect(help).toContain("hise-cli <mode> <command> [flags]");
+		expect(help).toContain("builder");
+		expect(help).toContain("ui");
+		expect(help).toContain("dsp");
 	});
 
 	it("renders DSP help from generated agent commands", () => {

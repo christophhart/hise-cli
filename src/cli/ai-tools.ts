@@ -14,7 +14,7 @@ import { diagnoseHiseScriptCode, type HiseScriptDiagnostic } from "../engine/his
 import { defineTool } from "@earendil-works/pi-coding-agent";
 import { buildAgentContext } from "./agentContext.js";
 import { renderCliHelp } from "./help.js";
-import { generateHelp } from "../engine/commands/help.js";
+import { generateCatalogHelp, generateHelp } from "../engine/commands/help.js";
 import type { ModeId } from "../engine/modes/mode.js";
 import type { McpClient, McpJsonValue } from "../engine/mcp/types.js";
 import { HISESCRIPT_CHEAT_SHEET } from "./ai-guidance.js";
@@ -1499,11 +1499,13 @@ export const TUI_HELP_TOPICS: readonly ModeId[] = [
 function renderTuiHelp(topic?: string): string {
 	const normalized = topic?.trim().toLowerCase() || "root";
 	if (normalized === "wizard") return renderCliHelp([], "wizard").replaceAll("hise-cli -wizard", "/wizard");
-	if (TUI_HELP_TOPICS.includes(normalized as ModeId)) return generateHelp(normalized as ModeId, []).content;
+	if (TUI_HELP_TOPICS.includes(normalized as ModeId)) {
+		return generateCatalogHelp(normalized)?.content ?? generateHelp(normalized as ModeId, []).content;
+	}
 	return `Unknown TUI help topic: "${topic}". Available: ${TUI_HELP_TOPICS.join(", ")}`;
 }
 
-export function createHiseWhichTool() {
+export function createHiseWhichTool(options: { surface?: "cli" | "tui"; mode?: string } = {}) {
 	return defineTool({
 		name: "hise_which",
 		label: "hise which",
@@ -1513,17 +1515,18 @@ export function createHiseWhichTool() {
 			query: Type.String({ description: "The user's complete how-to question" }),
 		}),
 		async execute(_toolCallId, params) {
-			const result = executeWhich(params.query, 3);
-			const matches = result.ok ? result.value : [];
+			const surface = options.surface ?? "cli";
+			const result = executeWhich(params.query, 3, surface);
+			const matches = result.ok ? result.value.filter((match) => !options.mode || match.mode === options.mode) : [];
 			return {
 				content: [{ type: "text", text: JSON.stringify({ matches }, null, 1) }],
-				details: { matchCount: matches.length },
+				details: { matchCount: matches.length, surface },
 			};
 		},
 	});
 }
 
-export function createHiseHelpTool(options: { surface?: "cli" | "tui" } = {}) {
+export function createHiseHelpTool(options: { surface?: "cli" | "tui"; mode?: string } = {}) {
 	const tui = options.surface === "tui";
 	return defineTool({
 		name: "hise_help",
@@ -1536,15 +1539,16 @@ export function createHiseHelpTool(options: { surface?: "cli" | "tui" } = {}) {
 			mode: Type.Optional(Type.String({ description: tui ? "Exact TUI mode or topic" : "Mode whose canonical CLI help should be returned" })),
 		}),
 		async execute(_toolCallId, params) {
+			const mode = options.mode ?? params.mode;
 			const text = tui
-				? renderTuiHelp(params.mode)
-				: params.mode
-					? renderCliHelp([], params.mode)
+				? renderTuiHelp(mode)
+				: mode
+					? renderCliHelp([], mode)
 					: JSON.stringify(buildAgentContext(), null, 1);
 			if (text.startsWith("Unknown help topic:") || text.startsWith("Unknown TUI help topic:")) throw new Error(text);
 			return {
 				content: [{ type: "text", text: truncate(text) }],
-				details: { mode: params.mode ?? null, surface: tui ? "tui" : "cli" },
+				details: { mode: mode ?? null, surface: tui ? "tui" : "cli" },
 			};
 		},
 	});

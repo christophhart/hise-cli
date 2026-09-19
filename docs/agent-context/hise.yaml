@@ -1,0 +1,43 @@
+schemaVersion: 3
+mode:
+  id: hise
+  title: HISE runtime control
+  summary: Launch, inspect, capture, profile, and shut down the running HISE application.
+  notes:
+    - Use the update wizard to pull the latest CI-green HISE develop commit, rebuild it, and optionally relaunch HISE. hise-cli update is a separate shell-only self-update for hise-cli itself.
+commands:
+  - id: hise.status
+    title: Status
+    purpose: Show HISE connection status and current project information.
+    tags: [hise, runtime, status]
+    aliases: [show hise status]
+    surfaces: [tui]
+    recipes: { tui: { title: TUI, lines: [/hise, status] } }
+  - id: hise.launch
+    title: Launch HISE
+    purpose: Launch HISE and wait for its REST API to become available.
+    tags: [hise, runtime, launch]
+    aliases: [start hise]
+    surfaces: [tui]
+    recipes: { tui: { title: TUI, lines: [/hise, launch] } }
+  - id: hise.shutdown
+    title: Shut down HISE
+    purpose: Gracefully quit the running HISE application.
+    tags: [hise, runtime, shutdown, mutation]
+    aliases: [quit hise, close hise]
+    surfaces: [tui]
+    recipes: { tui: { title: TUI, lines: [/hise, shutdown] } }
+  - id: hise.screenshot
+    title: Screenshot
+    purpose: Capture the HISE interface or a component screenshot.
+    tags: [hise, runtime, screenshot]
+    aliases: [capture interface]
+    surfaces: [tui]
+    recipes: { tui: { title: TUI, lines: [/hise, 'screenshot at 50% to screenshot.png'] } }
+  - id: hise.profile
+    title: Profile
+    purpose: Record a runtime performance profile.
+    tags: [hise, runtime, profile]
+    aliases: [profile audio]
+    surfaces: [tui]
+    recipes: { tui: { title: TUI, lines: [/hise, 'profile thread audio for 1000ms'] } }

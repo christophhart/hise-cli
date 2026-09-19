@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: compile
+  title: Compile mode
+  summary: Interactive compile operations.
+commands: []

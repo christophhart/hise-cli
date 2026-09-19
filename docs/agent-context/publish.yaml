@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: publish
+  title: Publish mode
+  summary: Interactive publish operations.
+commands: []

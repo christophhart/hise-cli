@@ -1,0 +1,35 @@
+schemaVersion: 3
+mode:
+  id: wizard
+  title: Wizard mode
+  summary: Run data-driven HISE setup and export workflows.
+commands:
+  - id: wizard.update-hise
+    title: Update HISE
+    purpose: Pull the latest CI-green HISE develop commit, rebuild HISE, and optionally relaunch it.
+    tags: [wizard, update, hise, compile, dangerous]
+    aliases: [update hise, rebuild hise]
+    danger: true
+    surfaces: [cli, tui]
+    recipes:
+      cli:
+        title: CLI
+        argv: [hise-cli, -wizard, run, update, --agent]
+      tui:
+        title: TUI
+        lines: [/wizard, run update]
+    notes:
+      - The wizard can shut down HISE, discard local changes and clean builds, pull a selected or latest CI-green commit, compile, and relaunch. Rebuilding can take 30 or more minutes.
+  - id: wizard.run
+    title: Run wizard
+    purpose: Start a wizard by its stable ID and provide answers when requested.
+    tags: [wizard, mutation]
+    aliases: [plugin export]
+    surfaces: [cli, tui]
+    recipes:
+      cli:
+        title: CLI
+        argv: [hise-cli, -wizard, run, plugin_export, --agent]
+      tui:
+        title: TUI
+        lines: [/wizard, run plugin_export]

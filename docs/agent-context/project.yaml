@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: project
+  title: Project mode
+  summary: Interactive project operations.
+commands: []

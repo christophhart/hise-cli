@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: sampler
+  title: Sampler mode
+  summary: Interactive sampler operations.
+commands: []

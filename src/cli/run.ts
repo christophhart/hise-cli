@@ -3,6 +3,7 @@ import type { DataLoader } from "../engine/data.js";
 import { HttpHiseConnection, type HiseConnection } from "../engine/hise.js";
 import type { CommandEntry } from "../engine/commands/registry.js";
 import { parseCliArgs } from "./args.js";
+import { runHow } from "./how.js";
 import type { ScriptApiCommand } from "./args.js";
 import { ObserverClient } from "./observer.js";
 import { CapturingHiseConnection } from "./capture.js";
@@ -93,7 +94,10 @@ export async function executeCliCommand(
 		return finalizeJsonPayload(buildAgentContext(parsed.query), parsed.output);
 	}
 	if (parsed.kind === "which") {
-		return finalizeJsonPayload(executeWhich(parsed.query, parsed.limit), parsed.output);
+		return finalizeJsonPayload(executeWhich(parsed.query, parsed.limit, parsed.surface), parsed.output);
+	}
+	if (parsed.kind === "how") {
+		return finalizeJsonPayload({ ok: true, value: await runHow({ query: parsed.query, surface: parsed.surface, mode: parsed.mode, projectDir: process.cwd() }) }, parsed.output);
 	}
 	if (parsed.kind === "mcp") {
 		return finalizeJsonPayload(await executeMcpCliCommand(parsed.command, parsed.output, opts), parsed.output);

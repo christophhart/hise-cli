@@ -526,7 +526,8 @@ function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps)
 		setAiActivity({ kind: "thinking", startedAt: Date.now() });
 		setAiRunning(true);
 		try {
-			const text = await ai.how(query);
+			const activeMode = session.currentModeId;
+			const text = await ai.how(query, activeMode === "root" ? undefined : activeMode);
 			const block = renderResult({ type: "markdown", content: text }, scheme, innerW);
 			if (block) appendBlock(block);
 		} catch (error) {

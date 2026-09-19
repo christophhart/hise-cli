@@ -36,6 +36,7 @@ Static documentation lookup uses `docs` and is backed by MCP. Live inspection us
 - TUI usage guidance: `/how <question>` (worker-model lookup over embedded hise-cli help; returns TUI syntax)
 - TUI documentation research: `/research <question>`
 - One-shot CLI: `hise-cli -research "<question>" [--json | --agent]`
+- Structured command guidance: `hise-cli how "<question>" [--surface cli|tui] [--mode builder|dsp|ui] --agent`. `--mode` pins the help and inventory context instead of inferring it. This route returns authored recipes and help evidence without launching Ink, connecting to HISE, or translating syntax in a model.
 - Embedded agent tool: `hise_research { query }`
 
 Research performs bounded documentation and example retrieval, model synthesis, and live headless diagnosis with correction passes for generated HiseScript examples. The old `explore` names are not aliases.

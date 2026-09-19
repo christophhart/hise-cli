@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: undo
+  title: Undo mode
+  summary: Interactive undo operations.
+commands: []

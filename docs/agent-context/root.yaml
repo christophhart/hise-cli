@@ -1,0 +1,40 @@
+schemaVersion: 3
+mode:
+  id: root
+  title: Root commands
+  summary: Enter modes and control the interactive HISE shell.
+commands:
+  - { id: cli.update, title: Update hise-cli, purpose: Check for and install the latest hise-cli release. This does not update the HISE application., tags: [update, cli, release], aliases: [update cli, upgrade cli], surfaces: [cli], recipes: { cli: { title: CLI, argv: [hise-cli, update, --agent] } } }
+  - { id: root.help, title: Help, purpose: Show contextual help, tags: [help], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/help] } } }
+  - { id: root.exit, title: Exit, purpose: Leave the current mode or quit, tags: [navigation], aliases: [quit], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/exit] } } }
+  - { id: root.ai, title: AI, purpose: Enter the embedded agent, tags: [agent], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/ai] } } }
+  - { id: root.how, title: How, purpose: Explain a task using TUI recipes, tags: [help, agent], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/how add a module'] } } }
+  - { id: root.research, title: Research, purpose: Research HISE documentation, tags: [documentation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/research ScriptSlider callbacks'] } } }
+  - { id: root.modes, title: Modes, purpose: List available modes, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/modes] } } }
+  - { id: root.connect, title: Connect, purpose: Connect to HISE, tags: [runtime], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/connect] } } }
+  - { id: root.resume, title: Resume, purpose: Resume a paused wizard, tags: [wizard], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/resume] } } }
+  - { id: root.compact, title: Compact, purpose: Toggle compact tree display, tags: [display], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/compact] } } }
+  - { id: root.wait, title: Wait, purpose: Wait in a workflow, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/wait 100ms'] } } }
+  - { id: root.expect, title: Expect, purpose: Assert workflow output, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/expect true'] } } }
+  - { id: root.capture, title: Capture, purpose: Capture script console output, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/capture] } } }
+  - { id: root.run, title: Run, purpose: Run a workflow command file, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/run workflow.hsc'] } } }
+  - { id: root.parse, title: Parse, purpose: Parse a workflow without executing it, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/parse workflow.hsc'] } } }
+  - { id: root.callback, title: Callback, purpose: Select a script callback, tags: [script], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/callback onInit'] } } }
+  - { id: root.edit, title: Edit, purpose: Edit a script file, tags: [script], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/edit Scripts/Main.js'] } } }
+  - { id: root.builder, title: Builder mode, purpose: Enter builder mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/builder] } } }
+  - { id: root.ui, title: UI mode, purpose: Enter UI mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/ui] } } }
+  - { id: root.dsp, title: DSP mode, purpose: Enter DSP mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/dsp] } } }
+  - { id: root.script, title: Script mode, purpose: Enter script mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/script] } } }
+  - { id: root.sampler, title: Sampler mode, purpose: Enter sampler mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/sampler] } } }
+  - { id: root.inspect, title: Inspect mode, purpose: Enter inspect mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/inspect] } } }
+  - { id: root.project, title: Project mode, purpose: Enter project mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/project] } } }
+  - { id: root.compile, title: Compile mode, purpose: Enter compile mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/compile] } } }
+  - { id: root.undo, title: Undo mode, purpose: Enter undo mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/undo] } } }
+  - { id: root.wizard, title: Wizard mode, purpose: Enter wizard mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/wizard] } } }
+  - { id: root.sequence, title: Sequence mode, purpose: Enter sequence mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/sequence] } } }
+  - { id: root.hise, title: HISE mode, purpose: Enter runtime control mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/hise] } } }
+  - { id: root.analyse, title: Analyse mode, purpose: Enter analyse mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/analyse] } } }
+  - { id: root.publish, title: Publish mode, purpose: Enter publish mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/publish] } } }
+  - { id: root.assets, title: Assets mode, purpose: Enter assets mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/assets] } } }
+  - { id: root.api, title: API mode, purpose: Enter API documentation mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/api] } } }
+  - { id: root.mcp, title: MCP mode, purpose: Enter MCP documentation mode, tags: [navigation], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/mcp] } } }

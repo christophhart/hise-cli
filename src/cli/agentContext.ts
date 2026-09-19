@@ -121,6 +121,11 @@ export function renderAgentModeHelp(modeId: string): string | null {
 	lines.push("");
 	lines.push("SUMMARY");
 	lines.push(mode.summary);
+	if (mode.vocabulary) {
+		lines.push("");
+		lines.push("AVAILABLE TYPES");
+		lines.push(mode.vocabulary);
+	}
 	if (mode.quickStart.length > 0) {
 		lines.push("");
 		lines.push("QUICK START");

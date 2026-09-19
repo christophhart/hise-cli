@@ -12,7 +12,8 @@ export type CliParseResult =
 	| { kind: "version"; output: CliOutputOptions }
 	| { kind: "status"; output: CliOutputOptions }
 	| { kind: "agent-context"; query: AgentContextQuery; output: CliOutputOptions }
-	| { kind: "which"; query: string; limit: number; output: CliOutputOptions }
+	| { kind: "which"; query: string; limit: number; surface: "cli" | "tui"; output: CliOutputOptions }
+	| { kind: "how"; query: string; surface: "cli" | "tui"; mode?: "builder" | "dsp" | "ui"; output: CliOutputOptions }
 	| { kind: "mcp"; command: McpCliCommand; output: CliOutputOptions }
 	| {
 		kind: "execute";
@@ -1220,12 +1221,52 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		return { kind: "error", message: `Unknown option ${first}. Use: hise-cli which "<intent>"` };
 	}
 
-	if (first === "which") {
+	if (first === "how") {
 		const rest = args.slice(1);
-		let limit = 3;
+		let surface: "cli" | "tui" = "cli";
+		let mode: "builder" | "dsp" | "ui" | undefined;
 		const queryParts: string[] = [];
 		for (let i = 0; i < rest.length; i++) {
 			const arg = rest[i]!;
+			if (arg === "--surface") {
+				const value = rest[++i];
+				if (value !== "cli" && value !== "tui") return { kind: "error", message: "--surface must be cli or tui" };
+				surface = value;
+			} else if (arg.startsWith("--surface=")) {
+				const value = arg.slice("--surface=".length);
+				if (value !== "cli" && value !== "tui") return { kind: "error", message: "--surface must be cli or tui" };
+				surface = value;
+			} else if (arg === "--mode" || arg.startsWith("--mode=")) {
+				const value = arg === "--mode" ? rest[++i] : arg.slice("--mode=".length);
+				if (value !== "builder" && value !== "dsp" && value !== "ui") return { kind: "error", message: "--mode must be builder, dsp, or ui" };
+				mode = value;
+			} else queryParts.push(arg);
+		}
+		const query = queryParts.join(" ").trim();
+		if (!query) return { kind: "error", message: "Usage: hise-cli how <question> [--surface cli|tui] [--mode builder|dsp|ui]" };
+		return { kind: "how", query, surface, mode, output: { ...output, json: true } };
+	}
+
+	if (first === "which") {
+		const rest = args.slice(1);
+		let limit = 3;
+		let surface: "cli" | "tui" = "cli";
+		const queryParts: string[] = [];
+		for (let i = 0; i < rest.length; i++) {
+			const arg = rest[i]!;
+			if (arg === "--surface") {
+				const value = rest[i + 1];
+				if (value !== "cli" && value !== "tui") return { kind: "error", message: "--surface must be cli or tui" };
+				surface = value;
+				i++;
+				continue;
+			}
+			if (arg.startsWith("--surface=")) {
+				const value = arg.slice("--surface=".length);
+				if (value !== "cli" && value !== "tui") return { kind: "error", message: "--surface must be cli or tui" };
+				surface = value;
+				continue;
+			}
 			if (arg === "--limit") {
 				const value = rest[i + 1];
 				if (!value || value.startsWith("--")) return { kind: "error", message: "--limit requires a number" };
@@ -1241,7 +1282,7 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 			}
 			queryParts.push(stripMatchedOuterQuotes(arg));
 		}
-		return { kind: "which", query: queryParts.join(" ").trim(), limit, output: { ...output, json: true } };
+		return { kind: "which", query: queryParts.join(" ").trim(), limit, surface, output: { ...output, json: true } };
 	}
 
 	if (first === "mcp") {

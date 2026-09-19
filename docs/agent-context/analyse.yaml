@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: analyse
+  title: Analyse mode
+  summary: Interactive analyse operations.
+commands: []

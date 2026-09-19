@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: assets
+  title: Assets mode
+  summary: Interactive assets operations.
+commands: []

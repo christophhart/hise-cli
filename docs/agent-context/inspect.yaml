@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: inspect
+  title: Inspect mode
+  summary: Interactive inspect operations.
+commands: []

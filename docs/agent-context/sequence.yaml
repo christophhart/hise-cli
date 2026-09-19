@@ -1,0 +1,6 @@
+schemaVersion: 3
+mode:
+  id: sequence
+  title: Sequence mode
+  summary: Interactive sequence operations.
+commands: []

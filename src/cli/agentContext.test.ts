@@ -55,11 +55,11 @@ describe("generated agent context", () => {
 				const entry = command as AgentCommand;
 				assertParses(entry.command.argv, commands, entry.id);
 				for (const example of entry.examples ?? []) {
-					assertParses(example.argv, commands, `${command.id} example ${example.title}`);
+					if (example.argv) assertParses(example.argv, commands, `${command.id} example ${example.title}`);
 				}
 			}
 			for (const example of mode.quickStart) {
-				assertParses(example.argv, commands, `${mode.id} quickStart ${example.title}`);
+				if (example.argv) assertParses(example.argv, commands, `${mode.id} quickStart ${example.title}`);
 			}
 		}
 	});

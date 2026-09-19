@@ -15,6 +15,7 @@ export interface AgentContextMode {
 	id: string;
 	title: string;
 	summary: string;
+	vocabulary?: string;
 	invocation: AgentContextRecipe[];
 	notes: string[];
 	antiPatterns: Array<{ avoid: string; prefer: string }>;
@@ -42,6 +43,8 @@ export interface AgentCommand {
 	contexts: string[];
 	agentRelevance: string;
 	danger: boolean;
+	surfaces?: string[];
+	recipes?: Record<string, AgentContextRecipe>;
 	notes?: string[];
 	help: {
 		visibility: string;
@@ -54,7 +57,10 @@ export interface AgentContextCommand {
 	display: string;
 }
 
-export interface AgentContextRecipe extends AgentContextCommand {
+export interface AgentContextRecipe {
 	title: string;
+	display: string;
+	argv?: string[];
+	lines?: string[];
 	stdin?: string;
 }

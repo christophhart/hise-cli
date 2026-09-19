@@ -1,12 +1,16 @@
 import { GENERATED_AGENT_CONTEXT } from "./generated-agent-context.js";
+import { GENERATED_COMMAND_CATALOG } from "../engine/commands/generatedCatalog.js";
+import { catalogCommands, type CommandSurface } from "../engine/commands/catalogTypes.js";
 import type { AgentCommand } from "./agentContextTypes.js";
 import { cliError, type CliErrorPayload } from "./errors.js";
 
 export interface WhichMatch {
 	id: string;
+	mode?: string;
+	surface?: CommandSurface;
 	title: string;
 	purpose: string;
-	command: { argv: string[]; display: string };
+	command: { argv?: string[]; display: string; lines?: string[] };
 	score: number;
 	reason: string;
 	tags: string[];
@@ -28,15 +32,20 @@ const SYNONYMS: Record<string, string[]> = {
 	evaluate: ["repl", "expression"],
 };
 
-export function executeWhich(query: string, limit: number): { ok: true; value: WhichMatch[] } | CliErrorPayload {
-	const commands = GENERATED_AGENT_CONTEXT.modes.flatMap((mode) => [...mode.commands]) as unknown as AgentCommand[];
+export function executeWhich(query: string, limit: number, surface: CommandSurface = "cli"): { ok: true; value: WhichMatch[] } | CliErrorPayload {
+	const catalog = catalogCommands(GENERATED_COMMAND_CATALOG, surface);
+	const commands = catalog.map((command) => ({
+		...command,
+		syntax: command.recipes[surface]?.display ?? "",
+		command: command.recipes[surface] ?? { argv: [], display: "" },
+	})) as unknown as AgentCommand[];
 	if (!query) {
 		return { ok: true, value: commands.slice(0, limit).map((command) => toMatch(command, 0, "listed command")) };
 	}
 
 	const queryTokens = expandTokens(tokenize(query));
 	const matches = commands
-		.map((command) => scoreCommand(command, queryTokens))
+		.map((command) => scoreCommand(command, queryTokens, surface))
 		.filter((match) => match.score >= 3)
 		.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id))
 		.slice(0, limit);
@@ -48,7 +57,7 @@ export function executeWhich(query: string, limit: number): { ok: true; value: W
 	return { ok: true, value: matches };
 }
 
-function scoreCommand(command: AgentCommand, queryTokens: Set<string>): WhichMatch {
+function scoreCommand(command: AgentCommand, queryTokens: Set<string>, surface: CommandSurface): WhichMatch {
 	let score = 0;
 	const reasons: string[] = [];
 	const fields: Array<[string, number, string[]]> = [
@@ -57,7 +66,7 @@ function scoreCommand(command: AgentCommand, queryTokens: Set<string>): WhichMat
 		["tags", 4, command.tags.flatMap(tokenize)],
 		["purpose", 2, tokenize(command.purpose)],
 		["syntax", 2, tokenize(command.syntax)],
-		["command", 1, command.command.argv.flatMap(tokenize)],
+		["command", 1, (command.command.argv ?? (command.command as AgentCommand["command"] & { lines?: string[] }).lines ?? []).flatMap(tokenize)],
 	];
 
 	for (const [name, weight, tokens] of fields) {
@@ -68,12 +77,14 @@ function scoreCommand(command: AgentCommand, queryTokens: Set<string>): WhichMat
 		}
 	}
 
-	return toMatch(command, score, reasons.join("; ") || "no direct match");
+	return toMatch(command, score, reasons.join("; ") || "no direct match", surface);
 }
 
-function toMatch(command: AgentCommand, score: number, reason: string): WhichMatch {
+function toMatch(command: AgentCommand, score: number, reason: string, surface: CommandSurface = "cli"): WhichMatch {
 	return {
 		id: command.id,
+		mode: (command as AgentCommand & { mode?: string }).mode,
+		surface,
 		title: command.title,
 		purpose: command.purpose,
 		command: command.command,

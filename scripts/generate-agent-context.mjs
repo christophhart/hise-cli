@@ -12,6 +12,7 @@ const sources = sourceNames
 	.map((name) => join(sourceDir, name).replace(/\\/g, "/"));
 const commonSource = sourceNames.includes("_common.yaml") ? join(sourceDir, "_common.yaml").replace(/\\/g, "/") : null;
 const outFile = "src/cli/generated-agent-context.ts";
+const catalogOutFile = "src/engine/commands/generatedCatalog.ts";
 const contractOutFile = "src/cli/generated-ai-contract.ts";
 
 function quoteArg(arg) {
@@ -40,9 +41,13 @@ function normalizeCommand(command, path) {
 
 function normalizeRecipe(recipe, path) {
 	assertString(recipe.title, `${path}.title`);
-	assertArray(recipe.argv, `${path}.argv`);
-	const argv = recipe.argv.map((arg) => String(arg));
-	const normalized = { title: recipe.title, argv, display: display(argv) };
+	const hasArgv = Array.isArray(recipe.argv);
+	const hasLines = Array.isArray(recipe.lines);
+	if (!hasArgv && !hasLines) throw new Error(`${path} must define argv or lines`);
+	if (hasArgv && hasLines) throw new Error(`${path} cannot define both argv and lines`);
+	const normalized = hasArgv
+		? { title: recipe.title, argv: recipe.argv.map((arg) => String(arg)), display: display(recipe.argv.map((arg) => String(arg))) }
+		: { title: recipe.title, lines: recipe.lines.map((line) => String(line)), display: recipe.lines.map((line) => String(line)).join("\n") };
 	if (typeof recipe.stdin === "string") normalized.stdin = recipe.stdin;
 	return normalized;
 }
@@ -90,24 +95,38 @@ function normalizeHelp(help, index) {
 	};
 }
 
-function normalizeCommandEntry(command, sourceFile, index) {
+function normalizeCommandEntry(command, sourceFile, index, modeId) {
 	const path = `${sourceFile}.commands[${index}]`;
 	assertString(command.id, `${path}.id`);
 	assertString(command.title, `${path}.title`);
 	assertString(command.purpose, `${path}.purpose`);
-	assertString(command.syntax, `${path}.syntax`);
+	const cliSource = command.recipes?.cli ?? command.command;
+	const cliRecipe = cliSource ? normalizeRecipe({ title: "CLI", ...cliSource }, `${path}.recipes.cli`) : null;
+	const declaredSurfaces = command.surfaces ?? ["cli"];
+	assertArray(declaredSurfaces, `${path}.surfaces`);
+	for (const surface of declaredSurfaces) {
+		if (surface !== "cli" && surface !== "tui") throw new Error(`${path}.surfaces: unsupported surface ${surface}`);
+	}
+	const tuiSource = command.recipes?.tui ?? command.tui;
+	const derivedTui = !tuiSource && cliRecipe ? deriveTuiRecipe({ ...command, command: { argv: cliRecipe.argv ?? [] } }, modeId) : null;
+	const tuiRecipe = tuiSource ? normalizeRecipe(tuiSource, `${path}.recipes.tui`) : derivedTui;
+	const surfaces = tuiRecipe && !declaredSurfaces.includes("tui") ? [...declaredSurfaces, "tui"] : declaredSurfaces;
+	if (surfaces.includes("cli") && !cliRecipe) throw new Error(`${path}.recipes.cli: missing rendering for declared CLI surface`);
+	if (surfaces.includes("tui") && !tuiRecipe) throw new Error(`${path}.recipes.tui: missing rendering for declared TUI surface`);
 	const normalized = {
 		id: command.id,
 		title: command.title,
 		purpose: command.purpose,
-		syntax: command.syntax,
-		command: normalizeCommand(command.command, path),
+		syntax: command.syntax ? String(command.syntax) : cliRecipe?.display ?? tuiRecipe?.display ?? "",
+		command: { argv: cliRecipe?.argv ?? [], display: cliRecipe?.display ?? "" },
 		tags: normalizeStringArray(command.tags, `${path}.tags`),
 		aliases: normalizeStringArray(command.aliases, `${path}.aliases`),
 		contexts: normalizeStringArray(command.contexts, `${path}.contexts`),
 		agentRelevance: command.agentRelevance ? String(command.agentRelevance) : "medium",
 		danger: Boolean(command.danger),
 		help: normalizeHelp(command.help, index),
+		surfaces: surfaces.map((surface) => String(surface)),
+		recipes: { ...(cliRecipe ? { cli: cliRecipe } : {}), ...(tuiRecipe ? { tui: tuiRecipe } : {}) },
 	};
 	if (command.examples) {
 		assertArray(command.examples, `${path}.examples`);
@@ -115,6 +134,57 @@ function normalizeCommandEntry(command, sourceFile, index) {
 	}
 	if (command.notes) normalized.notes = normalizeStringArray(command.notes, `${path}.notes`);
 	return normalized;
+}
+
+function flag(argv, name) {
+	const index = argv.indexOf(name);
+	return index >= 0 ? argv[index + 1] : undefined;
+}
+
+function quoteTui(value) {
+	const text = String(value ?? "");
+	return /^[A-Za-z0-9_.-]+$/.test(text) ? text : quoteTuiRequired(text);
+}
+
+// Modal add grammar deliberately requires a quoted alias, including a bare ID.
+function quoteTuiRequired(value) {
+	return `"${String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+// Conservative derivation for the established modal builder/UI/DSP workflows.
+// Exceptional workflows can provide an explicit `tui` recipe in YAML.
+function deriveTuiRecipe(command, mode) {
+	if (!["builder", "ui", "dsp"].includes(mode)) return null;
+	const argv = command.command.argv;
+	const host = flag(argv, "--module");
+	const type = flag(argv, "--type");
+	const id = flag(argv, "--id");
+	const target = flag(argv, "--component") ?? flag(argv, "--node");
+	const param = flag(argv, "--param") ?? flag(argv, "--property");
+	const value = flag(argv, "--value");
+	const lines = [`/${mode}`];
+	if ((mode === "dsp" || mode === "builder") && host) lines.push(`cd ${quoteTui(host)}`);
+	const operation = argv.find((item) => !item.startsWith("--") && item !== "hise-cli" && item !== mode && item !== host);
+	if (command.id.endsWith(".add.node") && type && id) lines.push(`add ${type} as ${quoteTuiRequired(id)}`);
+	else if (command.id.endsWith(".add.module") && type && id) lines.push(`add ${type} as ${quoteTuiRequired(id)}`);
+	else if (command.id.endsWith(".add.component") && type && id) lines.push(`add ${type} as ${quoteTuiRequired(id)}`);
+	else if (command.id.endsWith(".save.network")) lines.push("save");
+	else if (command.id.endsWith(".reset")) lines.push("reset");
+	else if (command.id.endsWith(".show.tree") || command.id.endsWith(".show.types")) lines.push("show tree");
+	else if (command.id.endsWith(".show.module") || command.id.endsWith(".show.component") || command.id.endsWith(".show.parameter")) lines.push(`show ${quoteTui(target ?? param)}`);
+	else if (command.id.endsWith(".screenshot")) {
+		lines.push("screenshot");
+		if (flag(argv, "--module")) lines[lines.length - 1] += ` module ${quoteTui(flag(argv, "--module"))}`;
+		if (flag(argv, "--component")) lines[lines.length - 1] += ` component ${quoteTui(flag(argv, "--component"))}`;
+		if (flag(argv, "--scale")) lines[lines.length - 1] += ` scale ${quoteTui(flag(argv, "--scale"))}`;
+		if (flag(argv, "--output")) lines[lines.length - 1] += ` file ${quoteTui(flag(argv, "--output"))}`;
+	}
+	else if (command.id.endsWith(".set.network") && host && flag(argv, "--network")) lines.push(`set network ${quoteTui(flag(argv, "--network"))}`);
+	else if (command.id.endsWith(".set.parameter") && target && param && value) lines.push(`set ${quoteTui(target)}.${quoteTui(param)} ${quoteTui(value)}`);
+	else if (command.id.endsWith(".get.parameter") && target && param) lines.push(`get ${quoteTui(target)}.${quoteTui(param)}`);
+	else if (operation && ["docs", "tree", "save", "reset"].includes(operation)) lines.push(operation);
+	else return null;
+	return { title: "TUI", lines, display: lines.join("\n") };
 }
 
 function normalizeQuickStart(value, sourceFile) {
@@ -144,14 +214,33 @@ function capabilityToCommand(capability, sourceFile, index) {
 		...normalized,
 		syntax: normalized.command.display,
 		contexts: ["cli"],
+		surfaces: ["cli"],
+		recipes: { cli: { title: "CLI", argv: normalized.command.argv, display: normalized.command.display } },
 		agentRelevance: "high",
 		danger: Boolean(capability.danger),
 	};
 }
 
+function modeVocabulary(modeId) {
+	if (modeId === "builder") {
+		const modules = JSON.parse(readFileSync("data/moduleList.json", "utf8")).modules;
+		return `Available builder module types (use the exact ID after add):\n${modules.map((module) => module.id).join(", ")}`;
+	}
+	if (modeId === "dsp") {
+		const nodes = Object.keys(JSON.parse(readFileSync("data/scriptnodeList.json", "utf8")));
+		const groups = Object.groupBy(nodes, (node) => node.split(".")[0]);
+		return ["Available ScriptNode factories and nodes. Use <factory>.<node> when adding:", ...Object.entries(groups).map(([factory, entries]) => `${factory}: ${entries.map((entry) => entry.slice(factory.length + 1)).join(", ")}`)].join("\n");
+	}
+	if (modeId === "ui") {
+		const components = Object.keys(JSON.parse(readFileSync("data/ui_component_properties.json", "utf8")));
+		return `Available UI component types (use the exact ID after add):\n${components.join(", ")}`;
+	}
+	return undefined;
+}
+
 function normalizeMode(doc, sourceFile) {
 	if (!doc || typeof doc !== "object") throw new Error(`${sourceFile} must contain an object`);
-	if (doc.schemaVersion !== 1 && doc.schemaVersion !== 2) throw new Error(`${sourceFile}.schemaVersion must be 1 or 2`);
+	if (![1, 2, 3].includes(doc.schemaVersion)) throw new Error(`${sourceFile}.schemaVersion must be 1, 2, or 3`);
 	const mode = doc.mode;
 	if (!mode || typeof mode !== "object") throw new Error(`${sourceFile}.mode must be an object`);
 	assertString(mode.id, `${sourceFile}.mode.id`);
@@ -163,6 +252,7 @@ function normalizeMode(doc, sourceFile) {
 		id: mode.id,
 		title: mode.title,
 		summary: mode.summary,
+		vocabulary: modeVocabulary(mode.id) ?? "",
 		invocation: (mode.invocation ?? []).map((recipe, index) => normalizeRecipe({ title: `Invocation ${index + 1}`, ...recipe }, `${sourceFile}.mode.invocation[${index}]`)),
 		notes: (mode.notes ?? []).map((note) => String(note)),
 		antiPatterns: (mode.antiPatterns ?? []).map((item) => ({ avoid: String(item.avoid), prefer: String(item.prefer) })),
@@ -170,7 +260,7 @@ function normalizeMode(doc, sourceFile) {
 		concepts: normalizeConcepts(doc.concepts, sourceFile),
 		commands: doc.schemaVersion === 1
 			? doc.capabilities.map((capability, index) => capabilityToCommand(capability, sourceFile, index))
-			: doc.commands.map((command, index) => normalizeCommandEntry(command, sourceFile, index)),
+			: doc.commands.map((command, index) => normalizeCommandEntry(command, sourceFile, index, mode.id)),
 		types: doc.types && typeof doc.types === "object" ? doc.types : {},
 	};
 }
@@ -186,18 +276,30 @@ function normalizeCommon(sourceFile) {
 
 const modes = sources.map((sourceFile) => normalizeMode(YAML.parse(readFileSync(sourceFile, "utf8")), sourceFile));
 const ids = new Set();
+const exampleIds = new Set();
 for (const mode of modes) {
 	for (const command of mode.commands) {
-		if (ids.has(command.id)) throw new Error(`Duplicate command id: ${command.id}`);
+		if (ids.has(command.id)) throw new Error(`Duplicate command id (${mode.id}): ${command.id}`);
 		ids.add(command.id);
+		for (const example of command.examples ?? []) {
+			const key = `${command.id}:${example.display}`;
+			if (exampleIds.has(key)) throw new Error(`Duplicate example (${mode.id}, ${command.id}): ${example.display}`);
+			exampleIds.add(key);
+		}
 	}
 }
 
 const common = normalizeCommon(commonSource);
 
+// The legacy agent-context route is a CLI contract. TUI-only entries remain
+// in the shared catalogue but are intentionally excluded here.
+const agentModes = modes.map((mode) => ({
+	...mode,
+	commands: mode.commands.filter((command) => command.surfaces.includes("cli")),
+}));
 const generated = `// Generated by scripts/generate-agent-context.mjs. Do not edit manually.\n\n`
 	+ `import type { AgentContextData } from "./agentContextTypes.js";\n\n`
-	+ `export const GENERATED_AGENT_CONTEXT = ${JSON.stringify({ schemaVersion: 2, common, modes }, null, "\t")} as const satisfies AgentContextData;\n`;
+	+ `export const GENERATED_AGENT_CONTEXT = ${JSON.stringify({ schemaVersion: 2, common, modes: agentModes }, null, "\t")} as const satisfies AgentContextData;\n`;
 
 function embeddedSyntax(command) {
 	if (command.syntax && !command.syntax.startsWith("hise-cli ")) return command.syntax;
@@ -212,7 +314,7 @@ const contractLines = [
 	"Set enum and ComboBox parameters with an exact item label, never a numeric index. Inspect choices with builder show --module <path> --param <param> instead of guessing.",
 	"Use hise_help for details or edge cases. Use hise_research only for unfamiliar HISE APIs or semantics not covered by this contract and live inspection.",
 ];
-for (const mode of modes) {
+for (const mode of agentModes) {
 	contractLines.push("", `[${mode.id}]`);
 	for (const command of mode.commands) contractLines.push(embeddedSyntax(command));
 }
@@ -221,5 +323,35 @@ const contractGenerated = `// Generated by scripts/generate-agent-context.mjs. D
 	+ `export const COMPACT_CLI_CONTRACT = ${JSON.stringify(compactContract)};\n`;
 
 mkdirSync(dirname(outFile), { recursive: true });
+const catalog = {
+	schemaVersion: 3,
+	common,
+	modes: modes.map((mode) => ({
+		...mode,
+		commands: mode.commands.map((command) => ({
+			id: command.id,
+			mode: mode.id,
+			title: command.title,
+			purpose: command.purpose,
+			tags: command.tags,
+			aliases: command.aliases,
+			contexts: command.contexts,
+			surfaces: command.surfaces,
+			safety: command.danger ? "dangerous" : (command.tags.includes("mutation") ? "mutation" : "read-only"),
+			danger: command.danger,
+			help: command.help,
+			recipes: command.recipes,
+			examples: command.examples,
+			notes: command.notes,
+		})),
+	})),
+};
+const catalogGenerated = `// Generated by scripts/generate-agent-context.mjs. Do not edit manually.\n\n`
+	+ `import type { CommandCatalog } from "./catalogTypes.js";\n\n`
+	+ `export const GENERATED_COMMAND_CATALOG = ${JSON.stringify(catalog, null, "\t")} as const satisfies CommandCatalog;\n`;
+
+mkdirSync(dirname(outFile), { recursive: true });
+mkdirSync(dirname(catalogOutFile), { recursive: true });
 writeFileSync(outFile, generated, "utf8");
+writeFileSync(catalogOutFile, catalogGenerated, "utf8");
 writeFileSync(contractOutFile, contractGenerated, "utf8");
