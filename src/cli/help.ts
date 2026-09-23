@@ -26,6 +26,7 @@ function renderGlobalHelp(): string {
 		"  hise-cli <mode> <command> [flags]",
 		"  hise-cli which \"<intent>\" [--surface cli|tui]",
 		"  hise-cli how \"<question>\" [--surface cli|tui] [--mode builder|dsp|ui] --agent",
+		"  hise-cli --research-server [--port <number>] [--no-open]",
 		"",
 		"MODES",
 		...modes,

@@ -156,6 +156,12 @@ describe("dsp parser — set", () => {
 		expect(cmd.clauses[0]!.value.kind).toBe("hex");
 	});
 
+	it("quotes raw SNEX expressions before lexing", () => {
+		const cmd = parseOk<SetCommand>("set E.Code Math.min(Math.floor(input * 4.0), 3.0) / 3.0");
+		const value = cmd.clauses[0]!.value;
+		expect(value).toEqual({ kind: "string", s: "Math.min(Math.floor(input * 4.0), 3.0) / 3.0" });
+	});
+
 	it("parses direct node appearance attributes", () => {
 		const comment = parseOk<SetCommand>('set MicPairSelector.Comment "**Mic pair selector** - Routes one stereo pair into the FX chain."');
 		const folded = parseOk<SetCommand>("set CabGlueComp.Folded true");

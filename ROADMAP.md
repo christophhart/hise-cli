@@ -865,82 +865,18 @@ delivers the `GET /api/events` endpoint.
 
 ---
 
-## Post-1.0 — Web Frontend
+## Local Research Browser
 
-> Deferred from the 1.0 release. The isomorphic engine constraint (Phase 0)
-> keeps the door open. This section is included for architectural context.
+The terminal-emulation browser frontend was removed before 1.0. The retained
+browser targets have separate responsibilities:
 
-**Goal**: browser-based frontend sharing the engine layer. Terminal aesthetic
-via monospace CSS. Three targets, implemented incrementally.
+- `src/web-embed/` exposes the isomorphic engine to the HISE website.
+- `hise-cli --research-server` serves a loopback-only BYOM documentation research
+  interface using the Pi worker and thinker configuration from hise-cli.
 
-See [DESIGN.md — Web Frontend](DESIGN.md#web-frontend-future) and
-[DESIGN.md — Decision #13](DESIGN.md#13-isomorphic-engine-for-web-compatibility).
-
-### 8.1 Web shell
-
-Directory: `src/web/`
-
-React DOM app (Vite) that renders engine `Session` state in the browser.
-Monospace CSS replicating the TUI aesthetic:
-
-- Monospace font (`JetBrains Mono` / `Fira Code` / system fallback)
-- All 4 color layers as CSS custom properties (same hex values as TUI)
-- Layout regions (TopBar, Output, Input, StatusBar) as flexbox divs
-- Box-drawing characters (`─`, `│`, `├`, `└`, `▎`) rendered natively
-- Mode-colored prompts, type badges, tree connectors — all CSS
-- Cursor blinking via CSS animation
-
-Web superpowers beyond what the TUI can do:
-- Hover tooltips on module types, API methods
-- Clickable elements (expand trees, navigate to definitions)
-- Resizable panes (sidebar, output split)
-- Smooth scrolling
-- Copy-to-clipboard buttons on code blocks
-- Syntax highlighting via CodeMirror 6 using the same Lezer HiseScript
-  grammar from the engine — zero additional parser work
-- Markdown rendering via `react-markdown` or similar, consuming the same
-  `marked` AST from the engine
-
-### 8.2 Mock playground
-
-The demo/playground — a standalone web app with `MockHiseConnection` and
-bundled static datasets. No HISE instance needed.
-
-- Interactive command entry with tab completion
-- Mode switching, wizard walkthrough
-- Module type browser (all modules with parameters from `data/moduleList.json`)
-- API reference browser (all classes/methods from `data/scripting_api.json`)
-- Scriptnode node browser (all nodes/factories from `data/scriptnodeList.json`)
-- Deployable to GitHub Pages, Vercel, or similar static hosting
-
-### 8.3 Live companion
-
-Connect to a real HISE instance at configurable `host:port`. Uses
-`HttpHiseConnection` (same `fetch()` API, works in browser).
-
-- Full REPL functionality against live HISE
-- Variable watch with live updates
-- Module tree visualization
-- Requires HISE on same machine (localhost) or network-accessible
-
-### 8.4 Screencast live replay
-
-Replace the asciinema-player on the HISE docs site with the live engine
-replay. The same `.tape` files from `screencasts/` now drive the actual
-engine `Session` with `MockHiseConnection` in the browser. Screencasts
-become interactive — visitors see real syntax highlighting, real
-completions, real mode transitions. `Annotation` commands render as
-overlay captions. Visitors can pause and optionally take over typing.
-
-This reuses the web shell (8.1) + mock playground (8.2) infrastructure.
-The tape parser is already in the engine layer (isomorphic). The only
-new code is the playback controller that feeds tape commands to the
-Session at the scripted timing.
-
-### Future: Remote access
-
-Requires C++ changes (HISE binding to `0.0.0.0`, authentication) and
-SSE/WebSocket for efficient push. Not in current scope.
+The research browser supports sourced synthesis, source-only search, optional
+local HiseScript validation, and shared syntax-highlighting colours. It is not a
+remote HISE control surface.
 
 ### Future: Plugin UI testing via tape sessions
 

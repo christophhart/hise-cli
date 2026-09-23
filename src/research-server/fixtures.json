@@ -1,0 +1,34 @@
+[
+  {
+    "id": "doc:content-getcomponent",
+    "kind": "document",
+    "title": "Content.getComponent",
+    "url": "/v2/scripting-api/content/getcomponent",
+    "tags": ["Content", "component", "UI"],
+    "body": "Content.getComponent(String componentName) returns a reference to an existing scripted UI component with the supplied ID. Call it after the component has been created. Example: const var Knob1 = Content.getComponent(\"Knob1\");. The ID is case-sensitive."
+  },
+  {
+    "id": "doc:engine-getmodule",
+    "kind": "document",
+    "title": "Synth.getEffect",
+    "url": "/v2/scripting-api/synth/geteffect",
+    "tags": ["Synth", "module", "processor", "effect"],
+    "body": "Synth.getEffect(String name) returns a reference to an effect processor in the current module tree. Use the exact processor ID. The returned reference can be stored in a const var and used to access documented processor methods."
+  },
+  {
+    "id": "doc:scriptnode-network",
+    "kind": "document",
+    "title": "DspNetwork access",
+    "url": "/v2/reference/scriptnode/dspnetwork",
+    "tags": ["ScriptNode", "DspNetwork", "node"],
+    "body": "A Script Processor can obtain its DspNetwork with Engine.getDspNetwork(String id). Use DspNetwork.get(String nodeId) to retrieve a node by its exact ID. Both calls require IDs that already exist in the project."
+  },
+  {
+    "id": "example:ui-component-reference",
+    "kind": "example",
+    "title": "Reference an existing UI component",
+    "url": "/v2/examples/scripting/component-reference",
+    "tags": ["Content", "getComponent", "example"],
+    "body": "```hisescript\nconst var GainKnob = Content.getComponent(\"GainKnob\");\nGainKnob.setValue(0.5);\n```\nThis example retrieves an existing component by ID before changing its value."
+  }
+]

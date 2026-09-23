@@ -134,45 +134,6 @@ Item format:
 
 ---
 
-## 8. Example Caller (Web SPA WebSocket Handler)
-
-**File**: `src/web/ws-handler.ts:226–238`
-
-```typescript
-function handleComplete(
-  ctx: ConnectionContext,
-  msg: Extract<ClientMsg, { kind: "complete" }>,
-): void {
-  const result = ctx.host.session.complete(msg.line, msg.cursor);
-  send(ctx, {
-    kind: "completion",
-    id: msg.id,
-    payload: result
-      ? { items: result.items, from: result.from, to: result.to, label: result.label }
-      : null,
-  });
-}
-```
-
-**Wire protocol** (`src/web/protocol.ts:21`):
-```typescript
-// client → server
-{ kind: "complete"; id: string; line: string; cursor: number }
-// server → client
-{ kind: "completion"; id: string; payload: { items, from, to, label? } | null }
-```
-
-**Flow**:
-1. Keystroke → client sends `{ line: "/script Synth.a", cursor: 15 }`
-2. `Session.complete()` parses leading `/script`, extracts `"Synth.a"` as mode arg
-3. Delegates → `ScriptMode.complete()` → `engine.completeScript("Synth.a")`
-4. Engine finds last `.` → namespace `"Synth"`, prefix `"a"` → fuzzy match methods
-5. Returns `{ items, from: dotIndex+1, to: input.length, label: "Synth methods" }`
-6. Script mode adjusts offsets relative to full input
-7. Server sends payload back
-
----
-
 ## Embed Wiring (How completionEngine reaches caller)
 
 **File**: `src/web-embed/index.ts:67–104`

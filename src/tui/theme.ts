@@ -8,6 +8,7 @@ export const brand = {
 } as const;
 
 export { MODE_ACCENTS } from "../engine/modes/mode.js";
+import { HIGHLIGHT_SURFACES } from "../engine/highlight/theme.js";
 
 export interface ColorScheme {
 	backgrounds: {
@@ -24,14 +25,14 @@ export interface ColorScheme {
 
 export const defaultScheme: ColorScheme = {
 	backgrounds: {
-		standard: "#272822",
-		raised: "#32342d",
-		overlay: "#302f2a",
+		standard: HIGHLIGHT_SURFACES.background,
+		raised: HIGHLIGHT_SURFACES.raised,
+		overlay: HIGHLIGHT_SURFACES.overlay,
 	},
 	foreground: {
-		default: "#a0a09a",
-		bright: "#d0d0c8",
-		muted: "#75715e",
+		default: HIGHLIGHT_SURFACES.foreground,
+		bright: HIGHLIGHT_SURFACES.bright,
+		muted: HIGHLIGHT_SURFACES.muted,
 	},
 };
 

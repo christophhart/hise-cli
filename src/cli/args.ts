@@ -212,6 +212,9 @@ function formatArrayShorthand(value: string): string {
 	// Quoted scalar strings may legitimately contain commas. They must stay
 	// strings rather than being rewritten as numeric array shorthand.
 	if (value.startsWith("\"") && value.endsWith("\"")) return value;
+	// SNEX expressions also commonly contain commas (function arguments), but
+	// they are scalar code strings, not numeric array shorthand.
+	if (/[()]/.test(value)) return value;
 	return value.includes(",") ? `[${value}]` : value;
 }
 

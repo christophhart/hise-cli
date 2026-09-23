@@ -554,6 +554,17 @@ describe("parseCliArgs", () => {
 		}
 	});
 
+	it("does not convert commas in SNEX expressions into array shorthand", () => {
+		const result = parseCliArgs([
+			"node", "hise-cli", "dsp", "set", "--module", "Script FX1", "--node", "E",
+			"--param", "Code", "--value", "Math.min(Math.floor(input * 4.0), 3.0) / 3.0",
+		], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.canonicalCommand).toBe('/dsp."Script FX1" set E.Code "Math.min(Math.floor(input * 4.0), 3.0) / 3.0"');
+		}
+	});
+
 	it("parses combined direct DSP parameter metadata flags", () => {
 		const result = parseCliArgs(["node", "hise-cli", "dsp", "set", "--module", "Script FX1", "--node", "F1", "--param", "Frequency", "--range", "20,20000", "--default", "1000", "--skewFactor", "0.3"], getCliCommands());
 		expect(result.kind).toBe("execute");

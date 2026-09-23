@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>HISE Documentation Research</title>
+	<style>
+		:root {
+			color-scheme: dark;
+			--font-sans: "Lato", system-ui, sans-serif;
+			--font-display: "Stack Sans Headline", "Lato", system-ui, sans-serif;
+			--font-mono: Menlo, Consolas, Monaco, "Andale Mono", "Ubuntu Mono", "Courier New", monospace;
+			--surface-0: #141312;
+			--surface-1: #1e1c1a;
+			--surface-2: #2d2b28;
+			--surface-3: #504d48;
+			--text: #ededeb;
+			--text-dim: #b8b6b2;
+			--text-muted: #9e9585;
+			--link: #d9a549;
+			--link-hover: #e5b760;
+			--green: #49aa68;
+			--mint: #90ffb1;
+			background: var(--surface-0);
+			color: var(--text);
+			font-family: var(--font-sans);
+			font-size: 17.6px;
+		}
+		body { max-width: 1024px; margin: 3rem auto; padding: 0 1.5rem 4rem; font-size: 1rem; line-height: 1.6; }
+		h1 { margin: 0 0 .8rem; font-family: var(--font-display); font-size: clamp(2rem, 3.6vw, 2.75rem); font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
+		body > p, form > p { max-width: 70ch; color: var(--text-dim); }
+		textarea { box-sizing: border-box; width: 100%; min-height: 7rem; padding: .7rem; background: var(--surface-1); color: var(--text); border: 1px solid var(--surface-3); border-radius: 4px; font: inherit; line-height: 1.6; }
+		textarea:focus { outline: 2px solid var(--mint); outline-offset: 2px; }
+		.status-panel { margin: 1.5rem 0; padding: 1rem; background: var(--surface-1); border-radius: 6px; }
+		.status-row { display: grid; grid-template-columns: minmax(11rem, 1fr) auto auto; justify-content: start; gap: 1rem; padding: .25rem 0; font-size: .875rem; }
+		.status-row label { white-space: nowrap; }
+		.status-row input:disabled { opacity: 1; }
+		fieldset { margin: 1.5rem 0; padding: 0; border: 0; }
+		legend, .question-label { display: block; margin-bottom: .6rem; font-size: .8125rem; font-weight: 500; line-height: 1.2; letter-spacing: .04em; }
+		.topics { display: flex; flex-wrap: wrap; gap: .5rem; }
+		.topics label { padding: .35rem .6rem; border: 1px solid var(--surface-3); border-radius: 4px; color: var(--text-dim); font-size: .8125rem; font-weight: 500; cursor: pointer; }
+		.topics label:has(input:checked) { border-color: var(--mint); background: var(--surface-2); color: var(--mint); }
+		.controls { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; font-size: .8125rem; }
+		.controls select { margin-left: .35rem; padding: .4rem .55rem; border: 1px solid var(--surface-3); border-radius: 4px; background: var(--surface-1); color: var(--text); font: inherit; }
+		.controls input:disabled + span, .controls label:has(input:disabled) { color: var(--text-muted); }
+		button { padding: 10px 20px; border: 0; border-radius: 4px; background: var(--green); color: var(--surface-0); font: 500 .8125rem/1.2 var(--font-sans); letter-spacing: .04em; cursor: pointer; }
+		button:hover { background: #5ebe7c; }
+		button:disabled { opacity: .5; cursor: wait; }
+		#progress { color: var(--text-muted); font-size: .8125rem; min-height: 1.5rem; }
+		#answer { margin-top: 1rem; padding: 1.25rem; min-height: 4rem; border-radius: 6px; background: var(--surface-1); color: #d8d7d4; line-height: 1.65; overflow-wrap: anywhere; }
+		#answer.raw-markdown { white-space: pre-wrap; }
+		#answer > :first-child { margin-top: 0 !important; }
+		#answer > :last-child { margin-bottom: 0 !important; }
+		#answer p { max-width: 70ch; margin: 1.4em 0; }
+		#answer strong { color: var(--text); font-weight: 700; letter-spacing: .01rem; }
+		#answer h2, #answer h3, #answer h4 { font-family: var(--font-display); color: var(--text); }
+		#answer h2 { margin: 2.6em 0 .7em; padding-bottom: .35em; border-bottom: 1px solid var(--surface-2); font-size: 1.75em; font-weight: 700; line-height: 1.2; letter-spacing: -.014em; }
+		#answer h3 { margin: 2em 0 .5em; font-size: 1.4em; font-weight: 600; line-height: 1.3; letter-spacing: -.005em; }
+		#answer h4 { margin: 1.6em 0 .4em; font-size: 1.15em; font-weight: 500; line-height: 1.3; }
+		#answer ul, #answer ol { padding-left: 1.4em; }
+		#answer li { margin: .4em 0; padding-left: .3em; }
+		#answer a { color: var(--link); text-decoration: none; }
+		#answer a:hover { color: var(--link-hover); text-decoration: underline; }
+		#answer :not(pre) > code { padding: .15em .4em; border: 1px solid rgba(200, 200, 200, .2); border-radius: .375rem; background: rgba(200, 200, 200, .1); color: #e9e1e1; font: 400 .85em/1.5 var(--font-mono); }
+		#answer pre { overflow-x: auto; margin: 1.3rem 0; padding: 1em; border-radius: 4px; background: __CODE_BACKGROUND__; color: __CODE_FOREGROUND__; font: 400 .91em/1.5 var(--font-mono); }
+		#answer pre code { padding: 0; border: 0; background: transparent; font: inherit; }
+		#answer blockquote { margin-left: 0; padding-left: 1em; border-left: 1px solid var(--surface-3); color: var(--text-dim); font-style: normal; }
+		#answer table { width: 100%; border-collapse: collapse; font-size: .875em; }
+		#answer th, #answer td { padding: 10px 14px; border: 1px solid var(--surface-2); text-align: left; font-variant-numeric: tabular-nums; }
+		#answer th { color: var(--text); font-weight: 700; }
+		#answer ::selection { background: rgba(144, 255, 177, .25); color: var(--text); }
+		.hljs-keyword, .hljs-literal, .hljs-tag, .hljs-name { color: #bbbbff; }
+		.hljs-built_in, .hljs-type, .hljs-class, .hljs-attr, .hljs-attribute { color: #88bec5; }
+		.hljs-string, .hljs-regexp { color: #ddaaaa; }
+		.hljs-number { color: #ddaadd; }
+		.hljs-title, .hljs-function, .hljs-variable, .hljs-symbol { color: #ddddff; }
+		.hljs-comment, .hljs-doctag, .hljs-meta { color: #909090; font-style: italic; }
+		#evidence { margin-top: 1rem; overflow-x: auto; }
+		#evidence table { width: 100%; border-collapse: collapse; background: var(--surface-1); font-size: .875rem; }
+		#evidence caption { padding: .75rem .8rem; color: var(--text); font-weight: 700; text-align: left; }
+		#evidence th, #evidence td { padding: .65rem .8rem; border-top: 1px solid var(--surface-2); text-align: left; vertical-align: top; }
+		#evidence th { color: var(--text); font-size: .8125rem; letter-spacing: .04em; }
+		#evidence td.description { min-width: 24rem; color: var(--text-dim); }
+		#evidence a { color: var(--link); text-decoration: none; }
+		#evidence a:hover { color: var(--link-hover); text-decoration: underline; }
+		#usage { margin-top: 1rem; color: var(--text-muted); font: .78rem/1.5 var(--font-mono); overflow-x: auto; }
+		#usage table { width: 100%; border-collapse: collapse; background: var(--surface-1); }
+		#usage caption { padding: .65rem .8rem; color: var(--text); font-family: var(--font-sans); font-weight: 700; text-align: left; }
+		#usage th, #usage td { padding: .5rem .6rem; border-top: 1px solid var(--surface-2); text-align: left; white-space: nowrap; }
+		#usage th { color: var(--text); }
+		#usage td.number, #usage th.number { text-align: right; }
+		#usage tfoot { color: var(--text); font-weight: 700; }
+		#error { color: #bb3434; white-space: pre-wrap; }
+		@media (max-width: 640px) { :root { font-size: 16px; } body { margin-top: 1.5rem; padding-inline: 1rem; } .status-row { grid-template-columns: 1fr auto auto; } #answer { padding: 1rem; } }
+	</style>
+</head>
+<body>
+	<h1>HISE Research Assistant</h1>
+	<p>This local research tool uses the worker and thinker models configured in hise-cli to search HISE documentation, examples and code snippets and produce a sourced answer.</p>
+	<p>It presents its findings with code examples and links to relevant sources so you can dig deeper if needed. In order to prevent hallucinations and bad code syntax, the website can call your locally running HISE instance and run a diagnostic pass on every generated code example.</p>
+
+	<section class="status-panel" aria-label="Assistant availability">
+		<div class="status-row"><span>Models configured</span><label>Yes <input id="models-yes" type="checkbox" disabled></label><label>No <input id="models-no" type="checkbox" checked disabled></label></div>
+		<div class="status-row"><span>Documentation ready</span><label>Yes <input id="docs-yes" type="checkbox" disabled></label><label>No <input id="docs-no" type="checkbox" checked disabled></label></div>
+		<div class="status-row"><span>HISE connected</span><label>Yes <input id="hise-yes" type="checkbox" disabled></label><label>No <input id="hise-no" type="checkbox" checked disabled></label></div>
+	</section>
+
+	<p>Please enter your question. You can steer the documentation lookup by providing a coarse theme:</p>
+	<form id="form">
+		<fieldset>
+			<legend>Topic</legend>
+			<div class="topics">
+				<label><input type="radio" name="topic" value="ui"> UI</label>
+				<label><input type="radio" name="topic" value="modules"> Modules</label>
+				<label><input type="radio" name="topic" value="scriptnode"> Scriptnode</label>
+				<label><input type="radio" name="topic" value="scripting"> Scripting</label>
+			</div>
+		</fieldset>
+		<label class="question-label" for="question">Question</label>
+		<textarea id="question" required placeholder="How do I retrieve an existing scripted UI component?"></textarea>
+		<div class="controls">
+			<button id="submit" type="submit">Research</button>
+			<label>Output
+				<select id="output-mode">
+					<option value="answer">Synthesised answer</option>
+					<option value="sources">Sources only</option>
+				</select>
+			</label>
+			<label><input id="validation" type="checkbox"> Validate generated HiseScript with local HISE</label>
+		</div>
+	</form>
+	<div id="progress" aria-live="polite"></div>
+	<div id="error" role="alert"></div>
+	<article id="answer"></article>
+	<div id="evidence" aria-live="polite"></div>
+	<div id="usage" aria-live="polite"></div>
+
+<script type="module">
+const HISE_URL = "http://localhost:1900";
+const configPromise = fetch("/api/config", { headers: { Accept: "application/json" } }).then(async (response) => {
+	if (!response.ok) throw new Error(`Research server configuration failed with HTTP ${response.status}`);
+	return response.json();
+});
+const form = document.querySelector("#form");
+const question = document.querySelector("#question");
+const validation = document.querySelector("#validation");
+const outputMode = document.querySelector("#output-mode");
+const submit = document.querySelector("#submit");
+const progress = document.querySelector("#progress");
+const errorBox = document.querySelector("#error");
+const answer = document.querySelector("#answer");
+const evidence = document.querySelector("#evidence");
+const usage = document.querySelector("#usage");
+validation.checked = localStorage.getItem("doc-ai-validation") === "enabled";
+validation.addEventListener("change", () => localStorage.setItem("doc-ai-validation", validation.checked ? "enabled" : "disabled"));
+outputMode.value = localStorage.getItem("doc-ai-output") === "sources" ? "sources" : "answer";
+outputMode.addEventListener("change", updateOutputMode);
+updateOutputMode();
+void refreshServerStatus();
+void refreshHiseStatus();
+
+form.addEventListener("submit", async (event) => {
+	event.preventDefault();
+	submit.disabled = true;
+	answer.textContent = "";
+	evidence.textContent = "";
+	usage.textContent = "";
+	errorBox.textContent = "";
+	progress.textContent = "Starting…";
+	try {
+		const sourcesOnly = outputMode.value === "sources";
+		if (validation.checked && !sourcesOnly) await checkHiseStatus();
+		await consumeStream("/api/research", {
+			question: question.value,
+			topic: form.elements.topic.value || "auto",
+			output: sourcesOnly ? "sources" : "answer",
+			validation: validation.checked && !sourcesOnly ? "enabled" : "disabled",
+		});
+	} catch (error) {
+		errorBox.textContent = error instanceof Error ? error.message : String(error);
+	} finally {
+		submit.disabled = false;
+	}
+});
+
+function updateOutputMode() {
+	const sourcesOnly = outputMode.value === "sources";
+	validation.disabled = sourcesOnly;
+	localStorage.setItem("doc-ai-output", outputMode.value);
+}
+
+async function refreshServerStatus() {
+	try {
+		const config = await configPromise;
+		const response = await fetch("/api/status", { headers: { Accept: "application/json", "X-Hise-Research-Token": config.requestToken } });
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		const status = await response.json();
+		setBinaryStatus("models", Boolean(status.models));
+		setBinaryStatus("docs", Boolean(status.documentation));
+	} catch {
+		setBinaryStatus("models", false);
+		setBinaryStatus("docs", false);
+	}
+}
+
+async function checkHiseStatus() {
+	progress.textContent = "Checking local HISE…";
+	try {
+		await probeHiseStatus();
+		setBinaryStatus("hise", true);
+	} catch (error) {
+		setBinaryStatus("hise", false);
+		throw new Error(`HISE validation is enabled, but the local HISE REST server could not be reached (${error instanceof Error ? error.message : String(error)}). Open HISE and enable its REST server, or disable validation.`);
+	}
+}
+
+async function refreshHiseStatus() {
+	try {
+		await probeHiseStatus();
+		setBinaryStatus("hise", true);
+	} catch {
+		setBinaryStatus("hise", false);
+	}
+}
+
+async function probeHiseStatus() {
+	const controller = new AbortController();
+	const timer = setTimeout(() => controller.abort(), 2500);
+	try {
+		const response = await fetch(`${HISE_URL}/api/status`, { signal: controller.signal });
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		const value = await response.json();
+		if (!value || typeof value !== "object") throw new Error("unexpected status response");
+		return value;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
+function setBinaryStatus(name, enabled) {
+	document.querySelector(`#${name}-yes`).checked = enabled;
+	document.querySelector(`#${name}-no`).checked = !enabled;
+}
+
+async function consumeStream(url, body) {
+	const config = await configPromise;
+	const response = await fetch(url, {
+		method: "POST",
+		headers: { "Content-Type": "application/json", Accept: "text/event-stream", "X-Hise-Research-Token": config.requestToken },
+		body: JSON.stringify(body),
+	});
+	if (!response.ok || !response.body) throw new Error(`Research server returned HTTP ${response.status}`);
+	const reader = response.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	while (true) {
+		const { value, done } = await reader.read();
+		buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+		const frames = buffer.split("\n\n");
+		buffer = frames.pop() ?? "";
+		for (const frame of frames) {
+			const line = frame.split("\n").find((item) => item.startsWith("data: "));
+			if (line) await handleEvent(JSON.parse(line.slice(6)));
+		}
+		if (done) break;
+	}
+}
+
+async function handleEvent(event) {
+	if (event.type === "progress") progress.textContent = `${event.stage}: ${event.detail}`;
+	if (event.type === "markdown") {
+		if (typeof event.html === "string") {
+			answer.classList.remove("raw-markdown");
+			answer.innerHTML = event.html;
+		} else {
+			answer.classList.add("raw-markdown");
+			answer.textContent = event.markdown;
+		}
+	}
+	if (event.type === "evidence") renderEvidence(event.evidence);
+	if (event.type === "usage") renderUsage(event.usage);
+	if (event.type === "error") throw new Error(event.error);
+	if (event.type === "complete" && event.result.validationStatus !== "pending") progress.textContent = `Complete · documentation ${event.result.documentationStatus} · validation ${event.result.validationStatus}`;
+	if (event.type === "validation-request") {
+		progress.textContent = "Diagnosing generated HiseScript with local HISE…";
+		const results = await diagnoseBlocks(event.request.blocks);
+		await consumeStream(`/api/research/${event.token}/validation`, { results });
+	}
+}
+
+function renderEvidence(items) {
+	evidence.replaceChildren();
+	if (!Array.isArray(items) || items.length === 0) return;
+	const table = document.createElement("table");
+	const caption = document.createElement("caption");
+	caption.textContent = "Selected evidence";
+	table.append(caption);
+	const head = table.createTHead().insertRow();
+	for (const label of ["Type", "Source", "Description", "Link"]) {
+		const cell = document.createElement("th");
+		cell.scope = "col";
+		cell.textContent = label;
+		head.append(cell);
+	}
+	const body = table.createTBody();
+	for (const item of items) {
+		const row = body.insertRow();
+		appendCell(row, item.kind ?? "document");
+		appendCell(row, item.title ?? item.id ?? "Untitled");
+		const description = appendCell(row, item.description || "No search description available.");
+		description.className = "description";
+		const linkCell = row.insertCell();
+		if (item.url) {
+			const link = document.createElement("a");
+			link.href = item.url;
+			link.target = "_blank";
+			link.rel = "noopener noreferrer";
+			link.textContent = "Open source";
+			linkCell.append(link);
+		} else linkCell.textContent = "-";
+	}
+	evidence.append(table);
+}
+
+function renderUsage(report) {
+	if (!report) return;
+	usage.replaceChildren();
+	const table = document.createElement("table");
+	const caption = document.createElement("caption");
+	caption.textContent = "Model usage";
+	table.append(caption);
+
+	const head = table.createTHead().insertRow();
+	for (const [label, numeric] of [["Role", false], ["Stage", false], ["Model", false], ["Thinking", false], ["Input", true], ["Cache", true], ["Output", true], ["Total", true], ["Cost", true]]) {
+		const cell = document.createElement("th");
+		cell.scope = "col";
+		cell.textContent = label;
+		if (numeric) cell.className = "number";
+		head.append(cell);
+	}
+
+	const body = table.createTBody();
+	for (const stage of report.stages ?? []) {
+		const row = body.insertRow();
+		appendCell(row, stage.role ?? "model");
+		appendCell(row, stage.stage ?? "completion");
+		appendCell(row, stage.model ?? "-");
+		appendCell(row, stage.thinkingLevel ?? "-");
+		appendCell(row, formatTokens(stage.input), true);
+		appendCell(row, formatTokens(stage.cacheRead), true);
+		appendCell(row, formatTokens(stage.output), true);
+		appendCell(row, formatTokens(stage.total), true);
+		appendCell(row, formatCost(stage.cost), true);
+	}
+
+	const total = table.createTFoot().insertRow();
+	const label = total.insertCell();
+	label.colSpan = 4;
+	label.textContent = "Total";
+	appendCell(total, formatTokens(report.input), true);
+	appendCell(total, formatTokens(report.cacheRead), true);
+	appendCell(total, formatTokens(report.output), true);
+	appendCell(total, formatTokens(report.total), true);
+	appendCell(total, formatCost(report.cost), true);
+	usage.append(table);
+}
+
+function appendCell(row, value, numeric = false) {
+	const cell = row.insertCell();
+	cell.textContent = String(value);
+	if (numeric) cell.className = "number";
+	return cell;
+}
+
+function formatTokens(value) {
+	const number = Number(value ?? 0);
+	return number >= 1000 ? `${(number / 1000).toFixed(number >= 10000 ? 0 : 1)}k` : String(number);
+}
+
+function formatCost(value) {
+	return `$${Number(value ?? 0).toFixed(4)}`;
+}
+
+async function diagnoseBlocks(blocks) {
+	const results = [];
+	for (let index = 0; index < blocks.length; index++) {
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), 5000);
+		try {
+			const response = await fetch(`${HISE_URL}/api/diagnose_script`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ code: blocks[index] }),
+				signal: controller.signal,
+			});
+			if (!response.ok) throw new Error(`HTTP ${response.status}`);
+			const value = await response.json();
+			if (!value || !Array.isArray(value.diagnostics)) throw new Error("response contained no diagnostics array");
+			results.push({ index, diagnostics: value.diagnostics });
+		} catch (error) {
+			return [{ index, unavailable: `Local HISE diagnosis failed: ${error instanceof Error ? error.message : String(error)}` }];
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+	return results;
+}
+</script>
+</body>
+</html>

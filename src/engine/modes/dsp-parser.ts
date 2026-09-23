@@ -1222,8 +1222,56 @@ function extractCommand(cst: CstNode): { command: DspCommand } | { error: string
 
 // ── Parse functions ───────────────────────────────────────────────
 
+/**
+ * Code-like DSP parameter values are commonly pasted into the REPL without
+ * DSL quotes (eg. `set E.Code Math.min(input, 1.0)`).  Keep the comma
+ * separators used for chained `set` clauses distinct from commas inside an
+ * expression, then quote the raw expression before Chevrotain sees it.
+ *
+ * The direct CLI already quotes these values while formatting argv, but the
+ * modal / HSC pipeline passes command text directly through this parser.
+ */
+function quoteRawSetExpressions(input: string): string {
+	if (!/^\s*set\b/i.test(input)) return input;
+
+	const body = input.replace(/^\s*set\b/i, "");
+	const clauses: string[] = [];
+	let start = 0;
+	let parenDepth = 0;
+	let bracketDepth = 0;
+	let quote: string | null = null;
+	let escaped = false;
+	for (let i = 0; i < body.length; i++) {
+		const ch = body[i];
+		if (quote) {
+			if (escaped) escaped = false;
+			else if (ch === "\\") escaped = true;
+			else if (ch === quote) quote = null;
+			continue;
+		}
+		if (ch === '"') { quote = ch; continue; }
+		if (ch === "(") parenDepth++;
+		else if (ch === ")") parenDepth = Math.max(0, parenDepth - 1);
+		else if (ch === "[") bracketDepth++;
+		else if (ch === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+		else if (ch === "," && parenDepth === 0 && bracketDepth === 0) {
+			clauses.push(body.slice(start, i));
+			start = i + 1;
+		}
+	}
+	clauses.push(body.slice(start));
+
+	return `set ${clauses.map((clause) => {
+		const match = /^(\s*.+?\s+)(.*)$/s.exec(clause);
+		if (!match) return clause;
+		const value = match[2].trim();
+		if (!value || value.startsWith('"') || !/[()*/]/.test(value)) return clause;
+		return `${match[1]}"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+	}).join(",")}`;
+}
+
 export function parseSingleDspCommand(input: string): { command: DspCommand } | { error: string } {
-	const lexResult = dspLexer.tokenize(input);
+	const lexResult = dspLexer.tokenize(quoteRawSetExpressions(input));
 	if (lexResult.errors.length > 0) {
 		return { error: `Lexer error: ${lexResult.errors[0].message}` };
 	}

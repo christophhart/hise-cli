@@ -19,6 +19,7 @@ import type { ModeId } from "../engine/modes/mode.js";
 import type { McpClient, McpJsonValue } from "../engine/mcp/types.js";
 import { HISESCRIPT_CHEAT_SHEET } from "./ai-guidance.js";
 import { registerPiOAuthFlows } from "./pi-runtime.js";
+import * as researchCore from "../engine/docs-assistant/researchCore.mjs";
 import { executeWhich } from "./which.js";
 import { detectHisePath } from "../tui/nodeHiseLauncher.js";
 import type { Api, Model } from "@earendil-works/pi-ai";
@@ -457,6 +458,23 @@ async function runOptionalResearchStep(
 	} catch (error) {
 		return { error: error instanceof Error ? error.message : String(error) };
 	}
+}
+
+function sharedResearchOptions(options: HiseResearchOptions) {
+	return {
+		resolveScope(query: string) {
+			const domain = inferResearchDomain(query);
+			return domain === "scriptnode"
+				? { exploreDomain: "scriptnode", searchDomain: "scriptnode", exampleSource: "scriptnode", scriptnode: true }
+				: {};
+		},
+		call(tool: string, argumentsValue: Record<string, unknown>, metadata: researchCore.ResearchCallMetadata): Promise<unknown> {
+			const invoke = () => options.mcpClient.callTool({ name: tool, arguments: argumentsValue as McpJsonValue });
+			return metadata.required
+				? runResearchStep(options, metadata.label, metadata.detail, invoke)
+				: runOptionalResearchStep(options, metadata.label, metadata.detail, invoke);
+		},
+	};
 }
 
 export function extractHiseScriptBlocks(markdown: string): string[] {
@@ -969,7 +987,7 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		cwd: options.cwd,
 		agentDir: options.agentDir,
 		settingsManager,
-		systemPrompt: HISE_RESEARCH_PROMPT,
+		systemPrompt: researchCore.createResearchSynthesisPrompt(HISESCRIPT_CHEAT_SHEET),
 	});
 	await resourceLoader.reload();
 	const created = await pi.createAgentSession({
@@ -1011,7 +1029,7 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 			cwd: options.cwd,
 			agentDir: options.agentDir,
 			settingsManager,
-			systemPrompt: HISE_RESEARCH_EXPANSION_PROMPT,
+			systemPrompt: researchCore.RESEARCH_EXPANSION_PROMPT,
 		});
 		await expansionLoader.reload();
 		const expansionCreated = await pi.createAgentSession({
@@ -1029,7 +1047,7 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		try {
 			await runResearchStep(options, "Query expansion", workerLabel, () =>
 				promptChild(expansionCreated.session, query));
-			expandedQueries = parseResearchQueries(assistantText(expansionCreated.session.messages), query);
+			expandedQueries = researchCore.parseResearchQueries(assistantText(expansionCreated.session.messages), query);
 			options.onProgress?.({
 				type: "end",
 				label: "Expanded queries",
@@ -1042,12 +1060,12 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		} finally {
 			expansionCreated.session.dispose();
 		}
-		const candidates = await collectResearchCandidates(expandedQueries, options);
+		const candidates = await researchCore.collectResearchCandidates(expandedQueries, sharedResearchOptions(options));
 		const rerankerLoader = new pi.DefaultResourceLoader({
 			cwd: options.cwd,
 			agentDir: options.agentDir,
 			settingsManager,
-			systemPrompt: HISE_RESEARCH_RERANK_PROMPT,
+			systemPrompt: researchCore.RESEARCH_RERANK_PROMPT,
 		});
 		await rerankerLoader.reload();
 		const rerankerCreated = await pi.createAgentSession({
@@ -1064,8 +1082,8 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		let selection: ResearchSelection;
 		try {
 			await runResearchStep(options, "Evidence reranking", `${workerLabel} · ${candidates.documentKeys.length} docs · ${candidates.exampleIds.length} examples`, () =>
-				promptChild(rerankerCreated.session, buildRerankPrompt(query, candidates)));
-			selection = parseResearchSelection(
+				promptChild(rerankerCreated.session, researchCore.buildRerankPrompt(query, candidates)));
+			selection = researchCore.parseResearchSelection(
 				assistantText(rerankerCreated.session.messages),
 				candidates.documentKeys,
 				candidates.exampleIds,
@@ -1079,11 +1097,10 @@ export async function runHiseResearch(query: string, options: HiseResearchOption
 		} finally {
 			rerankerCreated.session.dispose();
 		}
-		const evidence = cleanResearchEvidence(
-			await fetchResearchEvidence(selection, candidates, options),
-		);
+		const retrievedEvidence = await researchCore.fetchResearchEvidence(selection, candidates, sharedResearchOptions(options));
+		const evidence = researchCore.cleanResearchEvidence(retrievedEvidence.text);
 		await runResearchStep(options, "Synthesis", modelLabel, () =>
-			promptChild(session, `${query}\n\nMCP evidence retrieved for this request:\n${evidence}\n\nSynthesize the answer strictly from this evidence; never substitute generic knowledge. For code, use HiseScript (not Python or C++), copy documented API names exactly, and do not invent functions, overloads, paths, or lifecycle callbacks that are absent from the evidence. Prefer adapting a retrieved example over writing a new one. Every fenced HiseScript, JavaScript, or JS example must be standalone code that HISE can diagnose. If the sources conflict or evidence is insufficient, say so instead of guessing.`));
+			promptChild(session, researchCore.buildResearchSynthesisRequest(query, evidence, { requireDiagnosableHiseScript: true })));
 		let answer = assistantText(session.messages) || "The HISE documentation researcher returned no summary.";
 		const initiallyHadCode = extractHiseScriptBlocks(answer).length > 0;
 		let lastAnswerWithCode = initiallyHadCode ? answer : "";
@@ -1358,20 +1375,7 @@ function buildRerankPrompt(query: string, candidates: ResearchCandidates): strin
 }
 
 export function parseResearchQueries(text: string, originalQuery: string): string[] {
-	const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-	const candidate = fenced ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-	try {
-		const parsed = JSON.parse(candidate) as { queries?: unknown };
-		const expanded = Array.isArray(parsed.queries)
-			? parsed.queries
-				.filter((value): value is string => typeof value === "string")
-				.map((value) => value.replace(/\s+/g, " ").trim())
-				.filter((value) => value.length > 0 && value.length <= 300)
-			: [];
-		return [...new Set([originalQuery, ...expanded])].slice(0, 4);
-	} catch {
-		return [originalQuery];
-	}
+	return researchCore.parseResearchQueries(text, originalQuery);
 }
 
 export function parseResearchSelection(
@@ -1379,24 +1383,7 @@ export function parseResearchSelection(
 	availableDocumentKeys: string[],
 	availableExampleIds: string[],
 ): ResearchSelection {
-	const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-	const candidate = fenced ?? text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-	try {
-		const parsed = JSON.parse(candidate) as { documentKeys?: unknown; exampleIds?: unknown };
-		const documents = new Set(availableDocumentKeys);
-		const examples = new Set(availableExampleIds);
-		const documentKeys = Array.isArray(parsed.documentKeys)
-			? parsed.documentKeys.filter((value): value is string => typeof value === "string" && documents.has(value)).slice(0, 4)
-			: [];
-		const exampleIds = Array.isArray(parsed.exampleIds)
-			? parsed.exampleIds.filter((value): value is string => typeof value === "string" && examples.has(value)).slice(0, 2)
-			: [];
-		if (documentKeys.length > 0) return { documentKeys, exampleIds };
-	} catch { /* fall through to bounded retrieval-order fallback */ }
-	return {
-		documentKeys: availableDocumentKeys.slice(0, 3),
-		exampleIds: availableExampleIds.slice(0, 2),
-	};
+	return researchCore.parseResearchSelection(text, availableDocumentKeys, availableExampleIds);
 }
 
 async function fetchResearchEvidence(
@@ -1431,27 +1418,7 @@ async function fetchResearchEvidence(
 }
 
 export function cleanResearchEvidence(evidence: string): string {
-	const output: string[] = [];
-	let skipInternalSection = false;
-	for (const line of evidence.split("\n")) {
-		if (/^(?:Source|Dispatch\/mechanics):\s*$/.test(line.trim())) {
-			skipInternalSection = true;
-			continue;
-		}
-		if (skipInternalSection) {
-			if (line.trim() === "") skipInternalSection = false;
-			continue;
-		}
-		const trimmed = line.trim();
-		if (/^Thread safety:/i.test(trimmed)) continue;
-		if (/^[A-Za-z_][A-Za-z0-9_]*::[A-Za-z_][A-Za-z0-9_]*\(.*\)\s*->/.test(trimmed)) continue;
-		if (/^\*\*Common pitfalls:\*\*\s*(?:\[object Object\],?)*\s*$/.test(trimmed)) continue;
-		if (/\b(?:WARN_IF_AUDIO_THREAD|USE_BACKEND|HISE_[A-Z0-9_]+|JUCE_[A-Z0-9_]+)\b/.test(line)) continue;
-		if (/\.(?:cpp|cc|cxx|h|hpp):\d+\b/.test(line)) continue;
-		if (trimmed === "" && output.at(-1)?.trim() === "") continue;
-		output.push(line);
-	}
-	return output.join("\n").trim();
+	return researchCore.cleanResearchEvidence(evidence);
 }
 
 function clipEvidence(text: string, maxChars: number): string {
@@ -1465,32 +1432,6 @@ function formatTokenCount(value: number): string {
 function isMcpFailure(value: McpJsonValue): boolean {
 	return Boolean(value && typeof value === "object" && !Array.isArray(value) && "error" in value);
 }
-
-const HISE_RESEARCH_EXPANSION_PROMPT = `You rewrite HISE documentation questions for semantic retrieval. Do not answer the question. Return exactly one JSON object with a queries array containing two or three short alternative searches. Preserve explicit identifiers. Add precise HISE vocabulary, expand ambiguous user terms, and describe both acquisition and follow-up operations when the task is a workflow. Preserve every relationship constraint from the original question in each rewrite, such as one processor owning an object that another script must access. Include plausible alternative interpretations rather than committing to an uncertain one. In HISE, "module" usually means a processor; "node" may mean a ScriptNode Node in a DspNetwork, a child processor in the module tree, or a UI child component; and the Interface script accessing another module is a cross-processor operation. Cover these distinct meanings when the wording is ambiguous. If the original question explicitly names ScriptNode, scriptnode, DspNetwork, or DSP nodes, repeat that vocabulary in every rewrite and do not turn the question into a HiseScript API question. Do not include the original query; the caller preserves it automatically.
-
-Example output:
-{"queries":["cross-processor ScriptNode DspNetwork access from an Interface script","retrieve an existing DSP network owned by another script processor then get a Node by ID","reference a child HISE processor from the Interface script"]}`;
-
-const HISE_RESEARCH_RERANK_PROMPT = `You select evidence for a HISE documentation answer. Given a user question and shallow MCP search results, choose only the documents and examples that contain facts needed to answer the question. Select complete workflows, including acquisition and follow-up methods when separate candidates cover separate steps. Exclude merely similar classes, methods, and examples. Do not answer the question or invent identifiers.
-
-Return exactly one JSON object:
-{"documentKeys":["exact candidate URL or id:key"],"exampleIds":["exact candidate ID"]}
-
-Select at most 4 documents and 2 examples. Every value must be copied exactly from the candidates. Examples are optional; omit them when they do not directly demonstrate the requested workflow.`;
-
-const HISE_RESEARCH_PROMPT = `You are a research-only HISE documentation specialist. The parent has retrieved a bounded evidence pack from HISE documentation and the code-example database. For code-oriented questions, use the retrieved full API documentation and examples before synthesizing. Return a concise Markdown answer with documented facts, a focused example when useful, caveats, and source URLs or example IDs. Never claim to inspect or modify the user's project. Flag contradictions in the sources.
-
-Output style:
-- Write for HISEScript developers, not C++ developers. Lead with the recommended pattern, when to use it, and any practical default.
-- Use concise British English and ASCII punctuation. Avoid filler, marketing language, and restating headings.
-- Include code only when it demonstrates a useful pattern, non-obvious behaviour, or realistic mistake. Keep it focused and executable in its stated context, with essential setup and every referenced variable declared.
-- Do not invent setup code or API calls. Prefer retrieved, validated patterns and state clearly when evidence is incomplete.
-- Comments should explain why or show expected output, not narrate obvious statements.
-- Include only non-obvious caveats and common mistakes. Explain the consequence and the correct alternative.
-- Do not expose C++ class names, source locations, preprocessor symbols, or internal implementation mechanisms.
-- Use lists or compact tables for three or more options, modes, fields, or steps.
-
-${HISESCRIPT_CHEAT_SHEET}`;
 
 export const TUI_HELP_TOPICS: readonly ModeId[] = [
 	"root", "builder", "ui", "dsp", "script", "sampler", "inspect", "project", "compile", "undo", "wizard", "sequence", "hise", "analyse", "publish", "assets", "api", "mcp",

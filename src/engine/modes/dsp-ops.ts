@@ -17,6 +17,7 @@ import { findDspNode, findDspParent } from "../../mock/contracts/dsp.js";
 import type { ScriptnodeList } from "../data.js";
 import {
 	UNIVERSAL_NODE_PROPERTIES,
+	CONTAINER_NODE_PROPERTIES,
 	nodePropertyNames,
 	ROOT_NETWORK_PROPERTY_NAMES,
 } from "./dsp-properties.js";
@@ -358,7 +359,14 @@ function translateSetClause(
 function isNodeProperty(fieldName: string, nodeId: string, rawTree: RawDspNode | null): boolean {
 	if (UNIVERSAL_NODE_PROPERTIES.includes(fieldName as typeof UNIVERSAL_NODE_PROPERTIES[number])) return true;
 	const node = rawTree ? findDspNode(rawTree, nodeId) : null;
-	return node?.properties?.some((property) => property.propertyId === fieldName) ?? false;
+	if (node?.properties?.some((property) => property.propertyId === fieldName)) return true;
+	// Container properties may be omitted from the live tree when they still
+	// have their default value. They are nevertheless ValueTree properties,
+	// not DSP parameters (eg. ShowClones on a container).
+	return Boolean(
+		node?.factoryPath.startsWith("container.")
+		&& CONTAINER_NODE_PROPERTIES.includes(fieldName as typeof CONTAINER_NODE_PROPERTIES[number]),
+	);
 }
 
 function canonicalStringFieldName(name: string): string {

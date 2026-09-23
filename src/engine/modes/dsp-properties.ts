@@ -15,6 +15,7 @@ export const UNIVERSAL_NODE_PROPERTIES = [
 
 export const CONTAINER_NODE_PROPERTIES = [
 	"ShowParameters",
+	"ShowClones",
 	"IsVertical",
 ] as const;
 

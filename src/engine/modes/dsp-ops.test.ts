@@ -118,6 +118,16 @@ describe("dsp-ops — set parameter value", () => {
 		const ops = opsOk("set g1.SomeFlag true");
 		expect(ops[0]!.value).toBe(true);
 	});
+
+	it("emits container properties as property parameter writes", () => {
+		const ops = opsOk("set Container.ShowClones false", TREE_FIXTURE);
+		expect(ops[0]).toMatchObject({
+			op: "set",
+			nodeId: "Container",
+			parameterId: "ShowClones",
+			value: false,
+		});
+	});
 });
 
 describe("dsp-ops — set_complex_data", () => {

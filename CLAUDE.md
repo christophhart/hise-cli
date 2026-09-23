@@ -84,12 +84,14 @@ tests without publishing. Runner bootstrap: [docs/RUNNER_SETUP.md](docs/RUNNER_S
 `sudo installer -pkg`; Windows rename-trick + `/VERYSILENT`). Auto-check fires
 2s into TUI launch only — CLI stays silent for LLM agents.
 
-### Web SPA embedding
+### Browser targets
 
-The bun-compiled binary serves `--web` from memory. Build chain:
-`build-web.mjs → embed-web-assets.mjs → build-embed.mjs → esbuild`. The embed
-step writes `src/web/embedded-assets.ts` (gitignored) — base64 `Map<string,
-Uint8Array>` decoded once at startup.
+`src/web-embed/` is the isomorphic engine bundle consumed by the HISE website;
+`scripts/build-embed.mjs` emits it independently to `dist/embed/`.
+`hise-cli --research-server` serves the local documentation research UI from
+`src/research-web/`, backed by `src/research-server/` and the Pi models configured
+under `~/.hise/agent`. The research server binds to loopback and embeds its HTML
+in the main executable through esbuild's text loader.
 
 ## Project Structure
 
@@ -103,8 +105,9 @@ Top-level layout under `src/`:
   Subdirs: `wizard-handlers/`, `screencast/`.
 - `cli/` — JSON-output CLI (`run.ts`, `args.ts`, `help.ts`, `update.ts`, …).
 - `live-contract/` — `*.live.test.ts` against running HISE. `mock/` — mock
-  runtime. `web/` + `web-embed/` — `--web` SPA + bundled assets.
-- `index.ts` — entry point (TUI + one-shot CLI dispatcher).
+  runtime. `web-embed/` — isomorphic engine bundle for the HISE website.
+- `research-server/` + `research-web/` — local BYOM documentation research UI.
+- `index.ts` — entry point (TUI + one-shot CLI and research-server dispatcher).
 
 Outside `src/`: `data/` (shipped JSON datasets + `wizards/` conversion sources),
 `scripts/` (esbuild + binary + web build scripts), `screencasts/` (VHS `.tape`).

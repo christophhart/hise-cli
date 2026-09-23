@@ -15,7 +15,7 @@ import { cliError, exitCodeForPayload } from "./cli/errors.js";
 // ── Runtime singleton ───────────────────────────────────────────────
 
 const runtime: NodeRuntime = bootstrapNodeRuntime({
-	allowInteractive: !process.argv.includes("--web"),
+	allowInteractive: !process.argv.includes("--research-server"),
 });
 
 // ── Windows: clean up post-update sidecar ──────────────────────────
@@ -51,13 +51,15 @@ async function launchRepl(args: string[]): Promise<void> {
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-	// Web frontend: hise-cli --web [--mock] [--no-open] [--port=N]
-	if (process.argv.includes("--web")) {
-		const { launchWeb } = await import("./web/server.js");
-		const args = process.argv.slice(2);
-		await launchWeb({
-			runtime,
-			useMock: args.includes("--mock"),
+	// Local browser research frontend backed by the configured Pi models.
+	if (process.argv[2] === "--research-server") {
+		const args = process.argv.slice(3);
+		if (args.includes("--help") || args.includes("-h")) {
+			console.log("hise-cli --research-server [--port <number>] [--no-open]");
+			return;
+		}
+		const { launchResearchServer } = await import("./research-server/server.mjs");
+		await launchResearchServer({
 			openBrowser: !args.includes("--no-open"),
 			port: parsePortFlag(args),
 		});
@@ -174,13 +176,12 @@ async function main(): Promise<void> {
 }
 
 function parsePortFlag(args: string[]): number | undefined {
-	for (const arg of args) {
-		if (arg.startsWith("--port=")) {
-			const n = Number(arg.slice("--port=".length));
-			if (Number.isFinite(n) && n > 0 && n < 65536) return n;
-		}
-	}
-	return undefined;
+	const equals = args.find((arg) => arg.startsWith("--port="));
+	const raw = equals?.slice("--port=".length) ?? (args.includes("--port") ? args[args.indexOf("--port") + 1] : undefined);
+	if (raw === undefined) return undefined;
+	const value = Number(raw);
+	if (Number.isInteger(value) && value > 0 && value < 65536) return value;
+	throw new Error(`Invalid research server port: ${raw}`);
 }
 
 function wantsJsonOutput(argv: string[]): boolean {
