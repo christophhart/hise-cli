@@ -4,6 +4,25 @@ import { spawnSync } from "node:child_process";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
 
+// Ink conditionally imports its optional React DevTools peer when DEV=true.
+// esbuild still resolves that dynamic module while producing release bundles,
+// even though release binaries never enable it. Replace it with a no-op so
+// standalone builds do not depend on an optional development-only package.
+const disableReactDevtools = {
+	name: "disable-react-devtools",
+	setup(build) {
+		const namespace = "disabled-react-devtools";
+		build.onResolve({ filter: /^react-devtools-core$/ }, () => ({
+			path: "react-devtools-core",
+			namespace,
+		}));
+		build.onLoad({ filter: /.*/, namespace }, () => ({
+			contents: "export default { initialize() {}, connectToDevTools() {} };",
+			loader: "js",
+		}));
+	},
+};
+
 {
 	const result = spawnSync(process.execPath, ["scripts/generate-agent-context.mjs"], {
 		stdio: "inherit",
@@ -45,6 +64,7 @@ await build({
 		".yaml": "text",
 		".html": "text",
 	},
+	plugins: [disableReactDevtools],
 	sourcemap: false,
 	logLevel: "info",
 });
