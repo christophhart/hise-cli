@@ -20,9 +20,16 @@ export interface McpClient {
 	callTool(request: McpToolRequest, options?: McpCallOptions): Promise<McpJsonValue>;
 }
 
+export interface McpToolInputSchema {
+	type?: string;
+	properties?: { [key: string]: { type?: string; description?: string } };
+	required?: string[];
+}
+
 export interface McpToolInfo {
 	name: string;
 	description?: string;
+	inputSchema?: McpToolInputSchema;
 }
 
 export interface McpResourceInfo {
