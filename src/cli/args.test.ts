@@ -528,6 +528,16 @@ describe("parseCliArgs", () => {
 		}
 	});
 
+	it("parses direct UI CSS query flags", () => {
+		const result = parseCliArgs(["node", "hise-cli", "ui", "query_css", "--module", "Interface", "--component", "Button1"], getCliCommands());
+		expect(result).toEqual({
+			kind: "css-api",
+			command: { action: "query-css", moduleId: "Interface", componentId: "Button1" },
+			useMock: false,
+			output: { json: false, agent: false, compact: false, select: undefined },
+		});
+	});
+
 	it("parses direct DSP complex data assignment with optional slot", () => {
 		const defaultSlot = parseCliArgs(["node", "hise-cli", "dsp", "set-complex-data", "--module", "Script FX1", "--node", "Env", "--type", "Table", "--index", "3"], getCliCommands());
 		expect(defaultSlot.kind).toBe("execute");
@@ -840,6 +850,14 @@ describe("script direct subcommands", () => {
 		expect(result.kind).toBe("script-api");
 		if (result.kind === "script-api") {
 			expect(result.command).toEqual({ action: "diagnose", moduleId: "Interface", filePath: "Scripts/UI.js", async: true });
+		}
+	});
+
+	it("parses script CSS diagnosis", () => {
+		const result = parseCliArgs(["node", "hise-cli", "script", "diagnose_css", "UI/style.css"], getCliCommands());
+		expect(result.kind).toBe("css-api");
+		if (result.kind === "css-api") {
+			expect(result.command).toEqual({ action: "diagnose-css", filePath: "UI/style.css" });
 		}
 	});
 

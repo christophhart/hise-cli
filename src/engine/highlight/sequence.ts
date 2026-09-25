@@ -4,11 +4,11 @@ import type { TokenSpan, TokenType } from "./tokens.js";
 import { tokenizeSlash } from "./slash.js";
 
 const COMMAND_KEYWORDS = new Set([
-	"create", "flush", "show", "play", "record", "stop", "get", "help",
+	"create", "e2e", "flush", "show", "play", "record", "stop", "get", "help",
 ]);
 
 const EVENT_VERBS = new Set([
-	"play", "send", "set", "eval",
+	"play", "send", "set", "eval", "moveto", "click", "doubleclick", "drag", "selectmenuitem", "screenshot",
 ]);
 
 const SIGNAL_NAMES = new Set([
@@ -16,7 +16,7 @@ const SIGNAL_NAMES = new Set([
 ]);
 
 const CONNECTORS = new Set([
-	"for", "at", "as", "from", "to",
+	"for", "at", "as", "from", "to", "by", "component",
 ]);
 
 const MIDI_KEYWORDS = new Set([

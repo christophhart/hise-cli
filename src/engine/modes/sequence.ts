@@ -8,17 +8,26 @@ import { tokenizeSequence } from "../highlight/sequence.js";
 import type { CompletionResult, Mode, SessionContext } from "./mode.js";
 import { MODE_ACCENTS } from "./mode.js";
 import type { CompletionEngine } from "../completion/engine.js";
-import type { SequenceDefinition, InjectMidiResponse, ReplResult } from "./sequence-types.js";
+import type {
+	StoredSequenceDefinition,
+	E2eDefinition,
+	InjectMidiResponse,
+	E2eResponse,
+} from "./sequence-types.js";
 import {
 	parseEventLine,
+	parseE2eEventLine,
 	buildInjectPayload,
+	buildE2ePayload,
 	formatEventSummary,
+	formatE2eEventSummary,
 	sequenceDuration,
 	extractName,
 } from "./sequence-parser.js";
 
 const SEQUENCE_COMMANDS = new Map<string, string>([
 	["create", 'Start defining a named sequence: create "<name>"'],
+	["e2e", 'Start defining a UI test: e2e "<name>"'],
 	["flush", "End the current sequence definition"],
 	["show", 'Show sequence details: show "<name>"'],
 	["play", 'Execute a sequence (blocking): play "<name>"'],
@@ -35,8 +44,8 @@ export class SequenceMode implements Mode {
 	readonly prompt = "[sequence] > ";
 	private readonly completionEngine: CompletionEngine | null;
 
-	private sequences = new Map<string, SequenceDefinition>();
-	private currentDef: SequenceDefinition | null = null;
+	private sequences = new Map<string, StoredSequenceDefinition>();
+	private currentDef: StoredSequenceDefinition | null = null;
 	private replResults = new Map<string, string>();
 
 	constructor(completionEngine?: CompletionEngine) {
@@ -77,6 +86,7 @@ export class SequenceMode implements Mode {
 
 		// ── Defining phase ─────────────────────────────────────────
 		if (this.currentDef) {
+			const def = this.currentDef;
 			const lower = trimmed.toLowerCase();
 			if (lower === "flush") {
 				return this.handleFlush();
@@ -85,11 +95,15 @@ export class SequenceMode implements Mode {
 				return this.showHelp();
 			}
 			// Parse as event line
-			const event = parseEventLine(trimmed);
-			if (typeof event === "string") {
-				return errorResult(event);
+			if (def.kind === "e2e") {
+				const event = parseE2eEventLine(trimmed);
+				if (typeof event === "string") return errorResult(event);
+				def.events.push(event);
+				return textResult(`  + ${formatE2eEventSummary(event)} at ${event.timestamp}ms`);
 			}
-			this.currentDef.events.push(event);
+			const event = parseEventLine(trimmed);
+			if (typeof event === "string") return errorResult(event);
+			def.events.push(event);
 			return textResult(`  + ${formatEventSummary(event)} at ${event.timestamp}ms`);
 		}
 
@@ -100,7 +114,8 @@ export class SequenceMode implements Mode {
 
 		switch (command) {
 			case "create": return this.handleCreate(args);
-			case "flush": return errorResult("No active sequence definition. Use 'create' first.");
+			case "e2e": return this.handleE2e(args);
+			case "flush": return errorResult("No active definition. Use 'create' or 'e2e' first.");
 			case "show": return this.handleShow(args);
 			case "play": return this.handlePlay(args, session);
 			case "record": return this.handleRecord(args, session);
@@ -121,8 +136,19 @@ export class SequenceMode implements Mode {
 		if (!name) {
 			return errorResult('Usage: create "<name>"');
 		}
-		this.currentDef = { name, events: [] };
+		this.currentDef = { kind: "midi", name, events: [] };
 		return textResult(`Defining sequence "${name}" — enter events, then flush.`);
+	}
+
+	private handleE2e(args: string): CommandResult {
+		if (this.currentDef) {
+			const kind = this.currentDef.kind === "e2e" ? "E2E test" : "sequence";
+			return errorResult(`Already defining ${kind} "${this.currentDef.name}". Use 'flush' to finish.`);
+		}
+		const name = extractName(args);
+		if (!name) return errorResult('Usage: e2e "<name>"');
+		this.currentDef = { kind: "e2e", name, events: [] };
+		return textResult(`Defining E2E test "${name}" — enter interactions, then flush.`);
 	}
 
 	private handleFlush(): CommandResult {
@@ -131,7 +157,8 @@ export class SequenceMode implements Mode {
 		this.sequences.set(def.name, def);
 		this.currentDef = null;
 		const dur = sequenceDuration(def.events);
-		return textResult(`Sequence "${def.name}" defined: ${def.events.length} events, ${dur}ms total.`);
+		const label = def.kind === "e2e" ? "E2E test" : "Sequence";
+		return textResult(`${label} "${def.name}" defined: ${def.events.length} events, ${dur}ms total.`);
 	}
 
 	private handleShow(args: string): CommandResult {
@@ -142,11 +169,12 @@ export class SequenceMode implements Mode {
 		if (!def) return errorResult(`Unknown sequence: "${name}"`);
 
 		const dur = sequenceDuration(def.events);
-		const rows = def.events.map((e, i) =>
-			`| ${i + 1} | ${e.timestamp}ms | ${e.type} | ${formatEventSummary(e)} |`,
-		);
+		const rows = isE2eDefinition(def)
+			? def.events.map((e, i) => `| ${i + 1} | ${e.timestamp}ms | ${e.type} | ${formatE2eEventSummary(e)} |`)
+			: def.events.map((e, i) => `| ${i + 1} | ${e.timestamp}ms | ${e.type} | ${formatEventSummary(e)} |`);
+		const title = def.kind === "e2e" ? "E2E" : "Sequence";
 
-		return markdownResult(`## Sequence: ${def.name}
+		return markdownResult(`## ${title}: ${def.name}
 
 | | | |
 |---|---|---|
@@ -167,6 +195,13 @@ ${rows.join("\n")}`);
 
 		if (!session.connection) {
 			return errorResult("No HISE connection.");
+		}
+
+		if (def.kind === "e2e") {
+			const response = await session.connection.post("/api/testing/e2e", buildE2ePayload(def));
+			if (isErrorResponse(response)) return errorResult(response.message);
+			if (!isSuccessResponse(response)) return errorResult("Unexpected response from HISE");
+			return this.processE2eResponse(response, name);
 		}
 
 		const payload = buildInjectPayload(def, { blocking: true });
@@ -197,6 +232,7 @@ ${rows.join("\n")}`);
 
 		const def = this.sequences.get(name);
 		if (!def) return errorResult(`Unknown sequence: "${name}"`);
+		if (def.kind === "e2e") return errorResult("record is only available for MIDI sequences.");
 
 		if (!session.connection) {
 			return errorResult("No HISE connection.");
@@ -246,6 +282,36 @@ ${rows.join("\n")}`);
 		return textResult(lines.join("\n"));
 	}
 
+	private processE2eResponse(
+		response: { result?: string | object | null; value?: unknown; [key: string]: unknown },
+		name: string,
+	): CommandResult {
+		const data = extractE2eResponseData(response);
+		if (!data) return textResult(`E2E test "${name}" completed.`);
+
+		if (data.replResults) {
+			for (const r of data.replResults) this.replResults.set(r.id, String(r.value));
+		}
+
+		const lines: string[] = [`E2E test "${name}" completed.`];
+		if (data.interactionsCompleted !== undefined) lines.push(`Interactions: ${data.interactionsCompleted}`);
+		if (data.totalElapsedMs !== undefined) lines.push(`Duration: ${data.totalElapsedMs}ms`);
+		if (data.replResults?.length) {
+			lines.push(`REPL results: ${data.replResults.length}`);
+			for (const r of data.replResults) lines.push(`  ${r.id} = ${r.value}`);
+		}
+		if (data.screenshots) {
+			const screenshots = Object.values(data.screenshots);
+			if (screenshots.length) {
+				lines.push(`Screenshots: ${screenshots.length}`);
+				for (const screenshot of screenshots) {
+					lines.push(`  ${screenshot.id}${screenshot.filePath ? ` -> ${screenshot.filePath}` : ""}`);
+				}
+			}
+		}
+		return textResult(lines.join("\n"));
+	}
+
 	private async handleStop(session: SessionContext): Promise<CommandResult> {
 		if (!session.connection) {
 			return errorResult("No HISE connection.");
@@ -269,7 +335,7 @@ ${rows.join("\n")}`);
 
 		const value = this.replResults.get(id);
 		if (value === undefined) {
-			return errorResult(`No result for "${id}". Run a sequence with eval first.`);
+			return errorResult(`No result for "${id}". Run a sequence or E2E test with eval first.`);
 		}
 		return textResult(value);
 	}
@@ -294,7 +360,19 @@ ${rows.join("\n")}
 | \`<time> send CC <ctrl> <val>\` | CC message |
 | \`<time> send pitchbend <val>\` | Pitchbend |
 | \`<time> set <Proc.Param> <val>\` | Set attribute |
-| \`<time> eval <expr> as <id>\` | Script eval |`);
+| \`<time> eval <expr> as <id>\` | Script eval |
+
+## E2E Event Lines (during e2e definition)
+
+| Pattern | Description |
+|---------|-------------|
+| \`<time> moveTo <componentId>\` | Move to a component |
+| \`<time> click <componentId> [for <dur>]\` | Click a component |
+| \`<time> doubleClick <componentId>\` | Double-click a component |
+| \`<time> drag <componentId> by <x> <y> [for <dur>]\` | Drag a component |
+| \`<time> selectMenuItem <text>\` | Select a menu item |
+| \`<time> screenshot <id> [component <componentId>] [at <scale>]\` | Capture a screenshot |
+| \`<time> eval <expr> as <id>\` | Evaluate HISEScript |`);
 	}
 }
 
@@ -319,4 +397,30 @@ function extractResponseData(
 		// parse failure
 	}
 	return null;
+}
+
+function extractE2eResponseData(
+	response: { result?: string | object | null; value?: unknown; [key: string]: unknown },
+): E2eResponse | null {
+	try {
+		if ("interactionsCompleted" in response || "replResults" in response || "screenshots" in response) {
+			return response as unknown as E2eResponse;
+		}
+		if (response.value && typeof response.value === "object") {
+			return response.value as E2eResponse;
+		}
+		if (typeof response.result === "string" && response.result !== "") {
+			return JSON.parse(response.result) as E2eResponse;
+		}
+		if (response.result && typeof response.result === "object") {
+			return response.result as E2eResponse;
+		}
+	} catch {
+		// parse failure
+	}
+	return null;
+}
+
+function isE2eDefinition(def: StoredSequenceDefinition): def is E2eDefinition {
+	return def.kind === "e2e";
 }

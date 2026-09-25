@@ -11,6 +11,13 @@ describe("tokenizeSequence", () => {
 		expect(tokens).toEqual([["create", "keyword"]]);
 	});
 
+	it("highlights E2E events", () => {
+		const tokens = tokenTypes('250ms screenshot "during_click" component "Button1" at 50%');
+		expect(tokens[2]).toEqual(["screenshot", "keyword"]);
+		expect(tokens.find(t => t[0] === "component")?.[1]).toBe("comment");
+		expect(tokens.find(t => t[0] === "50")?.[1]).toBe("integer");
+	});
+
 	it("highlights create with quoted name", () => {
 		const tokens = tokenTypes('create "My Sequence"');
 		expect(tokens).toEqual([

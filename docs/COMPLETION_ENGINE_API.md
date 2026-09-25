@@ -79,7 +79,7 @@ interface CompletionResult {
 | `dsp` | yes | `src/engine/modes/dsp.ts:704–751` | DSP keywords, scriptnode factories + nodes, live node IDs, screenshot args (`at`/`to`) |
 | `ui` | yes | `src/engine/modes/ui.ts:160–172` | UI keywords, component types, properties, instance IDs |
 | `inspect` | yes | `src/engine/modes/inspect.ts:35–44` | `version`, `project`, `help` |
-| `sequence` | yes | `src/engine/modes/sequence.ts:57–72` | commands (`create`/`flush`/`show`/`play`/`record`/`stop`/`get`), event verbs (`send`/`set`/`eval`), signals (`sine`/`saw`/`sweep`/`dirac`/`noise`/`silence`) |
+| `sequence` | yes | `src/engine/modes/sequence.ts:57–72` | commands (`create`/`e2e`/`flush`/`show`/`play`/`record`/`stop`/`get`), MIDI verbs and E2E verbs (`moveTo`/`click`/`doubleClick`/`drag`/`selectMenuItem`/`screenshot`/`eval`), signals (`sine`/`saw`/`sweep`/`dirac`/`noise`/`silence`) |
 | `undo` | yes | `src/engine/modes/undo.ts:85–94` | `back`/`forward`/`clear`/`diff`/`history`, conditional `plan`/`apply`/`discard` |
 | `root` (default `hsc`) | no | — | Only slash commands at root level |
 

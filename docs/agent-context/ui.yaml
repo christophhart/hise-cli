@@ -312,6 +312,25 @@ commands:
     examples:
       - title: Rename a component
         argv: [hise-cli, ui, rename, --component, Cutoff, --id, CutoffSlider, --agent]
+  - id: ui.query_css
+    syntax: ui query_css --module <module> --component <id>
+    title: Query resolved CSS properties
+    purpose: Inspect the selectors and resolved CSS properties applied to a live UI component.
+    command:
+      argv: [hise-cli, ui, query_css, --module, Interface, --component, Button1, --agent]
+    aliases: [query css, inspect component css, show applied css, resolve css properties]
+    tags: [ui, css, properties, selectors, inspect, read-only]
+    contexts: [cli]
+    agentRelevance: high
+    notes:
+      - Use this command to verify CSS values applied by HISE to a component.
+      - The response includes selectors and resolved properties, not CSS syntax diagnostics.
+    help:
+      visibility: common
+      order: 65
+    examples:
+      - title: Query a component stylesheet
+        argv: [hise-cli, ui, query_css, --module, Interface, --component, Button1, --agent]
   - id: ui.remove.component
     syntax: ui remove --component <id-or-path> [--component <id-or-path>...] [--module <module>]
     title: Remove UI component

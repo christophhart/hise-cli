@@ -75,6 +75,30 @@ export function createDefaultMockRuntime(): MockRuntimeProfile {
 		logs: [],
 		errors: [],
 	}));
+	connection.onPost("/api/parse_css", (body) => {
+		const request = body as { moduleId?: string; componentId?: string; filePath?: string } | undefined;
+		if (request?.filePath) {
+			return {
+				success: true,
+				filePath: request.filePath,
+				diagnostics: [],
+				logs: [],
+				errors: [],
+			};
+		}
+		return {
+			success: true,
+			moduleId: request?.moduleId ?? "Interface",
+			componentId: request?.componentId ?? "Button1",
+			selectors: ["button"],
+			properties: {
+				"background-color": { value: "0xFF151515" },
+				width: { value: "50%", resolved: 64 },
+			},
+			logs: [],
+			errors: [],
+		};
+	});
 
 	// Builder tree - return a raw-like tree object in the envelope.
 	// The actual raw->TreeNode normalization happens in the consumer.

@@ -4,7 +4,7 @@ import { HttpHiseConnection, type HiseConnection } from "../engine/hise.js";
 import type { CommandEntry } from "../engine/commands/registry.js";
 import { parseCliArgs } from "./args.js";
 import { runHow } from "./how.js";
-import type { ScriptApiCommand } from "./args.js";
+import type { CssApiCommand, ScriptApiCommand } from "./args.js";
 import { ObserverClient } from "./observer.js";
 import { CapturingHiseConnection } from "./capture.js";
 import { processCliOutputPayload, serializeCliOutput, type CliOutputPayload } from "./output.js";
@@ -83,6 +83,9 @@ export async function executeCliCommand(
 	}
 	if (parsed.kind === "script-api") {
 		return executeScriptApiCommand(parsed.command, parsed.useMock, parsed.output, opts, dataLoader);
+	}
+	if (parsed.kind === "css-api") {
+		return executeCssApiCommand(parsed.command, parsed.useMock, parsed.output, opts);
 	}
 	if (parsed.kind === "version") {
 		return finalizeJsonPayload({ ok: true, value: { version: cliVersion() } }, parsed.output);
@@ -699,6 +702,24 @@ async function executeScriptApiCommand(
 	}
 }
 
+async function executeCssApiCommand(
+	command: CssApiCommand,
+	useMock: boolean,
+	output: import("./args.js").CliOutputOptions,
+	opts: CliCommandOptions,
+): Promise<{ kind: "json"; payload: CliOutputPayload; output: import("./args.js").CliOutputOptions }> {
+	const mockRuntime = !opts.connectionOverride && useMock ? createDefaultMockRuntime() : null;
+	const connection = opts.connectionOverride ?? mockRuntime?.connection ?? new HttpHiseConnection();
+	const body = command.action === "query-css"
+		? { moduleId: command.moduleId, componentId: command.componentId }
+		: { filePath: command.filePath };
+	const response = await connection.post("/api/parse_css", body);
+	const payload = command.action === "query-css"
+		? serializeCssQueryEnvelope(response)
+		: serializeCssDiagnoseEnvelope(response);
+	return finalizeJsonPayload(payload, output);
+}
+
 interface ScriptRollbackStatus {
 	attempted: boolean;
 	ok: boolean;
@@ -973,6 +994,52 @@ function serializeDiagnoseEnvelope(response: import("../engine/hise.js").HiseRes
 
 	const payload: { ok: true; value: Record<string, unknown>; logs?: string[] } = { ok: true, value };
 	if (logs.length > 0) payload.logs = logs;
+	return payload as CliOutputPayload;
+}
+
+function serializeCssQueryEnvelope(response: import("../engine/hise.js").HiseResponse): CliOutputPayload {
+	if (isErrorResponse(response)) return cliError(classifyTransportError(response.message), response.message);
+	if (!isEnvelopeResponse(response)) return cliError("hise_api_error", "Unexpected response from HISE");
+	if (!response.success || response.errors.length > 0) return cliError("hise_api_error", hiseErrorText(response));
+
+	const { success: _success, logs, errors: _errors, ...value } = response;
+	const payload: { ok: true; value: Record<string, unknown>; logs?: string[] } = { ok: true, value };
+	if (logs.length > 0) payload.logs = logs;
+	return payload as CliOutputPayload;
+}
+
+function serializeCssDiagnoseEnvelope(response: import("../engine/hise.js").HiseResponse): CliOutputPayload {
+	if (isErrorResponse(response)) return cliError(classifyTransportError(response.message), response.message);
+	if (!isEnvelopeResponse(response)) return cliError("hise_api_error", "Unexpected response from HISE");
+
+	const body = response as typeof response & {
+		filePath?: string;
+		diagnostics?: Array<Record<string, unknown>>;
+	};
+	const diagnostics = Array.isArray(body.diagnostics) ? body.diagnostics : [];
+	const value: Record<string, unknown> = {
+		...(body.apiVersion ? { apiVersion: body.apiVersion } : {}),
+		...(body.filePath ? { filePath: body.filePath } : {}),
+		diagnostics,
+	};
+	const hasErrors = diagnostics.some((diagnostic) => diagnostic.severity === "error");
+
+	if (hasErrors) {
+		return {
+			ok: false,
+			code: "validation_error",
+			error: "CSS diagnostics found errors",
+			value,
+			...(body.logs.length > 0 ? { logs: body.logs } : {}),
+		};
+	}
+
+	if ((!body.success || body.errors.length > 0) && diagnostics.length === 0) {
+		return cliError("hise_api_error", hiseErrorText(body));
+	}
+
+	const payload: { ok: true; value: Record<string, unknown>; logs?: string[] } = { ok: true, value };
+	if (body.logs.length > 0) payload.logs = body.logs;
 	return payload as CliOutputPayload;
 }
 

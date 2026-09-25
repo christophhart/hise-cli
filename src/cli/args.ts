@@ -8,6 +8,7 @@ export type CliParseResult =
 	| { kind: "diagnose"; filePath: string }
 	| { kind: "run"; source: { type: "file"; path: string } | { type: "stdin" } | { type: "inline"; content: string }; dryRun: boolean; useMock: boolean; watch: boolean; toCli: boolean; verbosity: import("../engine/run/executor.js").RunReportVerbosity; output: CliOutputOptions }
 	| { kind: "script-api"; command: ScriptApiCommand; useMock: boolean; output: CliOutputOptions }
+	| { kind: "css-api"; command: CssApiCommand; useMock: boolean; output: CliOutputOptions }
 	| { kind: "update"; check: boolean }
 	| { kind: "version"; output: CliOutputOptions }
 	| { kind: "status"; output: CliOutputOptions }
@@ -56,6 +57,10 @@ export type ScriptApiCommand =
 	| { action: "diagnose"; moduleId: string; filePath?: string; async: boolean }
 	| { action: "add-file"; moduleId: string; relativePath: string }
 	| { action: "show"; moduleId: string; target: "tree" | string; filters: ScriptShowFilters; raw?: string };
+
+export type CssApiCommand =
+	| { action: "query-css"; moduleId: string; componentId: string }
+	| { action: "diagnose-css"; filePath: string };
 
 const RESERVED_FLAGS = new Set(["--help", "-h", "--mock", "--dry-run", "--watch", "--show-keys", "--quiet", "--verbose", "--pretty", "--json", "--stdin", "--agent", "--compact", "--select", "--target"]);
 
@@ -871,9 +876,18 @@ function findUnexpectedArgs(args: string[], valueFlags: Set<string>, booleanFlag
 
 function parseScriptApiArgs(args: string[], output: CliOutputOptions): CliParseResult {
 	const action = args[1];
-	if (!action) return { kind: "error", message: "script requires a subcommand: repl | get | set | add-file | compile" };
+	if (!action) return { kind: "error", message: "script requires a subcommand: repl | get | set | add-file | compile | diagnose_css" };
+	if (action === "diagnose_css") {
+		const rest = args.slice(2);
+		const useMock = rest.includes("--mock");
+		const positional = rest.filter((arg) => arg !== "--mock" && !arg.startsWith("--"));
+		const unexpected = rest.find((arg) => arg !== "--mock" && arg.startsWith("--"));
+		if (unexpected) return { kind: "error", message: `Unexpected argument for script diagnose_css: ${unexpected}` };
+		if (positional.length !== 1) return { kind: "error", message: "script diagnose_css requires exactly one CSS file path" };
+		return { kind: "css-api", command: { action: "diagnose-css", filePath: positional[0]! }, useMock, output };
+	}
 	if (action !== "repl" && action !== "get" && action !== "set" && action !== "add-file" && action !== "compile" && action !== "diagnose" && action !== "show" && action !== "docs") {
-		return { kind: "error", message: `Unknown script subcommand "${action}". Use repl, get, set, add-file, compile, diagnose, show, or docs.` };
+		return { kind: "error", message: `Unknown script subcommand "${action}". Use repl, get, set, add-file, compile, diagnose, diagnose_css, show, or docs.` };
 	}
 
 	const rest = args.slice(2);
@@ -1300,6 +1314,9 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 				? "dsp"
 				: null;
 	if (directNamespace) {
+		if (directNamespace === "ui" && args[1] === "query_css") {
+			return parseUiCssQueryArgs(args.slice(2), output);
+		}
 		const entry = commands.find((command) => command.name === directNamespace && command.kind === "mode");
 		if (!entry) return { kind: "error", message: `Unknown mode: ${directNamespace}` };
 		return parseDirectModeCommand(directNamespace, args.slice(1), entry, output);
@@ -1440,4 +1457,15 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	const canonicalCommand = `/${entry.name}${targetSuffix}${tail ? ` ${tail}` : ""}`;
 
 	return { kind: "execute", entry, canonicalCommand, mode, useMock, stdin, dryRun, output };
+}
+
+function parseUiCssQueryArgs(args: string[], output: CliOutputOptions): CliParseResult {
+	const useMock = args.includes("--mock");
+	const moduleId = readRequiredFlag(args, "--module");
+	if (typeof moduleId !== "string") return { kind: "error", message: "ui query_css requires --module" };
+	const componentId = readRequiredFlag(args, "--component");
+	if (typeof componentId !== "string") return { kind: "error", message: "ui query_css requires --component" };
+	const unexpected = findUnexpectedArgs(args, new Set(["--module", "--component"]), new Set(["--mock"]));
+	if (unexpected) return { kind: "error", message: `Unexpected argument for ui query_css: ${unexpected}` };
+	return { kind: "css-api", command: { action: "query-css", moduleId, componentId }, useMock, output };
 }

@@ -5,7 +5,9 @@ import {
 	parseNoteOrNumber,
 	normalizeVelocity,
 	parseEventLine,
+	parseE2eEventLine,
 	buildInjectPayload,
+	buildE2ePayload,
 	formatEventSummary,
 	sequenceDuration,
 	extractName,
@@ -273,6 +275,37 @@ describe("parseEventLine", () => {
 	});
 });
 
+describe("parseE2eEventLine", () => {
+	it("parses an active click and an in-progress screenshot", () => {
+		expect(parseE2eEventLine('0ms click "Button1" for 500ms')).toEqual({
+			type: "click",
+			timestamp: 0,
+			target: "Button1",
+			duration: 500,
+		});
+		expect(parseE2eEventLine('250ms screenshot "during_click" component "Button1" at 50%')).toEqual({
+			type: "screenshot",
+			timestamp: 250,
+			id: "during_click",
+			componentId: "Button1",
+			scale: 0.5,
+		});
+	});
+
+	it("parses drag, menu, and eval interactions", () => {
+		expect(parseE2eEventLine('0ms moveTo "Button1"')).toEqual({ type: "moveTo", timestamp: 0, target: "Button1" });
+		expect(parseE2eEventLine('100ms drag "Button1" by 10 -5 for 200ms')).toEqual({
+			type: "drag", timestamp: 100, target: "Button1", delta: { x: 10, y: -5 }, duration: 200,
+		});
+		expect(parseE2eEventLine('300ms selectMenuItem "Open"')).toEqual({
+			type: "selectMenuItem", timestamp: 300, menuItemText: "Open",
+		});
+		expect(parseE2eEventLine('400ms eval 1 + 2 as result')).toEqual({
+			type: "repl", timestamp: 400, expression: "1 + 2", id: "result",
+		});
+	});
+});
+
 describe("buildInjectPayload", () => {
 	it("builds payload with blocking", () => {
 		const def = {
@@ -299,6 +332,27 @@ describe("buildInjectPayload", () => {
 		const payload = buildInjectPayload(def, { recordOutput: "test.wav" });
 		expect(payload.blocking).toBe(true);
 		expect(payload.recordOutput).toBe("test.wav");
+	});
+});
+
+describe("buildE2ePayload", () => {
+	it("converts absolute timestamps to relative delays", () => {
+		const def = {
+			kind: "e2e" as const,
+			name: "Screenshot during click",
+			events: [
+				{ type: "click" as const, timestamp: 0, target: "Button1", duration: 500 },
+				{ type: "screenshot" as const, timestamp: 250, id: "during_click", componentId: "Button1" },
+				{ type: "repl" as const, timestamp: 500, expression: "1 + 2", id: "result" },
+			],
+		};
+		expect(buildE2ePayload(def)).toEqual({
+			interactions: [
+				{ type: "click", delay: 0, target: "Button1", duration: 500 },
+				{ type: "screenshot", delay: 250, id: "during_click", componentId: "Button1" },
+				{ type: "repl", delay: 250, id: "result", expression: "1 + 2" },
+			],
+		});
 	});
 });
 

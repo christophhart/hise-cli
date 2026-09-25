@@ -615,6 +615,7 @@ export class CompletionEngine {
 	completeSequence(prefix: string): CompletionItem[] {
 		const items: CompletionItem[] = [
 			{ label: "create", detail: "Start defining a named sequence" },
+			{ label: "e2e", detail: "Start defining a UI interaction test" },
 			{ label: "flush", detail: "End the sequence definition" },
 			{ label: "show", detail: "Show sequence details" },
 			{ label: "play", detail: "Execute a sequence (blocking)" },
@@ -626,6 +627,12 @@ export class CompletionEngine {
 			{ label: "send", detail: "Send CC or pitchbend" },
 			{ label: "set", detail: "Set module attribute" },
 			{ label: "eval", detail: "Evaluate script expression" },
+			{ label: "moveTo", detail: "Move to a UI component" },
+			{ label: "click", detail: "Click a UI component" },
+			{ label: "doubleClick", detail: "Double-click a UI component" },
+			{ label: "drag", detail: "Drag a UI component" },
+			{ label: "selectMenuItem", detail: "Select a menu item" },
+			{ label: "screenshot", detail: "Capture a UI screenshot" },
 			// Signal types
 			{ label: "sine", detail: "Sine test signal" },
 			{ label: "saw", detail: "Saw test signal" },

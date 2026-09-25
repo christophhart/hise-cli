@@ -73,12 +73,67 @@ export type SequenceEvent =
 export interface SequenceDefinition {
 	name: string;
 	events: SequenceEvent[];
+	kind?: "midi";
 }
+
+export type E2eActionType = "moveTo" | "click" | "doubleClick" | "drag" | "selectMenuItem" | "screenshot" | "repl";
+
+export interface E2eEventBase {
+	timestamp: number;
+	type: E2eActionType;
+}
+
+export interface E2eTargetEvent extends E2eEventBase {
+	type: "moveTo" | "click" | "doubleClick";
+	target: string;
+	duration?: number;
+}
+
+export interface E2eDragEvent extends E2eEventBase {
+	type: "drag";
+	target: string;
+	delta: { x: number; y: number };
+	duration?: number;
+}
+
+export interface E2eMenuEvent extends E2eEventBase {
+	type: "selectMenuItem";
+	menuItemText: string;
+	duration?: number;
+}
+
+export interface E2eScreenshotEvent extends E2eEventBase {
+	type: "screenshot";
+	id: string;
+	componentId?: string;
+	scale?: number;
+}
+
+export interface E2eReplEvent extends E2eEventBase {
+	type: "repl";
+	expression: string;
+	id: string;
+}
+
+export type E2eEvent = E2eTargetEvent | E2eDragEvent | E2eMenuEvent | E2eScreenshotEvent | E2eReplEvent;
+
+export interface E2eDefinition {
+	kind: "e2e";
+	name: string;
+	events: E2eEvent[];
+}
+
+export type StoredSequenceDefinition = SequenceDefinition | E2eDefinition;
 
 export interface InjectMidiPayload {
 	messages: Record<string, unknown>[];
 	blocking?: boolean;
 	recordOutput?: string;
+}
+
+export interface E2ePayload {
+	interactions: Record<string, unknown>[];
+	verbose?: boolean;
 }
 
 export interface InjectMidiResponse {
@@ -98,4 +153,22 @@ export interface ReplResult {
 	timestamp: number;
 	success: boolean;
 	value: unknown;
+}
+
+export interface E2eScreenshotResult {
+	id: string;
+	moduleId?: string;
+	componentId?: string;
+	width?: number;
+	height?: number;
+	scale?: number;
+	sizeKB?: number;
+	filePath?: string;
+}
+
+export interface E2eResponse {
+	interactionsCompleted?: number;
+	totalElapsedMs?: number;
+	replResults?: ReplResult[];
+	screenshots?: Record<string, E2eScreenshotResult>;
 }

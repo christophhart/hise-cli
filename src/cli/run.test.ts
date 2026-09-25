@@ -1322,6 +1322,80 @@ describe("executeCliCommand", () => {
 		expect(connection.calls.find((call) => call.endpoint === "/api/diagnose_script")?.body).toEqual({ moduleId: "Interface", filePath: "Scripts/UI.js", async: false });
 	});
 
+	it("ui query_css returns selectors and properties", async () => {
+		mockObserverFetch();
+		const connection = new MockHiseConnection()
+			.setProbeResult(true)
+			.onPost("/api/parse_css", () => ({
+				success: true,
+				selectors: ["button"],
+				properties: { color: { value: "0xFFFFFFFF" } },
+				logs: [],
+				errors: [],
+			}));
+
+		const result = await executeCliCommand(
+			["node", "hise-cli", "ui", "query_css", "--module", "Interface", "--component", "Button1", "--agent"],
+			getCliCommands(),
+			createDataLoader(),
+			connection,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload).toEqual({
+				ok: true,
+				value: {
+					selectors: ["button"],
+					properties: { color: { value: "0xFFFFFFFF" } },
+				},
+			});
+		}
+		expect(connection.calls.find((call) => call.endpoint === "/api/parse_css")?.body).toEqual({ moduleId: "Interface", componentId: "Button1" });
+	});
+
+	it("script diagnose_css returns only CSS diagnostics", async () => {
+		mockObserverFetch();
+		const connection = new MockHiseConnection()
+			.setProbeResult(true)
+			.onPost("/api/parse_css", () => ({
+				success: false,
+				filePath: "Scripts/UI/style.css",
+				diagnostics: [
+					{ line: 2, column: 4, severity: "error", source: "css", message: "Expected token: :" },
+					{ line: 1, column: 1, severity: "warning", source: "css", message: "unsupported property" },
+				],
+				selectors: ["button"],
+				properties: { color: { value: "red" } },
+				logs: [],
+				errors: [],
+			}));
+
+		const result = await executeCliCommand(
+			["node", "hise-cli", "script", "diagnose_css", "UI/style.css", "--agent"],
+			getCliCommands(),
+			createDataLoader(),
+			connection,
+		);
+
+		expect(result.kind).toBe("json");
+		if (result.kind === "json") {
+			expect(result.payload).toEqual({
+				ok: false,
+				code: "validation_error",
+				error: "CSS diagnostics found errors",
+				value: {
+					filePath: "Scripts/UI/style.css",
+					diagnostics: [
+						{ line: 2, column: 4, severity: "error", source: "css", message: "Expected token: :" },
+						{ line: 1, column: 1, severity: "warning", source: "css", message: "unsupported property" },
+					],
+				},
+			});
+		}
+		expect(connection.calls.find((call) => call.endpoint === "/api/parse_css")?.body).toEqual({ filePath: "UI/style.css" });
+	});
+
 	it("script show tree passes filters to script tree endpoint", async () => {
 		mockObserverFetch();
 		const connection = new MockHiseConnection()

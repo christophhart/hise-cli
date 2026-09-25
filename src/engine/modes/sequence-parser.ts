@@ -5,6 +5,13 @@ import type {
 	SequenceDefinition,
 	InjectMidiPayload,
 	TestSignalType,
+	E2eDefinition,
+	E2eEvent,
+	E2ePayload,
+	E2eTargetEvent,
+	E2eDragEvent,
+	E2eMenuEvent,
+	E2eScreenshotEvent,
 } from "./sequence-types.js";
 import { TEST_SIGNAL_TYPES } from "./sequence-types.js";
 
@@ -100,18 +107,42 @@ export function parseEventLine(line: string): SequenceEvent | string {
 	}
 }
 
+/** Parse a timed UI interaction line for an E2E definition. */
+export function parseE2eEventLine(line: string): E2eEvent | string {
+	const tokens = tokenizeLine(line);
+	if (tokens.length < 2) return "Expected: <timestamp> <verb> <args...>";
+
+	const timestamp = parseDuration(tokens[0]!);
+	if (timestamp === null) return `Invalid timestamp: "${tokens[0]}"`;
+
+	const verb = tokens[1]!.toLowerCase();
+	const args = tokens.slice(2);
+
+	switch (verb) {
+		case "moveto": return parseE2eTarget(timestamp, "moveTo", args);
+		case "click": return parseE2eTarget(timestamp, "click", args);
+		case "doubleclick": return parseE2eTarget(timestamp, "doubleClick", args);
+		case "drag": return parseE2eDrag(timestamp, args);
+		case "selectmenuitem": return parseE2eMenu(timestamp, args);
+		case "screenshot": return parseE2eScreenshot(timestamp, args);
+		case "eval": return parseE2eEval(timestamp, args);
+		default: return `Unknown E2E verb: "${tokens[1]}". Expected: moveTo, click, doubleClick, drag, selectMenuItem, screenshot, eval`;
+	}
+}
+
 /** Tokenize a line respecting quoted strings. */
 function tokenizeLine(line: string): string[] {
 	const tokens: string[] = [];
 	let current = "";
 	let inQuote = false;
 	let quoteChar = "";
+	let quoteStartedMidToken = false;
 
 	for (const ch of line.trim()) {
 		if (inQuote) {
 			if (ch === quoteChar) {
 				inQuote = false;
-				if (current) {
+				if (quoteStartedMidToken) {
 					// Closing quote mid-token — preserve as literal
 					current += ch;
 				}
@@ -121,7 +152,8 @@ function tokenizeLine(line: string): string[] {
 		} else if (ch === '"' || ch === "'") {
 			inQuote = true;
 			quoteChar = ch;
-			if (current) {
+			quoteStartedMidToken = current.length > 0;
+			if (quoteStartedMidToken) {
 				// Opening quote mid-token — preserve as literal
 				current += ch;
 			}
@@ -349,6 +381,113 @@ function parseEval(timestamp: number, args: string[]): SequenceEvent | string {
 	};
 }
 
+function parseE2eTarget(
+	timestamp: number,
+	type: "moveTo" | "click" | "doubleClick",
+	args: string[],
+): E2eEvent | string {
+	if (args.length === 0) return `${type} requires: <componentId>`;
+	const target = args[0]!;
+	let duration: number | undefined;
+	let idx = 1;
+	if (idx < args.length) {
+		if (args[idx]!.toLowerCase() !== "for") return `${type}: expected 'for <duration>'`;
+		idx++;
+		if (idx >= args.length) return `${type}: expected duration after 'for'`;
+		const parsedDuration = parseDuration(args[idx]!);
+		if (parsedDuration === null || parsedDuration <= 0) return `${type}: duration must be positive`;
+		duration = parsedDuration;
+		idx++;
+	}
+	if (idx < args.length) return `${type}: unexpected argument "${args[idx]}"`;
+	const event: E2eTargetEvent = { type, timestamp, target };
+	if (duration !== undefined) event.duration = duration;
+	return event;
+}
+
+function parseE2eDrag(timestamp: number, args: string[]): E2eEvent | string {
+	if (args.length < 4 || args[1]!.toLowerCase() !== "by") {
+		return "drag requires: <componentId> by <x> <y> [for <duration>]";
+	}
+	const x = Number(args[2]);
+	const y = Number(args[3]);
+	if (!Number.isFinite(x) || !Number.isFinite(y)) return "drag: x and y must be numbers";
+	let duration: number | undefined;
+	let idx = 4;
+	if (idx < args.length) {
+		if (args[idx]!.toLowerCase() !== "for") return "drag: expected 'for <duration>'";
+		idx++;
+		if (idx >= args.length) return "drag: expected duration after 'for'";
+		const parsedDuration = parseDuration(args[idx]!);
+		if (parsedDuration === null || parsedDuration <= 0) return "drag: duration must be positive";
+		duration = parsedDuration;
+		idx++;
+	}
+	if (idx < args.length) return `drag: unexpected argument "${args[idx]}"`;
+	const event: E2eDragEvent = { type: "drag", timestamp, target: args[0]!, delta: { x, y } };
+	if (duration !== undefined) event.duration = duration;
+	return event;
+}
+
+function parseE2eMenu(timestamp: number, args: string[]): E2eEvent | string {
+	if (args.length === 0) return "selectMenuItem requires: <menu text>";
+	const menuItemText = args[0]!;
+	let duration: number | undefined;
+	let idx = 1;
+	if (idx < args.length) {
+		if (args[idx]!.toLowerCase() !== "for") return "selectMenuItem: expected 'for <duration>'";
+		idx++;
+		if (idx >= args.length) return "selectMenuItem: expected duration after 'for'";
+		const parsedDuration = parseDuration(args[idx]!);
+		if (parsedDuration === null || parsedDuration <= 0) return "selectMenuItem: duration must be positive";
+		duration = parsedDuration;
+		idx++;
+	}
+	if (idx < args.length) return `selectMenuItem: unexpected argument "${args[idx]}"`;
+	const event: E2eMenuEvent = { type: "selectMenuItem", timestamp, menuItemText };
+	if (duration !== undefined) event.duration = duration;
+	return event;
+}
+
+function parseE2eScreenshot(timestamp: number, args: string[]): E2eEvent | string {
+	if (args.length === 0) return "screenshot requires: <id> [component <componentId>] [at <scale>]";
+	const id = args[0]!;
+	let componentId: string | undefined;
+	let scale: number | undefined;
+	let idx = 1;
+	while (idx < args.length) {
+		const clause = args[idx]!.toLowerCase();
+		if (clause === "component") {
+			idx++;
+			if (idx >= args.length) return "screenshot: expected component ID after 'component'";
+			componentId = args[idx]!;
+		} else if (clause === "at") {
+			idx++;
+			if (idx >= args.length) return "screenshot: expected scale after 'at'";
+			const rawScale = args[idx]!;
+			scale = rawScale.endsWith("%") ? Number(rawScale.slice(0, -1)) / 100 : Number(rawScale);
+			if (!Number.isFinite(scale) || scale <= 0) return `screenshot: invalid scale "${rawScale}"`;
+		} else {
+			return `screenshot: unexpected argument "${args[idx]}"`;
+		}
+		idx++;
+	}
+	return { type: "screenshot", timestamp, id, componentId, scale };
+}
+
+function parseE2eEval(timestamp: number, args: string[]): E2eEvent | string {
+	const asIdx = args.lastIndexOf("as");
+	if (asIdx === -1 || asIdx === 0 || asIdx === args.length - 1) {
+		return "eval requires: <expression> as <id>";
+	}
+	return {
+		type: "repl",
+		timestamp,
+		expression: args.slice(0, asIdx).join(" "),
+		id: args[asIdx + 1]!,
+	};
+}
+
 // ── Payload builder ──────────────────��─────────────────────────────
 
 export interface PayloadOptions {
@@ -368,6 +507,47 @@ export function buildInjectPayload(
 		payload.blocking = true;
 	}
 	return payload;
+}
+
+export function buildE2ePayload(def: E2eDefinition): E2ePayload {
+	let previousTimestamp = 0;
+	const interactions = def.events.map((event) => {
+		const delay = event.timestamp - previousTimestamp;
+		previousTimestamp = event.timestamp;
+		return eventToInteraction(event, delay);
+	});
+	return { interactions };
+}
+
+function eventToInteraction(event: E2eEvent, delay: number): Record<string, unknown> {
+	const interaction: Record<string, unknown> = { type: event.type, delay };
+	switch (event.type) {
+		case "moveTo":
+		case "click":
+		case "doubleClick":
+			interaction.target = event.target;
+			if (event.duration !== undefined) interaction.duration = event.duration;
+			break;
+		case "drag":
+			interaction.target = event.target;
+			interaction.delta = event.delta;
+			if (event.duration !== undefined) interaction.duration = event.duration;
+			break;
+		case "selectMenuItem":
+			interaction.menuItemText = event.menuItemText;
+			if (event.duration !== undefined) interaction.duration = event.duration;
+			break;
+		case "screenshot":
+			interaction.id = event.id;
+			if (event.componentId !== undefined) interaction.componentId = event.componentId;
+			if (event.scale !== undefined) interaction.scale = event.scale;
+			break;
+		case "repl":
+			interaction.id = event.id;
+			interaction.expression = event.expression;
+			break;
+	}
+	return interaction;
 }
 
 function eventToMessage(event: SequenceEvent): Record<string, unknown> {
@@ -466,8 +646,20 @@ export function formatEventSummary(event: SequenceEvent): string {
 	}
 }
 
+export function formatE2eEventSummary(event: E2eEvent): string {
+	switch (event.type) {
+		case "moveTo": return `moveTo ${event.target}`;
+		case "click": return `click ${event.target}${event.duration ? ` for ${formatMs(event.duration)}` : ""}`;
+		case "doubleClick": return `doubleClick ${event.target}`;
+		case "drag": return `drag ${event.target} by ${event.delta.x} ${event.delta.y}`;
+		case "selectMenuItem": return `selectMenuItem ${event.menuItemText}`;
+		case "screenshot": return `screenshot ${event.id}${event.componentId ? ` component ${event.componentId}` : ""}`;
+		case "repl": return `eval "${event.expression}" as ${event.id}`;
+	}
+}
+
 /** Compute total duration of a sequence (last event timestamp + its duration). */
-export function sequenceDuration(events: SequenceEvent[]): number {
+export function sequenceDuration(events: Array<{ timestamp: number; duration?: number }>): number {
 	let max = 0;
 	for (const e of events) {
 		const eventDur = "duration" in e && typeof e.duration === "number" ? e.duration : 0;

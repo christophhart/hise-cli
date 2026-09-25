@@ -6188,6 +6188,61 @@ export const GENERATED_AGENT_CONTEXT = {
 					"danger": false
 				},
 				{
+					"id": "script.diagnose_css",
+					"title": "Diagnose CSS source",
+					"purpose": "Run HISE CSS syntax and semantic diagnostics for a stylesheet without resolving component properties.",
+					"command": {
+						"argv": [
+							"hise-cli",
+							"script",
+							"diagnose_css",
+							"UI/style.css",
+							"--agent"
+						],
+						"display": "hise-cli script diagnose_css UI/style.css --agent"
+					},
+					"tags": [
+						"script",
+						"css",
+						"diagnose",
+						"diagnostics",
+						"validation"
+					],
+					"aliases": [
+						"validate css",
+						"diagnose stylesheet",
+						"check css syntax"
+					],
+					"help": {
+						"visibility": "common",
+						"order": 85
+					},
+					"examples": [
+						{
+							"title": "Diagnose a UI stylesheet",
+							"argv": [
+								"hise-cli",
+								"script",
+								"diagnose_css",
+								"UI/style.css",
+								"--agent"
+							],
+							"display": "hise-cli script diagnose_css UI/style.css --agent"
+						}
+					],
+					"notes": [
+						"The response contains only the file path and CSS diagnostics.",
+						"Selectors and resolved properties are available through ui query_css.",
+						"Diagnostics with severity error return validation_error and exit code 5."
+					],
+					"syntax": "hise-cli script diagnose_css UI/style.css --agent",
+					"contexts": [
+						"cli"
+					],
+					"agentRelevance": "high",
+					"danger": false
+				},
+				{
 					"id": "script.show.tree",
 					"title": "Show compiled script symbol tree",
 					"purpose": "Inspect the currently compiled script symbol hierarchy with server-side filtering options.",
@@ -7776,6 +7831,68 @@ export const GENERATED_AGENT_CONTEXT = {
 							],
 							"display": "hise-cli ui rename --component Cutoff --id CutoffSlider --agent"
 						}
+					]
+				},
+				{
+					"id": "ui.query_css",
+					"title": "Query resolved CSS properties",
+					"purpose": "Inspect the selectors and resolved CSS properties applied to a live UI component.",
+					"syntax": "ui query_css --module <module> --component <id>",
+					"command": {
+						"argv": [
+							"hise-cli",
+							"ui",
+							"query_css",
+							"--module",
+							"Interface",
+							"--component",
+							"Button1",
+							"--agent"
+						],
+						"display": "hise-cli ui query_css --module Interface --component Button1 --agent"
+					},
+					"tags": [
+						"ui",
+						"css",
+						"properties",
+						"selectors",
+						"inspect",
+						"read-only"
+					],
+					"aliases": [
+						"query css",
+						"inspect component css",
+						"show applied css",
+						"resolve css properties"
+					],
+					"contexts": [
+						"cli"
+					],
+					"agentRelevance": "high",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 65
+					},
+					"examples": [
+						{
+							"title": "Query a component stylesheet",
+							"argv": [
+								"hise-cli",
+								"ui",
+								"query_css",
+								"--module",
+								"Interface",
+								"--component",
+								"Button1",
+								"--agent"
+							],
+							"display": "hise-cli ui query_css --module Interface --component Button1 --agent"
+						}
+					],
+					"notes": [
+						"Use this command to verify CSS values applied by HISE to a component.",
+						"The response includes selectors and resolved properties, not CSS syntax diagnostics."
 					]
 				},
 				{

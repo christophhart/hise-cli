@@ -1,6 +1,6 @@
 # CLI Grammar
 
-Grammar for hise-cli across all modes (builder, ui, dsp).
+Grammar for hise-cli across all modes (builder, ui, dsp, sequence).
 
 ## Notation
 
@@ -89,7 +89,41 @@ hise-cli script get --module-id Interface --callback onInit --agent
 hise-cli script add-file UI/MyFile.js --module-id Interface --agent
 hise-cli script set --module-id Interface --callback onInit --file ./onInit.js --agent
 hise-cli script compile --module-id Interface --agent
+hise-cli ui query_css --module Interface --component Button1 --agent
+hise-cli script diagnose_css UI/style.css --agent
 ```
+
+## Sequence Mode
+
+Sequence mode supports MIDI definitions and UI interaction-test definitions. MIDI
+definitions start with `create "<name>"`; E2E definitions start with
+`e2e "<name>"`. Both use `flush`, `show`, `play`, `get`, and `help`.
+
+```text
+MIDIEventLine      := Duration MidiEvent
+E2eEventLine       := Duration E2eEvent
+Duration           := Number ('ms' | 's')
+
+MidiEvent          := 'play' ... | 'send' ... | 'set' ... | 'eval' ...
+E2eEvent           := MoveTo | Click | DoubleClick | Drag | MenuItem | E2eScreenshot | E2eEval
+MoveTo             := 'moveTo' Identifier
+Click              := 'click' Identifier ['for' Duration]
+DoubleClick        := 'doubleClick' Identifier
+Drag               := 'drag' Identifier 'by' Number Number ['for' Duration]
+MenuItem           := 'selectMenuItem' Identifier
+E2eScreenshot      := 'screenshot' Identifier ['component' Identifier] ['at' ScalarValue]
+E2eEval            := 'eval' Expression 'as' Identifier
+```
+
+E2E timestamps are absolute offsets from the start of the definition. The CLI
+converts them to relative `delay` values for `/api/testing/e2e`. A positive
+`for` duration keeps mouse interactions active; screenshots and evaluations may
+run during that interval.
+
+CSS inspection is split into two endpoint-backed commands:
+
+- `ui query_css --module <id> --component <id>` returns the component's selectors and resolved CSS properties.
+- `script diagnose_css <file.css>` runs CSS syntax and semantic diagnostics and returns only the file path and diagnostics.
 
 `script set` compiles and snapshots touched HISE callback slots by default. If compile fails, the CLI restores those callback slots and returns the original error with a `rollback` object. This protects callback source stored in HISE, not external script files referenced by `include(...)`. Use `--no-rollback` only when intentionally staging invalid callback source, and run `hise-cli script diagnose --file-path <file> --agent` before compiling larger external-file edits.
 

@@ -183,6 +183,54 @@ describe("SequenceMode", () => {
 		});
 	});
 
+	describe("e2e", () => {
+		it("executes timed UI events and stores repl results", async () => {
+			const mode = new SequenceMode();
+			const mock = new MockHiseConnection();
+			mock.onPost("/api/testing/e2e", () => ({
+				success: true,
+				interactionsCompleted: 3,
+				totalElapsedMs: 500,
+				replResults: [{
+					id: "result", expression: "1 + 2", moduleId: "Interface",
+					timestamp: 500, success: true, value: 3,
+				}],
+				screenshots: {
+					during_click: { id: "during_click", componentId: "Button1", filePath: "D:/Projects/Test/during_click.png" },
+				},
+				logs: [], errors: [],
+			}));
+
+			const session = makeSession(mock);
+			await mode.parse('e2e "Screenshot during click"', session);
+			await mode.parse('0ms click "Button1" for 500ms', session);
+			await mode.parse('250ms screenshot "during_click" component "Button1"', session);
+			await mode.parse("500ms eval 1 + 2 as result", session);
+			await mode.parse("flush", session);
+
+			const playResult = await mode.parse('play "Screenshot during click"', session);
+			expect(playResult.type).toBe("text");
+			if (playResult.type === "text") {
+				expect(playResult.content).toContain("E2E test");
+				expect(playResult.content).toContain("during_click");
+			}
+
+			const postCall = mock.calls.find(c => c.method === "POST" && c.endpoint === "/api/testing/e2e");
+			expect(postCall).toBeDefined();
+			expect(postCall!.body).toEqual({
+				interactions: [
+					{ type: "click", delay: 0, target: "Button1", duration: 500 },
+					{ type: "screenshot", delay: 250, id: "during_click", componentId: "Button1" },
+					{ type: "repl", delay: 250, id: "result", expression: "1 + 2" },
+				],
+			});
+
+			const getResult = await mode.parse("get result", session);
+			expect(getResult.type).toBe("text");
+			if (getResult.type === "text") expect(getResult.content).toBe("3");
+		});
+	});
+
 	describe("stop", () => {
 		it("sends allNotesOff", async () => {
 			const mode = new SequenceMode();

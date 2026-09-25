@@ -230,6 +230,26 @@ capabilities:
     help:
       visibility: common
       order: 80
+  - id: script.diagnose_css
+    title: Diagnose CSS source
+    purpose: Run HISE CSS syntax and semantic diagnostics for a stylesheet without resolving component properties.
+    command:
+      argv: [hise-cli, script, diagnose_css, UI/style.css, --agent]
+    examples:
+      - title: Diagnose a UI stylesheet
+        argv: [hise-cli, script, diagnose_css, UI/style.css, --agent]
+    tags: [script, css, diagnose, diagnostics, validation]
+    aliases:
+      - validate css
+      - diagnose stylesheet
+      - check css syntax
+    notes:
+      - The response contains only the file path and CSS diagnostics.
+      - Selectors and resolved properties are available through ui query_css.
+      - Diagnostics with severity error return validation_error and exit code 5.
+    help:
+      visibility: common
+      order: 85
   - id: script.show.tree
     title: Show compiled script symbol tree
     purpose: Inspect the currently compiled script symbol hierarchy with server-side filtering options.
