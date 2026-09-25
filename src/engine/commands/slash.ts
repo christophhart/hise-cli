@@ -1477,7 +1477,7 @@ export function registerBuiltinCommands(registry: CommandRegistry): void {
 
 	registry.register({
 		name: "sequence",
-		description: "Enter sequence mode (timed MIDI sequences)",
+		description: "Enter sequence mode (timed MIDI and UI interaction tests)",
 		handler: createModeHandler("sequence"),
 		kind: "mode",
 	});

@@ -2,5 +2,78 @@ schemaVersion: 3
 mode:
   id: sequence
   title: Sequence mode
-  summary: Interactive sequence operations.
-commands: []
+  summary: Compose and execute timed MIDI sequences and UI interaction tests.
+  invocation:
+    - argv: [hise-cli, sequence, help]
+  notes:
+    - Definitions are session-local. Use a multi-line run script or the interactive TUI so create/e2e, event lines, flush, and play execute in one session.
+    - Event timestamps are absolute offsets; E2E payloads convert them to relative delays.
+commands:
+  - id: sequence.create
+    syntax: sequence create <name>
+    title: Define a MIDI sequence
+    purpose: Build and execute a timed MIDI sequence in the current session.
+    tags: [sequence, midi, testing]
+    aliases: [create midi sequence, timed midi test]
+    contexts: [cli, tui]
+    agentRelevance: medium
+    surfaces: [cli, tui]
+    recipes:
+      cli:
+        argv: [hise-cli, --run, "-", --agent]
+        stdin: |-
+          /sequence
+          create "midi-smoke"
+          0ms play C3 for 250ms at 100
+          flush
+          play "midi-smoke"
+      tui:
+        title: TUI
+        lines:
+          - /sequence
+          - create "midi-smoke"
+          - 0ms play C3 for 250ms at 100
+          - flush
+          - play "midi-smoke"
+    notes:
+      - MIDI event verbs include play, send, set, and eval.
+    help:
+      visibility: common
+      order: 10
+  - id: sequence.e2e
+    syntax: sequence e2e <name>
+    title: Define a UI interaction test
+    purpose: Build and execute a timed end-to-end UI interaction test in the current session.
+    tags: [sequence, e2e, ui, testing]
+    aliases: [create ui test, e2e test, interaction test]
+    contexts: [cli, tui]
+    agentRelevance: high
+    surfaces: [cli, tui]
+    recipes:
+      cli:
+        argv: [hise-cli, --run, "-", --agent]
+        stdin: |-
+          /sequence
+          e2e "ui-smoke"
+          0ms moveTo Button1
+          100ms click Button1
+          250ms screenshot after-click component Button1 at 100%
+          flush
+          play "ui-smoke"
+      tui:
+        title: TUI
+        lines:
+          - /sequence
+          - e2e "ui-smoke"
+          - 0ms moveTo Button1
+          - 100ms click Button1
+          - 250ms screenshot after-click component Button1 at 100%
+          - flush
+          - play "ui-smoke"
+    notes:
+      - Event verbs are moveTo, click, doubleClick, drag, selectMenuItem, screenshot, and eval.
+      - click and drag accept an optional for <duration> clause.
+      - screenshot accepts optional component <id> and at <scale> clauses.
+    help:
+      visibility: common
+      order: 20

@@ -6239,6 +6239,22 @@ export const GENERATED_AGENT_CONTEXT = {
 					"contexts": [
 						"cli"
 					],
+					"surfaces": [
+						"cli"
+					],
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"script",
+								"diagnose_css",
+								"UI/style.css",
+								"--agent"
+							],
+							"display": "hise-cli script diagnose_css UI/style.css --agent"
+						}
+					},
 					"agentRelevance": "high",
 					"danger": false
 				},
@@ -6604,14 +6620,164 @@ export const GENERATED_AGENT_CONTEXT = {
 		{
 			"id": "sequence",
 			"title": "Sequence mode",
-			"summary": "Interactive sequence operations.",
+			"summary": "Compose and execute timed MIDI sequences and UI interaction tests.",
 			"vocabulary": "",
-			"invocation": [],
-			"notes": [],
+			"invocation": [
+				{
+					"title": "Invocation 1",
+					"argv": [
+						"hise-cli",
+						"sequence",
+						"help"
+					],
+					"display": "hise-cli sequence help"
+				}
+			],
+			"notes": [
+				"Definitions are session-local. Use a multi-line run script or the interactive TUI so create/e2e, event lines, flush, and play execute in one session.",
+				"Event timestamps are absolute offsets; E2E payloads convert them to relative delays."
+			],
 			"antiPatterns": [],
 			"quickStart": [],
 			"concepts": [],
-			"commands": [],
+			"commands": [
+				{
+					"id": "sequence.create",
+					"title": "Define a MIDI sequence",
+					"purpose": "Build and execute a timed MIDI sequence in the current session.",
+					"syntax": "sequence create <name>",
+					"command": {
+						"argv": [
+							"hise-cli",
+							"--run",
+							"-",
+							"--agent"
+						],
+						"display": "hise-cli --run - --agent"
+					},
+					"tags": [
+						"sequence",
+						"midi",
+						"testing"
+					],
+					"aliases": [
+						"create midi sequence",
+						"timed midi test"
+					],
+					"contexts": [
+						"cli",
+						"tui"
+					],
+					"agentRelevance": "medium",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 10
+					},
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"--run",
+								"-",
+								"--agent"
+							],
+							"display": "hise-cli --run - --agent",
+							"stdin": "/sequence\ncreate \"midi-smoke\"\n0ms play C3 for 250ms at 100\nflush\nplay \"midi-smoke\""
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/sequence",
+								"create \"midi-smoke\"",
+								"0ms play C3 for 250ms at 100",
+								"flush",
+								"play \"midi-smoke\""
+							],
+							"display": "/sequence\ncreate \"midi-smoke\"\n0ms play C3 for 250ms at 100\nflush\nplay \"midi-smoke\""
+						}
+					},
+					"notes": [
+						"MIDI event verbs include play, send, set, and eval."
+					]
+				},
+				{
+					"id": "sequence.e2e",
+					"title": "Define a UI interaction test",
+					"purpose": "Build and execute a timed end-to-end UI interaction test in the current session.",
+					"syntax": "sequence e2e <name>",
+					"command": {
+						"argv": [
+							"hise-cli",
+							"--run",
+							"-",
+							"--agent"
+						],
+						"display": "hise-cli --run - --agent"
+					},
+					"tags": [
+						"sequence",
+						"e2e",
+						"ui",
+						"testing"
+					],
+					"aliases": [
+						"create ui test",
+						"e2e test",
+						"interaction test"
+					],
+					"contexts": [
+						"cli",
+						"tui"
+					],
+					"agentRelevance": "high",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 20
+					},
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"--run",
+								"-",
+								"--agent"
+							],
+							"display": "hise-cli --run - --agent",
+							"stdin": "/sequence\ne2e \"ui-smoke\"\n0ms moveTo Button1\n100ms click Button1\n250ms screenshot after-click component Button1 at 100%\nflush\nplay \"ui-smoke\""
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/sequence",
+								"e2e \"ui-smoke\"",
+								"0ms moveTo Button1",
+								"100ms click Button1",
+								"250ms screenshot after-click component Button1 at 100%",
+								"flush",
+								"play \"ui-smoke\""
+							],
+							"display": "/sequence\ne2e \"ui-smoke\"\n0ms moveTo Button1\n100ms click Button1\n250ms screenshot after-click component Button1 at 100%\nflush\nplay \"ui-smoke\""
+						}
+					},
+					"notes": [
+						"Event verbs are moveTo, click, doubleClick, drag, selectMenuItem, screenshot, and eval.",
+						"click and drag accept an optional for <duration> clause.",
+						"screenshot accepts optional component <id> and at <scale> clauses."
+					]
+				}
+			],
 			"types": {}
 		},
 		{
@@ -7873,6 +8039,25 @@ export const GENERATED_AGENT_CONTEXT = {
 					"help": {
 						"visibility": "common",
 						"order": 65
+					},
+					"surfaces": [
+						"cli"
+					],
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"ui",
+								"query_css",
+								"--module",
+								"Interface",
+								"--component",
+								"Button1",
+								"--agent"
+							],
+							"display": "hise-cli ui query_css --module Interface --component Button1 --agent"
+						}
 					},
 					"examples": [
 						{
