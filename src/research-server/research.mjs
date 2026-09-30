@@ -11,6 +11,25 @@ export async function runResearch(request, { docs, modelHost, signal, emit = () 
 
 	emit(progress("models", "Resolving hise-cli Pi model settings"));
 	const models = await modelHost.beginRequest();
+	if (request.topic === "source" || ((request.topic === undefined || request.topic === "auto") && asksForSourceResearch(question))) {
+		emit(progress("source", "Exploring the HISE C++ source tree"));
+		const markdown = await models.runSourceResearch(question, {
+			onProgress(event) {
+				if (event.type === "start") emit(progress("source", `${event.label}${event.detail ? `: ${event.detail}` : ""}`));
+				else if (event.type === "end" && event.ok === false) emit(progress("source", `${event.label} failed`));
+			},
+		});
+		return {
+			question,
+			markdown,
+			citations: [],
+			evidence: [],
+			documentationStatus: "supported",
+			validationStatus: "not-applicable",
+			validationRequest: undefined,
+			usage: [],
+		};
+	}
 	emit(progress("readiness", "Checking documentation service"));
 	await docs.checkReady(signal);
 	const sharedOptions = sharedResearchOptions(docs, request, signal, emit);
@@ -154,6 +173,10 @@ function sharedResearchOptions(host, request, signal, emit) {
 			catch (error) { return { error: error instanceof Error ? error.message : String(error) }; }
 		},
 	};
+}
+
+function asksForSourceResearch(query) {
+	return /(?:^|[^a-z])c\+\+(?:$|[^a-z])|\bcpp\b/i.test(query);
 }
 
 export function domainsFor(hint, query) {

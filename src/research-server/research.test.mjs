@@ -32,6 +32,32 @@ describe("documentation research server", () => {
 		expect(domainsFor("auto", "How do I use a DspNetwork node?").scriptnode).toBe(true);
 	});
 
+	it("routes C++ source topic to the isolated source researcher", async () => {
+		const calls = [];
+		const result = await runResearch({ question: "How does tempo sync work?", topic: "source", validation: "enabled" }, {
+			docs: { async checkReady() { throw new Error("documentation service should not be required"); } },
+			modelHost: {
+				async beginRequest() {
+					return {
+						async runSourceResearch(question) { calls.push(question); return "C++ source findings"; },
+					};
+				},
+			},
+		});
+		expect(calls).toEqual(["How does tempo sync work?"]);
+		expect(result.markdown).toBe("C++ source findings");
+		expect(result.validationStatus).toBe("not-applicable");
+	});
+
+	it("automatically routes explicit C++ questions to source research", async () => {
+		const calls = [];
+		await runResearch({ question: "Explain the C++ implementation of tempo sync", topic: "auto" }, {
+			docs: { async checkReady() { throw new Error("documentation service should not be required"); } },
+			modelHost: { async beginRequest() { return { async runSourceResearch(question) { calls.push(question); return "Source findings"; } }; } },
+		});
+		expect(calls).toEqual(["Explain the C++ implementation of tempo sync"]);
+	});
+
 	it("keeps worker expansion/reranking separate from thinker synthesis", async () => {
 		const models = fakeModels([
 			'{"queries":["Content get existing component"]}',

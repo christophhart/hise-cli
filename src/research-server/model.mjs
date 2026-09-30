@@ -57,6 +57,18 @@ class PiRequestModelAdapter {
 		};
 	}
 
+	async runSourceResearch(question, { onProgress } = {}) {
+		const { runHiseResearch } = await import("../cli/ai-tools.js");
+		return runHiseResearch(`C++ source research: ${question}`, {
+			cwd: this.cwd,
+			agentDir: this.agentDir,
+			thinkerModel: this.thinker,
+			workerModel: this.worker,
+			thinkingLevel: this.thinkingLevel,
+			onProgress,
+		});
+	}
+
 	async complete(role, { system, prompt, signal, onDelta }) {
 		const model = role === "worker" ? this.worker : this.thinker;
 		const loader = new DefaultResourceLoader({
