@@ -3,10 +3,12 @@ import { createTwoFilesPatch } from "diff";
 import { Container, Spacer, Text } from "@earendil-works/pi-tui";
 import { renderDiff } from "@earendil-works/pi-coding-agent";
 import { execFile as execFileCallback } from "node:child_process";
-import { appendFile, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { promisify } from "node:util";
 import { extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { createContext, runInContext } from "node:vm";
 import * as vm from "node:vm";
 import type { HiseConnection } from "../engine/hise.js";
@@ -355,6 +357,37 @@ export function createHiseScriptTool(options: HiseScriptToolOptions) {
 			const summary = result.content.filter((part) => part.type === "text").map((part) => part.text).join("\n").split("\n").slice(-1)[0];
 			if (summary) component.addChild(new Text(theme.fg("muted", summary), 1, 0));
 			return component;
+		},
+	});
+}
+
+export function createHiseScreenshotTool(options: { runner: HiseCliRunner; getModel: () => Model<Api> | undefined }) {
+	return defineTool({
+		name: "hise_screenshot",
+		label: "HISE screenshot",
+		promptSnippet: "Capture and inspect the HISE interface visually.",
+		description: "Capture a screenshot of the full HISE interface or one component and return it as an image. Specify component to crop; scale is optional and defaults to 1.",
+		parameters: Type.Object({
+			component: Type.Optional(Type.String({ description: "Component ID to capture; omit for the full interface" })),
+			scale: Type.Optional(Type.Number({ description: "Screenshot scale factor, e.g. 0.5 or 1" })),
+			module: Type.Optional(Type.String({ description: "UI module ID; defaults to Interface" })),
+		}),
+		async execute(_toolCallId, params) {
+			if (!options.getModel()?.input.includes("image")) throw new Error("The currently selected model does not support image input.");
+			const outputPath = join(tmpdir(), `hise-cli-screenshot-${randomUUID()}.png`);
+			const argv = ["ui", "screenshot", "--output", outputPath];
+			if (params.component) argv.push("--component", params.component);
+			if (params.scale !== undefined) argv.push("--scale", String(params.scale));
+			if (params.module) argv.push("--module", params.module);
+			argv.push("--agent");
+			try {
+				const result = await options.runner.run(argv);
+				if (!result.ok) throw new Error(result.error ?? result.text);
+				const image = await readFile(outputPath);
+				return { content: [{ type: "text", text: result.text }, { type: "image", data: image.toString("base64"), mimeType: "image/png" }], details: { component: params.component, scale: params.scale } };
+			} finally {
+				await unlink(outputPath).catch(() => {});
+			}
 		},
 	});
 }

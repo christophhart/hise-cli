@@ -8,7 +8,7 @@ export type AiThinkingLevel = Parameters<AgentSession["setThinkingLevel"]>[0];
 import type { DataLoader } from "../engine/data.js";
 import type { HiseConnection } from "../engine/hise.js";
 import { CapturingHiseConnection } from "../cli/capture.js";
-import { createHiseCommandTool, createHiseResearchTool, createHiseHelpTool, createHiseScriptTool, createJsTool, runHiseResearch, type HiseCliRunner, type HiseResearchProgress } from "../cli/ai-tools.js";
+import { createHiseCommandTool, createHiseResearchTool, createHiseHelpTool, createHiseScriptTool, createHiseScreenshotTool, createJsTool, runHiseResearch, type HiseCliRunner, type HiseResearchProgress } from "../cli/ai-tools.js";
 import { executeCliCommand } from "../cli/run.js";
 import { listCliCommands } from "../cli/commands.js";
 import { classifyAgentCommand } from "../cli/agentContext.js";
@@ -260,7 +260,7 @@ export class TuiAiSession {
 			resourceLoader,
 			sessionManager,
 			settingsManager,
-			tools: ["hise_command", "hise_help", "hise_research", "hise_script", "js"],
+			tools: ["hise_command", "hise_help", "hise_research", "hise_script", "hise_screenshot", "js"],
 			customTools: [createHiseCommandTool(runner), createHiseHelpTool(), createHiseResearchTool({
 				mcpClient: new RestMcpClient({ defaultUrl: process.env.HISE_DOCS_API_URL ?? process.env.HISE_MCP_URL }),
 				connection,
@@ -271,7 +271,7 @@ export class TuiAiSession {
 				getThinkerModel: () => this.piSession?.model,
 				getThinkingLevel: () => this.piSession?.thinkingLevel,
 				onProgress: (progress) => this.options.onEvent({ type: "research-progress", progress }),
-			}), createHiseScriptTool({ connection, projectDir: this.options.projectDir }), createJsTool({ projectDir: this.options.projectDir, allowWrites: true })],
+			}), createHiseScriptTool({ connection, projectDir: this.options.projectDir }), createHiseScreenshotTool({ runner, getModel: () => this.piSession?.model }), createJsTool({ projectDir: this.options.projectDir, allowWrites: true })],
 		});
 		this.piSession = created.session;
 		const settingsPath = join(agentDir, "settings.json");

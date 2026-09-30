@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { writeFile } from "node:fs/promises";
 import type { DataLoader } from "../engine/data.js";
 import type { McpClient } from "../engine/mcp/types.js";
 import { MockHiseConnection } from "../engine/hise.js";
 import { createDefaultMockRuntime } from "../mock/runtime.js";
 import { createSession } from "../session-bootstrap.js";
 import { listCliCommands } from "./commands.js";
-import { assertHiseMcpReachable, cleanResearchEvidence, createHiseCommandTool, createHiseHelpTool, createHiseWhichTool, extractResearchReferences, extractHiseScriptBlocks, filterResearchDiagnostics, inferResearchDomain, parseResearchQueries, parseResearchSelection, splitResearchDiagnostics } from "./ai-tools.js";
+import { assertHiseMcpReachable, cleanResearchEvidence, createHiseCommandTool, createHiseScreenshotTool, createHiseHelpTool, createHiseWhichTool, extractResearchReferences, extractHiseScriptBlocks, filterResearchDiagnostics, inferResearchDomain, parseResearchQueries, parseResearchSelection, splitResearchDiagnostics } from "./ai-tools.js";
 import { isMutatingCliCommand, runCanonical } from "./ai.js";
 
 const dataLoader: DataLoader = {
@@ -196,6 +197,31 @@ describe("embedded HISE agent contract", () => {
 		expect(tool.description).toContain("canonical hise-cli command");
 		await tool.execute("test", { argv: ["script", "set", "--stdin"], stdin: "function onInit() {}" }, undefined, undefined, {} as never);
 		expect(received).toEqual({ argv: ["script", "set", "--stdin"], stdin: "function onInit() {}" });
+	});
+
+	it("returns HISE screenshots as Pi image content", async () => {
+		let received: string[] = [];
+		const tool = createHiseScreenshotTool({
+			getModel: () => ({ input: ["text", "image"] } as never),
+			runner: { run: async (argv) => {
+				received = argv;
+				const output = argv[argv.indexOf("--output") + 1]!;
+				await writeFile(output, Buffer.from([137, 80, 78, 71]));
+				return { ok: true, text: "Screenshot captured (280x12)" };
+			} },
+		});
+		const result = await tool.execute("test", { component: "FooterLabel", scale: 0.5 }, undefined, undefined, {} as never);
+		expect(received).toContain("FooterLabel");
+		expect(received).toContain("0.5");
+		expect(result.content).toEqual([
+			{ type: "text", text: "Screenshot captured (280x12)" },
+			{ type: "image", data: Buffer.from([137, 80, 78, 71]).toString("base64"), mimeType: "image/png" },
+		]);
+	});
+
+	it("rejects screenshots when the active model has no image input", async () => {
+		const tool = createHiseScreenshotTool({ getModel: () => ({ input: ["text"] } as never), runner: { run: async () => ({ ok: true, text: "" }) } });
+		await expect(tool.execute("test", {}, undefined, undefined, {} as never)).rejects.toThrow("does not support image input");
 	});
 
 	it("throws on a failed CLI result", async () => {
