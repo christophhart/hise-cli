@@ -101,7 +101,8 @@ export function renderMarkdown(source: string, opts: RenderMarkdownOptions): str
 	const localMarked = new Marked();
 	localMarked.use(markedTerminal(options, { theme: highlightTheme } as any) as any);
 
-	const codeBlockWidth = width || 80;
+	// Reserve four columns for indentation added by ordered-list / quoted context.
+	const codeBlockWidth = Math.max(0, (width || 80) - 4);
 
 	localMarked.use({
 		renderer: {
