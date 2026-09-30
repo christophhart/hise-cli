@@ -23,6 +23,27 @@ const disableReactDevtools = {
 	},
 };
 
+// Bun does not currently implement worker_threads.markAsUncloneable, which
+// undici uses only to prevent structured-cloning certain web objects. Keep
+// the native implementation when available and make the unsupported call a
+// no-op otherwise.
+const undiciBunCompatibility = {
+	name: "undici-mark-as-uncloneable-fallback",
+	setup(build) {
+		build.onLoad({ filter: /[\\/]undici[\\/]lib[\\/]web[\\/]webidl[\\/]index\.js$/ }, ({ path }) => {
+			const source = readFileSync(path, "utf8");
+			const target = "const { markAsUncloneable } = require('node:worker_threads')";
+			if (!source.includes(target)) {
+				throw new Error(`Expected undici worker_threads import not found in ${path}`);
+			}
+			return {
+				contents: source.replace(target, "const { markAsUncloneable = () => {} } = require('node:worker_threads')"),
+				loader: "js",
+			};
+		});
+	},
+};
+
 {
 	const result = spawnSync(process.execPath, ["scripts/generate-agent-context.mjs"], {
 		stdio: "inherit",
@@ -64,7 +85,7 @@ await build({
 		".yaml": "text",
 		".html": "text",
 	},
-	plugins: [disableReactDevtools],
+	plugins: [disableReactDevtools, undiciBunCompatibility],
 	sourcemap: false,
 	logLevel: "info",
 });
