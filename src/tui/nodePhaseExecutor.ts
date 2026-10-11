@@ -94,11 +94,11 @@ export function createNodePhaseExecutor(options: NodePhaseExecutorOptions = {}):
 					return;
 				}
 
-				// On Windows, only route through cmd.exe for bare command names
-				// (so git / winget / .cmd resolution works). When the command
-				// has a path separator it's a direct executable — invoking it
-				// without a shell avoids cmd.exe mis-quoting args with spaces.
-				const useShell = process.platform === "win32" && !/[\/\\]/.test(command);
+				// Explicit .exe commands resolve through PATH without cmd.exe.
+				// Keep their arguments literal: scripts, paths and metacharacters
+				// must not be interpreted by a second shell. Bare names still
+				// use cmd.exe for compatibility with .cmd/.bat wrappers.
+				const useShell = process.platform === "win32" && !/[\/\\]/.test(command) && !/\.exe$/i.test(command);
 				const stdin = process.stdin;
 				const wasRaw = options.interactive && stdin.isRaw === true;
 				const wasPaused = options.interactive && stdin.isPaused();

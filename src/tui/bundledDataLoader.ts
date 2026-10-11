@@ -18,6 +18,8 @@ import buildInstallerYaml from "../../data/wizards/build_installer.yaml";
 import compileNetworksYaml from "../../data/wizards/compile_networks.yaml";
 import installPackageMakerYaml from "../../data/wizards/install_package_maker.yaml";
 import newProjectYaml from "../../data/wizards/new_project.yaml";
+import nukeCleanupYaml from "../../data/wizards/nuke_cleanup.yaml";
+import nukeScanYaml from "../../data/wizards/nuke_scan.yaml";
 import pluginExportYaml from "../../data/wizards/plugin_export.yaml";
 import recompileYaml from "../../data/wizards/recompile.yaml";
 import setupYaml from "../../data/wizards/setup.yaml";
@@ -39,6 +41,8 @@ const wizardYamls = [
 	compileNetworksYaml,
 	installPackageMakerYaml,
 	newProjectYaml,
+	nukeCleanupYaml,
+	nukeScanYaml,
 	pluginExportYaml,
 	recompileYaml,
 	setupYaml,

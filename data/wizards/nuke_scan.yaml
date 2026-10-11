@@ -1,0 +1,26 @@
+id: nuke_scan
+header: Find HISE Installations
+description: Full-disk search for HISE source and app folders
+body: |
+  Searches available filesystem roots for directories named HISE or HISE.app.
+  The scan is read-only and records candidate paths for review.
+  Run `/nuke` again after the scan to choose what to remove.
+init:
+  type: internal
+  function: nukeScanInit
+tabs:
+  - label: Scan
+    fields:
+      - id: confirmed
+        type: toggle
+        label: Scan all available disks
+        defaultValue: "true"
+        help: This can take a long time. Unreadable directories are reported.
+submitLabel: Performs a thorough read-only scan of available disks
+tasks:
+  - id: scan
+    function: nukeScan
+    type: internal
+    label: Search filesystem for HISE installations
+postActions: []
+globalDefaults: {}

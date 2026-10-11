@@ -1,0 +1,61 @@
+id: nuke_cleanup
+header: Delete HISE Installations
+description: Permanently delete selected installations, including a sole installation
+body: |
+  Candidates are installations, not proven identical duplicates. Inspect each path.
+  Keeping an installation is optional; choose none to allow a full uninstall.
+  Back up all selected folders first:
+  projects, samples, presets, ignored files and local Git commits are permanently lost.
+  Source checkouts with changed or untracked files are refused, but a clean Git status
+  does not establish that everything is backed up. Close HISE and stop processes
+  modifying these folders. Concurrent filesystem changes cannot be fully guarded against.
+  Settings are shared with any remaining installations; removing them resets their settings too.
+  Cancellation stops subsequent steps, but cannot undo completed or partial deletions.
+  A cleanup log records outcomes and temporary staging paths for interrupted operations.
+aliases:
+  - nuke
+init:
+  type: internal
+  function: nukeCleanupInit
+tabs:
+  - label: Installations
+    fields:
+      - id: retained
+        type: choice
+        label: Installation to keep (optional)
+        required: false
+        defaultValue: "none"
+        help: Choose none for a full uninstall. Candidate IDs show their type and exact path.
+      - id: installations
+        type: multiselect
+        label: Installations to permanently delete
+        required: true
+        help: Review paths beside each candidate ID. Do not select the retained installation.
+      - id: backedUp
+        type: toggle
+        label: I backed up all selected folders and user data
+        defaultValue: "false"
+        help: Required. A clean Git checkout can still contain ignored data and unpushed commits.
+      - id: removeSettings
+        type: toggle
+        label: Also permanently delete shared HISE settings
+        defaultValue: "false"
+        help: Resets settings used by any remaining installations. Back these up separately.
+      - id: removePathEntries
+        type: toggle
+        label: Clean exact Windows user PATH entries / show Unix manual instructions
+        defaultValue: "false"
+        help: Windows backs up user PATH; only exact deleted-folder entries are removed. Unix shell files are never edited.
+      - id: confirmation
+        type: text
+        label: Type NUKE to confirm permanent deletion
+        required: true
+        help: Cleanup is refused unless this value is exactly NUKE and backups are acknowledged.
+submitLabel: Permanently deletes selected directories; no automatic rollback
+tasks:
+  - id: remove
+    function: nukeCleanup
+    type: internal
+    label: Permanently remove selected HISE installations
+postActions: []
+globalDefaults: {}

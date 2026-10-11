@@ -8,7 +8,7 @@ describe("AI slash completion", () => {
 	});
 
 	it("completes the model configuration reset", () => {
-		expect(completeAiSlash("/nu").items.map((item) => item.label)).toEqual(["/nuke"]);
+		expect(completeAiSlash("/nu").items.map((item) => item.label)).toEqual(["/nukemodelconfig"]);
 	});
 
 	it("opens selectors without command arguments", () => {

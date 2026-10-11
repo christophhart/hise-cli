@@ -1728,6 +1728,35 @@ export function registerWizardAliases(
 	wizardRegistry: import("../wizard/registry.js").WizardRegistry,
 ): void {
 	for (const [alias, wizardId] of wizardRegistry.aliases()) {
+		// `/nuke` is a dispatcher: use the cleanup wizard when a valid scan
+		// inventory exists, otherwise launch the scan wizard.
+		if (alias === "nuke") {
+			commandRegistry.register({
+				name: alias,
+				description: "Find HISE installations or review cleanup candidates",
+				handler: async (args, session) => {
+					const registry = session.wizardRegistry;
+					if (!registry) return errorResult("No wizard definitions loaded.");
+					const route = session.handlerRegistry?.getInit("nukeRoute");
+					if (!route) return errorResult("Nuke wizard handlers are not registered.");
+					let target = "nuke_scan";
+					try {
+						const result = await route("nuke");
+						const routeName = "route" in result ? result.route : undefined;
+						if (routeName === "cleanup") target = "nuke_cleanup";
+					} catch (err) {
+						return errorResult(err instanceof Error ? err.message : String(err));
+					}
+					const def = registry.get(target);
+					if (!def) return errorResult(`Wizard "${target}" is not registered.`);
+					return handleWizardWithDef(def, args, session);
+				},
+				kind: "command",
+				embedBlockedReason: "Wizards run shell commands and need the local CLI.",
+			});
+			continue;
+		}
+
 		// Skip if a command with this name already exists (modes, builtins take precedence)
 		if (commandRegistry.has(alias)) continue;
 

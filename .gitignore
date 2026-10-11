@@ -22,3 +22,5 @@ screencasts/index.html
 /examples/hise_project/Presets
 /examples/hise_project/expansion_info.xml
 /.pi/quiet-tools
+/.pi/agent/runs
+/.pi-tasks

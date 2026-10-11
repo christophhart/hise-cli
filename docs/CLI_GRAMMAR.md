@@ -41,6 +41,17 @@ Static documentation lookup uses `docs` and is backed by MCP. Live inspection us
 
 Research performs bounded documentation and example retrieval, model synthesis, and live headless diagnosis with correction passes for generated HiseScript examples. The old `explore` names are not aliases.
 
+## Local installation cleanup and AI configuration
+
+- TUI `/nuke` scans available disks when no recent inventory exists; otherwise it opens installation cleanup, including for a single candidate. `/wizard nuke_scan` explicitly rescans; `/wizard nuke_cleanup` opens cleanup against the recent inventory.
+- Cleanup selections use opaque candidate IDs shown alongside exact filesystem paths, not comma-separated paths. Optionally choose a separate installation to retain, or choose `none` to allow deleting a sole installation or all selected installations. Acknowledge backups and type `NUKE` to authorize permanent deletion.
+- Candidates are not proven identical duplicates. Back up projects, samples, presets, ignored files, and local commits before deleting. Dirty or untracked source checkouts are refused. Close HISE and stop other processes modifying selected folders; filesystem race checks cannot provide complete protection against concurrent changes.
+- Optional settings deletion affects any remaining installations too. Windows PATH cleanup backs up user PATH and removes only exact selected-folder components. Unix shell files are not modified; cleanup provides manual instructions.
+- Cancellation does not roll back completed or partial deletions. Inspect the audit log under `~/.hise/cleanup-logs` and any logged staging locations before retrying an interrupted operation.
+- AI-mode `/nukemodelconfig` removes embedded AI credentials, custom models, model defaults, and model cache while preserving saved conversations. It takes no arguments. The former AI-mode `/nuke` spelling is removed; `/nuke` now exclusively means installation discovery/cleanup.
+
+These are local TUI slash commands, separate from the mode-statement BNF below. See `src/tui/wizard-handlers/nuke.ts` and the cleanup wizard definition for safeguards and answer fields.
+
 ## CLI invocation layer
 
 The shell CLI uses direct flag-style namespaces for builder, UI, and DSP automation:

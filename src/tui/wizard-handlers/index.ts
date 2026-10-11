@@ -43,6 +43,12 @@ import {
 } from "./install-package-maker.js";
 import type { AssetEnvironment } from "../../engine/assets/environment.js";
 import {
+	createNukeCleanupHandler,
+	createNukeCleanupInitHandler,
+	createNukeRouteHandler,
+	createNukeScanHandler,
+} from "./nuke.js";
+import {
 	createAssertReadyHandler,
 	createStagePayloadHandler,
 	createSignBinariesHandler,
@@ -75,6 +81,13 @@ export function registerSetupHandlers(
 	registry.registerTask("setupCompile", createSetupCompileHandler(executor));
 	registry.registerTask("setupVerify", createSetupVerifyHandler(executor));
 	registry.registerTask("setupTest", createSetupTestHandler(executor));
+
+	// Nuke dispatcher + discovery and cleanup wizard handlers.
+	registry.registerInit("nukeRoute", createNukeRouteHandler());
+	registry.registerInit("nukeScanInit", async () => ({}));
+	registry.registerInit("nukeCleanupInit", createNukeCleanupInitHandler());
+	registry.registerTask("nukeScan", createNukeScanHandler(executor));
+	registry.registerTask("nukeCleanup", createNukeCleanupHandler(executor));
 }
 
 /** Register compile handlers for plugin export + network compile wizards. */

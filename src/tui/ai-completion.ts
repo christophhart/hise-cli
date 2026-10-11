@@ -11,7 +11,7 @@ const AI_COMMANDS: CompletionItem[] = [
 	{ label: "/login", detail: "Configure provider authentication" },
 	{ label: "/exit", detail: "Leave AI mode" },
 	{ label: "/model", detail: "Select model and reasoning level" },
-	{ label: "/nuke", detail: "Remove embedded AI model configuration" },
+	{ label: "/nukemodelconfig", detail: "Remove embedded AI model configuration" },
 	{ label: "/sessions", detail: "List or switch AI sessions" },
 	{ label: "/stop", detail: "Stop the active generation" },
 ];

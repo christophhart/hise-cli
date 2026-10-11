@@ -58,7 +58,7 @@ The agent uses canonical hise-cli arguments and stdin for callback source. TUI m
 | \`/clear\` | Start a fresh AI conversation |
 | \`/login\` | Authenticate a provider or add a custom provider with a wizard |
 | \`/model\` | Open the model and reasoning-level selector |
-| \`/nuke\` | Remove embedded AI credentials, custom models, model defaults, and model cache |
+| \`/nukemodelconfig\` | Remove embedded AI credentials, custom models, model defaults, and model cache; saved conversations are kept |
 | \`/sessions [id]\` | List or resume a saved project session |
 | \`/research <query>\` | Research HISE documentation and validated examples |
 | \`/stop\` | Stop the active generation |
@@ -92,6 +92,8 @@ export function generateHelp(
 			const name = `**/${cmd.name}**`;
 			sections.push(`| ${name} | ${cmd.description} |`);
 		}
+		sections.push("");
+		sections.push("**/nuke** scans for HISE installations, then opens permanent cleanup, including for a single installation. Keeping an installation is optional (choose `none` for a full uninstall). Select deletion targets by candidate ID, acknowledge backups, and type `NUKE`. Deletion is permanent; clean source checkouts can still contain ignored files or unpushed commits. Settings are shared; Unix shell configuration is never edited. Use `/wizard nuke_scan` to rescan. Cleanup logs live under `~/.hise/cleanup-logs`.");
 		sections.push("");
 
 		// Navigation hints

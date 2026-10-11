@@ -1129,7 +1129,7 @@ function InlineAppInner({ session, connection, dataLoader, scheme }: InnerProps)
 				if (block) appendBlock(block);
 				return;
 			}
-			if (aiCommand === "/nuke") {
+			if (aiCommand === "/nukemodelconfig") {
 				const ai = aiSessionRef.current;
 				if (ai) {
 					await ai.nukeModelConfig();
