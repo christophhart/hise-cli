@@ -54,7 +54,7 @@ These are local TUI slash commands, separate from the mode-statement BNF below. 
 
 ## CLI invocation layer
 
-The shell CLI uses direct flag-style namespaces for builder, UI, and DSP automation:
+Mode one-shot commands accept a bare mode selector (for example, `hise-cli hise status`); the legacy `-<mode>` form remains supported (for example, `hise-cli -hise status`). Running `hise-cli` with no arguments launches the TUI; `--mock`, `--show-keys`, and `--no-animation` are accepted as TUI launch flags. Unknown commands and options return a usage error rather than opening the TUI. The shell CLI uses direct flag-style namespaces for builder, UI, and DSP automation:
 
 ```
 hise-cli builder tree --agent
@@ -64,7 +64,7 @@ hise-cli dsp connect --module "Script FX1" --source LFO1 --target F1 --param Fre
 hise-cli dsp trace --module "Script FX1" --container root --inject dirac --probe-recursive --agent
 ```
 
-The mode grammar in the sections below is the internal command grammar used by the shared execution layer. The shell parser renders direct flag-style commands to that grammar before dispatching. Workflow files are executed with `hise-cli run <file>` or `hise-cli --run <file>`.
+The mode grammar in the sections below is the internal command grammar used by the shared execution layer. The shell parser renders direct flag-style commands to that grammar before dispatching. Workflow files are executed with `hise-cli run <file>` or `hise-cli --run <file>`; use `-` for stdin or `--inline <script>` for inline text. `--dry-run` parses without execution, `--watch` reruns a file when it changes, and `--to-cli` executes supported workflow commands through the CLI. These standalone CLI entry points are documented in the root-command section of the generated global help.
 
 For builder, UI, and DSP direct commands, structural flags use the documented spelling. Dynamic property and parameter flags use exact HISE names and are case-sensitive:
 

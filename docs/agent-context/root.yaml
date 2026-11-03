@@ -3,6 +3,45 @@ mode:
   id: root
   title: Root commands
   summary: Enter modes and control the interactive HISE shell.
+rootCommands:
+  - id: cli.run
+    title: Run workflow file
+    purpose: Execute an .hsc workflow file, stdin, or inline workflow text.
+    tags: [workflow, execution]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, run, <file.hsc>] }
+    examples:
+      - { title: Execute a workflow, argv: [hise-cli, run, script.hsc] }
+      - { title: Validate without execution, argv: [hise-cli, run, script.hsc, --dry-run] }
+      - { title: Read workflow from stdin, argv: [hise-cli, run, "-"] }
+    notes: ["Options include --mock, --dry-run, --watch, --to-cli, and --verbosity=verbose|summary|quiet."]
+  - id: cli.which
+    title: Find commands by intent
+    purpose: Find matching CLI or TUI command recipes.
+    tags: [discovery, help]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, which, <intent>] }
+  - id: cli.how
+    title: Explain how to perform a task
+    purpose: Explain a task using retrieved command recipes.
+    tags: [help, agent]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, how, <question>] }
+    notes: ["Requires --agent; supports --mode builder|dsp|ui and --surface cli|tui."]
+  - id: cli.research-server
+    title: Documentation research server
+    purpose: Start the local documentation research UI.
+    tags: [research, server]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, --research-server] }
 commands:
   - { id: cli.update, title: Update hise-cli, purpose: Check for and install the latest hise-cli release. This does not update the HISE application., tags: [update, cli, release], aliases: [update cli, upgrade cli], surfaces: [cli], recipes: { cli: { title: CLI, argv: [hise-cli, update, --agent] } } }
   - { id: root.help, title: Help, purpose: Show contextual help, tags: [help], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/help] } } }

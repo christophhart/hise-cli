@@ -90,6 +90,171 @@ export const GENERATED_COMMAND_CATALOG = {
 			}
 		]
 	},
+	"rootCommands": [
+		{
+			"id": "cli.run",
+			"mode": "root",
+			"title": "Run workflow file",
+			"purpose": "Execute an .hsc workflow file, stdin, or inline workflow text.",
+			"tags": [
+				"workflow",
+				"execution"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 0
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"run",
+						"<file.hsc>"
+					],
+					"display": "hise-cli run <file.hsc>"
+				}
+			},
+			"examples": [
+				{
+					"title": "Execute a workflow",
+					"argv": [
+						"hise-cli",
+						"run",
+						"script.hsc"
+					],
+					"display": "hise-cli run script.hsc"
+				},
+				{
+					"title": "Validate without execution",
+					"argv": [
+						"hise-cli",
+						"run",
+						"script.hsc",
+						"--dry-run"
+					],
+					"display": "hise-cli run script.hsc --dry-run"
+				},
+				{
+					"title": "Read workflow from stdin",
+					"argv": [
+						"hise-cli",
+						"run",
+						"-"
+					],
+					"display": "hise-cli run -"
+				}
+			],
+			"notes": [
+				"Options include --mock, --dry-run, --watch, --to-cli, and --verbosity=verbose|summary|quiet."
+			]
+		},
+		{
+			"id": "cli.which",
+			"mode": "root",
+			"title": "Find commands by intent",
+			"purpose": "Find matching CLI or TUI command recipes.",
+			"tags": [
+				"discovery",
+				"help"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 1
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"which",
+						"<intent>"
+					],
+					"display": "hise-cli which <intent>"
+				}
+			}
+		},
+		{
+			"id": "cli.how",
+			"mode": "root",
+			"title": "Explain how to perform a task",
+			"purpose": "Explain a task using retrieved command recipes.",
+			"tags": [
+				"help",
+				"agent"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 2
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"how",
+						"<question>"
+					],
+					"display": "hise-cli how <question>"
+				}
+			},
+			"notes": [
+				"Requires --agent; supports --mode builder|dsp|ui and --surface cli|tui."
+			]
+		},
+		{
+			"id": "cli.research-server",
+			"mode": "root",
+			"title": "Documentation research server",
+			"purpose": "Start the local documentation research UI.",
+			"tags": [
+				"research",
+				"server"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 3
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"--research-server"
+					],
+					"display": "hise-cli --research-server"
+				}
+			}
+		}
+	],
 	"modes": [
 		{
 			"id": "analyse",

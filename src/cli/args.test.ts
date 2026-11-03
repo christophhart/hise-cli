@@ -128,6 +128,15 @@ describe("parseCliArgs", () => {
 		}
 	});
 
+	it.each(["hise", "-hise"])("accepts %s as a one-shot mode selector", (selector) => {
+		const result = parseCliArgs(["node", "hise-cli", selector, "status"], getCliCommands());
+		expect(result.kind).toBe("execute");
+		if (result.kind === "execute") {
+			expect(result.mode).toBe("hise");
+			expect(result.canonicalCommand).toBe("/hise status");
+		}
+	});
+
 	it("parses leading DSP module flag before command", () => {
 		const result = parseCliArgs(["node", "hise-cli", "dsp", "--module", "Interface", "docs", "filters.svf"], getCliCommands());
 		expect(result.kind).toBe("execute");
@@ -349,9 +358,21 @@ describe("parseCliArgs", () => {
 		}
 	});
 
-	it("preserves TUI-only flags when launching repl", () => {
-		const result = parseCliArgs(["node", "hise-cli", "--no-animation"], getCliCommands());
-		expect(result).toEqual({ kind: "tui", args: ["--no-animation"] });
+	it("allows supported flags when explicitly launching the TUI", () => {
+		expect(parseCliArgs(["node", "hise-cli", "--no-animation"], getCliCommands())).toEqual({ kind: "tui", args: ["--no-animation"] });
+		expect(parseCliArgs(["node", "hise-cli", "--mock"], getCliCommands())).toEqual({ kind: "tui", args: ["--mock"] });
+	});
+
+	it("rejects unknown commands with a suggestion instead of launching the TUI", () => {
+		expect(parseCliArgs(["node", "hise-cli", "hies"], getCliCommands())).toEqual({
+			kind: "error",
+			message: 'Unknown command or option "hies". Did you mean "hise"?',
+		});
+	});
+
+	it("does not treat repl as a TUI alias", () => {
+		const result = parseCliArgs(["node", "hise-cli", "repl"], getCliCommands());
+		expect(result.kind).toBe("error");
 	});
 
 	it("rejects retired quoted builder DSL route", () => {

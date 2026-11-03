@@ -45,6 +45,7 @@ export interface CatalogMode {
 export interface CommandCatalog {
 	schemaVersion: 3;
 	common: Record<string, unknown>;
+	rootCommands: readonly CatalogCommand[];
 	modes: readonly CatalogMode[];
 }
 

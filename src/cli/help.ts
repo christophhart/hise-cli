@@ -19,18 +19,27 @@ function renderGlobalHelp(): string {
 	const modes = GENERATED_COMMAND_CATALOG.modes
 		.filter((mode) => catalogCommands(GENERATED_COMMAND_CATALOG, "cli").some((command) => command.mode === mode.id))
 		.map((mode) => `  ${mode.id.padEnd(14)} ${mode.summary}`);
+	const rootCommands = GENERATED_COMMAND_CATALOG.rootCommands
+		.filter((command) => command.surfaces.includes("cli"))
+		.sort((a, b) => a.help.order - b.help.order || a.id.localeCompare(b.id))
+		.map((command) => `  ${command.recipes.cli?.display ?? ""}\n    ${command.purpose}${"notes" in command && command.notes?.length ? ` ${command.notes.join(" ")}` : ""}`);
 	return [
 		"hise-cli — automation frontend for HISE audio plugin framework.",
 		"",
 		"USAGE",
 		"  hise-cli <mode> <command> [flags]",
+		"  hise-cli -<mode> <command> [flags]  (legacy selector)",
+		"  hise-cli                         (launch the interactive TUI)",
 		"  hise-cli which \"<intent>\" [--surface cli|tui]",
 		"  hise-cli how \"<question>\" [--surface cli|tui] [--mode builder|dsp|ui] --agent",
 		"  hise-cli --research-server [--port <number>] [--no-open]",
 		"",
+		"ROOT COMMANDS",
+		...rootCommands,
+		"",
 		"MODES",
 		...modes,
-		"",
+		"", 
 		"LOCAL TUI MAINTENANCE",
 		"  /nuke scans HISE installations or reviews permanent cleanup, including a sole installation.",
 		"  /wizard nuke_scan rescans; /wizard nuke_cleanup uses the recent inventory.",

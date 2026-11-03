@@ -15,6 +15,34 @@ describe("renderCliHelp", () => {
 		expect(help).toContain("builder");
 		expect(help).toContain("ui");
 		expect(help).toContain("dsp");
+		expect(help).toContain("ROOT COMMANDS");
+		expect(help).toContain("hise-cli run <file.hsc>");
+		expect(help).toContain("--dry-run");
+		expect(help).toContain("hise-cli which <intent>");
+		expect(help).not.toContain("hise-cli script <command>");
+		expect(help).not.toContain("hise-cli mcp <command>");
+	});
+
+	it("documents standalone parser routes and fast paths in global help", () => {
+		const help = renderCliHelp(getCliCommands());
+		const routes = [
+			"hise-cli run <file.hsc>",
+			"hise-cli which <intent>",
+			"hise-cli how <question>",
+			"mcp",
+			"script",
+			"hise-cli update",
+			"hise-cli diagnose",
+			"hise-cli agent-context",
+			"--status",
+			"--version",
+			"--research-server",
+			"hise-cli ai",
+			"hise-cli -research",
+		];
+
+		const missing = routes.filter((route) => !help.includes(route));
+		expect(missing, `Missing help routes: ${missing.join(", ")}`).toEqual([]);
 	});
 
 	it("renders DSP help from generated agent commands", () => {

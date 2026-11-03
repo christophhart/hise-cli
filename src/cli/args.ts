@@ -1,4 +1,5 @@
 import type { CommandEntry } from "../engine/commands/registry.js";
+import { levenshteinDistance } from "../engine/completion/engine.js";
 import type { ScriptShowFilters } from "../engine/modes/script-symbols.js";
 
 export type CliParseResult =
@@ -1368,10 +1369,6 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		return { kind: "run", source: { type: "file", path: positional }, dryRun, useMock, watch, toCli, verbosity, output };
 	}
 
-	if (first === "repl") {
-		return { kind: "tui", args: args.slice(1) };
-	}
-
 	if (first === "update") {
 		return { kind: "update", check: args.includes("--check") };
 	}
@@ -1394,7 +1391,13 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	// so `-script --compile` doesn't clash with the /compile command.
 	let commandFlag: string | undefined;
 	let entry: CommandEntry | undefined;
+	const bareMode = commands.find((command) => command.kind === "mode" && command.name === first);
+	if (bareMode) {
+		commandFlag = first;
+		entry = bareMode;
+	}
 	for (const arg of args) {
+		if (entry) break;
 		if (RESERVED_FLAGS.has(arg)) continue;
 		if (arg.startsWith("--target:")) continue;
 		if (arg.startsWith("--target=")) continue;
@@ -1406,7 +1409,21 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 	}
 
 	if (!commandFlag || !entry) {
-		return { kind: "tui", args };
+		const tuiFlags = new Set(["--mock", "--show-keys", "--no-animation"]);
+		if (args.every((arg) => tuiFlags.has(arg))) return { kind: "tui", args };
+
+		const token = first.replace(/^-+/, "");
+		const candidates = [...new Set([
+			...commands.filter((command) => command.kind === "mode").map((command) => command.name),
+			"run", "which", "how", "mcp", "script", "update", "diagnose", "agent-context", "status", "version",
+		])];
+		const suggestion = candidates
+			.map((candidate) => ({ candidate, distance: levenshteinDistance(token.toLowerCase(), candidate.toLowerCase()) }))
+			.sort((a, b) => a.distance - b.distance)[0];
+		const hint = suggestion && suggestion.distance <= Math.max(1, Math.ceil(token.length / 3))
+			? ` Did you mean "${suggestion.candidate}"?`
+			: " Run hise-cli --help to see available commands.";
+		return { kind: "error", message: `Unknown command or option "${first}".${hint}` };
 	}
 
 	const useMock = args.includes("--mock");
