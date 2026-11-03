@@ -8,6 +8,16 @@ function getCliCommands() {
 }
 
 describe("parseCliArgs", () => {
+	it("parses mode-and-command scoped help", () => {
+		const result = parseCliArgs(["node", "hise-cli", "hise", "launch", "--help"], getCliCommands());
+		expect(result).toEqual({ kind: "help", scope: "hise", command: "launch" });
+	});
+
+	it("parses root-command help", () => {
+		const result = parseCliArgs(["node", "hise-cli", "run", "--help"], getCliCommands());
+		expect(result).toEqual({ kind: "help", scope: "run", command: undefined });
+	});
+
 	it("parses one-shot script invocation", () => {
 		const result = parseCliArgs(["node", "hise-cli", "-script", "Console.print(234)"], getCliCommands());
 		expect(result.kind).toBe("execute");

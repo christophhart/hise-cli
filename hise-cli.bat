@@ -9,4 +9,3 @@ if not exist "%~dp0dist" (
     npm run build --prefix "%~dp0."
 )
 node "%~dp0dist\index.js" %*
-if %errorlevel% neq 0 pause

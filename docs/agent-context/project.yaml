@@ -2,5 +2,176 @@ schemaVersion: 3
 mode:
   id: project
   title: Project mode
-  summary: Interactive project operations.
-commands: []
+  summary: Inspect projects, settings, files, and preprocessors; switch, save, load, modify, or export project data.
+  notes:
+    - Live project operations require HISE to be connected. Use show settings before changing a setting and show projects/files to discover valid names.
+    - Scope clauses use on <os> and for <target>; both default to all and may appear in either order.
+    - Project verbs use positional arguments and define no verb-specific --flags. CLI calls also accept shared output flags --agent, --json, --pretty, --compact, and --select <path>, plus --mock; --dry-run is not supported for project mode.
+commands:
+  - id: project.info
+    title: Project information
+    purpose: Show the active project's name, folder, scripts folder, and snippet-browser state.
+    syntax: info
+    tags: [project, info, read-only]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, info, --agent] }
+      tui: { title: TUI, lines: [/project, info] }
+  - id: project.show
+    title: Show project data
+    purpose: List projects, settings, project files, preprocessors, or the project tree.
+    syntax: show projects|settings|files|tree | show preprocessors [on <os>] [for <target>]
+    tags: [project, inspect, read-only]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, show, projects, --agent] }
+      tui: { title: TUI, lines: [/project, show projects] }
+    examples:
+      - { title: Show scoped preprocessors, argv: [hise-cli, project, show, preprocessors, on, macOS, for, dll, --agent] }
+      - { title: Show project tree, argv: [hise-cli, project, show, tree, --agent] }
+    notes: ["Only show preprocessors accepts on <os> and for <target>; their defaults are all/all."]
+  - id: project.describe
+    title: Describe a setting
+    purpose: Show a setting's description, type, options, and other metadata.
+    syntax: describe <key>
+    tags: [project, settings, read-only]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, describe, VST3Support, --agent] }
+      tui: { title: TUI, lines: [/project, describe VST3Support] }
+    notes: ["Use show settings to discover setting keys."]
+  - id: project.switch
+    title: Switch project
+    purpose: Switch HISE to a listed project or to a path accepted by the server.
+    syntax: switch <name|path>
+    tags: [project, switch, mutation]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, switch, "Test Synth", --agent] }
+      tui: { title: TUI, lines: [/project, 'switch "Test Synth"'] }
+    examples:
+      - { title: Switch to an absolute path, argv: [hise-cli, project, switch, /audio/OtherProject, --agent] }
+      - { title: Switch relative to the working directory, argv: [hise-cli, project, switch, ./SiblingProject, --agent] }
+    notes: ["Names with spaces may be quoted. Absolute paths and explicit-relative paths beginning with ./ or ../ are accepted; relative paths resolve against the current working directory, which must be available for explicit-relative paths."]
+  - id: project.save
+    title: Save project
+    purpose: Save the current project as an XML preset or HIP archive, optionally with a filename.
+    syntax: save xml|hip [as <filename>]
+    tags: [project, save, mutation]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, save, xml, --agent] }
+      tui: { title: TUI, lines: [/project, save xml] }
+    examples:
+      - { title: Save a named XML preset, argv: [hise-cli, project, save, xml, as, "My Project", --agent] }
+      - { title: Save a HIP archive, argv: [hise-cli, project, save, hip, --agent] }
+    notes: ["Formats are xml and hip. Use as <filename> only when choosing a filename; quote filenames containing spaces."]
+  - id: project.load
+    title: Load project file
+    purpose: Load a project XML or HIP file from the active project's listed files.
+    syntax: load <name|relative-path>
+    tags: [project, load, mutation]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, load, "My Project.xml", --agent] }
+      tui: { title: TUI, lines: [/project, 'load "My Project.xml"'] }
+    examples:
+      - { title: Load by relative path, argv: [hise-cli, project, load, "XmlPresetBackups/My Project.xml", --agent] }
+      - { title: Choose the HIP archive explicitly, argv: [hise-cli, project, load, "My Project.hip", --agent] }
+    notes: ["Use show files to discover candidates. A bare project name prefers XML when both XML and HIP files match; an explicit .xml or .hip suffix selects that format. Paths must match a listed project file."]
+  - id: project.get
+    title: Get a setting
+    purpose: Read one project setting by key.
+    syntax: get <key>
+    tags: [project, settings, read-only]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, get, Version, --agent] }
+      tui: { title: TUI, lines: [/project, get Version] }
+    notes: ["Use show settings to discover setting keys. Boolean settings are returned as true or false."]
+  - id: project.set
+    title: Set a project setting or preprocessor
+    purpose: Change one project setting or set a scoped preprocessor value.
+    syntax: set <key> <value> | set preprocessor <name> <integer|default> [on <os>] [for <target>]
+    tags: [project, settings, preprocessor, mutation]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, set, Version, 2.0.0, --agent] }
+      tui: { title: TUI, lines: [/project, set Version 2.0.0] }
+    examples:
+      - { title: Set a boolean setting, argv: [hise-cli, project, set, VST3Support, false, --agent] }
+      - { title: Set a scoped preprocessor, argv: [hise-cli, project, set, preprocessor, ENABLE_FOO, 1, on, win, for, plugin, --agent] }
+      - { title: Reset a preprocessor to its default, argv: [hise-cli, project, set, preprocessor, ENABLE_FOO, default, --agent] }
+    notes:
+      - "Setting values may contain spaces; quote them when needed. Boolean options accept true/yes/on/1/enable/enabled and false/no/off/0/disable/disabled; values are normalized only for boolean settings."
+      - "Preprocessor values must be an integer (including a negative integer) or default. default clears the override."
+      - "OS values are case-insensitive: Windows/win/x64, macOS/mac/osx/macosx/apple/darwin, Linux, or all/*/any. Targets are Project/project/plugin, Dll/dll, or all/*/any."
+  - id: project.clear
+    title: Clear preprocessor override
+    purpose: Restore a preprocessor to its default value for a selected OS and target scope.
+    syntax: clear preprocessor <name> [on <os>] [for <target>]
+    tags: [project, preprocessor, mutation]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, clear, preprocessor, ENABLE_FOO, --agent] }
+      tui: { title: TUI, lines: [/project, clear preprocessor ENABLE_FOO] }
+    examples:
+      - { title: Clear a scoped override, argv: [hise-cli, project, clear, preprocessor, ENABLE_FOO, on, Windows, for, Project, --agent] }
+    notes: ["Only the preprocessor name is accepted; do not supply a value. Scope clauses and their aliases are the same as for set preprocessor. Defaults are all/all."]
+  - id: project.snippet
+    title: Import or export snippet
+    purpose: Copy the current project as a snippet or import a snippet string.
+    syntax: snippet export | snippet load [<snippet-string>]
+    tags: [project, snippet, mutation]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, snippet, export, --agent] }
+      tui: { title: TUI, lines: [/project, snippet export] }
+    examples:
+      - { title: Import a snippet from the clipboard, argv: [hise-cli, project, snippet, load, --agent] }
+      - { title: Import an inline snippet, argv: [hise-cli, project, snippet, load, "HiseSnippet 1.payload", --agent] }
+    notes: ["Export copies the snippet to the clipboard. Load with no argument reads from the clipboard; inline content must start with HiseSnippet followed by a space."]
+  - id: project.create
+    title: Create project
+    purpose: Open the new-project wizard.
+    syntax: create
+    tags: [project, create, wizard]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, create, --agent] }
+      tui: { title: TUI, lines: [/project, create] }
+    notes: ["Alias for /wizard new_project."]
+  - id: project.export
+    title: Export project or DLL
+    purpose: Run the project or compiled-network export wizard.
+    syntax: export dll|project
+    tags: [project, export, wizard]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, export, project, --agent] }
+      tui: { title: TUI, lines: [/project, export project] }
+    examples:
+      - { title: Export compiled networks as a DLL, argv: [hise-cli, project, export, dll, --agent] }
+    notes: ["export dll runs the compile_networks wizard; export project runs the plugin_export wizard. These are aliases for /wizard run compile_networks and /wizard run plugin_export."]
+  - id: project.help
+    title: Project mode help
+    purpose: Show the project mode command summary.
+    syntax: help
+    tags: [project, help]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, project, help, --agent] }
+      tui: { title: TUI, lines: [/project, help] }

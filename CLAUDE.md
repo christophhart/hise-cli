@@ -148,7 +148,19 @@ Full reference: [docs/CODE_STYLE.md](docs/CODE_STYLE.md). Highlights:
   `src/engine/`**.
 - No default exports. Tests colocated (`foo.test.ts` next to `foo.ts`).
 - Git commits: lowercase, terse, no conventional-commits prefix.
-- **Help text sync**: when adding/changing commands, modes, or wizards, update
-  both `src/engine/commands/help.ts` (TUI `/help`) and `src/cli/help.ts` (CLI
-  `--help`). CLI help is the primary LLM reference — full syntax + examples +
+- **Agent-context catalog source of truth**: `docs/agent-context/*.yaml` is the source
+  of truth for the generated command catalog and agent-context output. Never edit
+  `src/engine/commands/generatedCatalog.ts`, `src/cli/generated-agent-context.ts`,
+  or other generated outputs directly. Update the relevant YAML and run
+  `node scripts/generate-agent-context.mjs` instead. Verify generated changes with
+  typecheck and relevant tests.
+
+  **Help text sync**: command and mode help content is sourced from
+  `docs/agent-context/*.yaml` and rendered for TUI `/help` and CLI `--help` by
+  `src/engine/commands/help.ts` and `src/cli/help.ts`. When adding or changing
+  command/mode syntax, descriptions, examples, or notes, update the relevant YAML
+  and run `node scripts/generate-agent-context.mjs`; do not edit the renderers or
+  generated catalog for those changes. Keep both surfaces accurate. Renderer-owned
+  content (such as root TUI navigation help) should be updated in its renderer.
+  CLI help is the primary LLM reference — include full syntax, examples, and
   subcommands.

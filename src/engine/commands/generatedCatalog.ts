@@ -143,6 +143,26 @@ export const GENERATED_COMMAND_CATALOG = {
 					"display": "hise-cli run script.hsc --dry-run"
 				},
 				{
+					"title": "Watch a workflow file",
+					"argv": [
+						"hise-cli",
+						"run",
+						"script.hsc",
+						"--watch"
+					],
+					"display": "hise-cli run script.hsc --watch"
+				},
+				{
+					"title": "Run inline workflow text",
+					"argv": [
+						"hise-cli",
+						"run",
+						"--inline",
+						"/builder\nadd SineSynth\nshow tree"
+					],
+					"display": "hise-cli run --inline \"/builder\nadd SineSynth\nshow tree\""
+				},
+				{
 					"title": "Read workflow from stdin",
 					"argv": [
 						"hise-cli",
@@ -153,7 +173,7 @@ export const GENERATED_COMMAND_CATALOG = {
 				}
 			],
 			"notes": [
-				"Options include --mock, --dry-run, --watch, --to-cli, and --verbosity=verbose|summary|quiet."
+				"Input: a file path, - for stdin, or --inline <script>; --run and -run are aliases. Options: --mock, --dry-run, --watch, --to-cli, --verbosity=verbose|summary|quiet, --quiet, --verbose. --watch requires a file; --to-cli cannot be combined with --watch or --dry-run."
 			]
 		},
 		{
@@ -186,7 +206,10 @@ export const GENERATED_COMMAND_CATALOG = {
 					],
 					"display": "hise-cli which <intent>"
 				}
-			}
+			},
+			"notes": [
+				"Options: --surface cli|tui and --limit <positive integer> (default 3)."
+			]
 		},
 		{
 			"id": "cli.how",
@@ -220,7 +243,257 @@ export const GENERATED_COMMAND_CATALOG = {
 				}
 			},
 			"notes": [
-				"Requires --agent; supports --mode builder|dsp|ui and --surface cli|tui."
+				"Add --agent for compact structured output. Supports --mode builder|dsp|ui and --surface cli|tui."
+			]
+		},
+		{
+			"id": "cli.update-shell",
+			"mode": "root",
+			"title": "Update hise-cli",
+			"purpose": "Check for and install the latest hise-cli release.",
+			"tags": [
+				"update"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 3
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"update",
+						"--check"
+					],
+					"display": "hise-cli update --check"
+				}
+			},
+			"notes": [
+				"--check only checks for an update; without it, the latest release is installed."
+			]
+		},
+		{
+			"id": "cli.diagnose",
+			"mode": "root",
+			"title": "Diagnose HiseScript source or file",
+			"purpose": "Run syntax and semantic diagnostics on a HiseScript file or inline source string.",
+			"tags": [
+				"script",
+				"diagnostics"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 4
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"diagnose",
+						"Scripts/Main.js"
+					],
+					"display": "hise-cli diagnose Scripts/Main.js"
+				}
+			},
+			"examples": [
+				{
+					"title": "Diagnose inline source",
+					"argv": [
+						"hise-cli",
+						"diagnose",
+						"--code",
+						"Console.print(1);"
+					],
+					"display": "hise-cli diagnose --code \"Console.print(1);\""
+				}
+			],
+			"notes": [
+				"File paths may be absolute, relative to the Scripts folder, or relative to the project folder; they must resolve to a HISE-included file. Unresolved or ambiguous paths fail. Use either a file path or --code <source>, not both. Options: --format=json|pretty (use the equals form), --errors-only, and --code <source> (also --code=<source>)."
+			]
+		},
+		{
+			"id": "cli.agent-context",
+			"mode": "root",
+			"title": "Agent context",
+			"purpose": "Retrieve command and mode context for agents.",
+			"tags": [
+				"agent",
+				"context"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 5
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"agent-context"
+					],
+					"display": "hise-cli agent-context"
+				}
+			},
+			"notes": [
+				"Choose exactly one query: <mode>, --command <id> (or --command=<id>), or --list-commands. Add --full only to a mode query. Output flags include --agent, --json, --pretty, and --select <path>."
+			]
+		},
+		{
+			"id": "cli.status",
+			"mode": "root",
+			"title": "HISE status",
+			"purpose": "Show HISE connection status.",
+			"tags": [
+				"status"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 6
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"--status"
+					],
+					"display": "hise-cli --status"
+				}
+			},
+			"notes": [
+				"Alias: -status. Supports standard JSON output flags and --select <path>."
+			]
+		},
+		{
+			"id": "cli.version",
+			"mode": "root",
+			"title": "CLI version",
+			"purpose": "Show the installed hise-cli version.",
+			"tags": [
+				"version"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 7
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"--version"
+					],
+					"display": "hise-cli --version"
+				}
+			},
+			"notes": [
+				"Alias: -version."
+			]
+		},
+		{
+			"id": "cli.ai",
+			"mode": "root",
+			"title": "One-shot AI agent",
+			"purpose": "Run the embedded agent for a single request.",
+			"tags": [
+				"agent",
+				"ai"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 8
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"ai",
+						"inspect the current project"
+					],
+					"display": "hise-cli ai \"inspect the current project\""
+				}
+			},
+			"notes": [
+				"Options: --apply, --json, --mock, --agent-dir <path>, and --model <provider/model-id>."
+			]
+		},
+		{
+			"id": "cli.research",
+			"mode": "root",
+			"title": "One-shot documentation research",
+			"purpose": "Research HISE documentation from the command line.",
+			"tags": [
+				"research"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 9
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"-research",
+						"ScriptSlider callbacks"
+					],
+					"display": "hise-cli -research \"ScriptSlider callbacks\""
+				}
+			},
+			"notes": [
+				"Options: --json, --agent, and --compact."
 			]
 		},
 		{
@@ -241,7 +514,7 @@ export const GENERATED_COMMAND_CATALOG = {
 			"danger": false,
 			"help": {
 				"visibility": "common",
-				"order": 3
+				"order": 10
 			},
 			"recipes": {
 				"cli": {
@@ -252,7 +525,10 @@ export const GENERATED_COMMAND_CATALOG = {
 					],
 					"display": "hise-cli --research-server"
 				}
-			}
+			},
+			"notes": [
+				"Options: --port <1-65535> and --no-open. --help prints this command's usage."
+			]
 		}
 	],
 	"modes": [
@@ -4330,6 +4606,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					],
 					"contexts": [],
 					"surfaces": [
+						"cli",
 						"tui"
 					],
 					"safety": "read-only",
@@ -4339,6 +4616,16 @@ export const GENERATED_COMMAND_CATALOG = {
 						"order": 0
 					},
 					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"status",
+								"--agent"
+							],
+							"display": "hise-cli hise status --agent"
+						},
 						"tui": {
 							"title": "TUI",
 							"lines": [
@@ -4347,13 +4634,29 @@ export const GENERATED_COMMAND_CATALOG = {
 							],
 							"display": "/hise\nstatus"
 						}
-					}
+					},
+					"examples": [
+						{
+							"title": "Show project folder",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"status",
+								"folder",
+								"--agent"
+							],
+							"display": "hise-cli hise status folder --agent"
+						}
+					],
+					"notes": [
+						"Optional field: project, folder, or online."
+					]
 				},
 				{
 					"id": "hise.launch",
 					"mode": "hise",
 					"title": "Launch HISE",
-					"purpose": "Launch HISE and wait for its REST API to become available.",
+					"purpose": "Launch HISE or the Debug build and wait for its REST API to become available.",
 					"tags": [
 						"hise",
 						"runtime",
@@ -4364,6 +4667,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					],
 					"contexts": [],
 					"surfaces": [
+						"cli",
 						"tui"
 					],
 					"safety": "read-only",
@@ -4373,6 +4677,16 @@ export const GENERATED_COMMAND_CATALOG = {
 						"order": 1
 					},
 					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"launch",
+								"--agent"
+							],
+							"display": "hise-cli hise launch --agent"
+						},
 						"tui": {
 							"title": "TUI",
 							"lines": [
@@ -4381,7 +4695,23 @@ export const GENERATED_COMMAND_CATALOG = {
 							],
 							"display": "/hise\nlaunch"
 						}
-					}
+					},
+					"examples": [
+						{
+							"title": "Launch Debug build",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"launch",
+								"debug",
+								"--agent"
+							],
+							"display": "hise-cli hise launch debug --agent"
+						}
+					],
+					"notes": [
+						"The optional positional word debug (case-insensitive) selects the HISE Debug binary."
+					]
 				},
 				{
 					"id": "hise.shutdown",
@@ -4400,6 +4730,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					],
 					"contexts": [],
 					"surfaces": [
+						"cli",
 						"tui"
 					],
 					"safety": "mutation",
@@ -4409,6 +4740,16 @@ export const GENERATED_COMMAND_CATALOG = {
 						"order": 2
 					},
 					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"shutdown",
+								"--agent"
+							],
+							"display": "hise-cli hise shutdown --agent"
+						},
 						"tui": {
 							"title": "TUI",
 							"lines": [
@@ -4434,6 +4775,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					],
 					"contexts": [],
 					"surfaces": [
+						"cli",
 						"tui"
 					],
 					"safety": "read-only",
@@ -4443,6 +4785,20 @@ export const GENERATED_COMMAND_CATALOG = {
 						"order": 3
 					},
 					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"screenshot",
+								"at",
+								"50%",
+								"to",
+								"screenshot.png",
+								"--agent"
+							],
+							"display": "hise-cli hise screenshot at 50% to screenshot.png --agent"
+						},
 						"tui": {
 							"title": "TUI",
 							"lines": [
@@ -4451,7 +4807,28 @@ export const GENERATED_COMMAND_CATALOG = {
 							],
 							"display": "/hise\nscreenshot at 50% to screenshot.png"
 						}
-					}
+					},
+					"examples": [
+						{
+							"title": "Capture one component",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"screenshot",
+								"of",
+								"Knob1",
+								"at",
+								"0.5",
+								"to",
+								"knob.png",
+								"--agent"
+							],
+							"display": "hise-cli hise screenshot of Knob1 at 0.5 to knob.png --agent"
+						}
+					],
+					"notes": [
+						"Scale accepts a percentage or decimal. The component, scale, and output path are optional; default output is screenshot.png in the active project."
+					]
 				},
 				{
 					"id": "hise.profile",
@@ -4468,6 +4845,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					],
 					"contexts": [],
 					"surfaces": [
+						"cli",
 						"tui"
 					],
 					"safety": "read-only",
@@ -4477,6 +4855,20 @@ export const GENERATED_COMMAND_CATALOG = {
 						"order": 4
 					},
 					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"profile",
+								"thread",
+								"audio",
+								"for",
+								"1000ms",
+								"--agent"
+							],
+							"display": "hise-cli hise profile thread audio for 1000ms --agent"
+						},
 						"tui": {
 							"title": "TUI",
 							"lines": [
@@ -4484,6 +4876,119 @@ export const GENERATED_COMMAND_CATALOG = {
 								"profile thread audio for 1000ms"
 							],
 							"display": "/hise\nprofile thread audio for 1000ms"
+						}
+					},
+					"notes": [
+						"Thread filter and duration are optional. Valid thread names are audio, ui, and scripting (script is an alias). Duration defaults to 1000ms and must be between 100 and 5000ms."
+					]
+				},
+				{
+					"id": "hise.playground",
+					"mode": "hise",
+					"title": "Control snippet browser",
+					"purpose": "Open, close, enable, or disable the HISE snippet browser.",
+					"tags": [
+						"hise",
+						"runtime",
+						"playground"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 5
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"playground",
+								"open",
+								"--agent"
+							],
+							"display": "hise-cli hise playground open --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/hise",
+								"playground open"
+							],
+							"display": "/hise\nplayground open"
+						}
+					},
+					"examples": [
+						{
+							"title": "Close snippet browser",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"playground",
+								"close",
+								"--agent"
+							],
+							"display": "hise-cli hise playground close --agent"
+						},
+						{
+							"title": "Switch to main project",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"playground",
+								"disable",
+								"--agent"
+							],
+							"display": "hise-cli hise playground disable --agent"
+						}
+					]
+				},
+				{
+					"id": "hise.help",
+					"mode": "hise",
+					"title": "HISE mode help",
+					"purpose": "Show HISE runtime control commands.",
+					"tags": [
+						"hise",
+						"help"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 6
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"hise",
+								"help",
+								"--agent"
+							],
+							"display": "hise-cli hise help --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/hise",
+								"help"
+							],
+							"display": "/hise\nhelp"
 						}
 					}
 				}
@@ -4500,7 +5005,131 @@ export const GENERATED_COMMAND_CATALOG = {
 			"antiPatterns": [],
 			"quickStart": [],
 			"concepts": [],
-			"commands": [],
+			"commands": [
+				{
+					"id": "inspect.version",
+					"mode": "inspect",
+					"title": "Version",
+					"purpose": "Show HISE server version information.",
+					"tags": [
+						"inspect",
+						"version"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 0
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"inspect",
+								"version"
+							],
+							"display": "hise-cli inspect version"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/inspect",
+								"version"
+							],
+							"display": "/inspect\nversion"
+						}
+					}
+				},
+				{
+					"id": "inspect.project",
+					"mode": "inspect",
+					"title": "Project",
+					"purpose": "Show current project information.",
+					"tags": [
+						"inspect",
+						"project"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 1
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"inspect",
+								"project"
+							],
+							"display": "hise-cli inspect project"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/inspect",
+								"project"
+							],
+							"display": "/inspect\nproject"
+						}
+					}
+				},
+				{
+					"id": "inspect.help",
+					"mode": "inspect",
+					"title": "Help",
+					"purpose": "Show inspect mode commands.",
+					"tags": [
+						"inspect",
+						"help"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 2
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"inspect",
+								"help"
+							],
+							"display": "hise-cli inspect help"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/inspect",
+								"help"
+							],
+							"display": "/inspect\nhelp"
+						}
+					}
+				}
+			],
 			"types": {}
 		},
 		{
@@ -4946,14 +5575,827 @@ export const GENERATED_COMMAND_CATALOG = {
 		{
 			"id": "project",
 			"title": "Project mode",
-			"summary": "Interactive project operations.",
+			"summary": "Inspect projects, settings, files, and preprocessors; switch, save, load, modify, or export project data.",
 			"vocabulary": "",
 			"invocation": [],
-			"notes": [],
+			"notes": [
+				"Live project operations require HISE to be connected. Use show settings before changing a setting and show projects/files to discover valid names.",
+				"Scope clauses use on <os> and for <target>; both default to all and may appear in either order.",
+				"Project verbs use positional arguments and define no verb-specific --flags. CLI calls also accept shared output flags --agent, --json, --pretty, --compact, and --select <path>, plus --mock; --dry-run is not supported for project mode."
+			],
 			"antiPatterns": [],
 			"quickStart": [],
 			"concepts": [],
-			"commands": [],
+			"commands": [
+				{
+					"id": "project.info",
+					"mode": "project",
+					"title": "Project information",
+					"purpose": "Show the active project's name, folder, scripts folder, and snippet-browser state.",
+					"tags": [
+						"project",
+						"info",
+						"read-only"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 0
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"info",
+								"--agent"
+							],
+							"display": "hise-cli project info --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"info"
+							],
+							"display": "/project\ninfo"
+						}
+					}
+				},
+				{
+					"id": "project.show",
+					"mode": "project",
+					"title": "Show project data",
+					"purpose": "List projects, settings, project files, preprocessors, or the project tree.",
+					"tags": [
+						"project",
+						"inspect",
+						"read-only"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 1
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"show",
+								"projects",
+								"--agent"
+							],
+							"display": "hise-cli project show projects --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"show projects"
+							],
+							"display": "/project\nshow projects"
+						}
+					},
+					"examples": [
+						{
+							"title": "Show scoped preprocessors",
+							"argv": [
+								"hise-cli",
+								"project",
+								"show",
+								"preprocessors",
+								"on",
+								"macOS",
+								"for",
+								"dll",
+								"--agent"
+							],
+							"display": "hise-cli project show preprocessors on macOS for dll --agent"
+						},
+						{
+							"title": "Show project tree",
+							"argv": [
+								"hise-cli",
+								"project",
+								"show",
+								"tree",
+								"--agent"
+							],
+							"display": "hise-cli project show tree --agent"
+						}
+					],
+					"notes": [
+						"Only show preprocessors accepts on <os> and for <target>; their defaults are all/all."
+					]
+				},
+				{
+					"id": "project.describe",
+					"mode": "project",
+					"title": "Describe a setting",
+					"purpose": "Show a setting's description, type, options, and other metadata.",
+					"tags": [
+						"project",
+						"settings",
+						"read-only"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 2
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"describe",
+								"VST3Support",
+								"--agent"
+							],
+							"display": "hise-cli project describe VST3Support --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"describe VST3Support"
+							],
+							"display": "/project\ndescribe VST3Support"
+						}
+					},
+					"notes": [
+						"Use show settings to discover setting keys."
+					]
+				},
+				{
+					"id": "project.switch",
+					"mode": "project",
+					"title": "Switch project",
+					"purpose": "Switch HISE to a listed project or to a path accepted by the server.",
+					"tags": [
+						"project",
+						"switch",
+						"mutation"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "mutation",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 3
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"switch",
+								"Test Synth",
+								"--agent"
+							],
+							"display": "hise-cli project switch \"Test Synth\" --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"switch \"Test Synth\""
+							],
+							"display": "/project\nswitch \"Test Synth\""
+						}
+					},
+					"examples": [
+						{
+							"title": "Switch to an absolute path",
+							"argv": [
+								"hise-cli",
+								"project",
+								"switch",
+								"/audio/OtherProject",
+								"--agent"
+							],
+							"display": "hise-cli project switch /audio/OtherProject --agent"
+						},
+						{
+							"title": "Switch relative to the working directory",
+							"argv": [
+								"hise-cli",
+								"project",
+								"switch",
+								"./SiblingProject",
+								"--agent"
+							],
+							"display": "hise-cli project switch ./SiblingProject --agent"
+						}
+					],
+					"notes": [
+						"Names with spaces may be quoted. Absolute paths and explicit-relative paths beginning with ./ or ../ are accepted; relative paths resolve against the current working directory, which must be available for explicit-relative paths."
+					]
+				},
+				{
+					"id": "project.save",
+					"mode": "project",
+					"title": "Save project",
+					"purpose": "Save the current project as an XML preset or HIP archive, optionally with a filename.",
+					"tags": [
+						"project",
+						"save",
+						"mutation"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "mutation",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 4
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"save",
+								"xml",
+								"--agent"
+							],
+							"display": "hise-cli project save xml --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"save xml"
+							],
+							"display": "/project\nsave xml"
+						}
+					},
+					"examples": [
+						{
+							"title": "Save a named XML preset",
+							"argv": [
+								"hise-cli",
+								"project",
+								"save",
+								"xml",
+								"as",
+								"My Project",
+								"--agent"
+							],
+							"display": "hise-cli project save xml as \"My Project\" --agent"
+						},
+						{
+							"title": "Save a HIP archive",
+							"argv": [
+								"hise-cli",
+								"project",
+								"save",
+								"hip",
+								"--agent"
+							],
+							"display": "hise-cli project save hip --agent"
+						}
+					],
+					"notes": [
+						"Formats are xml and hip. Use as <filename> only when choosing a filename; quote filenames containing spaces."
+					]
+				},
+				{
+					"id": "project.load",
+					"mode": "project",
+					"title": "Load project file",
+					"purpose": "Load a project XML or HIP file from the active project's listed files.",
+					"tags": [
+						"project",
+						"load",
+						"mutation"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "mutation",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 5
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"load",
+								"My Project.xml",
+								"--agent"
+							],
+							"display": "hise-cli project load \"My Project.xml\" --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"load \"My Project.xml\""
+							],
+							"display": "/project\nload \"My Project.xml\""
+						}
+					},
+					"examples": [
+						{
+							"title": "Load by relative path",
+							"argv": [
+								"hise-cli",
+								"project",
+								"load",
+								"XmlPresetBackups/My Project.xml",
+								"--agent"
+							],
+							"display": "hise-cli project load \"XmlPresetBackups/My Project.xml\" --agent"
+						},
+						{
+							"title": "Choose the HIP archive explicitly",
+							"argv": [
+								"hise-cli",
+								"project",
+								"load",
+								"My Project.hip",
+								"--agent"
+							],
+							"display": "hise-cli project load \"My Project.hip\" --agent"
+						}
+					],
+					"notes": [
+						"Use show files to discover candidates. A bare project name prefers XML when both XML and HIP files match; an explicit .xml or .hip suffix selects that format. Paths must match a listed project file."
+					]
+				},
+				{
+					"id": "project.get",
+					"mode": "project",
+					"title": "Get a setting",
+					"purpose": "Read one project setting by key.",
+					"tags": [
+						"project",
+						"settings",
+						"read-only"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 6
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"get",
+								"Version",
+								"--agent"
+							],
+							"display": "hise-cli project get Version --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"get Version"
+							],
+							"display": "/project\nget Version"
+						}
+					},
+					"notes": [
+						"Use show settings to discover setting keys. Boolean settings are returned as true or false."
+					]
+				},
+				{
+					"id": "project.set",
+					"mode": "project",
+					"title": "Set a project setting or preprocessor",
+					"purpose": "Change one project setting or set a scoped preprocessor value.",
+					"tags": [
+						"project",
+						"settings",
+						"preprocessor",
+						"mutation"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "mutation",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 7
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"set",
+								"Version",
+								"2.0.0",
+								"--agent"
+							],
+							"display": "hise-cli project set Version 2.0.0 --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"set Version 2.0.0"
+							],
+							"display": "/project\nset Version 2.0.0"
+						}
+					},
+					"examples": [
+						{
+							"title": "Set a boolean setting",
+							"argv": [
+								"hise-cli",
+								"project",
+								"set",
+								"VST3Support",
+								"false",
+								"--agent"
+							],
+							"display": "hise-cli project set VST3Support false --agent"
+						},
+						{
+							"title": "Set a scoped preprocessor",
+							"argv": [
+								"hise-cli",
+								"project",
+								"set",
+								"preprocessor",
+								"ENABLE_FOO",
+								"1",
+								"on",
+								"win",
+								"for",
+								"plugin",
+								"--agent"
+							],
+							"display": "hise-cli project set preprocessor ENABLE_FOO 1 on win for plugin --agent"
+						},
+						{
+							"title": "Reset a preprocessor to its default",
+							"argv": [
+								"hise-cli",
+								"project",
+								"set",
+								"preprocessor",
+								"ENABLE_FOO",
+								"default",
+								"--agent"
+							],
+							"display": "hise-cli project set preprocessor ENABLE_FOO default --agent"
+						}
+					],
+					"notes": [
+						"Setting values may contain spaces; quote them when needed. Boolean options accept true/yes/on/1/enable/enabled and false/no/off/0/disable/disabled; values are normalized only for boolean settings.",
+						"Preprocessor values must be an integer (including a negative integer) or default. default clears the override.",
+						"OS values are case-insensitive: Windows/win/x64, macOS/mac/osx/macosx/apple/darwin, Linux, or all/*/any. Targets are Project/project/plugin, Dll/dll, or all/*/any."
+					]
+				},
+				{
+					"id": "project.clear",
+					"mode": "project",
+					"title": "Clear preprocessor override",
+					"purpose": "Restore a preprocessor to its default value for a selected OS and target scope.",
+					"tags": [
+						"project",
+						"preprocessor",
+						"mutation"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "mutation",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 8
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"clear",
+								"preprocessor",
+								"ENABLE_FOO",
+								"--agent"
+							],
+							"display": "hise-cli project clear preprocessor ENABLE_FOO --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"clear preprocessor ENABLE_FOO"
+							],
+							"display": "/project\nclear preprocessor ENABLE_FOO"
+						}
+					},
+					"examples": [
+						{
+							"title": "Clear a scoped override",
+							"argv": [
+								"hise-cli",
+								"project",
+								"clear",
+								"preprocessor",
+								"ENABLE_FOO",
+								"on",
+								"Windows",
+								"for",
+								"Project",
+								"--agent"
+							],
+							"display": "hise-cli project clear preprocessor ENABLE_FOO on Windows for Project --agent"
+						}
+					],
+					"notes": [
+						"Only the preprocessor name is accepted; do not supply a value. Scope clauses and their aliases are the same as for set preprocessor. Defaults are all/all."
+					]
+				},
+				{
+					"id": "project.snippet",
+					"mode": "project",
+					"title": "Import or export snippet",
+					"purpose": "Copy the current project as a snippet or import a snippet string.",
+					"tags": [
+						"project",
+						"snippet",
+						"mutation"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "mutation",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 9
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"snippet",
+								"export",
+								"--agent"
+							],
+							"display": "hise-cli project snippet export --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"snippet export"
+							],
+							"display": "/project\nsnippet export"
+						}
+					},
+					"examples": [
+						{
+							"title": "Import a snippet from the clipboard",
+							"argv": [
+								"hise-cli",
+								"project",
+								"snippet",
+								"load",
+								"--agent"
+							],
+							"display": "hise-cli project snippet load --agent"
+						},
+						{
+							"title": "Import an inline snippet",
+							"argv": [
+								"hise-cli",
+								"project",
+								"snippet",
+								"load",
+								"HiseSnippet 1.payload",
+								"--agent"
+							],
+							"display": "hise-cli project snippet load \"HiseSnippet 1.payload\" --agent"
+						}
+					],
+					"notes": [
+						"Export copies the snippet to the clipboard. Load with no argument reads from the clipboard; inline content must start with HiseSnippet followed by a space."
+					]
+				},
+				{
+					"id": "project.create",
+					"mode": "project",
+					"title": "Create project",
+					"purpose": "Open the new-project wizard.",
+					"tags": [
+						"project",
+						"create",
+						"wizard"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 10
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"create",
+								"--agent"
+							],
+							"display": "hise-cli project create --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"create"
+							],
+							"display": "/project\ncreate"
+						}
+					},
+					"notes": [
+						"Alias for /wizard new_project."
+					]
+				},
+				{
+					"id": "project.export",
+					"mode": "project",
+					"title": "Export project or DLL",
+					"purpose": "Run the project or compiled-network export wizard.",
+					"tags": [
+						"project",
+						"export",
+						"wizard"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 11
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"export",
+								"project",
+								"--agent"
+							],
+							"display": "hise-cli project export project --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"export project"
+							],
+							"display": "/project\nexport project"
+						}
+					},
+					"examples": [
+						{
+							"title": "Export compiled networks as a DLL",
+							"argv": [
+								"hise-cli",
+								"project",
+								"export",
+								"dll",
+								"--agent"
+							],
+							"display": "hise-cli project export dll --agent"
+						}
+					],
+					"notes": [
+						"export dll runs the compile_networks wizard; export project runs the plugin_export wizard. These are aliases for /wizard run compile_networks and /wizard run plugin_export."
+					]
+				},
+				{
+					"id": "project.help",
+					"mode": "project",
+					"title": "Project mode help",
+					"purpose": "Show the project mode command summary.",
+					"tags": [
+						"project",
+						"help"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"cli",
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 12
+					},
+					"recipes": {
+						"cli": {
+							"title": "CLI",
+							"argv": [
+								"hise-cli",
+								"project",
+								"help",
+								"--agent"
+							],
+							"display": "hise-cli project help --agent"
+						},
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/project",
+								"help"
+							],
+							"display": "/project\nhelp"
+						}
+					}
+				}
+			],
 			"types": {}
 		},
 		{
@@ -5332,11 +6774,78 @@ export const GENERATED_COMMAND_CATALOG = {
 						"tui": {
 							"title": "TUI",
 							"lines": [
-								"/expect true"
+								"/expect command is value"
 							],
-							"display": "/expect true"
+							"display": "/expect command is value"
 						}
-					}
+					},
+					"notes": [
+						"Syntax: <command> is|matches|logs|throws|contains <value>. Optional within <tolerance> applies to numeric/log assertions; trailing or abort stops the workflow on failure."
+					]
+				},
+				{
+					"id": "root.expect-logs",
+					"mode": "root",
+					"title": "Expect logs",
+					"purpose": "Assert captured Console output",
+					"tags": [
+						"workflow"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 12
+					},
+					"recipes": {
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/expect-logs [\\\"ready\\\"]"
+							],
+							"display": "/expect-logs [\\\"ready\\\"]"
+						}
+					},
+					"notes": [
+						"Argument is a JSON value or array; optional within <tolerance> (default 0.01) and trailing or abort."
+					]
+				},
+				{
+					"id": "root.expect-compile",
+					"mode": "root",
+					"title": "Expect compile failure",
+					"purpose": "Assert callback compilation fails with a matching message",
+					"tags": [
+						"workflow"
+					],
+					"aliases": [],
+					"contexts": [],
+					"surfaces": [
+						"tui"
+					],
+					"safety": "read-only",
+					"danger": false,
+					"help": {
+						"visibility": "common",
+						"order": 13
+					},
+					"recipes": {
+						"tui": {
+							"title": "TUI",
+							"lines": [
+								"/expect-compile throws \\\"not a function\\\""
+							],
+							"display": "/expect-compile throws \\\"not a function\\\""
+						}
+					},
+					"notes": [
+						"Syntax: throws <pattern>; quote patterns containing spaces. Optional trailing or abort."
+					]
 				},
 				{
 					"id": "root.capture",
@@ -5355,7 +6864,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 12
+						"order": 14
 					},
 					"recipes": {
 						"tui": {
@@ -5384,7 +6893,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 13
+						"order": 15
 					},
 					"recipes": {
 						"tui": {
@@ -5413,7 +6922,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 14
+						"order": 16
 					},
 					"recipes": {
 						"tui": {
@@ -5442,7 +6951,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 15
+						"order": 17
 					},
 					"recipes": {
 						"tui": {
@@ -5471,7 +6980,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 16
+						"order": 18
 					},
 					"recipes": {
 						"tui": {
@@ -5500,7 +7009,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 17
+						"order": 19
 					},
 					"recipes": {
 						"tui": {
@@ -5529,7 +7038,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 18
+						"order": 20
 					},
 					"recipes": {
 						"tui": {
@@ -5558,7 +7067,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 19
+						"order": 21
 					},
 					"recipes": {
 						"tui": {
@@ -5587,7 +7096,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 20
+						"order": 22
 					},
 					"recipes": {
 						"tui": {
@@ -5616,7 +7125,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 21
+						"order": 23
 					},
 					"recipes": {
 						"tui": {
@@ -5645,7 +7154,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 22
+						"order": 24
 					},
 					"recipes": {
 						"tui": {
@@ -5674,7 +7183,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 23
+						"order": 25
 					},
 					"recipes": {
 						"tui": {
@@ -5703,7 +7212,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 24
+						"order": 26
 					},
 					"recipes": {
 						"tui": {
@@ -5732,7 +7241,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 25
+						"order": 27
 					},
 					"recipes": {
 						"tui": {
@@ -5761,7 +7270,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 26
+						"order": 28
 					},
 					"recipes": {
 						"tui": {
@@ -5790,7 +7299,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 27
+						"order": 29
 					},
 					"recipes": {
 						"tui": {
@@ -5819,7 +7328,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 28
+						"order": 30
 					},
 					"recipes": {
 						"tui": {
@@ -5848,7 +7357,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 29
+						"order": 31
 					},
 					"recipes": {
 						"tui": {
@@ -5877,7 +7386,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 30
+						"order": 32
 					},
 					"recipes": {
 						"tui": {
@@ -5906,7 +7415,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 31
+						"order": 33
 					},
 					"recipes": {
 						"tui": {
@@ -5935,7 +7444,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 32
+						"order": 34
 					},
 					"recipes": {
 						"tui": {
@@ -5964,7 +7473,7 @@ export const GENERATED_COMMAND_CATALOG = {
 					"danger": false,
 					"help": {
 						"visibility": "common",
-						"order": 33
+						"order": 35
 					},
 					"recipes": {
 						"tui": {

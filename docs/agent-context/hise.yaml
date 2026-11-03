@@ -9,35 +9,81 @@ commands:
   - id: hise.status
     title: Status
     purpose: Show HISE connection status and current project information.
+    syntax: status [project|folder|online]
     tags: [hise, runtime, status]
     aliases: [show hise status]
-    surfaces: [tui]
-    recipes: { tui: { title: TUI, lines: [/hise, status] } }
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, hise, status, --agent] }
+      tui: { title: TUI, lines: [/hise, status] }
+    examples:
+      - { title: Show project folder, argv: [hise-cli, hise, status, folder, --agent] }
+    notes: ["Optional field: project, folder, or online."]
   - id: hise.launch
     title: Launch HISE
-    purpose: Launch HISE and wait for its REST API to become available.
+    purpose: Launch HISE or the Debug build and wait for its REST API to become available.
+    syntax: launch [debug]
     tags: [hise, runtime, launch]
     aliases: [start hise]
-    surfaces: [tui]
-    recipes: { tui: { title: TUI, lines: [/hise, launch] } }
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, hise, launch, --agent] }
+      tui: { title: TUI, lines: [/hise, launch] }
+    examples:
+      - { title: Launch Debug build, argv: [hise-cli, hise, launch, debug, --agent] }
+    notes: ["The optional positional word debug (case-insensitive) selects the HISE Debug binary."]
   - id: hise.shutdown
     title: Shut down HISE
     purpose: Gracefully quit the running HISE application.
     tags: [hise, runtime, shutdown, mutation]
     aliases: [quit hise, close hise]
-    surfaces: [tui]
-    recipes: { tui: { title: TUI, lines: [/hise, shutdown] } }
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, hise, shutdown, --agent] }
+      tui: { title: TUI, lines: [/hise, shutdown] }
   - id: hise.screenshot
     title: Screenshot
     purpose: Capture the HISE interface or a component screenshot.
+    syntax: screenshot [of <id>] [at <scale|percent%>] [to <path>]
     tags: [hise, runtime, screenshot]
     aliases: [capture interface]
-    surfaces: [tui]
-    recipes: { tui: { title: TUI, lines: [/hise, 'screenshot at 50% to screenshot.png'] } }
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, hise, screenshot, at, "50%", to, screenshot.png, --agent] }
+      tui: { title: TUI, lines: [/hise, 'screenshot at 50% to screenshot.png'] }
+    examples:
+      - { title: Capture one component, argv: [hise-cli, hise, screenshot, of, Knob1, at, "0.5", to, knob.png, --agent] }
+    notes: ["Scale accepts a percentage or decimal. The component, scale, and output path are optional; default output is screenshot.png in the active project."]
   - id: hise.profile
     title: Profile
     purpose: Record a runtime performance profile.
+    syntax: profile [thread audio|ui|scripting] [for <100-5000>ms]
     tags: [hise, runtime, profile]
     aliases: [profile audio]
-    surfaces: [tui]
-    recipes: { tui: { title: TUI, lines: [/hise, 'profile thread audio for 1000ms'] } }
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, hise, profile, thread, audio, for, 1000ms, --agent] }
+      tui: { title: TUI, lines: [/hise, 'profile thread audio for 1000ms'] }
+    notes: ["Thread filter and duration are optional. Valid thread names are audio, ui, and scripting (script is an alias). Duration defaults to 1000ms and must be between 100 and 5000ms."]
+  - id: hise.playground
+    title: Control snippet browser
+    purpose: Open, close, enable, or disable the HISE snippet browser.
+    syntax: playground open|close|enable|disable
+    tags: [hise, runtime, playground]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, hise, playground, open, --agent] }
+      tui: { title: TUI, lines: [/hise, playground open] }
+    examples:
+      - { title: Close snippet browser, argv: [hise-cli, hise, playground, close, --agent] }
+      - { title: Switch to main project, argv: [hise-cli, hise, playground, disable, --agent] }
+  - id: hise.help
+    title: HISE mode help
+    purpose: Show HISE runtime control commands.
+    tags: [hise, help]
+    aliases: []
+    surfaces: [cli, tui]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, hise, help, --agent] }
+      tui: { title: TUI, lines: [/hise, help] }

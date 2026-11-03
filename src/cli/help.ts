@@ -1,15 +1,20 @@
 import type { CommandEntry } from "../engine/commands/registry.js";
 import { GENERATED_COMMAND_CATALOG } from "../engine/commands/generatedCatalog.js";
-import { catalogCommands } from "../engine/commands/catalogTypes.js";
-import { renderAgentModeHelp } from "./agentContext.js";
+import { catalogCommands, type CatalogCommand } from "../engine/commands/catalogTypes.js";
+import { getAgentCommand, renderAgentModeHelp } from "./agentContext.js";
 
 /** Render shell help from the same catalogue used by the TUI. */
-export function renderCliHelp(_commands: CommandEntry[], scope?: string): string {
+export function renderCliHelp(_commands: CommandEntry[], scope?: string, commandName?: string): string {
 	if (scope) {
-		const generated = renderAgentModeHelp(scope);
-		if (generated) return generated;
 		const mode = GENERATED_COMMAND_CATALOG.modes.find((entry) => entry.id === scope);
-		if (mode) return renderCatalogModeHelp(mode.id);
+		if (mode && commandName) return renderModeCommandHelp(scope, commandName);
+		if (mode) {
+			const generated = renderAgentModeHelp(scope);
+			if (generated) return generated;
+			return renderCatalogModeHelp(mode.id);
+		}
+		const rootCommand = findRootCliCommand(scope);
+		if (rootCommand) return renderRootCommandHelp(rootCommand);
 		return `Unknown help topic: "${scope}". Available: ${GENERATED_COMMAND_CATALOG.modes.map((mode) => mode.id).join(", ")}`;
 	}
 	return renderGlobalHelp();
@@ -28,6 +33,8 @@ function renderGlobalHelp(): string {
 		"",
 		"USAGE",
 		"  hise-cli <mode> <command> [flags]",
+		"  hise-cli <mode> <command> --help  (command details)",
+		"  hise-cli <root-command> --help    (root command details)",
 		"  hise-cli -<mode> <command> [flags]  (legacy selector)",
 		"  hise-cli                         (launch the interactive TUI)",
 		"  hise-cli which \"<intent>\" [--surface cli|tui]",
@@ -55,6 +62,49 @@ function renderGlobalHelp(): string {
 		"  Exit codes: 4 HISE API error; 6 expectation failure.",
 		"  --select <path> extracts a value while preserving the result envelope.",
 	].join("\n");
+}
+
+function renderModeCommandHelp(modeId: string, commandName: string): string {
+	const command = getAgentCommand(`${modeId}.${commandName}`)
+		?? getAgentCommandByAlias(modeId, commandName);
+	if (!command) return `Unknown command help topic: "${modeId} ${commandName}". Run hise-cli ${modeId} --help to list commands.`;
+	const lines = [
+		`hise-cli ${modeId} ${commandName} — ${command.title}`,
+		"",
+		command.purpose,
+		"",
+		"SYNTAX",
+		`  ${command.syntax}`,
+		...(command.recipes?.cli ? ["", "CLI", `  ${command.recipes.cli.display}`] : []),
+		...(command.recipes?.tui ? ["", "TUI", `  ${command.recipes.tui.display}`] : []),
+	];
+	if (command.examples?.length) {
+		lines.push("", "EXAMPLES", ...command.examples.map((example) => `  ${example.display}`));
+	}
+	if (command.notes?.length) lines.push("", "NOTES", ...command.notes.map((note) => `  - ${note}`));
+	if (command.aliases.length) lines.push("", `ALIASES\n  ${command.aliases.join(", ")}`);
+	lines.push("", "MACHINE-READABLE DETAILS", `  hise-cli agent-context --command ${command.id} --agent`);
+	return lines.join("\n");
+}
+
+function getAgentCommandByAlias(modeId: string, commandName: string) {
+	const mode = GENERATED_COMMAND_CATALOG.modes.find((entry) => entry.id === modeId);
+	const id = mode?.commands.find((entry) => entry.aliases.some((alias) => alias === commandName))?.id;
+	return id ? getAgentCommand(id) : undefined;
+}
+
+function findRootCliCommand(name: string): CatalogCommand | undefined {
+	return (GENERATED_COMMAND_CATALOG.rootCommands as readonly CatalogCommand[]).find((command) => {
+		const token = command.recipes.cli?.argv?.[1];
+		return token === name || token?.replace(/^-{1,2}/, "") === name;
+	});
+}
+
+function renderRootCommandHelp(command: CatalogCommand): string {
+	const lines = [`${command.recipes.cli?.display ?? command.id}`, "", command.purpose];
+	if (command.examples?.length) lines.push("", "EXAMPLES", ...command.examples.map((example) => `  ${example.display}`));
+	if (command.notes?.length) lines.push("", "NOTES", ...command.notes.map((note) => `  - ${note}`));
+	return lines.join("\n");
 }
 
 function renderCatalogModeHelp(modeId: string): string {

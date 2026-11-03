@@ -104,6 +104,8 @@ hise-cli ui query_css --module Interface --component Button1 --agent
 hise-cli script diagnose_css UI/style.css --agent
 ```
 
+The root diagnostic command accepts a file path or inline HiseScript source: `hise-cli diagnose Scripts/Main.js` or `hise-cli diagnose --code "Console.print(1);"`. A file path may be absolute, relative to the project's Scripts folder, or relative to the project folder; it must resolve to a file in HISE's included-files list, otherwise diagnosis fails. Use either a file path or `--code`, not both. Inline diagnostics are sent to HISE's in-memory diagnose endpoint without compiling, executing, or writing the code.
+
 ## Sequence Mode
 
 Sequence mode supports MIDI definitions and UI interaction-test definitions. MIDI

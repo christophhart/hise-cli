@@ -3,4 +3,7 @@ mode:
   id: inspect
   title: Inspect mode
   summary: Interactive inspect operations.
-commands: []
+commands:
+  - { id: inspect.version, title: Version, purpose: Show HISE server version information., tags: [inspect, version], aliases: [], surfaces: [cli, tui], recipes: { cli: { title: CLI, argv: [hise-cli, inspect, version] }, tui: { title: TUI, lines: [/inspect, version] } } }
+  - { id: inspect.project, title: Project, purpose: Show current project information., tags: [inspect, project], aliases: [], surfaces: [cli, tui], recipes: { cli: { title: CLI, argv: [hise-cli, inspect, project] }, tui: { title: TUI, lines: [/inspect, project] } } }
+  - { id: inspect.help, title: Help, purpose: Show inspect mode commands., tags: [inspect, help], aliases: [], surfaces: [cli, tui], recipes: { cli: { title: CLI, argv: [hise-cli, inspect, help] }, tui: { title: TUI, lines: [/inspect, help] } } }

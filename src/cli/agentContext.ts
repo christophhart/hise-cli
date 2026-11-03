@@ -179,6 +179,7 @@ export function renderAgentModeHelp(modeId: string): string | null {
 			lines.push(`    Prefer: ${item.prefer}`);
 		}
 	}
+	lines.push("", "COMMAND DETAILS", `  hise-cli ${modeId} <command> --help`);
 	return lines.join("\n");
 }
 

@@ -4,7 +4,7 @@ import type { ScriptShowFilters } from "../engine/modes/script-symbols.js";
 
 export type CliParseResult =
 	| { kind: "tui"; args: string[] }
-	| { kind: "help"; scope?: string }
+	| { kind: "help"; scope?: string; command?: string }
 	| { kind: "error"; message: string }
 	| { kind: "diagnose"; filePath: string }
 	| { kind: "run"; source: { type: "file"; path: string } | { type: "stdin" } | { type: "inline"; content: string }; dryRun: boolean; useMock: boolean; watch: boolean; toCli: boolean; verbosity: import("../engine/run/executor.js").RunReportVerbosity; output: CliOutputOptions }
@@ -1218,7 +1218,7 @@ export function parseCliArgs(argv: string[], commands: CommandEntry[]): CliParse
 		if (nonHelp.length === 0) return { kind: "help" };
 		const scopeArg = nonHelp[0]!;
 		const scope = scopeArg.replace(/^-{1,2}/, "");
-		return { kind: "help", scope };
+		return { kind: "help", scope, command: nonHelp[1] };
 	}
 
 	const first = args[0]!;

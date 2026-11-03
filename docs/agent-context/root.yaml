@@ -15,8 +15,10 @@ rootCommands:
     examples:
       - { title: Execute a workflow, argv: [hise-cli, run, script.hsc] }
       - { title: Validate without execution, argv: [hise-cli, run, script.hsc, --dry-run] }
+      - { title: Watch a workflow file, argv: [hise-cli, run, script.hsc, --watch] }
+      - { title: Run inline workflow text, argv: [hise-cli, run, --inline, "/builder\nadd SineSynth\nshow tree"] }
       - { title: Read workflow from stdin, argv: [hise-cli, run, "-"] }
-    notes: ["Options include --mock, --dry-run, --watch, --to-cli, and --verbosity=verbose|summary|quiet."]
+    notes: ["Input: a file path, - for stdin, or --inline <script>; --run and -run are aliases. Options: --mock, --dry-run, --watch, --to-cli, --verbosity=verbose|summary|quiet, --quiet, --verbose. --watch requires a file; --to-cli cannot be combined with --watch or --dry-run."]
   - id: cli.which
     title: Find commands by intent
     purpose: Find matching CLI or TUI command recipes.
@@ -25,6 +27,7 @@ rootCommands:
     surfaces: [cli]
     recipes:
       cli: { title: CLI, argv: [hise-cli, which, <intent>] }
+    notes: ["Options: --surface cli|tui and --limit <positive integer> (default 3)."]
   - id: cli.how
     title: Explain how to perform a task
     purpose: Explain a task using retrieved command recipes.
@@ -33,7 +36,72 @@ rootCommands:
     surfaces: [cli]
     recipes:
       cli: { title: CLI, argv: [hise-cli, how, <question>] }
-    notes: ["Requires --agent; supports --mode builder|dsp|ui and --surface cli|tui."]
+    notes: ["Add --agent for compact structured output. Supports --mode builder|dsp|ui and --surface cli|tui."]
+  - id: cli.update-shell
+    title: Update hise-cli
+    purpose: Check for and install the latest hise-cli release.
+    tags: [update]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, update, --check] }
+    notes: ["--check only checks for an update; without it, the latest release is installed."]
+  - id: cli.diagnose
+    title: Diagnose HiseScript source or file
+    purpose: Run syntax and semantic diagnostics on a HiseScript file or inline source string.
+    tags: [script, diagnostics]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, diagnose, Scripts/Main.js] }
+    examples:
+      - { title: Diagnose inline source, argv: [hise-cli, diagnose, --code, 'Console.print(1);'] }
+    notes: ["File paths may be absolute, relative to the Scripts folder, or relative to the project folder; they must resolve to a HISE-included file. Unresolved or ambiguous paths fail. Use either a file path or --code <source>, not both. Options: --format=json|pretty (use the equals form), --errors-only, and --code <source> (also --code=<source>)."]
+  - id: cli.agent-context
+    title: Agent context
+    purpose: Retrieve command and mode context for agents.
+    tags: [agent, context]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, agent-context] }
+    notes: ["Choose exactly one query: <mode>, --command <id> (or --command=<id>), or --list-commands. Add --full only to a mode query. Output flags include --agent, --json, --pretty, and --select <path>."]
+  - id: cli.status
+    title: HISE status
+    purpose: Show HISE connection status.
+    tags: [status]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, --status] }
+    notes: ["Alias: -status. Supports standard JSON output flags and --select <path>."]
+  - id: cli.version
+    title: CLI version
+    purpose: Show the installed hise-cli version.
+    tags: [version]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, --version] }
+    notes: ["Alias: -version."]
+  - id: cli.ai
+    title: One-shot AI agent
+    purpose: Run the embedded agent for a single request.
+    tags: [agent, ai]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, ai, "inspect the current project"] }
+    notes: ["Options: --apply, --json, --mock, --agent-dir <path>, and --model <provider/model-id>."]
+  - id: cli.research
+    title: One-shot documentation research
+    purpose: Research HISE documentation from the command line.
+    tags: [research]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, -research, "ScriptSlider callbacks"] }
+    notes: ["Options: --json, --agent, and --compact."]
   - id: cli.research-server
     title: Documentation research server
     purpose: Start the local documentation research UI.
@@ -42,6 +110,7 @@ rootCommands:
     surfaces: [cli]
     recipes:
       cli: { title: CLI, argv: [hise-cli, --research-server] }
+    notes: ["Options: --port <1-65535> and --no-open. --help prints this command's usage."]
 commands:
   - { id: cli.update, title: Update hise-cli, purpose: Check for and install the latest hise-cli release. This does not update the HISE application., tags: [update, cli, release], aliases: [update cli, upgrade cli], surfaces: [cli], recipes: { cli: { title: CLI, argv: [hise-cli, update, --agent] } } }
   - { id: root.help, title: Help, purpose: Show contextual help, tags: [help], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/help] } } }
@@ -54,7 +123,9 @@ commands:
   - { id: root.resume, title: Resume, purpose: Resume a paused wizard, tags: [wizard], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/resume] } } }
   - { id: root.compact, title: Compact, purpose: Toggle compact tree display, tags: [display], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/compact] } } }
   - { id: root.wait, title: Wait, purpose: Wait in a workflow, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/wait 100ms'] } } }
-  - { id: root.expect, title: Expect, purpose: Assert workflow output, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/expect true'] } } }
+  - { id: root.expect, title: Expect, purpose: Assert workflow output, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/expect command is value'] } }, notes: ["Syntax: <command> is|matches|logs|throws|contains <value>. Optional within <tolerance> applies to numeric/log assertions; trailing or abort stops the workflow on failure."] }
+  - { id: root.expect-logs, title: Expect logs, purpose: Assert captured Console output, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/expect-logs [\"ready\"]'] } }, notes: ["Argument is a JSON value or array; optional within <tolerance> (default 0.01) and trailing or abort."] }
+  - { id: root.expect-compile, title: Expect compile failure, purpose: Assert callback compilation fails with a matching message, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/expect-compile throws \"not a function\"'] } }, notes: ["Syntax: throws <pattern>; quote patterns containing spaces. Optional trailing or abort."] }
   - { id: root.capture, title: Capture, purpose: Capture script console output, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: [/capture] } } }
   - { id: root.run, title: Run, purpose: Run a workflow command file, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/run workflow.hsc'] } } }
   - { id: root.parse, title: Parse, purpose: Parse a workflow without executing it, tags: [workflow], aliases: [], surfaces: [tui], recipes: { tui: { title: TUI, lines: ['/parse workflow.hsc'] } } }

@@ -120,7 +120,7 @@ HISE settings). Add `--mock` to test without a running HISE.
 ### REPL modes
 
 Each mode has its own grammar, tab completion, and `/help` text. Enter with
-`/<mode>` (TUI) or run one-shot with `hise-cli -<mode> "<command>"`.
+`/<mode>` (TUI) or run one-shot with `hise-cli <mode> "<command>"` (the legacy `-<mode>` form also works).
 
 | Mode        | What you do |
 |-------------|-------------|

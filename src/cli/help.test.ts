@@ -45,10 +45,29 @@ describe("renderCliHelp", () => {
 		expect(missing, `Missing help routes: ${missing.join(", ")}`).toEqual([]);
 	});
 
+	it("renders command-scoped HISE help progressively", () => {
+		const help = renderCliHelp(getCliCommands(), "hise", "launch");
+
+		expect(help).toContain("hise-cli hise launch — Launch HISE");
+		expect(help).toContain("launch [debug]");
+		expect(help).toContain("hise-cli hise launch debug --agent");
+		expect(help).toContain("HISE Debug binary");
+		expect(help).toContain("hise-cli agent-context --command hise.launch --agent");
+	});
+
+	it("renders root command help", () => {
+		const help = renderCliHelp(getCliCommands(), "run");
+
+		expect(help).toContain("hise-cli run <file.hsc>");
+		expect(help).toContain("--inline");
+		expect(help).toContain("--watch");
+	});
+
 	it("renders DSP help from generated agent commands", () => {
 		const help = renderCliHelp(getCliCommands(), "dsp");
 
 		expect(help).toContain("COMMON COMMANDS");
+		expect(help).toContain("hise-cli dsp <command> --help");
 		expect(help).toContain('hise-cli dsp tree --module "Script FX1" --agent');
 		expect(help).toContain('hise-cli dsp connect --module "Script FX1" --source LFO1 --target F1 --param Frequency --matched --agent');
 		expect(help).not.toContain('hise-cli -dsp "<command>"');
