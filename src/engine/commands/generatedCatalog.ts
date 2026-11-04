@@ -324,7 +324,7 @@ export const GENERATED_COMMAND_CATALOG = {
 				}
 			],
 			"notes": [
-				"File paths may be absolute, relative to the Scripts folder, or relative to the project folder; they must resolve to a HISE-included file. Unresolved or ambiguous paths fail. Use either a file path or --code <source>, not both. Options: --format=json|pretty (use the equals form), --errors-only, and --code <source> (also --code=<source>)."
+				"File paths may be absolute, relative to the Scripts folder, or relative to the project folder; they must resolve to a HISE-included file. Unresolved or ambiguous paths fail. Combine a file path with --code <source> to diagnose editor buffer contents in the included file's context; without a path, --code diagnoses inline source. Options: --format=json|pretty (use the equals form), --errors-only, and --code <source> (also --code=<source>)."
 			]
 		},
 		{

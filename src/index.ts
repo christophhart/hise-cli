@@ -79,14 +79,10 @@ async function main(): Promise<void> {
 			console.error("diagnose requires a file path or --code <source> argument");
 			process.exit(1);
 		}
-		if (flags.code !== null && filePath) {
-			console.error("diagnose accepts either a file path or --code, not both");
-			process.exit(1);
-		}
 		const connection = new HttpHiseConnection();
-		const result = flags.code !== null
-			? await (await import("./cli/diagnose.js")).executeDiagnoseCode(flags.code, connection)
-			: await executeDiagnose(filePath!, connection);
+		const result = filePath
+			? await executeDiagnose(filePath, connection, flags.code ?? undefined)
+			: await (await import("./cli/diagnose.js")).executeDiagnoseCode(flags.code!, connection);
 		connection.destroy();
 
 		if (flags.format === "pretty") {

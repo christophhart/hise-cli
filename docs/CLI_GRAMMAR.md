@@ -104,7 +104,7 @@ hise-cli ui query_css --module Interface --component Button1 --agent
 hise-cli script diagnose_css UI/style.css --agent
 ```
 
-The root diagnostic command accepts a file path or inline HiseScript source: `hise-cli diagnose Scripts/Main.js` or `hise-cli diagnose --code "Console.print(1);"`. A file path may be absolute, relative to the project's Scripts folder, or relative to the project folder; it must resolve to a file in HISE's included-files list, otherwise diagnosis fails. Use either a file path or `--code`, not both. Inline diagnostics are sent to HISE's in-memory diagnose endpoint without compiling, executing, or writing the code.
+The root diagnostic command accepts inline HiseScript source or a file path, optionally combined with `--code` to diagnose an unsaved buffer in the context of that included file: `hise-cli diagnose Scripts/Main.js`, `hise-cli diagnose --code "Console.print(1);"`, or `hise-cli diagnose Scripts/Main.js --code "Console.print(undefined)"`. A file path may be absolute, relative to the project's Scripts folder, or relative to the project folder; it must resolve to a file in HISE's included-files list, otherwise diagnosis fails. When both are supplied, HISE uses the path to resolve the include context and the code as the target file's source. Diagnostics do not compile, execute, or write the code.
 
 ## Sequence Mode
 

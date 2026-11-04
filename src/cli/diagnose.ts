@@ -179,6 +179,7 @@ function relativePathFrom(from: string, to: string, compare: (value: string) => 
 export async function executeDiagnose(
 	filePathInput: string,
 	connection: HiseConnection,
+	code?: string,
 ): Promise<DiagnoseResult> {
 	// Fetch project info and included files in parallel
 	const [statusRes, filesRes] = await Promise.all([
@@ -218,6 +219,7 @@ export async function executeDiagnose(
 
 	const diagnoseRes = await connection.post("/api/diagnose_script", {
 		filePath: relativePath,
+		...(code !== undefined ? { code } : {}),
 	});
 
 	if (isErrorResponse(diagnoseRes)) {

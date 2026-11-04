@@ -157,6 +157,19 @@ describe("executeDiagnose", () => {
 		expect("error" in result && result.error).toContain("matches multiple included files");
 	});
 
+	it("sends the resolved file path and editor source to diagnose_script", async () => {
+		const mock = new MockHiseConnection();
+		mockWithStatus(mock);
+		mockWithFiles(mock, [{ path: "/project/Scripts/Test.js", processor: "Interface" }]);
+		mock.onPost("/api/diagnose_script", () => ({ success: true, result: null, diagnostics: [], logs: [], errors: [] }));
+
+		await executeDiagnose("Test.js", mock, "Console.print(undefined)");
+		expect(mock.calls.find((call) => call.endpoint === "/api/diagnose_script")?.body).toEqual({
+			filePath: "Test.js",
+			code: "Console.print(undefined)",
+		});
+	});
+
 	it("sends relative path to diagnose_script endpoint", async () => {
 		const mock = new MockHiseConnection();
 		mockWithStatus(mock);
