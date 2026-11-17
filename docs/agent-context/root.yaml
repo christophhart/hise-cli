@@ -102,6 +102,15 @@ rootCommands:
     recipes:
       cli: { title: CLI, argv: [hise-cli, -research, "ScriptSlider callbacks"] }
     notes: ["Options: --json, --agent, and --compact."]
+  - id: cli.lsp
+    title: HISE language server
+    purpose: Start a standard LSP server over stdio for the active HISE project.
+    tags: [lsp, server, editor]
+    aliases: []
+    surfaces: [cli]
+    recipes:
+      cli: { title: CLI, argv: [hise-cli, --lsp] }
+    notes: ["Editor launches this command once per workspace. Requires HISE REST API and a workspace matching the active project. Options: --hise-url <URL> (default http://localhost:1900), --timeout-ms <N> (default 25000), --log-level quiet|normal. --help prints usage. Stdout is reserved for LSP; logs go to stderr."]
   - id: cli.research-server
     title: Documentation research server
     purpose: Start the local documentation research UI.

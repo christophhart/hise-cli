@@ -14,9 +14,7 @@ import { cliError, exitCodeForPayload } from "./cli/errors.js";
 
 // ── Runtime singleton ───────────────────────────────────────────────
 
-const runtime: NodeRuntime = bootstrapNodeRuntime({
-	allowInteractive: !process.argv.includes("--research-server"),
-});
+let runtime: NodeRuntime;
 
 // ── Windows: clean up post-update sidecar ──────────────────────────
 //
@@ -51,6 +49,18 @@ async function launchRepl(args: string[]): Promise<void> {
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+	if (process.argv[2] === "--lsp") {
+		const args = process.argv.slice(3);
+		if (args.includes("--help") || args.includes("-h")) {
+			console.log("hise-cli --lsp [--hise-url URL] [--timeout-ms N] [--log-level quiet|normal]");
+			return;
+		}
+		const { parseLspOptions, startLsp } = await import("./lsp/server.js");
+		try { startLsp(parseLspOptions(args)); }
+		catch (error) { console.error(String(error)); process.exitCode = 1; }
+		return;
+	}
+	runtime = bootstrapNodeRuntime({ allowInteractive: !process.argv.includes("--research-server") });
 	// Local browser research frontend backed by the configured Pi models.
 	if (process.argv[2] === "--research-server") {
 		const args = process.argv.slice(3);

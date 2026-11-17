@@ -497,6 +497,41 @@ export const GENERATED_COMMAND_CATALOG = {
 			]
 		},
 		{
+			"id": "cli.lsp",
+			"mode": "root",
+			"title": "HISE language server",
+			"purpose": "Start a standard LSP server over stdio for the active HISE project.",
+			"tags": [
+				"lsp",
+				"server",
+				"editor"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 10
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"--lsp"
+					],
+					"display": "hise-cli --lsp"
+				}
+			},
+			"notes": [
+				"Editor launches this command once per workspace. Requires HISE REST API and a workspace matching the active project. Options: --hise-url <URL> (default http://localhost:1900), --timeout-ms <N> (default 25000), --log-level quiet|normal. --help prints usage. Stdout is reserved for LSP; logs go to stderr."
+			]
+		},
+		{
 			"id": "cli.research-server",
 			"mode": "root",
 			"title": "Documentation research server",
@@ -514,7 +549,7 @@ export const GENERATED_COMMAND_CATALOG = {
 			"danger": false,
 			"help": {
 				"visibility": "common",
-				"order": 10
+				"order": 11
 			},
 			"recipes": {
 				"cli": {
