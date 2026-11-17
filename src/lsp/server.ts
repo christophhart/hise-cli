@@ -18,6 +18,9 @@ interface DocumentState {
 	processors: string[];
 	kind?: string;
 	generation: number;
+	pendingChange?: ReturnType<typeof setTimeout>;
+	pendingAnalysis?: Promise<void>;
+	finishPendingAnalysis?: () => void;
 }
 
 interface DiagnosticGroup {
@@ -169,6 +172,30 @@ export function startLsp(options: LspOptions, input: Readable = process.stdin, o
 		log(String(error));
 		connection.window.showErrorMessage(String(error));
 	};
+	// Editors still send didChange on every keystroke. Coalesce only the expensive
+	// REST analysis; requests, saves and closes flush the latest complete buffer.
+	const flushChange = (doc: DocumentState): void => {
+		if (!doc.pendingChange) return;
+		clearTimeout(doc.pendingChange);
+		doc.pendingChange = undefined;
+		doc.finishPendingAnalysis?.();
+		doc.pendingAnalysis = undefined;
+		doc.finishPendingAnalysis = undefined;
+		const { uri, version, text, generation } = doc;
+		void enqueue(async () => {
+			if (documents.get(uri) !== doc || doc.version !== version) return;
+			await ensureProject();
+			if (doc.epoch === undefined) return;
+			const result = await rest.request("lsp/document/change", { uri, version, text, sessionId, epoch: doc.epoch });
+			if (result.version !== version || !Array.isArray(result.diagnosticsByUri)) throw rpcError("Malformed HISE document/change response");
+			if (doc.generation !== generation) return;
+			doc.analyzedVersion = version;
+			publish(result.diagnosticsByUri, doc, generation);
+		}).catch(notifyFailure);
+	};
+	const flushAllChanges = (): void => {
+		for (const doc of documents.values()) flushChange(doc);
+	};
 
 	connection.onInitialize(async (params: InitializeParams) => {
 		const rootUri = params.rootUri ?? params.workspaceFolders?.[0]?.uri;
@@ -187,7 +214,7 @@ export function startLsp(options: LspOptions, input: Readable = process.stdin, o
 		log(`Connected to HISE API ${apiVersion} for ${root}`);
 		return { capabilities: {
 			textDocumentSync: { openClose: true, change: TextDocumentSyncKind.Full, save: { includeText: true } },
-			completionProvider: {}, hoverProvider: true, definitionProvider: true, referencesProvider: true,
+			completionProvider: { triggerCharacters: ["."] }, hoverProvider: true, definitionProvider: true, referencesProvider: true,
 		} };
 	});
 
@@ -221,22 +248,17 @@ export function startLsp(options: LspOptions, input: Readable = process.stdin, o
 		}
 		doc.version = version;
 		doc.text = change[0].text;
-		const generation = ++doc.generation;
-		void enqueue(async () => {
-			await ensureProject();
-			if (documents.get(uri) !== doc || doc.epoch === undefined) return;
-			const result = await rest.request("lsp/document/change", { uri, version, text: change[0].text, sessionId, epoch: doc.epoch });
-			if (result.version !== version || !Array.isArray(result.diagnosticsByUri)) throw rpcError("Malformed HISE document/change response");
-			if (doc.generation !== generation) return;
-			doc.analyzedVersion = version;
-			publish(result.diagnosticsByUri, doc, generation);
-		}).catch(notifyFailure);
+		++doc.generation;
+		if (doc.pendingChange) clearTimeout(doc.pendingChange);
+		else doc.pendingAnalysis = new Promise<void>((done) => { doc.finishPendingAnalysis = done; });
+		doc.pendingChange = setTimeout(() => flushChange(doc), 200);
 	});
 
 	connection.onDidSaveTextDocument((params) => {
 		const { uri } = params.textDocument;
 		const doc = documents.get(uri);
 		if (!doc) return;
+		flushChange(doc);
 		const version = doc.version;
 		const generation = doc.generation;
 		void enqueue(async () => {
@@ -255,6 +277,7 @@ export function startLsp(options: LspOptions, input: Readable = process.stdin, o
 		const doc = documents.get(uri);
 		if (!doc) return;
 		// Keep the lease until queued changes finish; close runs on the same lane.
+		flushChange(doc);
 		void enqueue(async () => {
 			try {
 				if (doc.epoch !== undefined) await rest.request("lsp/document/close", { uri, epoch: doc.epoch, sessionId });
@@ -268,12 +291,20 @@ export function startLsp(options: LspOptions, input: Readable = process.stdin, o
 	});
 
 	async function query<T>(uri: string, route: string, body: object, extract: (result: RestResult) => T): Promise<T> {
+		const requested = documents.get(uri);
+		const generation = requested?.generation;
+		// Completion requests can also arrive on every keystroke. Let the idle
+		// timer coalesce them instead of forcing an analysis for each request.
+		// Included files can share processor trees. Wait for other open files too.
+		while ([...documents.values()].some((doc) => doc.pendingAnalysis)) {
+			await Promise.all([...documents.values()].map((doc) => doc.pendingAnalysis).filter((pending): pending is Promise<void> => pending !== undefined));
+		}
 		await mutations;
 		await ensureProject();
 		const doc = checked(uri);
+		if (doc !== requested || doc.generation !== generation) throw new ResponseError(LSPErrorCodes.RequestCancelled, `Superseded request for ${uri}`);
 		if (doc.analyzedVersion !== doc.version) throw rpcError(`HISE has not analyzed version ${doc.version} of ${uri}`);
 		if (!doc.processors.length) throw rpcError(`No HISE processor watches ${uri}`);
-		const generation = doc.generation;
 		const result = await rest.request(`lsp/${route}`, { uri, version: doc.version, epoch: doc.epoch, sessionId, ...body });
 		if (documents.get(uri) !== doc || doc.generation !== generation) throw rpcError(`Request superseded by a change to ${uri}`);
 		return extract(result);
@@ -320,6 +351,7 @@ export function startLsp(options: LspOptions, input: Readable = process.stdin, o
 	});
 	connection.onShutdown(async () => {
 		shutdown = true;
+		flushAllChanges();
 		await enqueue(async () => {
 			for (const doc of documents.values()) {
 				try {

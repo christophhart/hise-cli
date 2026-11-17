@@ -81,6 +81,34 @@ describe("LSP proxy", () => {
 		} finally { client.close(); }
 	});
 
+	it("flushes a pending edit before save and close", async () => {
+		const calls: string[] = [];
+		const baseUrl = await mock((route, body) => {
+			if (route === "/api/status") return { project: { projectFolder: root } };
+			if (route === "/api/lsp/document/open") return { epoch: 1, processors: ["MainInterface"], diagnosticsByUri: [{ uri, processors: [] }] };
+			calls.push(`${route}:${String(body.version)}`);
+			if (route === "/api/lsp/document/change") return { version: body.version, diagnosticsByUri: [{ uri, processors: [] }] };
+			return {};
+		});
+		const client = protocol(baseUrl);
+		try {
+			client.send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { processId: null, rootUri, capabilities: {} } });
+			await client.next();
+			client.send({ jsonrpc: "2.0", method: "initialized", params: {} });
+			client.send({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri, languageId: "javascript", version: 1, text: "a" } } });
+			await client.next("textDocument/publishDiagnostics");
+			client.send({ jsonrpc: "2.0", method: "textDocument/didChange", params: { textDocument: { uri, version: 2 }, contentChanges: [{ text: "ab" }] } });
+			client.send({ jsonrpc: "2.0", method: "textDocument/didChange", params: { textDocument: { uri, version: 3 }, contentChanges: [{ text: "abc" }] } });
+			client.send({ jsonrpc: "2.0", method: "textDocument/didSave", params: { textDocument: { uri } } });
+			client.send({ jsonrpc: "2.0", method: "textDocument/didClose", params: { textDocument: { uri } } });
+			await client.next("textDocument/publishDiagnostics");
+			await client.next("textDocument/publishDiagnostics");
+			expect(calls).toEqual([
+				"/api/lsp/document/change:3", "/api/lsp/document/save:3", "/api/lsp/document/close:undefined",
+			]);
+		} finally { client.close(); }
+	});
+
 	it("opens, publishes diagnostics, changes full text, queries, saves and closes without compiling", async () => {
 		const calls: Array<{ route: string; body: Record<string, unknown> }> = [];
 		const baseUrl = await mock((route, body) => {
@@ -95,19 +123,22 @@ describe("LSP proxy", () => {
 		try {
 			client.send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { processId: null, rootUri, capabilities: {} } });
 			const initialized = await client.next();
-			expect(initialized.result).toMatchObject({ capabilities: { referencesProvider: true, hoverProvider: true } });
+			expect(initialized.result).toMatchObject({ capabilities: { referencesProvider: true, hoverProvider: true, completionProvider: { triggerCharacters: ["."] } } });
 			client.send({ jsonrpc: "2.0", method: "initialized", params: {} });
 			client.send({ jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri, languageId: "javascript", version: 1, text: "a" } } });
 			expect((await client.next("textDocument/publishDiagnostics")).params).toMatchObject({ uri, version: 1, diagnostics: [] });
 			client.send({ jsonrpc: "2.0", method: "textDocument/didChange", params: { textDocument: { uri, version: 2 }, contentChanges: [{ text: "ab" }] } });
-			expect((await client.next("textDocument/publishDiagnostics")).params).toMatchObject({ uri, version: 2, diagnostics: [{ message: "oops" }] });
+			client.send({ jsonrpc: "2.0", method: "textDocument/didChange", params: { textDocument: { uri, version: 3 }, contentChanges: [{ text: "abc" }] } });
+			// A query waits for the idle flush and sees only the latest buffer.
 			client.send({ jsonrpc: "2.0", id: 2, method: "textDocument/completion", params: { textDocument: { uri }, position: { line: 0, character: 1 } } });
+			expect((await client.next("textDocument/publishDiagnostics")).params).toMatchObject({ uri, version: 3, diagnostics: [{ message: "oops" }] });
 			expect((await client.next()).result).toMatchObject({ items: [{ label: "Content" }] });
-			client.send({ jsonrpc: "2.0", method: "textDocument/didSave", params: { textDocument: { uri }, text: "ab" } });
+			client.send({ jsonrpc: "2.0", method: "textDocument/didSave", params: { textDocument: { uri }, text: "abc" } });
 			client.send({ jsonrpc: "2.0", method: "textDocument/didClose", params: { textDocument: { uri } } });
 			expect((await client.next("textDocument/publishDiagnostics")).params).toMatchObject({ uri, diagnostics: [] });
-			expect(calls.find((call) => call.route === "/api/lsp/document/change")?.body).toMatchObject({ epoch: 3, version: 2, text: "ab" });
-			expect(calls.find((call) => call.route === "/api/lsp/document/save")?.body).toMatchObject({ epoch: 3, version: 2 });
+			expect(calls.filter((call) => call.route === "/api/lsp/document/change")).toHaveLength(1);
+			expect(calls.find((call) => call.route === "/api/lsp/document/change")?.body).toMatchObject({ epoch: 3, version: 3, text: "abc" });
+			expect(calls.find((call) => call.route === "/api/lsp/document/save")?.body).toMatchObject({ epoch: 3, version: 3 });
 			expect(calls.some((call) => call.route === "/api/recompile")).toBe(false);
 		} finally { client.close(); }
 	});
