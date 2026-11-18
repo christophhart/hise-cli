@@ -170,6 +170,56 @@ and the CLI (`hise-cli -wizard run <id> --answers '{…}'`).
   shadow parser and emits errors as JSON or pretty text. Plugs into
   Claude Code as a post-edit hook (see below).
 
+## Debug HiseScript in a DAP editor
+
+`hise-cli --dap` is a [Debug Adapter Protocol](https://microsoft.github.io/debug-adapter-protocol/)
+server over **stdio**. It attaches to an already-running HISE project; it does
+not launch HISE, compile scripts, or stop HISE when you disconnect. Enable the
+HISE REST API first (default `http://localhost:1900`).
+
+In an editor that supports custom DAP adapters:
+
+1. Register `hise-cli` as the adapter executable with `--dap` as its argument.
+   Use `node /absolute/path/to/hise-cli/dist/index.js --dap` when running a
+   local source build instead of an installed executable. Choose **stdio**, not
+   TCP, and keep adapter stdout reserved for protocol messages.
+2. Create an **attach** debug configuration (not launch). Set `moduleId` to
+   the HISE script processor you want to debug. Optionally set `projectFolder`
+   to your workspace's absolute project path to reject mismatched projects.
+3. Open a script file HISE recognizes as that processor's merged callback file
+   or a watched include, set a source breakpoint, and start debugging. The
+   editor sends breakpoints after attach; HISE will stop at them when your
+   script runs. Attaching does not trigger a script or recompile it.
+
+The following shows the *values* to provide; each editor uses its own names
+and layout for adapter registration versus attach configuration:
+
+```json
+{
+  "adapterCommand": "hise-cli",
+  "adapterArgs": ["--dap"],
+  "request": "attach",
+  "moduleId": "Interface",
+  "projectFolder": "/absolute/path/to/HISE-project"
+}
+```
+
+`moduleId` is optional if you supply a `sourceUri` (a `file://` URI) or want
+HISE to select a processor from the first `setBreakpoints` source. Specify it
+when a file may be watched by multiple processors. To use another REST address,
+add `--hise-url http://host:port` to the adapter arguments. The optional
+`--project-root` argument checks the workspace during DAP initialization
+instead of attach. Run `hise-cli --dap --help` for the remaining adapter options.
+
+Breakpoints, conditional breakpoints, stepping, stack navigation, and hover or
+Debug Console evaluation are supported for one processor at a time. Variable
+scopes and expandable values are **not yet available** in HISE's DAP REST
+bridge. If your editor does not allow registering an arbitrary DAP executable
+(for example, VS Code requires a debug-adapter extension), a debug adapter
+registration or small editor extension is needed; a `launch.json` entry by
+itself cannot register a new adapter type. The LSP and DAP modes are separate
+processes and must not share a stdio stream.
+
 ## HiseScript diagnostics in Claude Code
 
 `hise-cli diagnose` doubles as a lightweight LSP — wire it into Claude Code

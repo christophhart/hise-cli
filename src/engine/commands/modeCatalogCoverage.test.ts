@@ -59,7 +59,7 @@ describe("mode command catalogue coverage", () => {
 			.map((command) => command.name)
 			.filter((name) => !documentedTui.has(name));
 		const invalidCli = GENERATED_COMMAND_CATALOG.rootCommands
-			.filter((command) => command.surfaces.includes("cli") && !["cli.research-server", "cli.ai", "cli.research", "cli.lsp"].includes(command.id))
+			.filter((command) => command.surfaces.includes("cli") && !["cli.research-server", "cli.ai", "cli.research", "cli.lsp", "cli.dap"].includes(command.id))
 			.flatMap((command) => {
 				const argv = command.recipes.cli?.argv;
 				if (!argv) return [command.id];

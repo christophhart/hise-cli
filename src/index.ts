@@ -49,6 +49,17 @@ async function launchRepl(args: string[]): Promise<void> {
 // ── Main ────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+	if (process.argv[2] === "--dap") {
+		const args = process.argv.slice(3);
+		if (args.includes("--help") || args.includes("-h")) {
+			console.log("hise-cli --dap [--hise-url URL] [--timeout-ms N] [--poll-ms N] [--project-root PATH] [--log-level quiet|normal]");
+			return;
+		}
+		const { parseDapOptions, startDap } = await import("./dap/server.js");
+		try { startDap(parseDapOptions(args)); }
+		catch (error) { console.error(String(error)); process.exitCode = 1; }
+		return;
+	}
 	if (process.argv[2] === "--lsp") {
 		const args = process.argv.slice(3);
 		if (args.includes("--help") || args.includes("-h")) {

@@ -532,6 +532,42 @@ export const GENERATED_COMMAND_CATALOG = {
 			]
 		},
 		{
+			"id": "cli.dap",
+			"mode": "root",
+			"title": "HISE debug adapter",
+			"purpose": "Attach a DAP-compatible editor debugger to the running HISE project over stdio.",
+			"tags": [
+				"dap",
+				"debug",
+				"server",
+				"editor"
+			],
+			"aliases": [],
+			"contexts": [],
+			"surfaces": [
+				"cli"
+			],
+			"safety": "read-only",
+			"danger": false,
+			"help": {
+				"visibility": "common",
+				"order": 11
+			},
+			"recipes": {
+				"cli": {
+					"title": "CLI",
+					"argv": [
+						"hise-cli",
+						"--dap"
+					],
+					"display": "hise-cli --dap"
+				}
+			},
+			"notes": [
+				"Editor launches this command per debug session. Attach-only; never starts or terminates HISE. Options: --hise-url <URL> (default http://localhost:1900), --timeout-ms <N>, --poll-ms <N>, --project-root <PATH>, --log-level quiet|normal. Attach arguments: optional projectFolder, moduleId, sourceUri. Stdout is reserved for DAP; logs go to stderr. Scope and variable browsing require unimplemented HISE REST routes."
+			]
+		},
+		{
 			"id": "cli.research-server",
 			"mode": "root",
 			"title": "Documentation research server",
@@ -549,7 +585,7 @@ export const GENERATED_COMMAND_CATALOG = {
 			"danger": false,
 			"help": {
 				"visibility": "common",
-				"order": 11
+				"order": 12
 			},
 			"recipes": {
 				"cli": {
