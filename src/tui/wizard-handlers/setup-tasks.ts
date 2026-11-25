@@ -9,6 +9,7 @@ import type { WizardExecResult } from "../../engine/wizard/types.js";
 import { isOn } from "../../engine/wizard/types.js";
 import { runJuceCompile } from "./project-compile.js";
 import { detectFaust, detectFftw, installAptPackages, runApt } from "./setup-linux.js";
+import { fetchLatestCiSha } from "./update-detect.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -150,11 +151,29 @@ export function createSetupGitInstallHandler(_executor: PhaseExecutor): Internal
 
 // ── 2. Clone repo ────────────────────────────────────────────────────
 
-export function createSetupCloneRepoHandler(_executor: PhaseExecutor): InternalTaskHandler {
+export function createSetupCloneRepoHandler(
+	_executor: PhaseExecutor,
+	fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): InternalTaskHandler {
 	return async (answers, onProgress, signal) => {
 		const executor = withSignal(_executor, signal);
 		const installPath = answers.installPath!;
-		const targetCommit = answers.targetCommit?.trim() || "";
+		let targetCommit = answers.targetCommit?.trim() || "";
+		const useHead = targetCommit.toUpperCase() === "HEAD";
+
+		if (!targetCommit) {
+			onProgress({ phase: "clone-repo", percent: 0, message: "Checking latest CI-green develop commit..." });
+			const ci = await fetchLatestCiSha(fetchImpl);
+			if (!ci) {
+				return fail("Could not verify the latest CI-green develop commit (GitHub API unavailable or rate-limited). " +
+					"Retry later, enter a specific Git SHA, or enter HEAD in Target Commit to use the latest develop commit " +
+					"without CI verification (it may be broken). Check https://github.com/christophhart/HISE/actions/workflows/ci_mac.yml");
+			}
+			targetCommit = ci.sha;
+			onProgress({ phase: "clone-repo", message: `Latest CI-green develop commit: ${targetCommit}` });
+		} else if (useHead) {
+			onProgress({ phase: "clone-repo", message: "Using latest develop HEAD without CI verification; this commit may be broken. Check https://github.com/christophhart/HISE/actions/workflows/ci_mac.yml" });
+		}
 
 		onProgress({ phase: "clone-repo", percent: 0, message: "Cloning HISE repository..." });
 
@@ -169,20 +188,23 @@ export function createSetupCloneRepoHandler(_executor: PhaseExecutor): InternalT
 		} else {
 			// Existing repo — fetch
 			onProgress({ phase: "clone-repo", message: "Repository exists, fetching updates..." });
-			await executor.spawn("git", ["-C", installPath, "fetch", "origin"], {
+			const fetch = await executor.spawn("git", ["-C", installPath, "fetch", "origin"], {
 				onLog: (line, transient) => onProgress({ phase: "clone-repo", message: line, transient }),
 			});
+			if (fetch.exitCode !== 0) return fail(`Git fetch failed: ${fetch.stderr}`);
 		}
 
 		// Checkout
-		if (targetCommit) {
-			const checkout = await executor.spawn("git", ["-C", installPath, "checkout", targetCommit], {});
-			if (checkout.exitCode !== 0) return fail(`Checkout of ${targetCommit} failed: ${checkout.stderr}`);
-		} else {
-			await executor.spawn("git", ["-C", installPath, "checkout", "develop"], {});
-			await executor.spawn("git", ["-C", installPath, "pull", "origin", "develop"], {
+		if (useHead) {
+			const checkout = await executor.spawn("git", ["-C", installPath, "checkout", "develop"], {});
+			if (checkout.exitCode !== 0) return fail(`Checkout of develop failed: ${checkout.stderr}`);
+			const pull = await executor.spawn("git", ["-C", installPath, "pull", "origin", "develop"], {
 				onLog: (line, transient) => onProgress({ phase: "clone-repo", message: line, transient }),
 			});
+			if (pull.exitCode !== 0) return fail(`Pull of develop failed: ${pull.stderr}`);
+		} else {
+			const checkout = await executor.spawn("git", ["-C", installPath, "checkout", targetCommit], {});
+			if (checkout.exitCode !== 0) return fail(`Checkout of ${targetCommit} failed: ${checkout.stderr}`);
 		}
 
 		onProgress({ phase: "clone-repo", percent: 80, message: "Initialising submodules..." });

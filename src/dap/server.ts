@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { createNodeHiseLauncher } from "../tui/nodeHiseLauncher.js";
+import { probeHise, projectStatus, resolveProjectTarget, sameProject, verifyProject, waitForHise } from "./projectLaunch.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Readable, Writable } from "node:stream";
 import { DapRestClient, DapRestError, type DapRestOptions } from "./rest.js";
@@ -8,6 +10,8 @@ export interface DapOptions extends DapRestOptions {
 	projectRoot?: string;
 	pollMs: number;
 	logLevel?: "quiet" | "normal";
+	/** Test seam; production uses the existing HISE executable locator. */
+	launchHise?: () => Promise<void>;
 }
 
 interface Request { seq: number; type: "request"; command: string; arguments?: Record<string, unknown> }
@@ -17,15 +21,6 @@ interface Snapshot { moduleId?: string; threadId?: number; state?: string; stopp
 interface JournalEvent { sequence: number; type: string; reason?: string; breakpoint?: Breakpoint; stoppedGeneration?: number; threadId?: number; output?: string; location?: Location; hitBreakpointIds?: number[] }
 interface Journal { events: JournalEvent[]; nextSequence: number; moduleId?: string }
 interface BreakpointList { breakpoints: Breakpoint[]; moduleId?: string }
-
-function projectPath(value: string): string {
-	const path = value.startsWith("file:") ? fileURLToPath(value) : value;
-	return resolve(path).replace(/[\\/]$/, "");
-}
-function sameProject(a: string, b: string): boolean {
-	const left = projectPath(a), right = projectPath(b);
-	return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
-}
 
 /** A single DAP session owns the stream, HISE lease, poller and identifier tables. */
 export class HiseDapServer {
@@ -56,6 +51,7 @@ export class HiseDapServer {
 	private readonly frameIds = new Map<number, number>();
 	private readonly supplied = new Map<string, number[]>();
 	private projectFolder?: string;
+	private recompiled = false;
 
 	constructor(private readonly options: DapOptions, private readonly input: Readable = process.stdin, private readonly output: Writable = process.stdout) {
 		this.rest = new DapRestClient(options);
@@ -103,7 +99,7 @@ export class HiseDapServer {
 		try {
 			const body = await this.dispatch(request.command, request.arguments ?? {});
 			this.send({ type: "response", request_seq: request.seq, command: request.command, success: true, body });
-			if (request.command === "attach") {
+			if (request.command === "attach" || request.command === "launch") {
 				this.event("initialized");
 				try { await this.snapshot(); this.schedulePoll(); }
 				catch (error) {
@@ -114,7 +110,13 @@ export class HiseDapServer {
 				}
 			} else if (request.command === "configurationDone") {
 				this.configured = true;
-				if (this.bufferedStop) { const stop = this.bufferedStop; this.bufferedStop = undefined; await this.reportStop(stop); }
+				try {
+					if (this.bufferedStop) { const stop = this.bufferedStop; this.bufferedStop = undefined; await this.reportStop(stop); }
+					if (!this.recompiled && this.moduleId && this.stoppedGeneration === undefined) {
+						this.recompiled = true;
+						await this.recompile();
+					}
+				} catch (error) { this.event("output", { category: "stderr", output: `HISE recompile failed: ${String(error)}\n` }); }
 			} else if (request.command === "disconnect") {
 				this.event("terminated");
 				this.input.destroy();
@@ -260,6 +262,15 @@ export class HiseDapServer {
 		}
 		this.schedulePoll(this.failures ? Math.min(2000, this.options.pollMs * 2 ** this.failures) : undefined);
 	}
+	private async recompile(): Promise<void> {
+		try {
+			const result = await this.rest.request<{ errors?: Array<{ errorMessage: string }> }>("recompile", { moduleId: this.moduleId }, undefined, Math.max(35_000, this.options.timeoutMs));
+			for (const error of result.errors ?? []) this.event("output", { category: "stderr", output: `${error.errorMessage}\n` });
+		} catch (error) {
+			if (error instanceof DapRestError && error.status === 400 && error.payload?.result === "breakpoint interrupted compilation") return;
+			throw error;
+		}
+	}
 	private async close(): Promise<void> {
 		if (this.closed) return;
 		this.closed = true;
@@ -274,10 +285,6 @@ export class HiseDapServer {
 	private async dispatch(command: string, args: Record<string, unknown>): Promise<object> {
 		if (command === "initialize") {
 			if (this.initialized) throw Error("Already initialized");
-			const status = await this.rest.request<{ apiVersion?: string; project?: { projectFolder?: string } }>("status");
-			if (!status.apiVersion || !status.project?.projectFolder) throw Error("HISE has no initialized project");
-			this.projectFolder = status.project.projectFolder;
-			if (this.options.projectRoot && !sameProject(this.options.projectRoot, this.projectFolder)) throw Error("Workspace does not match the HISE project");
 			this.pathFormat = args.pathFormat === "uri" ? "uri" : "path";
 			this.linesStartAt1 = args.linesStartAt1 !== false;
 			this.columnsStartAt1 = args.columnsStartAt1 !== false;
@@ -285,9 +292,34 @@ export class HiseDapServer {
 			return { supportsConfigurationDoneRequest: true, supportsConditionalBreakpoints: true, supportsEvaluateForHovers: true, supportsTerminateRequest: false, supportsFunctionBreakpoints: false, supportsHitConditionalBreakpoints: false, supportsStepBack: false, supportsSetVariable: false, supportsDataBreakpoints: false, supportsExceptionInfoRequest: false, supportsLogPoints: false, supportsCancelRequest: false };
 		}
 		if (!this.initialized || this.closed) throw Error("DAP session is not initialized");
-		if (command === "attach") {
+		if (command === "attach" || command === "launch") {
 			if (this.attached) throw Error("Already attached");
-			if (typeof args.projectFolder === "string" && this.projectFolder && !sameProject(args.projectFolder, this.projectFolder)) throw Error("Workspace does not match the HISE project");
+			if (args.moduleId !== undefined && (typeof args.moduleId !== "string" || !args.moduleId)) throw Error("moduleId must be a nonempty string");
+			let status;
+			if (command === "launch") {
+				if (typeof args.projectFile !== "string" || !args.projectFile) throw Error("launch requires an absolute XML/HIP projectFile");
+				const target = await resolveProjectTarget(args.projectFile);
+				if (this.options.projectRoot && !sameProject(this.options.projectRoot, target.folder)) throw Error(`Workspace ${this.options.projectRoot} does not match ${target.folder}`);
+				status = await probeHise(this.rest);
+				if (!status) {
+					const address = new URL(this.options.baseUrl);
+					if (!this.options.launchHise && (!["localhost", "127.0.0.1", "[::1]"].includes(address.hostname) || (address.port && address.port !== "1900"))) throw Error("Automatic HISE launch requires the local REST port 1900; start HISE manually for other addresses");
+					await (this.options.launchHise ?? (() => createNodeHiseLauncher().spawnDetached("HISE", ["start_server"])))();
+					status = await waitForHise(this.rest, 30_000);
+					if (!sameProject(status.project!.projectFolder!, target.folder)) {
+						await this.rest.request("project/switch", { project: target.folder }, undefined, 30_000);
+						status = await projectStatus(this.rest);
+					}
+					await this.rest.request("project/load", { file: target.relativeFile }, undefined, 30_000);
+					status = await projectStatus(this.rest);
+				}
+				await verifyProject(this.rest, status, target, typeof args.moduleId === "string" ? args.moduleId : undefined);
+			} else {
+				status = await projectStatus(this.rest);
+				if (typeof args.projectFolder === "string" && !sameProject(args.projectFolder, status.project!.projectFolder!)) throw Error(`HISE project mismatch: expected ${args.projectFolder}, running ${status.project!.projectFolder}`);
+			}
+			if (this.options.projectRoot && !sameProject(this.options.projectRoot, status.project!.projectFolder!)) throw Error(`Workspace ${this.options.projectRoot} does not match HISE project ${status.project!.projectFolder}`);
+			this.projectFolder = status.project!.projectFolder;
 			const result = await this.rest.request<{ moduleId?: string; threadId?: number }>("dap/session/open", { sessionId: this.sessionId, ...(typeof args.moduleId === "string" ? { moduleId: args.moduleId } : {}), ...(typeof args.sourceUri === "string" ? { sourceUri: args.sourceUri } : {}) });
 			this.attached = true;
 			this.moduleId = result.moduleId;
@@ -297,7 +329,10 @@ export class HiseDapServer {
 		if (command === "disconnect") { await this.close(); return {}; }
 		if (command === "terminate") throw Error("Terminating HISE is not supported; disconnect instead");
 		if (!this.attached) throw Error("Attach to HISE first");
-		if (command === "configurationDone") return {};
+		if (command === "configurationDone") {
+			if (this.configured) throw Error("Configuration is already complete");
+			return {};
+		}
 		if (command === "threads") return { threads: [{ id: this.threadId, name: "HISE Script Execution" }] };
 		if (command === "setBreakpoints") {
 			const path = (args.source as { path?: string } | undefined)?.path;

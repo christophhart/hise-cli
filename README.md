@@ -79,14 +79,10 @@ What the wizard takes care of for you:
 - Optional tools: IPP (Windows), Faust
 - FFTW development libraries on Linux (enabled by default for projects using
   `AUDIOFFT_FFTW3=1`; review FFTW licensing before distribution)
-- Projucer (downloaded and built automatically)
-- HISE source clone with the right submodules and branch
-- First full build + smoke test that the resulting binary launches
+- HISE source clone, SDK archive extraction, and initialization of its JUCE submodule (including the submodule's Projucer)
+- First full build, verification of the resulting binary and compiler settings, then export and compilation of the bundled demo project as a standalone application
 
-Each step is detected idempotently — re-running `/setup` after a partial
-failure resumes from where it stopped instead of starting over. Pair with
-`/update` to pull the latest CI-green develop commit and rebuild whenever
-you want a fresh HISE.
+By default, `/setup` selects the latest CI-green `develop` commit. To use a particular revision, enter its Git SHA in the wizard's **Target Commit** field. If the CI lookup fails, setup stops; you can enter `HEAD` to bypass the check and use the latest `develop` commit, which [may not have passed CI](https://github.com/christophhart/HISE/actions/workflows/ci_mac.yml). If setup pauses to install macOS Command Line Tools, complete the system dialog and enter `/resume`. Other interrupted steps can be retried without redoing every completed task. Later, `/update` also selects the latest CI-green `develop` commit by default and rebuilds HISE.
 
 ## Quickstart
 
@@ -267,7 +263,7 @@ ScriptProcessor and compiled at least once for diagnostics to work.
 ## Requirements
 
 - Node.js 18+ (only for the `npm` install path; the standalone binary has none)
-- A running HISE instance with the REST API enabled (default port `1900`)
+- A running HISE instance with the REST API enabled (default port `1900`) for commands that interact with HISE; installation, `/setup`, and offline commands do not require an already running instance.
 
 ## License
 

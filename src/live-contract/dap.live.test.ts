@@ -50,7 +50,7 @@ describe("DAP live contract", () => {
 			expect((await next(response(send("initialize")))).success).toBe(true);
 			expect((await next(response(send("attach", { moduleId, projectFolder: status.project.projectFolder })))).success).toBe(true);
 			expect((await next((message) => message.event === "initialized")).event).toBe("initialized");
-			expect((await next(response(send("configurationDone")))).success).toBe(true);
+			// Do not send configurationDone in this read-only test: it recompiles onInit.
 			expect((await next(response(send("threads")))).body).toMatchObject({ threads: [{ id: 1, name: "HISE Script Execution" }] });
 			expect((await next(response(send("disconnect")))).success).toBe(true);
 			expect((await next((message) => message.event === "terminated")).event).toBe("terminated");

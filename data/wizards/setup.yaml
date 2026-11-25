@@ -76,8 +76,8 @@ tabs:
       - id: targetCommit
         type: text
         label: Target Commit
-        help: Git SHA to checkout (leave empty for latest develop)
-        emptyText: latest develop
+        help: Leave empty for latest CI-green develop SHA; enter a SHA to pin, or HEAD for unverified latest develop (may be broken). CI status: https://github.com/christophhart/HISE/actions/workflows/ci_mac.yml
+        emptyText: latest CI-green develop
       - id: parallelJobs
         type: text
         label: Parallel Jobs

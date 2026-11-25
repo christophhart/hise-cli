@@ -2,9 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
 import { PassThrough } from "node:stream";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { vi } from "vitest";
 import { pathToFileURL } from "node:url";
-import { startDap, parseDapOptions } from "./server.js";
+import { startDap, parseDapOptions, type DapOptions } from "./server.js";
 
 const root = resolve(".");
 const uri = pathToFileURL(resolve("Scripts/test.js")).href;
@@ -24,9 +27,9 @@ async function mock(handler: (route: string, body: Record<string, unknown>) => o
 	await once(server, "listening");
 	return `http://127.0.0.1:${(server.address() as { port: number }).port}`;
 }
-function protocol(baseUrl: string): { send: (command: string, args?: object) => number; next: (predicate?: (message: Record<string, unknown>) => boolean) => Promise<Record<string, unknown>>; close: () => void } {
+function protocol(baseUrl: string, options: Partial<DapOptions> = {}): { send: (command: string, args?: object) => number; next: (predicate?: (message: Record<string, unknown>) => boolean) => Promise<Record<string, unknown>>; close: () => void } {
 	const input = new PassThrough(), output = new PassThrough();
-	startDap({ baseUrl, timeoutMs: 1000, pollMs: 20, logLevel: "quiet" }, input, output);
+	startDap({ baseUrl, timeoutMs: 1000, pollMs: 20, logLevel: "quiet", ...options }, input, output);
 	let buffer = Buffer.alloc(0), seq = 0;
 	const messages: Array<Record<string, unknown>> = [], waiters: Array<() => void> = [];
 	output.on("data", (chunk: Buffer) => {
@@ -109,6 +112,135 @@ describe("DAP proxy", () => {
 			await client.next(response(client.send("disconnect")));
 		} finally { client.close(); }
 	});
+	it("launches HISE, switches and loads the requested XML before opening a DAP session", async () => {
+		const folder = await mkdtemp(join(tmpdir(), "hise-dap-"));
+		const file = join(folder, "XmlPresetBackups", "TestProject.xml");
+		await mkdir(join(folder, "XmlPresetBackups"));
+		await writeFile(join(folder, "project_info.xml"), "<project/>");
+		await writeFile(file, "<project/>");
+		let project = "other", master = "other", spawned = 0;
+		const calls: string[] = [];
+		const baseUrl = await mock((route, body) => {
+			calls.push(route);
+			if (route === "/api/status") return { project: { projectFolder: project }, scriptProcessors: [{ moduleId: "Interface" }] };
+			if (route === "/api/project/switch") { expect(body.project).toBe(folder); project = folder; return {}; }
+			if (route === "/api/project/load") { expect(body.file).toBe("XmlPresetBackups/TestProject.xml"); master = "TestProject"; return {}; }
+			if (route === "/api/builder/tree") return { result: { processorId: master } };
+			if (route === "/api/dap/session/open") return { moduleId: "Interface", threadId: 1 };
+			if (route.startsWith("/api/dap/state")) return { state: "running", latestSequence: 0, moduleId: "Interface" };
+			if (route.startsWith("/api/dap/breakpoints/list")) return { breakpoints: [] };
+			if (route.startsWith("/api/dap/events")) return { nextSequence: 0, events: [] };
+			return {};
+		});
+		const originalFetch = globalThis.fetch;
+		const client = protocol(baseUrl, { launchHise: async () => { spawned++; } });
+		try {
+			await client.next(response(client.send("initialize")));
+			// Simulate no REST listener at startup. After spawning, use the mock server.
+			vi.spyOn(globalThis, "fetch").mockImplementationOnce(async () => { throw Error("connection refused"); }).mockImplementation(originalFetch);
+			const launch = client.send("launch", { projectFile: file, moduleId: "Interface" });
+			expect((await client.next(response(launch))).success).toBe(true);
+			await client.next(event("initialized"));
+			expect(spawned).toBe(1);
+			expect(calls.indexOf("/api/project/load")).toBeLessThan(calls.indexOf("/api/dap/session/open"));
+			await client.next(response(client.send("disconnect")));
+		} finally { vi.restoreAllMocks(); client.close(); await rm(folder, { recursive: true, force: true }); }
+	});
+	it("attaches to a matching running project without switching or loading it", async () => {
+		const folder = await mkdtemp(join(tmpdir(), "hise-dap-"));
+		const file = join(folder, "XmlPresetBackups", "TestProject.xml");
+		await mkdir(join(folder, "XmlPresetBackups"));
+		await writeFile(join(folder, "project_info.xml"), "<project/>");
+		await writeFile(file, "<project/>");
+		const calls: string[] = [];
+		const baseUrl = await mock((route) => {
+			calls.push(route);
+			if (route === "/api/status") return { project: { projectFolder: folder }, scriptProcessors: [{ moduleId: "Interface" }] };
+			if (route === "/api/builder/tree") return { result: { processorId: "TestProject" } };
+			if (route === "/api/dap/session/open") return { moduleId: "Interface" };
+			if (route.startsWith("/api/dap/state")) return { state: "running", latestSequence: 0, moduleId: "Interface" };
+			if (route.startsWith("/api/dap/breakpoints/list")) return { breakpoints: [] };
+			if (route.startsWith("/api/dap/events")) return { nextSequence: 0, events: [] };
+			return {};
+		});
+		const client = protocol(baseUrl);
+		try {
+			await client.next(response(client.send("initialize")));
+			expect((await client.next(response(client.send("launch", { projectFile: file, moduleId: "Interface" })))).success).toBe(true);
+			await client.next(event("initialized"));
+			expect(calls).not.toContain("/api/project/switch");
+			expect(calls).not.toContain("/api/project/load");
+			await client.next(response(client.send("disconnect")));
+		} finally { client.close(); await rm(folder, { recursive: true, force: true }); }
+	});
+	it("fails launch without modifying an already-running mismatched project", async () => {
+		const folder = await mkdtemp(join(tmpdir(), "hise-dap-"));
+		const file = join(folder, "XmlPresetBackups", "TestProject.xml");
+		await mkdir(join(folder, "XmlPresetBackups"));
+		await writeFile(join(folder, "project_info.xml"), "<project/>");
+		await writeFile(file, "<project/>");
+		const calls: string[] = [];
+		const baseUrl = await mock((route) => {
+			calls.push(route);
+			if (route === "/api/status") return { project: { projectFolder: folder }, scriptProcessors: [{ moduleId: "Interface" }] };
+			if (route === "/api/builder/tree") return { result: { processorId: "WrongChain" } };
+			return {};
+		});
+		const client = protocol(baseUrl);
+		try {
+			await client.next(response(client.send("initialize")));
+			const result = await client.next(response(client.send("launch", { projectFile: file, moduleId: "Interface" })));
+			expect(result.success).toBe(false);
+			expect(result.message).toContain("master-chain mismatch");
+			expect(calls).not.toContain("/api/project/load");
+			expect(calls).not.toContain("/api/dap/session/open");
+		} finally { client.close(); await rm(folder, { recursive: true, force: true }); }
+	});
+	it("rejects a running HISE project in the wrong folder without loading the requested file", async () => {
+		const folder = await mkdtemp(join(tmpdir(), "hise-dap-"));
+		const file = join(folder, "XmlPresetBackups", "TestProject.xml");
+		await mkdir(join(folder, "XmlPresetBackups"));
+		await writeFile(join(folder, "project_info.xml"), "<project/>");
+		await writeFile(file, "<project/>");
+		const calls: string[] = [];
+		const baseUrl = await mock((route) => {
+			calls.push(route);
+			if (route === "/api/status") return { project: { projectFolder: root } };
+			return {};
+		});
+		const client = protocol(baseUrl);
+		try {
+			await client.next(response(client.send("initialize")));
+			const result = await client.next(response(client.send("launch", { projectFile: file, moduleId: "Interface" })));
+			expect(result.success).toBe(false);
+			expect(result.message).toContain("HISE project mismatch");
+			expect(result.message).toContain(folder);
+			expect(calls).not.toContain("/api/builder/tree");
+			expect(calls).not.toContain("/api/project/switch");
+			await client.next(response(client.send("disconnect")));
+		} finally { client.close(); await rm(folder, { recursive: true, force: true }); }
+	});
+	it("treats HTTP 400 breakpoint-interrupted compilation as a stop, not a compile failure", async () => {
+		let stopped = false;
+		const baseUrl = await mock((route) => {
+			if (route === "/api/status") return { project: { projectFolder: root } };
+			if (route === "/api/dap/session/open") return { moduleId: "Interface" };
+			if (route.startsWith("/api/dap/state")) return { state: stopped ? "stopped" : "running", latestSequence: 0, moduleId: "Interface", stoppedGeneration: 1 };
+			if (route.startsWith("/api/dap/breakpoints/list")) return { breakpoints: [] };
+			if (route === "/api/recompile") { stopped = true; return { httpStatus: 400, result: "breakpoint interrupted compilation", errors: [{ errorMessage: "Breakpoint hit" }] }; }
+			if (route.startsWith("/api/dap/events")) return { nextSequence: stopped ? 1 : 0, events: stopped && route.includes("afterSequence=0") ? [{ sequence: 1, type: "stopped", reason: "breakpoint", stoppedGeneration: 1 }] : [] };
+			return {};
+		});
+		const client = protocol(baseUrl);
+		try {
+			await client.next(response(client.send("initialize")));
+			await client.next(response(client.send("attach", { moduleId: "Interface" })));
+			await client.next(event("initialized"));
+			expect((await client.next(response(client.send("configurationDone")))).success).toBe(true);
+			expect((await client.next(event("stopped"))).body).toMatchObject({ reason: "breakpoint", threadId: 1 });
+			await client.next(response(client.send("disconnect")));
+		} finally { client.close(); }
+	});
 	it("buffers an existing stop until configurationDone and forwards external resume and output", async () => {
 		let running = false;
 		const baseUrl = await mock((route) => {
@@ -168,7 +300,7 @@ describe("DAP proxy", () => {
 			await client.next(response(client.send("disconnect")));
 		} finally { client.close(); }
 	});
-	it("attaches, snapshots existing breakpoints, maps lines, controls execution, and closes without compilation", async () => {
+	it("attaches, recompiles after configurationDone, maps lines, controls execution, and closes", async () => {
 		const calls: string[] = [];
 		let cursor = 3, stopped = false;
 		const baseUrl = await mock((route, body) => {
@@ -212,7 +344,8 @@ describe("DAP proxy", () => {
 			await client.next(response(disconnect));
 			await client.next(event("terminated"));
 			expect(calls).toContain("/api/dap/session/close");
-			expect(calls).not.toContain("/api/recompile");
+			expect(calls.filter((route) => route === "/api/recompile")).toHaveLength(1);
+			expect(calls.indexOf("/api/recompile")).toBeGreaterThan(calls.indexOf("/api/dap/breakpoints/set"));
 		} finally { client.close(); }
 	});
 });

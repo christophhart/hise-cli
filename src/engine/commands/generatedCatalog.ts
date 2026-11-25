@@ -535,7 +535,7 @@ export const GENERATED_COMMAND_CATALOG = {
 			"id": "cli.dap",
 			"mode": "root",
 			"title": "HISE debug adapter",
-			"purpose": "Attach a DAP-compatible editor debugger to the running HISE project over stdio.",
+			"purpose": "Launch or attach a DAP-compatible HiseScript debugger over stdio.",
 			"tags": [
 				"dap",
 				"debug",
@@ -564,7 +564,7 @@ export const GENERATED_COMMAND_CATALOG = {
 				}
 			},
 			"notes": [
-				"Editor launches this command per debug session. Attach-only; never starts or terminates HISE. Options: --hise-url <URL> (default http://localhost:1900), --timeout-ms <N>, --poll-ms <N>, --project-root <PATH>, --log-level quiet|normal. Attach arguments: optional projectFolder, moduleId, sourceUri. Stdout is reserved for DAP; logs go to stderr. Scope and variable browsing require unimplemented HISE REST routes."
+				"Editor launches this command per debug session. DAP launch requires an absolute projectFile (XML/HIP), accepts moduleId, starts HISE when absent, and rejects a mismatched running project. DAP attach accepts optional projectFolder, moduleId, sourceUri. Once breakpoints are configured, the selected processor recompiles and reruns onInit. Options: --hise-url <URL> (default http://localhost:1900), --timeout-ms <N>, --poll-ms <N>, --project-root <PATH>, --log-level quiet|normal. Stdout is reserved for DAP; logs go to stderr. Scope and variable browsing require unimplemented HISE REST routes."
 			]
 		},
 		{

@@ -94,14 +94,49 @@ describe("setupGitInstall", () => {
 });
 
 describe("setupCloneRepo", () => {
-	it("clones fresh when directory does not exist", async () => {
+	const greenSha = "a".repeat(40);
+	const ciFetch = async () => ({
+		ok: true,
+		json: async () => ({ workflow_runs: [{ head_sha: greenSha }] }),
+	}) as Response;
+
+	it("defaults to the latest CI-green develop commit", async () => {
 		const executor = new MockPhaseExecutor();
-		// git -C fails (no repo), clone succeeds, rest succeeds
 		executor.onSpawn("git", { exitCode: 0, stdout: "", stderr: "" });
-		const handler = createSetupCloneRepoHandler(executor);
+		const handler = createSetupCloneRepoHandler(executor, ciFetch as typeof fetch);
 		const result = await handler({ installPath: "/tmp/hise" }, noop);
 		expect(result.success).toBe(true);
-		expect(executor.calls.length).toBeGreaterThan(0);
+		expect(executor.calls.some((call) => call.args.includes(greenSha))).toBe(true);
+		expect(executor.calls.some((call) => call.args.includes("pull"))).toBe(false);
+	});
+
+	it("aborts before cloning when CI lookup fails, with HEAD bypass guidance", async () => {
+		const executor = new MockPhaseExecutor();
+		const handler = createSetupCloneRepoHandler(executor, async () => ({ ok: false }) as Response);
+		const result = await handler({ installPath: "/tmp/hise" }, noop);
+		expect(result.success).toBe(false);
+		expect(result.message).toContain("HEAD");
+		expect(result.message).toContain("may be broken");
+		expect(result.message).toContain("https://github.com/christophhart/HISE/actions/workflows/ci_mac.yml");
+		expect(executor.calls).toHaveLength(0);
+	});
+
+	it("uses develop HEAD without querying CI when explicitly requested", async () => {
+		const executor = new MockPhaseExecutor();
+		executor.onSpawn("git", { exitCode: 0, stdout: "", stderr: "" });
+		const handler = createSetupCloneRepoHandler(executor, async () => { throw new Error("unexpected CI query"); });
+		const result = await handler({ installPath: "/tmp/hise", targetCommit: "HEAD" }, noop);
+		expect(result.success).toBe(true);
+		expect(executor.calls.some((call) => call.args.includes("pull") && call.args.includes("develop"))).toBe(true);
+	});
+
+	it("uses an explicit SHA without querying CI", async () => {
+		const executor = new MockPhaseExecutor();
+		executor.onSpawn("git", { exitCode: 0, stdout: "", stderr: "" });
+		const handler = createSetupCloneRepoHandler(executor, async () => { throw new Error("unexpected CI query"); });
+		const result = await handler({ installPath: "/tmp/hise", targetCommit: greenSha }, noop);
+		expect(result.success).toBe(true);
+		expect(executor.calls.some((call) => call.args.includes(greenSha))).toBe(true);
 	});
 });
 
