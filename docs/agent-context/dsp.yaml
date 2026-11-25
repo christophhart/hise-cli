@@ -274,6 +274,7 @@ commands:
       - title: Select embedded slider-pack data
         argv: [hise-cli, dsp, set-complex-data, --module, "Script FX1", --node, Lfo, --type, SliderPack, --slot, "1", --index, "-1", --agent]
   - id: dsp.trace
+    contractSyntax: dsp trace --module <module> [--inject <silence|dirac|noise|dc>] [--inject-param <node.param=value>...] [--probe-param <node.param>...] [--probe-changed-parameters] [--trigger-note <0-127>] [--trace-compact]
     syntax: dsp trace --module <module> [--container <container>] [--inject <silence|dirac|noise|dc>] [--gain <n>] [--seed <n>] [--inject-before <node>] [--inject-param <node.param=value>...] [--probe-recursive] [--probe-changed-parameters] [--probe-param <node.param>...] [--probe-after <node>] [--trigger-note <0-127>] [--trigger-velocity <0-1>] [--trigger-channel <1-16>] [--trigger-predelay-ms <n>] [--delay-ms <n>] [--trace-compact] [--no-specs] [--no-signal]
     title: Trace DSP runtime behavior
     purpose: Inject a temporary signal or parameter value and capture signal or parameter effects at runtime.

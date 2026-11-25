@@ -5215,14 +5215,15 @@ export const GENERATED_AGENT_CONTEXT = {
 					"id": "inspect.version",
 					"title": "Version",
 					"purpose": "Show HISE server version information.",
-					"syntax": "hise-cli inspect version",
+					"syntax": "hise-cli inspect version --agent",
 					"command": {
 						"argv": [
 							"hise-cli",
 							"inspect",
-							"version"
+							"version",
+							"--agent"
 						],
-						"display": "hise-cli inspect version"
+						"display": "hise-cli inspect version --agent"
 					},
 					"tags": [
 						"inspect",
@@ -5246,9 +5247,10 @@ export const GENERATED_AGENT_CONTEXT = {
 							"argv": [
 								"hise-cli",
 								"inspect",
-								"version"
+								"version",
+								"--agent"
 							],
-							"display": "hise-cli inspect version"
+							"display": "hise-cli inspect version --agent"
 						},
 						"tui": {
 							"title": "TUI",
@@ -5264,14 +5266,15 @@ export const GENERATED_AGENT_CONTEXT = {
 					"id": "inspect.project",
 					"title": "Project",
 					"purpose": "Show current project information.",
-					"syntax": "hise-cli inspect project",
+					"syntax": "hise-cli inspect project --agent",
 					"command": {
 						"argv": [
 							"hise-cli",
 							"inspect",
-							"project"
+							"project",
+							"--agent"
 						],
-						"display": "hise-cli inspect project"
+						"display": "hise-cli inspect project --agent"
 					},
 					"tags": [
 						"inspect",
@@ -5295,9 +5298,10 @@ export const GENERATED_AGENT_CONTEXT = {
 							"argv": [
 								"hise-cli",
 								"inspect",
-								"project"
+								"project",
+								"--agent"
 							],
-							"display": "hise-cli inspect project"
+							"display": "hise-cli inspect project --agent"
 						},
 						"tui": {
 							"title": "TUI",
@@ -5313,14 +5317,15 @@ export const GENERATED_AGENT_CONTEXT = {
 					"id": "inspect.help",
 					"title": "Help",
 					"purpose": "Show inspect mode commands.",
-					"syntax": "hise-cli inspect help",
+					"syntax": "hise-cli inspect help --agent",
 					"command": {
 						"argv": [
 							"hise-cli",
 							"inspect",
-							"help"
+							"help",
+							"--agent"
 						],
-						"display": "hise-cli inspect help"
+						"display": "hise-cli inspect help --agent"
 					},
 					"tags": [
 						"inspect",
@@ -5344,9 +5349,10 @@ export const GENERATED_AGENT_CONTEXT = {
 							"argv": [
 								"hise-cli",
 								"inspect",
-								"help"
+								"help",
+								"--agent"
 							],
-							"display": "hise-cli inspect help"
+							"display": "hise-cli inspect help --agent"
 						},
 						"tui": {
 							"title": "TUI",

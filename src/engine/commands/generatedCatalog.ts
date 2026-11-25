@@ -5104,9 +5104,10 @@ export const GENERATED_COMMAND_CATALOG = {
 							"argv": [
 								"hise-cli",
 								"inspect",
-								"version"
+								"version",
+								"--agent"
 							],
-							"display": "hise-cli inspect version"
+							"display": "hise-cli inspect version --agent"
 						},
 						"tui": {
 							"title": "TUI",
@@ -5145,9 +5146,10 @@ export const GENERATED_COMMAND_CATALOG = {
 							"argv": [
 								"hise-cli",
 								"inspect",
-								"project"
+								"project",
+								"--agent"
 							],
-							"display": "hise-cli inspect project"
+							"display": "hise-cli inspect project --agent"
 						},
 						"tui": {
 							"title": "TUI",
@@ -5186,9 +5188,10 @@ export const GENERATED_COMMAND_CATALOG = {
 							"argv": [
 								"hise-cli",
 								"inspect",
-								"help"
+								"help",
+								"--agent"
 							],
-							"display": "hise-cli inspect help"
+							"display": "hise-cli inspect help --agent"
 						},
 						"tui": {
 							"title": "TUI",
